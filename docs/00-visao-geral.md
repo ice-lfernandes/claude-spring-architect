@@ -2,7 +2,7 @@
 
 ## O que este repositório gera
 
-`ai-spring-setup` transforma um diretório vazio em um projeto Spring Boot com
+`claude-spring-architect` transforma um diretório vazio em um projeto Spring Boot com
 arquitetura declarada, boundaries executáveis (hooks) e uma pipeline de design→código
 já instalada. Ele mesmo não compila nada — não tem `pom.xml`, não tem testes Maven. O
 produto são arquivos de instrução.

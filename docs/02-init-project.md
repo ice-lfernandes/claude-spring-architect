@@ -143,7 +143,7 @@ Next steps:
 ## O que acontece depois
 
 O projeto gerado é **autocontido** (`CLAUDE.md` § Invariant 9): quem clona
-`pedidos-api` não tem `ai-spring-setup` na máquina. Tudo que o `CLAUDE.md` do projeto
+`pedidos-api` não tem `claude-spring-architect` na máquina. Tudo que o `CLAUDE.md` do projeto
 cita já foi copiado para dentro dele — rules, skills de desenvolvimento, o agent
 executor, `ArchHook.java`, `extensions.json`. As skills de criação
 (`project-bootstrap`, `init-project`) e os `blueprints/` ficam de fora de propósito:

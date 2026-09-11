@@ -1,11 +1,11 @@
-# Workflow do `ai-spring-setup`
+# Workflow do `claude-spring-architect`
 
 English version: [`docs/en/`](en/README.md).
 
 Esta pasta documenta como as peças do `.claude/` deste repositório colaboram para
 executar os três comandos principais: `/init-project`, `/new-feature` e `/arch-doctor`.
 
-`ai-spring-setup` não é uma aplicação Java — é um meta-repositório. O que ele produz são
+`claude-spring-architect` não é uma aplicação Java — é um meta-repositório. O que ele produz são
 **arquivos de instrução** (skills, rules, agents, hooks) que, juntos, geram projetos
 Spring Boot já preparados para desenvolvimento assistido por IA. Entender como esses
 arquivos se chamam entre si é o pré-requisito para editar qualquer um deles sem quebrar

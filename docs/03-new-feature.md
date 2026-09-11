@@ -221,4 +221,4 @@ primeiro `Write`.
 `/new-feature` viaja para dentro de todo projeto gerado por `/init-project` (passo 6.7
 de `project-bootstrap`). Depois que `pedidos-api` existe, `/new-feature
 UC-003-<slug>` roda **dentro** do próprio `pedidos-api`, sem depender de
-`ai-spring-setup` estar clonado na máquina.
+`claude-spring-architect` estar clonado na máquina.

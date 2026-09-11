@@ -1,11 +1,11 @@
-# `ai-spring-setup` workflow
+# `claude-spring-architect` workflow
 
 Versão em português: [`docs/`](../README.md).
 
 This folder documents how the pieces of this repository's `.claude/` collaborate to
 run the three main commands: `/init-project`, `/new-feature`, and `/arch-doctor`.
 
-`ai-spring-setup` is not an application — it's a meta-repository. What it produces are
+`claude-spring-architect` is not an application — it's a meta-repository. What it produces are
 **instruction files** (skills, rules, agents, hooks) that, together, generate Spring
 Boot projects already prepared for AI-assisted development. Understanding how these
 files call each other is the prerequisite for editing any one of them without breaking

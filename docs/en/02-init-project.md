@@ -143,7 +143,7 @@ Next steps:
 ## What happens next
 
 The generated project is **self-contained** (`CLAUDE.md` § Invariant 9): whoever
-clones `pedidos-api` doesn't have `ai-spring-setup` on their machine. Everything the
+clones `pedidos-api` doesn't have `claude-spring-architect` on their machine. Everything the
 project's `CLAUDE.md` cites has already been copied inside it — rules, development
 skills, the executor agent, `ArchHook.java`, `extensions.json`. The creation skills
 (`project-bootstrap`, `init-project`) and `blueprints/` are left out on purpose: they

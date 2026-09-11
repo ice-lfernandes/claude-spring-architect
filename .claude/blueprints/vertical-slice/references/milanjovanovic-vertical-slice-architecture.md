@@ -37,7 +37,7 @@ naming, not the mediator framework — see divergence below.
 The article's `Handler` classes are dispatched through **MediatR**, a mediator
 library that gives every handler a pipeline for free (validation, logging,
 transactions wrapped around the call automatically). This repo has no Java equivalent
-in its dependency list (`ai-spring-setup` has zero framework opinions beyond Spring
+in its dependency list (`claude-spring-architect` has zero framework opinions beyond Spring
 Boot itself — see root `CLAUDE.md` § Dependencies), and `rules/architecture-ddd.md` §
 Composition already requires constructor injection with no service locator for every
 blueprint. So this blueprint's `Endpoint` calls its `Handler` directly, a plain

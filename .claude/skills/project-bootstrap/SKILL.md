@@ -418,7 +418,7 @@ for that exact reason.
 ### 6.6 · Copy the rules into the project
 
 The generated project lives on its own: nothing inside `<project>/` can depend on
-`ai-spring-setup` existing on the machine of whoever clones the repository. The root
+`claude-spring-architect` existing on the machine of whoever clones the repository. The root
 `CLAUDE.md` cites `.claude/rules/00-index.md`, and rules cite each other by path — if
 the files aren't there, each citation is a silent dead end.
 
@@ -689,7 +689,7 @@ If the build fails, **fix it before reporting**. A bootstrap that delivers a red
 isn't finished.
 
 **Autonomy test**, also mandatory: nothing in `<project>/` can cite a path that only
-exists in `ai-spring-setup`.
+exists in `claude-spring-architect`.
 
 ```bash
 ls .claude/rules/ .claude/skills/ .claude/agents/ .claude/hooks/ArchHook.java .claude/schemas/extensions.json

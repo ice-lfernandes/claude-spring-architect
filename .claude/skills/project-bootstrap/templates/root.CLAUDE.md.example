@@ -1,7 +1,7 @@
 <!--
 Exemplar of the ROOT CLAUDE.md of a generated project. Written in step 6 of
 SKILL.md with the {{...}} placeholders already resolved. This file is not the
-CLAUDE.md of this meta-repository — that one is at the root of ai-spring-setup.
+CLAUDE.md of this meta-repository — that one is at the root of claude-spring-architect.
 Target: under 200 lines. Only facts and routing; rules stay in rules/.
 Lines for skills not yet written are dropped from the table — routing to something
 that doesn't exist is worse than not routing at all.
