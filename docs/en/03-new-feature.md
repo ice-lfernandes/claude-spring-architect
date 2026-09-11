@@ -34,6 +34,7 @@ sequenceDiagram
     participant DOCK as skill: docker-architect
     participant MSG as skill: messaging-architect
     participant DEV as agent: java-spring-boot-developer
+    participant GIT as skill: git-publish
 
     U->>NF: /new-feature UC-002-cancel-order
     NF->>NF: guardrail — valid pom.xml, domain package discovered, disk ok
@@ -71,6 +72,10 @@ sequenceDiagram
         NF->>DEV: Agent tool, spec as context
         DEV->>DEV: Block 1 domain → Block 2 persistence → Block 3 REST → Block 4 tests
         DEV-->>U: 4 intermediate feedback messages + final summary
+        opt executor reports success
+            NF->>GIT: Skill tool, UC name + summary as context
+            GIT-->>U: two confirmation gates (local commit, then remote)
+        end
     end
 ```
 
@@ -87,6 +92,7 @@ sequenceDiagram
 | optional | `docker-architect` | chained on demand by 3, 5, or messaging-architect | `docker-compose.yml` |
 | — | `new-feature` (consolidation) | 1–5 (+ messaging-architect if present) | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | complete spec | code in `src/**` |
+| optional | `git-publish` | chained by `new-feature` only if 6 reports success | commit + push, behind two gates |
 
 `docker-architect` is **not a pipeline step** — it's chained on demand by
 `persistence-architect`, `test-architect`, or `messaging-architect` when the database
@@ -96,7 +102,14 @@ external delivery (Kafka) for the event — if the event stays in-process, the p
 moves on without it. It writes `25-mensageria.md`, read during consolidation as part of
 the domain block. `java-patterns` isn't a step either: its catalog travels preloaded
 inside the executor (`skills:` field in `java-spring-boot-developer.md`'s frontmatter)
-and is applied directly, never invoked as a separate turn.
+and is applied directly, never invoked as a separate turn. `git-publish` isn't a
+numbered design-pipeline step either — it's chained by `new-feature` **after**
+`java-spring-boot-developer` reports success, never by the executor itself (which keeps
+its restricted tool set per invariant 5/reason 2 — see
+[01-file-types.md § Agent](01-file-types.md#agent-subagent)). `git-publish`'s two
+confirmation gates decide whether anything actually gets committed or pushed; the
+orchestrator only triggers the offer. If the executor reports a failure, the invocation
+is skipped entirely. Details: `@.claude/decisions/0034-git-publish-skill.md`.
 
 `new-feature` only **proposes** turning on ArchUnit and the coverage gate after the
 first feature (step 3 of `SKILL.md` — detection is mechanical, authorizing it is the
@@ -204,9 +217,27 @@ UC-002-cancel-order implemented ✅ COMPLETE
 ✅ Build: ./mvnw verify — green
 ✅ Checklist: 19/19 complete
 
-🔧 Next step:
-git add .; git commit -m "feat(UC-002-cancel-order): order cancellation"; git push
+🔧 Next step: the caller (`/new-feature`) offers `git-publish` next — commit and push
+happen there, not in this agent.
 ```
+
+Since the executor reported success, `new-feature` invokes `git-publish` next (via the
+`Skill` tool, passing `UC-002-cancel-order` + the summary above as context). Two
+`AskUserQuestion` gates, in this order:
+
+```
+Gate 1 — local commit
+"Commit these changes now?" → Yes, commit now / No, skip
+
+✅ Committed a1b2c3d — "feat(UC-002-cancel-order): order cancellation"
+
+Gate 2 — remote
+"Create a new GitHub repo (gh) and push" / "Push to an existing remote" / "Skip, keep local only"
+
+✅ Pushed to https://github.com/acme/pedidos-api (branch main)
+```
+
+No `git push` runs without these two explicit answers.
 
 ## Operational note — long-running background work
 

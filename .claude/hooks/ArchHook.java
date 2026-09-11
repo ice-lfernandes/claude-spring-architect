@@ -194,6 +194,21 @@ public class ArchHook {
                 "all extension files pass",
                 badSchema < 0 ? "no " + SCHEMA_FILE + " — validation OFF"
                               : badSchema + " files with invalid frontmatter");
+        Path mcpFile = ROOT.resolve(".mcp.json");
+        if (Files.isRegularFile(mcpFile)) {
+            List<String> mcpErrs = new ArrayList<>();
+            Map<String, Object> schRoot = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+            String mcpContent = readOrNull(mcpFile);
+            checkMcp(schRoot == null ? null : asMap(schRoot.get("mcp")), ".mcp.json",
+                    mcpContent, mcpErrs);
+            Map<String, Object> mcpRoot = asMap(Json.parse(mcpContent));
+            Map<String, Object> servers = mcpRoot == null ? null : asMap(mcpRoot.get("mcpServers"));
+            int n = servers == null ? 0 : servers.size();
+            report("MCP", mcpErrs.isEmpty(), n + " server(s) declared in .mcp.json",
+                    mcpErrs.size() + " problem(s) — run `java ArchHook.java schema`");
+        } else {
+            err("  MCP ................ no .mcp.json — nothing declared (optional)");
+        }
         boolean git = false;
         try { git = run("git", "rev-parse", "HEAD").exit == 0; } catch (Exception ignored) { }
         report("git HEAD", git, "exists",
@@ -272,6 +287,7 @@ public class ArchHook {
         }
         String sg = asStr(get(sch, "settings", "match"));
         if (sg != null) globs.add(sg);
+        globs.addAll(asStrList(get(sch, "mcp", "match")));
 
         for (String g : globs) {
             Path base = ROOT.resolve(g.substring(0, Math.max(0, g.indexOf('*'))))
@@ -299,6 +315,11 @@ public class ArchHook {
 
         if (matches(asStr(get(sch, "settings", "match")), rel)) {
             checkSettings(sch, rel, content, errors);
+            return;
+        }
+
+        if (matchesAny(asStrList(get(sch, "mcp", "match")), rel)) {
+            checkMcp(asMap(sch.get("mcp")), rel, content, errors);
             return;
         }
 
@@ -356,11 +377,21 @@ public class ArchHook {
         }
     }
 
-    /** Validates each hook entry of settings.json, in any event. */
+    /** Validates the top-level keys and each hook entry of settings.json. */
     static void checkSettings(Map<String, Object> sch, String rel, String content,
                               List<String> errors) {
         Map<String, Object> root = asMap(Json.parse(content));
         if (root == null) { errors.add("  " + rel + " — invalid JSON"); return; }
+
+        List<String> topAllowed = asStrList(get(sch, "settings", "allowed"));
+        if (!topAllowed.isEmpty()) {
+            for (String key : root.keySet()) {
+                if (!topAllowed.contains(key)) {
+                    errors.add("  " + rel + " — `" + key + "` is not a recognized top-level key");
+                }
+            }
+        }
+
         Map<String, Object> hooks = asMap(root.get("hooks"));
         if (hooks == null) return;
 
@@ -389,6 +420,115 @@ public class ArchHook {
                 }
             }
         }
+    }
+
+    /**
+     * Validates .mcp.json (and its project-bootstrap template): unknown top-level or
+     * per-server fields, missing field the declared transport requires, a reserved or
+     * malformed server name, and a literal secret in `headers`/`env` — invariant 11,
+     * @CLAUDE.md. The field list lives in extensions.json's `mcp` block, same
+     * single-owner discipline as the frontmatter tables above.
+     */
+    static void checkMcp(Map<String, Object> mcpSchema, String rel, String content,
+                        List<String> errors) {
+        if (mcpSchema == null) return;
+
+        Map<String, Object> root = asMap(Json.parse(content));
+        if (root == null) { errors.add("  " + rel + " — invalid JSON"); return; }
+
+        List<String> rootAllowed = asStrList(mcpSchema.get("root_allowed"));
+        for (String key : root.keySet()) {
+            if (!rootAllowed.contains(key)) {
+                errors.add("  " + rel + " — `" + key
+                        + "` is not a valid top-level key. Only `mcpServers`");
+            }
+        }
+
+        Map<String, Object> servers = asMap(root.get("mcpServers"));
+        if (servers == null) return;
+
+        List<String> serverAllowed = asStrList(mcpSchema.get("server_allowed"));
+        Map<String, Object> requiredByType = asMap(mcpSchema.get("required_by_type"));
+        String namePattern = asStr(mcpSchema.get("name_pattern"));
+        Pattern nameRe = namePattern == null ? null : Pattern.compile(namePattern);
+        List<String> reserved = asStrList(mcpSchema.get("reserved_names"));
+        Map<String, Object> secretScan = asMap(mcpSchema.get("secret_scan"));
+        List<String> secretFields = secretScan == null ? List.of() : asStrList(secretScan.get("fields"));
+        Pattern keyRe = secretScan == null || asStr(secretScan.get("key_pattern")) == null
+                ? null : Pattern.compile(asStr(secretScan.get("key_pattern")));
+        List<String> valuePrefixes = secretScan == null
+                ? List.of() : asStrList(secretScan.get("value_prefixes"));
+
+        for (Map.Entry<String, Object> e : servers.entrySet()) {
+            String name = e.getKey();
+            Map<String, Object> server = asMap(e.getValue());
+            if (server == null) {
+                errors.add("  " + rel + " — server `" + name + "` is not an object");
+                continue;
+            }
+            if (reserved.contains(name)) {
+                errors.add("  " + rel + " — server name `" + name
+                        + "` is reserved by the runtime");
+            }
+            if (nameRe != null && !nameRe.matcher(name).matches()) {
+                errors.add("  " + rel + " — server name `" + name
+                        + "` doesn't match `" + namePattern + "`");
+            }
+            for (String key : server.keySet()) {
+                if (!serverAllowed.contains(key)) {
+                    errors.add("  " + rel + " — server `" + name
+                            + "` has unknown field `" + key + "`");
+                }
+            }
+
+            String type = asStr(server.get("type"));
+            if (type == null) {
+                errors.add("  " + rel + " — server `" + name + "` is missing `type`");
+            } else if (requiredByType != null && !requiredByType.containsKey(type)) {
+                errors.add("  " + rel + " — server `" + name + "` has unknown `type: "
+                        + type + "`. Allowed: " + String.join(", ", requiredByType.keySet()));
+            } else if (requiredByType != null) {
+                for (String req : asStrList(requiredByType.get(type))) {
+                    if (!server.containsKey(req)) {
+                        errors.add("  " + rel + " — server `" + name + "` (type `" + type
+                                + "`) is missing required field `" + req + "`");
+                    }
+                }
+            }
+
+            for (String field : secretFields) {
+                Map<String, Object> block = asMap(server.get(field));
+                if (block == null) continue;
+                for (Map.Entry<String, Object> kv : block.entrySet()) {
+                    String value = asStr(kv.getValue());
+                    if (value != null && looksLikeSecret(kv.getKey(), value, keyRe, valuePrefixes)) {
+                        errors.add("  " + rel + " — server `" + name + "` field `" + field
+                                + "." + kv.getKey() + "` looks like a literal secret."
+                                + " Use `${VAR}` / `${VAR:-default}`, `oauth`, or"
+                                + " `headersHelper` instead — invariant 11, @CLAUDE.md");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * A value with no `${...}` expansion whose key name looks credential-shaped, or
+     * whose value starts with a known token prefix, is a literal secret. Any `${`
+     * anywhere in the value is treated as safe — "Bearer ${API_TOKEN}" is the
+     * documented good pattern and must not be flagged alongside "Bearer abc123xyz".
+     */
+    static boolean looksLikeSecret(String key, String value, Pattern keyRe,
+                                   List<String> valuePrefixes) {
+        if (value.contains("${")) return false;
+        boolean keySensitive = keyRe != null && keyRe.matcher(key).find();
+        boolean valueSensitive = valuePrefixes.stream().anyMatch(value::startsWith);
+        return keySensitive || valueSensitive;
+    }
+
+    static boolean matchesAny(List<String> globPatterns, String rel) {
+        for (String g : globPatterns) if (matches(g, rel)) return true;
+        return false;
     }
 
     /**

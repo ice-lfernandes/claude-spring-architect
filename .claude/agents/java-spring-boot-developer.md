@@ -60,6 +60,9 @@ from the destination map surveyed in the guardrail, never from a path written he
 - Called by `/new-feature` after consolidation (if the user confirms the prompt)
 - Receives: complete UC-NNN-spec.md, nothing else
 - Returns: 4 intermediate feedback messages + final summary
+- Does **not** invoke `git-publish` itself — stays out of its tool list on purpose, see
+  invariant 6 reason 2 (restrict tools). `/new-feature` invokes it after this agent
+  reports success
 
 ---
 
@@ -319,10 +322,8 @@ UC-001-order implemented ✅ COMPLETE
 ✅ Build: ./mvnw verify — green
 ✅ Checklist: 19/19 complete
 
-🔧 Next step:
-git add .;
-git commit -m "feat(UC-001-order): implement order management feature";
-git push
+🔧 Next step: the caller (`/new-feature`) offers `git-publish` next — commit and push
+happen there, not in this agent.
 ```
 
 ---
@@ -370,7 +371,7 @@ Called by `/new-feature` after consolidation:
   → invokes java-spring-boot-developer
   → (4 intermediate feedback messages)
   → final summary
-  → "Green build. Next: git push"
+  → "Green build. Next: git-publish offers commit + push"
 ```
 
 Or manual invocation (advanced):

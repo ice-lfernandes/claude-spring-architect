@@ -48,6 +48,7 @@ Today four are copied; the remaining rows stay out until the skills exist:
 | Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
 | Diagnosing hooks and enforcement | `/arch-doctor` |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |
+| Creating a git repo, committing, or pushing this project | skill `git-publish` — chained automatically after `java-spring-boot-developer` succeeds; behind two confirmations |
 
 ## Rules
 

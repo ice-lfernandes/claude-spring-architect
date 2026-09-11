@@ -545,6 +545,7 @@ and stays out of the generated project.
 | `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example`. Its own `## Entry into generated projects` section already documents it travels here |
 | `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example` |
 | `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the two Java exemplars (producer adapter, consumer adapter), and `application-kafka.yml.example` |
+| `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
 | `project-bootstrap` | ❌ | Builds the project. Inside it there's nothing left for it to do, and it invites the model to re-generate on top of live code |
 | `init-project` | ❌ | Same reason: it's the creation ritual, not the maintenance one |
 | `claude-code-architect-designer` | ❌ | Designs **this** repository's own extensions — skills, agents, rules. Whoever clones an already-generated project has no extensions to design, and the invariants it applies are this repo's |
@@ -641,6 +642,31 @@ There's no `chmod`: the hooks run in **exec form** (`command: java` + `args`), w
 a shell and without an execute bit — that's what makes them identical on Linux, macOS,
 and Windows.
 
+### 7.5 · Copy designed MCP servers, if any exist
+
+Conditional, unlike every other step in § 7: most bootstraps have nothing to copy here,
+and that's correct, not incomplete.
+
+**Only if** `.claude/skills/project-bootstrap/templates/mcp.json.example` exists in this
+repo, copy it to `<project>/.mcp.json`. That file is only written by the
+`claude-code-architect-designer` skill, when a real MCP server has been designed with
+interview axis 13 ("destination") answered "the generated project" or "both" —
+`@.claude/decisions/0033-mcp-in-architect-designer.md`. If the file doesn't exist, skip
+this step silently: **don't invent a server**, same discipline as § 4.5's exception
+family and § 4.7's business classes — a placeholder `.mcp.json` with no real server
+behind it is the same anticipatory mistake `@.claude/decisions/0011-bootstrap-without-business-code.md`
+already closed once.
+
+If the template exists, also copy its companion setup doc (the `mcp-setup.md.example`-
+shaped file sitting next to it) to `<project>/MCP-SETUP.md`, verbatim. It names the
+environment variables the copied server(s) need — without it, the `${VAR}` placeholders
+in `.mcp.json` are undocumented.
+
+Same secret rule as everywhere else this repo touches `.mcp.json`: if the copied
+template somehow carries a literal credential, that's a bug in the file that produced
+it, not something this step fixes by scrubbing on the way out. `ArchHook.java schema`
+(installed in step 7) catches it on the next edit inside the generated project too.
+
 ### 8 · Verify
 
 The `starter.tgz` from step 3 **already brings** `mvnw`, `mvnw.cmd`, and
@@ -725,6 +751,7 @@ ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
 Docker: base Dockerfile + docker-compose.yml (app service only) — extend with `docker-architect` when a feature needs one
+MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
 
 Next steps:
@@ -805,12 +832,14 @@ other skill touches these files:
 - `CLAUDE.md` and `*/CLAUDE.md`
 - `.claude/forbidden-imports.txt`
 - `.claude/rules/*.md` — full copy of this repo's rules, see step 6.6
-- `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect}/**` — see step 6.7
+- `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,git-publish}/**` — see step 6.7
 - `Dockerfile` and `docker-compose.yml` — base pair only, step 4.10. Every service added
   afterward is `docker-architect`'s, not this skill's
 - `.claude/hooks/ArchHook.java` — verbatim copy, see step 7
 - `.claude/schemas/extensions.json` — verbatim copy, see step 7
 - `.claude/settings.json` — merge, see step 7
+- `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
+  7.5. Absent in most bootstraps, on purpose
 - `config/checkstyle/checkstyle.xml`
 - `lombok.config`
 - `src/main/resources/application*.yml`

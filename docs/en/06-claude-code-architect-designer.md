@@ -2,16 +2,18 @@
 
 Primary source: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 `.claude/skills/claude-code-architect-designer/references/decision-matrix.md`,
-`.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`.
+`.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`,
+`.claude/skills/claude-code-architect-designer/references/mcp-fields.md`.
 
 ## What it does
 
-Decides **which of the five forms** of Claude Code extension resolves a concrete
-scenario — auto-invocable skill, manual skill, subagent, rule, or `CLAUDE.md` section —
-and only writes the file after explicit approval. A sixth answer, legitimate and the
-cheapest one, is **create nothing**: either a piece already covers the scenario, or the
-problem is a compliance issue and belongs in a hook/`permissions.deny`, which this
-skill proposes but never writes.
+Decides **which of the six forms** of Claude Code extension resolves a concrete
+scenario — auto-invocable skill, manual skill, subagent, rule, `CLAUDE.md` section, or
+MCP server (shared or per-agent) — and only writes the file after explicit approval. A
+seventh answer, legitimate and the cheapest one, is **create nothing**: either a piece
+already covers the scenario, a CLI already solves it (`gh`, `psql`, `aws` — decision
+matrix § 2.1), or the problem is a compliance issue and belongs in a
+hook/`permissions.deny`, which this skill proposes but never writes.
 
 Manual invocation only (`disable-model-invocation: true`) — the model never decides on
 its own to create a new skill, agent, or rule.
@@ -27,7 +29,7 @@ break invariant 1 of `@CLAUDE.md` (`rules/` is a leaf: a rule never mentions a s
 agent, or command). A rule explaining when to create skills and agents would be
 mentioning skills and agents inside itself.
 
-## The five forms
+## The six forms
 
 | # | Form | File |
 |---|---|---|
@@ -36,6 +38,13 @@ mentioning skills and agents inside itself.
 | 3 | Subagent | `.claude/agents/<name>.md` |
 | 4 | Rule | `.claude/rules/<name>.md` |
 | 5 | `CLAUDE.md` section | root `CLAUDE.md` |
+| 6a | MCP server, shared | `.mcp.json` |
+| 6b | MCP server, one agent only | `mcpServers:` in that agent's frontmatter |
+
+6b isn't a fourth reason for an agent to exist — it's reason 2 of decision-matrix § 5
+(restrict tools) applied to an external connection instead of a built-in one. An agent
+only exists for the three reasons already in `references/decision-matrix.md` § 5; 6b
+just answers which tools it gets once that's already decided.
 
 ## Out of scope — proposes, doesn't write
 
@@ -45,6 +54,14 @@ mentioning skills and agents inside itself.
 - **`.claude/commands/`.** Never — invariant 4, commands became skills with
   `disable-model-invocation`.
 - **Blueprints.** Architecture is data, not extension (`@.claude/blueprints/_schema.md`).
+- **MCP where a CLI already solves it, or a specific tool that must never be callable.**
+  Decision matrix § 2.1: `gh`/`psql`/`aws`/etc. wins over a new server, and this skill
+  says so and proposes nothing. A tool that must never run is `permissions.deny` on
+  `mcp__<server>__<tool>` — same as any other forbidden action, propose and stop, don't
+  write the rule.
+- **`~/.claude.json`, `local`/`user`-scope MCP.** Personal or experimental servers
+  (`claude mcp add` without `--scope project`) aren't versioned and aren't this skill's
+  concern — it only writes what the team shares.
 - **`skill-creator` plugin.** Disabled on purpose in `.claude/settings.json`: it
   generates generic skills, with no knowledge of this repo's invariants.
 
@@ -72,8 +89,8 @@ sequenceDiagram
 
     rect rgb(235,245,235)
     Note over CMD: Phase 2 · Classify
-    CMD->>DM: applies the decision table
-    CMD->>CMD: runs the 9 CLAUDE.md invariants as a veto
+    CMD->>DM: applies the decision table (§ 2, and § 2.1 if the trigger is an external system)
+    CMD->>CMD: runs the 11 CLAUDE.md invariants as a veto
     end
 
     rect rgb(245,240,225)
@@ -105,13 +122,13 @@ sequenceDiagram
 produces the wrong piece, and the wrong piece costs more than no piece at all — it
 stays in context every session, or it never fires.
 
-Ten axes, each eliminates candidate forms. An unanswered axis leaves the decision
+Thirteen axes, each eliminates candidate forms. An unanswered axis leaves the decision
 guessing:
 
 | # | Axis | What it decides |
 |---|---|---|
 | 1 | Concrete symptom — what error repeats, what prompt gets pasted again | Whether there's a case, or it's anticipation |
-| 2 | Trigger — `/command`, model decision, touching a file, runtime event | Forms 1 · 2 · 4 · out of scope |
+| 2 | Trigger — `/command`, model decision, touching a file, runtime event, or reaching an external system | Forms 1 · 2 · 4 · 6 · out of scope |
 | 3 | Frequency — every session, weekly, rare | Always loaded vs on demand |
 | 4 | Territory — which file globs, or none | `paths` in form 4; `paths` in form 1 |
 | 5 | Nature — declarative fact or sequence of steps | Forms 4/5 vs 1/2/3 |
@@ -120,17 +137,26 @@ guessing:
 | 8 | Destination — this repo only, also the generated project, or both | Steps 6.6/6.7/7 of `project-bootstrap` |
 | 9 | Integration — what it reads, what it writes, which existing piece it collides with | Ownership conflict |
 | 10 | Cost of getting it wrong | minutes or days | Weight in the score |
+| 11 | Does a CLI already solve it (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | Eliminates Form 6 before it's even considered — decision matrix § 2.1 |
+| 12 | Credential shape — OAuth, static token, dynamic header script, or none; read-only or read/write | Form 6a vs 6b vs `permissions.deny`; whether `oauth`/`headersHelper` is needed |
+| 13 | Destination — this repo's `.mcp.json` only, the generated project's template only, or both | Which file(s) Form 6a writes; propagation in Phase 4 step 7 |
 
 Axis 9 is checked against the inventory injected at the top of the skill (`ls
 .claude/skills`, `.claude/agents`, `.claude/rules`, `.claude/decisions`), never from
 memory. Two pieces writing to the same path is an ownership bug, not a style decision.
 
+Axes 11-13 only apply when axis 2 (trigger) names an external system — Jira, a
+database, GitHub, Figma, anything reachable only through its own API. Skip them
+otherwise: asking about credentials for a scenario that isn't MCP-shaped just burns a
+question.
+
 ## Phase 2 · Classify
 
-Applies the decision table from `decision-matrix.md` (summarized below), then runs the
-nine invariants of `@CLAUDE.md` as a veto — the most commonly violated are 1 (a rule
-that mentions a skill) and 5 (an agent with none of the three reasons). A proposal that
-fails an invariant **is not presented as viable**: it appears with the score it
+Applies the decision table from `decision-matrix.md` (§ 2, and § 2.1 whenever axis 2
+names an external system). Then runs the eleven invariants of `@CLAUDE.md` as a veto —
+the most commonly violated are 1 (a rule that mentions a skill), 5 (an agent with none
+of the three reasons), and, for MCP, 11 (a literal secret in `.mcp.json`). A proposal
+that fails an invariant **is not presented as viable**: it appears with the score it
 deserves and the reason for rejection.
 
 ### The dividing line
@@ -139,23 +165,27 @@ deserves and the reason for rejection.
    ┌─ CLAUDE.md ──── fact, always in context             │
    ├─ rules/ ─────── fact, by territory (paths)          │  PERSUASION
    ├─ skills/ ────── procedure, on demand                 │  (the model can fail)
-   └─ agents/ ────── isolated execution                   │
+   ├─ agents/ ────── isolated execution                   │
+   └─ .mcp.json ──── external tool, on demand              │
   ═════════════════════════════════════════════════════
    ┌─ permissions ── allow / ask / deny                   │  GUARANTEE
    └─ hooks ──────── lifecycle events                      │  (always executes)
 ```
 
 Everything above the line is read by the model: it can be ignored, misinterpreted, or
-lost in a `/compact`. Everything below executes regardless of what the model decides.
-Consequence: if breaking the rule is a compliance/security/build bug, the answer isn't
-among the five forms.
+lost in a `/compact` — including whether it calls an available MCP tool at all.
+Everything below executes regardless of what the model decides. `.mcp.json` sits on the
+persuasion side for that reason: connecting a server doesn't guarantee the model uses it
+well, which is exactly why MCP and a skill combine (`@claude-help.md` § 9) instead of
+MCP replacing the skill. Consequence: if breaking the rule is a compliance/security/build
+bug, the answer isn't among the six forms.
 
 ### Decision table (first matching row decides)
 
 | Question | If yes |
 |---|---|
 | Must it happen always, without depending on the model's judgment? | **Hook** or `permissions.deny` — out of scope |
-| Does it need to access an external system (Jira, database, S3)? | **MCP server** — out of scope |
+| Does it need to access an external system (Jira, database, S3) — go to § 2.1 first | **Form 6** — MCP server, unless § 2.1 eliminates it |
 | Is it a declarative fact that holds in every session and across the whole repo? | **Form 5** — `CLAUDE.md` section |
 | Is it a declarative fact that only holds for part of the files? | **Form 4** — rule with `paths` |
 | Is it a multi-step procedure, or long, rarely-needed reference? | **Form 1 or 2** — skill |
@@ -164,6 +194,24 @@ among the five forms.
 | Does it need isolated context, restricted tools, or a different model? | **Form 3** — subagent, and even then see § 5 of the matrix |
 
 No row matches → the answer is **create nothing**.
+
+### Sub-table § 2.1 — which MCP form, and whether it's MCP at all
+
+Top to bottom, same rule: **the first matching row decides**. It sits inside the
+"external system" row above because the CLI-first check has to run before Form 6 is
+even considered, not after.
+
+| Question | If yes |
+|---|---|
+| Does a CLI already solve it (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | **Create nothing** — `Bash` + a line in `permissions.allow`. `@claude-help.md` § 9 names this the cheaper alternative; it's the most context-efficient way to talk to an external service, and the model already knows how to use it |
+| Must the tool never be callable at all? | `permissions.deny` on `mcp__<server>__<tool>` — out of scope |
+| Does only one agent need it? | **Form 6b** — `mcpServers` in that agent's frontmatter |
+| Does the whole team need it, with no secret literal in the file? | **Form 6a** — `.mcp.json`, credential via `${VAR}`, `oauth`, or `headersHelper` |
+| Is it personal or experimental, not for the team? | `claude mcp add --scope local` — this skill doesn't write it; it isn't versioned |
+| Does the server already exist and the model just uses it wrong? | **Form 1** — a skill documenting how to use its tools well, not a new server |
+
+No row matches → **create nothing**. A server with no observed call is dead weight from
+the first session: its name alone costs context at startup.
 
 ### Form 1 vs Form 2
 
@@ -189,8 +237,19 @@ Same file, one line of difference. This repo's practical rule:
 None applies → it's a skill. This is anti-pattern #1, and the most expensive one: one
 more piece to maintain, no gain. Counter-test: if the interview with the user is the
 heart of the task, if the context fits in a `references/` of the skill itself, or if
-the final output is short anyway — any "yes" points to skill, not agent. Sole
-precedent in this repo: `init-project` → `project-initializer`.
+the final output is short anyway — any "yes" points to skill, not agent. Precedents in
+this repo: `init-project` → `project-initializer`, and `new-feature`/`project-initializer`
+→ `git-publish` (this last one rejected as an agent: the confirmation dialogue with the
+user is the heart of the task — see
+`@.claude/decisions/0034-git-publish-skill.md`).
+
+**Corollary — `mcpServers` in an agent's frontmatter is reason 2, never a fourth
+reason.** Giving one agent its own MCP server is "restrict tools" applied to an external
+connection instead of a built-in one: the rest of the session doesn't carry that
+server's tool names in context, and no other agent can reach it. It doesn't unlock a new
+category of agent — the same three-reason test above still gates whether the agent
+should exist at all; `mcpServers` only answers *which* tools it gets once an agent is
+already justified.
 
 ### Form 4 vs Form 5
 
@@ -223,17 +282,19 @@ precedent). A claim about the runtime without a source is decoration — cut it.
 
 ### Score rubric (0-10)
 
-Seven criteria, equal weight, ~1.43 points each:
+Eight criteria, equal weight, 1.25 points each. Round to the nearest integer and show
+what cost points:
 
 | # | Criterion | A point is lost when |
 |---|---|---|
-| 1 | Form fit | The § 2 table points to another form |
-| 2 | Compliance with the invariants | Strains one of the nine; violating one caps the score at ≤ 4 |
-| 3 | Context cost | Rarely-used knowledge stays always loaded |
+| 1 | Form fit | The § 2 table (or § 2.1 for MCP) points to another form |
+| 2 | Compliance with the invariants | Strains one of the eleven; violating one caps the score at ≤ 4 |
+| 3 | Context cost | Rarely-used knowledge stays always loaded — for Form 6, an MCP server's tool names load at every startup whether or not the session uses them |
 | 4 | Enforcement | Relies on persuasion where a guarantee was available |
 | 5 | Maintenance cost | Adds pieces or indirection without proportional gain |
 | 6 | Precedent in the repo | No similar form already in use; novel design |
-| 7 | Complete propagation | Doesn't close routing, `00-index`, steps 6.6/6.7/7, or the decision record |
+| 7 | Complete propagation | Doesn't close routing, `00-index`, steps 6.6/6.7/7.5, or the § 9 decision record |
+| 8 | Trust surface | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 
 Violating an invariant caps the score at **≤ 4**, regardless of the rest. A score
 **≥ 8** is a recommendation; **5 to 7** is viable with a written caveat; **≤ 4** appears
@@ -242,7 +303,7 @@ only to record why it was rejected.
 ## Phase 3.5 · Save the decision draft
 
 What Phase 3 produced — options, scores, rejected alternatives, references table —
-evaporates at the end of the session. Without a record, the same ten-axis interview
+evaporates at the end of the session. Without a record, the same thirteen-axis interview
 starts over from scratch six months from now.
 
 **When to save a file.** Only if at least one is true:
@@ -250,6 +311,9 @@ starts over from scratch six months from now.
 - Two or more options scored ≥ 5 — there was a real choice.
 - The top-scoring option strains an invariant of `@CLAUDE.md`.
 - Axis 8 answered "both" — the piece also goes to the generated project.
+- Axis 13 answered "both" — the MCP server is declared in this repo's `.mcp.json` and
+  in `project-bootstrap`'s template. The duplication is deliberate (invariant 9), and
+  without a record nobody six months from now can tell it apart from drift.
 
 None of these → no file is saved. The justification lives in the `## Why this is
 <form>` section of the file Phase 4 creates, and that's enough.
@@ -268,23 +332,40 @@ avoiding the same interview again.
 
 ## Phase 4 · Write — only after approval
 
-1. Generates from the `templates/` exemplar matching the approved form.
+1. Generates from the `templates/` exemplar matching the approved form. For Form 6a,
+   the shape reference is this skill's own `templates/mcp.json.example`: merge the new
+   server into the target `.mcp.json` — this repo's root, and/or
+   `project-bootstrap/templates/mcp.json.example`, per axis 13 — never overwrite a
+   server already declared there. Also write a companion doc shaped like
+   `templates/mcp-setup.md.example` (this repo's own `MCP-SETUP.md`, or the project
+   one, matching axis 13) listing the environment variables the new server needs, if
+   any.
 2. Frontmatter: native fields only, listed in `references/frontmatter-fields.md`. An
    invented field is silently ignored by the runtime — it looks like behavior, it's
-   decoration.
+   decoration. For a Form 6a server's fields, the equivalent list is
+   `references/mcp-fields.md` — same discipline, the `mcp` block of
+   `.claude/schemas/extensions.json` is the actual owner.
 3. No `metadata:` in frontmatter. Ownership, `reads`, and handoff go in the
    `## Contract` section of the body.
 4. Code boilerplate goes to `templates/<name>.example` inside the skill that emits it,
    never pasted in the body — invariant 3.
-5. **A `## Why this is <form>` section in the body of the created file, always.**
+5. **No literal secret, ever, in a `.mcp.json` this skill writes or edits** —
+   invariant 11. `${VAR}` / `${VAR:-default}`, `oauth`, or `headersHelper` only. If
+   axis 12 named a static token, write the `${VAR}` placeholder and hand the variable
+   name to the companion setup doc from step 1 — never the value itself, not even
+   "temporarily."
+6. **A `## Why this is <form>` section in the body of the created file, always.**
    Three sentences: the form chosen, the interview axis that motivated it, and the
    closest rejected form with the reason. It's the only record that travels with the
    file — it survives whoever never read `.claude/decisions/`, and the copy into the
    generated project. Precedent: `.claude/agents/project-initializer.md`, section "Why
-   this is an agent and not a skill". For Form 5 there's no body to put it in: the
-   justification lives only in the decision record, and if there's no record, in the
-   commit message.
-6. **Propagates.** A new file nobody routes to isn't found:
+   this is an agent and not a skill". For Form 5, and for Form 6a's `.mcp.json` itself
+   (plain JSON, no room for prose), there's no body to put it in: the justification
+   lives only in the decision record, and if there's no record, in the commit message.
+   Form 6b does have a body — it's the same agent file whose own "Why this is an
+   agent" section already covers it; add one line naming which server and why it's
+   scoped to that agent alone.
+7. **Propagates.** A new file nobody routes to isn't found:
 
    | You created | Also update |
    |---|---|
@@ -293,27 +374,33 @@ avoiding the same interview again.
    | Rule | `@.claude/rules/00-index.md` (written-rules table; remove from planned) **and** the table in step 6.6 of `project-bootstrap/SKILL.md` |
    | Agent | `@CLAUDE.md` routing table, if invocable by name |
    | `CLAUDE.md` section | Nothing else — but confirm the total stays under ~200 lines |
+   | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
+   | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example`, its own companion setup doc, and the copy table in step 7.5 of `project-bootstrap/SKILL.md` |
 
    A creation skill (only useful before the project exists) stays **outside** step
    6.7, like `project-bootstrap` and `init-project`. This is stated explicitly in the
    report.
 
-   **Delegation, and only in this case.** If axis 8 answered "both," propagation
-   grows — steps 6.6/6.7/7 of `project-bootstrap`, plus its `templates/`. There,
-   delegates **this step 6 and no other** to the generic agent with `model: sonnet`,
-   passing the path of the Phase 3.5 record and the exact list of files to touch.
-   These are mechanical table edits with a destination fixed in writing. Without a
-   saved record, doesn't delegate: the subagent doesn't see the conversation.
+   **Delegation, and only in this case.** If axis 8 or axis 13 answered "both,"
+   propagation grows — steps 6.6/6.7/7/7.5 of `project-bootstrap`, plus its
+   `templates/`. There, delegates **this step 7 and no other** to the generic agent
+   with `model: sonnet`, passing the path of the Phase 3.5 record and the exact list of
+   files to touch. These are mechanical table edits with a destination fixed in
+   writing. Without a saved record, doesn't delegate: the subagent doesn't see the
+   conversation.
 
-   Steps 1 through 5 are **never** delegated. Writing the `description` decides
+   Steps 1 through 6 are **never** delegated. Writing the `description` decides
    whether the skill fires, and the `## Contract` decides ownership — that's design,
-   not transcription.
+   not transcription. For MCP the same split holds: which server to add, its
+   credential shape, and its destination are design; copying an already-approved
+   `.mcp.json` entry into a second file is the only mechanical part.
 
-7. If a draft was saved in Phase 3.5, promotes it: fills in `Decision`, `State`
-   (approved by whom, on what date), and the `Propagation` table with the files step 6
+8. If a draft was saved in Phase 3.5, promotes it: fills in `Decision`, `State`
+   (approved by whom, on what date), and the `Propagation` table with the files step 7
    touched.
-8. Runs `claude plugin validate .claude/skills` and reports the output without
-   rewriting it.
+9. Runs `claude plugin validate .claude/skills` and reports the output without
+   rewriting it. **Doesn't cover `.mcp.json`** — also runs
+   `java .claude/hooks/ArchHook.java schema` whenever step 1 touched a `.mcp.json`.
 
 ## Phase 5 · Report
 
@@ -413,6 +500,10 @@ nothing. In this repo that content lives in the `## Contract` section of the fil
 | 8 | Code in the skill body | Boilerplate pasted into markdown | `templates/*.example` |
 | 9 | Piece built on anticipation | No symptom in interview axis 1 | Create nothing |
 | 10 | Creation skill copied into the generated project | Outside step 6.7 | Leave it out, and say so |
+| 11 | MCP where a CLI already solves it | `gh`/`psql`/`aws`/etc. already installed | Create nothing + `permissions.allow` (§ 2.1) |
+| 12 | Literal secret in `.mcp.json` | A token, key, or password spelled out in `headers`/`env` | `${VAR}`, `${VAR:-default}`, `oauth`, or `headersHelper` — invariant 11 |
+| 13 | MCP server with no observed use | No symptom in interview axis 1; its name still costs context at every startup | Create nothing |
+| 14 | Same server duplicated across scopes with no destination reason | Same name in `.mcp.json` and an agent's `mcpServers`, or in both this repo's `.mcp.json` and the project template, with no axis-13 "both" answer behind it | Single destination, or record the "both" answer in the decision |
 
 ## Example invocation (fictional)
 
@@ -456,25 +547,30 @@ save a record — Phase 4 edits `new-feature/SKILL.md` directly and the `## Why 
 
 ## Skill contract
 
-**Reads** `@claude-help.md`, `@CLAUDE.md` (the nine invariants),
+**Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants),
 `@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision
 touches blueprints, and the inventory injected at the top. Reads this skill's own
 `references/` before classifying — the matrix is deliberately not embedded in the
 body.
 
-**Writes** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, and the root
-`CLAUDE.md` of **this repository**. Only after explicit approval.
+**Writes** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, the root
+`CLAUDE.md` of **this repository**, and `.mcp.json` at this repo's root (Form 6a). Only
+after explicit approval.
 
 **Also writes** `.claude/decisions/NNNN-<slug>.md` — and this is the only path it
 touches *before* approval, as the Phase 3.5 draft. It is the exclusive owner of the
 directory: no other piece writes there, and nothing inside it is a rule.
 
 **Does not write** `.claude/settings.json`, `.claude/hooks/**`,
-`.claude/blueprints/**`, nor project Java code. Does not create `.claude/commands/`.
+`.claude/blueprints/**`, `~/.claude.json`, nor project Java code. Does not create
+`.claude/commands/`. **Never writes a literal secret** into `.mcp.json` — invariant 11;
+a static credential from axis 12 becomes a `${VAR}` placeholder plus a line in the
+companion setup doc, never a value.
 
-**Delegates** at most step 6 of Phase 4 (propagation), and only when axis 8 is "both"
-and a decision record has been saved. Classifying, proposing, and writing the body
-always stay in this thread.
+**Delegates** at most step 7 of Phase 4 (propagation), and only when axis 8 or axis 13
+is "both" and a decision record has been saved. Classifying, proposing, and writing the
+body always stay in this thread — the subagent doesn't receive the conversation, and
+the interview is the heart of the task.
 
 **Stays out of the generated project.** It's a creation skill, like
 `project-bootstrap` and `init-project`: whoever clones an already-generated project
@@ -486,9 +582,12 @@ decisions about this meta-repository.
 | Where to see more | What |
 |---|---|
 | `.claude/skills/claude-code-architect-designer/SKILL.md` | Full skill body, the five phases |
-| `.claude/skills/claude-code-architect-designer/references/decision-matrix.md` | Full decision table, score rubric, anti-patterns |
+| `.claude/skills/claude-code-architect-designer/references/decision-matrix.md` | Full decision table (§ 2 and § 2.1), score rubric, anti-patterns |
 | `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` | Complete list of native fields per file type |
-| `.claude/skills/claude-code-architect-designer/templates/` | Exemplars used in Phase 4 — `SKILL.md.example`, `SKILL.command.md.example`, `agent.md.example`, `rule.md.example`, `claude-md-section.md.example`, `decision.md.example` |
+| `.claude/skills/claude-code-architect-designer/references/mcp-fields.md` | Recognized fields of a server in `.mcp.json` (Form 6a/6b) |
+| `.claude/skills/claude-code-architect-designer/templates/` | Exemplars used in Phase 4 — `SKILL.md.example`, `SKILL.command.md.example`, `agent.md.example`, `rule.md.example`, `claude-md-section.md.example`, `decision.md.example`, `mcp.json.example`, `mcp-setup.md.example` |
 | `.claude/decisions/README.md` | Rules for the decision-record directory |
-| `@CLAUDE.md` | The nine invariants used as a veto in Phase 2 |
+| `@CLAUDE.md` | The eleven invariants used as a veto in Phase 2 |
+| `@.claude/decisions/0033-mcp-in-architect-designer.md` | Decision that brought MCP (Form 6a/6b) into this skill |
+| `@.claude/decisions/0034-git-publish-skill.md` | Recent Form 1 example, with D17's Form1-vs-Form2 caveat applied to a new scenario |
 | [01-file-types.md](01-file-types.md) | How each form works according to the Claude Code runtime |

@@ -2,8 +2,10 @@
 
 Reference for the `claude-code-architect-designer` skill. Loads only when it is invoked.
 
-Source: `@claude-help.md` (§ 2, 4, 5, 6, 7, and 13) and the official documentation at
-<https://code.claude.com/docs/en/overview>. Where they diverge, the official docs win.
+Source: `@claude-help.md` (§ 2, 4, 5, 6, 7, 9, and 13) and the official documentation at
+<https://code.claude.com/docs/en/overview>, <https://code.claude.com/docs/en/mcp>, and
+<https://code.claude.com/docs/en/settings-reference>. Where they diverge, the official
+docs win.
 
 ---
 
@@ -13,17 +15,22 @@ Source: `@claude-help.md` (§ 2, 4, 5, 6, 7, and 13) and the official documentat
    ┌─ CLAUDE.md ──── fact, always in context             │
    ├─ rules/ ─────── fact, by territory (paths)          │  PERSUASION
    ├─ skills/ ────── procedure, on demand                 │  (the model can fail)
-   └─ agents/ ────── isolated execution                   │
+   ├─ agents/ ────── isolated execution                   │
+   └─ .mcp.json ──── external tool, on demand             │
   ═════════════════════════════════════════════════════
    ┌─ permissions ── allow / ask / deny                   │  GUARANTEE
    └─ hooks ──────── lifecycle events                      │  (always executes)
 ```
 
 Everything above the line is read by the model: it can be ignored, misinterpreted, or
-lost in a `/compact`. Everything below executes regardless of what the model decides.
+lost in a `/compact` — including whether it calls an available MCP tool at all. Everything
+below executes regardless of what the model decides. `.mcp.json` sits on the persuasion
+side for that reason: connecting a server doesn't guarantee the model uses it well,
+which is exactly why MCP and a skill combine (`@claude-help.md` § 9) instead of MCP
+replacing one.
 
 **Consequence for classification:** if breaking the rule is a compliance, security, or
-build bug, the answer isn't among the five forms. It's a hook or `permissions.deny`, and
+build bug, the answer isn't among the six forms. It's a hook or `permissions.deny`, and
 this skill proposes without writing.
 
 ---
@@ -36,7 +43,7 @@ elimination power, not by frequency.
 | Question | If yes |
 |---|---|
 | Must it happen always, without depending on the model's judgment? | **Hook** or `permissions.deny` — out of scope, propose and stop |
-| Does it need to access an external system (Jira, database, S3)? | **MCP server** — out of scope |
+| Does it need to access an external system (Jira, database, S3) — go to § 2.1 first | **Form 6** — MCP server, unless § 2.1 eliminates it |
 | Is it a declarative fact that holds in every session and across the whole repo? | **Form 5** — `CLAUDE.md` section |
 | Is it a declarative fact that only holds for part of the files? | **Form 4** — rule in `rules/` with `paths` |
 | Is it a multi-step procedure, or long, rarely-needed reference? | **Form 1 or 2** — skill |
@@ -45,6 +52,27 @@ elimination power, not by frequency.
 | Does it need isolated context, restricted tools, or a different model? | **Form 3** — subagent, and even then see § 5 |
 
 No row matches → the answer is **create nothing**.
+
+### 2.1. Sub-table — which MCP form, and whether it's MCP at all
+
+Read top to bottom, same rule: **the first row that matches decides**. Sits inside the
+"external system" row above because CLI-first has to run before Form 6 is even
+considered, not after.
+
+| Question | If yes |
+|---|---|
+| Does a CLI already solve it (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | **Create nothing** — `Bash` + a line in `permissions.allow`. `@claude-help.md` § 9 names this the cheaper alternative; it is the most context-efficient way to talk to an external service and the model already knows how to use it |
+| Must the tool never be callable at all? | `permissions.deny` on `mcp__<server>__<tool>` — out of scope, propose and stop |
+| Does only one agent need it? | **Form 6b** — `mcpServers` in that agent's frontmatter |
+| Does the whole team need it, with no secret literal in the file? | **Form 6a** — `.mcp.json`, credential via `${VAR}`, `oauth`, or `headersHelper` |
+| Is it personal or experimental, not for the team? | `claude mcp add --scope local` — this skill doesn't write it; it isn't versioned |
+| Does the server already exist and the model just uses it wrong? | **Form 1** — a skill documenting how to use its tools well, not a new server |
+
+No row matches → **create nothing**. A server with no observed call is dead weight from
+the first session: its name alone costs context at startup (§ 3, "cheap triage" row
+doesn't apply here — see § 7 anti-pattern 13).
+
+---
 
 ---
 
@@ -106,6 +134,14 @@ An agent exists for one of these:
 
 None applies → it's a skill. This is anti-pattern #1, and the most expensive one: one
 more piece to maintain, no gain.
+
+**Corollary — `mcpServers` in an agent's frontmatter is reason 2, never a fourth
+reason.** Giving one agent its own MCP server is "restrict tools" applied to an external
+connection instead of a built-in one: the rest of the session doesn't carry that
+server's tool names in context, and no other agent can reach it. It doesn't unlock a new
+category of agent — the same three-reason test above still gates whether the agent
+should exist at all; `mcpServers` only answers *which* tools it gets once an agent is
+already justified.
 
 Counter-test before proposing Form 3 — if any answer is yes, it's a skill:
 
@@ -179,23 +215,28 @@ their reasoning. Specific always beats vague.
 | 8 | Code in the skill body | Boilerplate pasted into markdown | `templates/*.example` |
 | 9 | Piece built on anticipation | No symptom in interview axis 1 | Create nothing |
 | 10 | Creation skill copied into the generated project | Outside step 6.7 | Leave it out, and say so |
+| 11 | MCP where a CLI already solves it | `gh`/`psql`/`aws`/etc. already installed | Create nothing + `permissions.allow` (§ 2.1) |
+| 12 | Literal secret in `.mcp.json` | A token, key, or password spelled out in `headers`/`env` | `${VAR}`, `${VAR:-default}`, `oauth`, or `headersHelper` — invariant 11 |
+| 13 | MCP server with no observed use | No symptom in interview axis 1; its name still costs context at every startup | Create nothing |
+| 14 | Same server duplicated across scopes with no destination reason | Same name in `.mcp.json` and an agent's `mcpServers`, or in both this repo's `.mcp.json` and the project template, with no axis-13 "both" answer behind it | Single destination, or record the "both" answer in the decision |
 
 ---
 
 ## 8. Score rubric (0-10)
 
-So the score isn't opinion. Seven criteria, equal weight, ~1.43 points each. Round to the
+So the score isn't opinion. Eight criteria, equal weight, 1.25 points each. Round to the
 nearest integer and show what cost points.
 
 | # | Criterion | A point is lost when |
 |---|---|---|
-| 1 | **Form fit** | The § 2 table points to another form |
-| 2 | **Compliance with the invariants** | Strains one of the nine; violating one caps the score at ≤ 4 |
-| 3 | **Context cost** | Rarely-used knowledge stays always loaded |
+| 1 | **Form fit** | The § 2 table (or § 2.1 for MCP) points to another form |
+| 2 | **Compliance with the invariants** | Strains one of the eleven; violating one caps the score at ≤ 4 |
+| 3 | **Context cost** | Rarely-used knowledge stays always loaded — for Form 6, an MCP server's tool names load at every startup whether or not the session uses them |
 | 4 | **Enforcement** | Relies on persuasion where a guarantee was available |
 | 5 | **Maintenance cost** | Adds pieces or indirection without proportional gain |
 | 6 | **Precedent in the repo** | No similar form already in use; novel design |
-| 7 | **Complete propagation** | Doesn't close routing, `00-index`, steps 6.6/6.7/7, or the § 9 decision record |
+| 7 | **Complete propagation** | Doesn't close routing, `00-index`, steps 6.6/6.7/7.5, or the § 9 decision record |
+| 8 | **Trust surface** | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 
 Violating an invariant caps the score at **≤ 4**, regardless of the rest. A score **≥ 8**
 is a recommendation; **5 to 7** is viable with a written caveat; **≤ 4** appears only to
@@ -206,8 +247,8 @@ record why it was rejected.
 ## 9. Decision record
 
 Phase 3 produces options, scores, rejected alternatives, and sources. That disappears
-with the session, and without it the same ten-axis interview repeats itself six months
-from now. Two levels, and the first is mandatory:
+with the session, and without it the same thirteen-axis interview repeats itself six
+months from now. Two levels, and the first is mandatory:
 
 | Level | Where | When | Content |
 |---|---|---|---|
@@ -215,8 +256,9 @@ from now. Two levels, and the first is mandatory:
 | 2 | `.claude/decisions/NNNN-<slug>.md` | Only if there was a real choice | Interview, all options with score, rubric, references, propagation |
 
 Level 2 is saved when at least one of these is true: two or more options scored ≥ 5; the
-approved option strains an invariant; axis 8 = "both". None of these → level 1 is
-enough. A record for a trivial decision is ceremony, not memory.
+approved option strains an invariant; axis 8 = "both"; axis 13 (MCP destination) =
+"both". None of these → level 1 is enough. A record for a trivial decision is ceremony,
+not memory.
 
 Level 1 travels with the file, including into the generated project. Level 2 stays in
 this repository — it records decisions about this `.claude/`, invariant 9. It is not a

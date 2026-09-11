@@ -33,6 +33,7 @@ flowchart TB
         SK_DOCKER["skill: docker-architect"]:::skill
         SK_MSG["skill: messaging-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
+        SK_GIT["skill: git-publish"]:::skill
     end
 
     subgraph L2["Isolated execution — agents"]
@@ -56,7 +57,7 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT
     SK_BOOT -->|copies| AG_DEV & AG_ARCH
 
     SK_NF -->|Skill tool, in sequence| SK_UC
@@ -72,6 +73,9 @@ flowchart TB
     SK_REST --> SK_TEST
     SK_NF -->|Agent tool, optional, after consolidating| AG_DEV
     AG_DEV -->|writes| SRC["src/** of the generated project"]:::out
+    AG_INITZR -.->|Skill tool, if build green| SK_GIT
+    SK_NF -.->|Skill tool, if DEV reports success| SK_GIT
+    SK_GIT -->|writes| GITOUT[".git/ + remote repo (gh)"]:::out
 
     SK_TEST -->|Agent tool, setup mode, no argument| AG_ARCH
     AG_ARCH -->|writes| ARCHTEST["ArchitectureTest.java + JaCoCo gate"]:::out
@@ -130,3 +134,11 @@ under Invariant 5. Each agent documents its own reason in the `## Why this is an
 | `/init-project` | Interview → picks a blueprint → generates the complete Spring Boot project structure, with no business code | [02-init-project.md](02-init-project.md) |
 | `/new-feature UC-NNN-slug` | Orchestrates 5 design skills (use case → domain → persistence → REST → tests) into a single spec, and optionally triggers the executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnoses active hooks, loaded boundaries, Maven wrapper, `java` on PATH | [04-arch-doctor.md](04-arch-doctor.md) |
+
+`git-publish` isn't a fourth top-level command — it's a Form 1 skill (no
+`disable-model-invocation`) chained automatically by `project-initializer` (end of
+`/init-project`, if the build passed) and by `/new-feature` (end of the executor, if it
+reports success), and also directly invocable by the user. Two `AskUserQuestion` gates
+in the skill's body replace the flag as the guard — the same D17 pattern
+(`@.claude/decisions/0007-pipeline-skills-invocation.md`), documented in
+`@.claude/decisions/0034-git-publish-skill.md`.

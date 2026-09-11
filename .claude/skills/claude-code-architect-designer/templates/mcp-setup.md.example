@@ -1,0 +1,19 @@
+# MCP setup
+
+Environment variables required by this repository's `.mcp.json`. Set them before
+running `claude` — a variable left unset doesn't fail startup, the server just loads
+with the literal `${VAR}` text and fails to connect. `claude mcp list` surfaces that.
+
+| Variable | Used by server | For what |
+|---|---|---|
+| `EXAMPLE_MCP_TOKEN` | `example-http` | Bearer token for `https://mcp.example.com`. Get one from <where> |
+| `EXAMPLE_DATABASE_URL` | `example-stdio` | Connection string. Defaults to a local instance if unset — see `${VAR:-default}` in `.mcp.json` |
+
+```bash
+export EXAMPLE_MCP_TOKEN=...
+export EXAMPLE_DATABASE_URL=...
+```
+
+Never commit the values above — only the variable names belong in this file and in
+`.mcp.json`. Put actual values in your shell profile or an untracked `.env` your shell
+sources; add `.env` to `.gitignore` if it isn't there already.

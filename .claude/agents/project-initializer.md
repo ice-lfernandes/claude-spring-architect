@@ -5,7 +5,7 @@ description: >
   user, selects and validates the architecture blueprint, delegates generation to
   the project-bootstrap skill, installs the hooks, and verifies the build. Use on
   /init-project or when the request is to create a Spring project from scratch.
-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion
+tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill
 model: opus
 ---
 
@@ -75,3 +75,8 @@ If the command arguments already answer a question, don't ask it.
 
 Return the output contract **exactly** in the defined format. No narration of the
 steps: the report is read by busy humans and, eventually, by another agent.
+
+**Only if the build passed:** invoke the `git-publish` skill via the `Skill` tool,
+passing a one-line context — the blueprint id, build tool, and active features. It owns
+its own confirmation gates; don't ask about git yourself and don't run git commands
+directly here. A failed build skips this: nothing to commit yet.

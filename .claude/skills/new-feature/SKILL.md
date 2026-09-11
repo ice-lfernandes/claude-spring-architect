@@ -191,6 +191,11 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
 4. Offer two paths:
    - **Spec ready:** "UC-NNN-spec.md consolidates all 5. Next: hand off to the executor or test the specs."
    - **With executor:** Delegate to `java-spring-boot-developer` (send the spec as context).
+     **On success** (final summary reports the checklist complete and the build green),
+     **invoke** `git-publish` via the `Skill` tool, passing the UC name and a one-line
+     summary as context. Its two confirmation gates decide whether anything actually
+     gets committed or pushed — this orchestrator only triggers the offer. Skip the
+     invocation entirely if the executor reports a failure.
 
 ---
 
