@@ -13,6 +13,14 @@
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
             "statusMessage": "Validating frontmatter...",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Write(.mcp.json)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating .mcp.json...",
+            "timeout": 30
           }
         ]
       }
@@ -41,6 +49,14 @@
             "command": "java",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
             "statusMessage": "Validating frontmatter...",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Edit(.mcp.json)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating .mcp.json...",
             "timeout": 30
           }
         ]
