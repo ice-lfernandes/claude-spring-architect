@@ -851,18 +851,48 @@ Precedence: local > project > user.
 ```
 
 Variable expansion (`${VAR}`, `${VAR:-default}`) works in `command`, `args`, `env`,
-`url`, and `headers`.
+`url`, and `headers`. An unset variable with no default doesn't fail startup: the server
+loads with the literal `${VAR}` text and fails to connect: `claude mcp list` surfaces the
+warning.
+
+### Credentials beyond a static header
+
+- **`oauth`** — `clientId`, `callbackPort`, `authServerMetadataUrl`, `scopes`. Lets
+  `claude mcp add`/`login` drive an OAuth 2.0 flow instead of a token pasted into
+  `headers`.
+- **`headersHelper`** — path to a script; its stdout (JSON) supplies headers at connect
+  time. For Kerberos, SSO, or any credential that can't sit still in a file. For a
+  `project`- or `local`-scope server this only runs after the workspace-trust prompt is
+  accepted.
+- **`alwaysLoad`** — `true` keeps a server's tools loaded even under tool search, instead
+  of deferring them until first use.
 
 ### Managing
 
 ```bash
-claude mcp list          # servers and status
-claude mcp get notion    # details
+claude mcp list                    # servers and status, including pending approval
+claude mcp get notion              # details
 claude mcp remove notion
-claude mcp login sentry  # OAuth
+claude mcp login sentry            # OAuth
+claude mcp reset-project-choices   # forget this project's per-server approve/reject choices
 ```
 
 In-session: `/mcp` to view status, toggle, and authenticate.
+
+### Project-scope approval
+
+The first time Claude Code sees a server declared in a project's `.mcp.json`, it prompts
+for approval — the trust boundary that stops a cloned repository from launching
+processes on your machine without consent. Settings that affect this, in
+`.claude/settings.json`:
+
+| Key | For what |
+|---|---|
+| `enabledMcpjsonServers` | Array — pre-approves specific `.mcp.json` servers by name |
+| `disabledMcpjsonServers` | Array — rejects specific `.mcp.json` servers by name |
+| `enableAllProjectMcpServers` | Boolean — approves every `.mcp.json` server with no prompt at all. Removes the one human checkpoint the mechanism exists for |
+| `allowedMcpServers` / `deniedMcpServers` | Organization-level allow/deny list (managed settings) |
+| `managedMcpServers` | Organization-provided servers, alongside whatever the user adds |
 
 ### Tool names
 

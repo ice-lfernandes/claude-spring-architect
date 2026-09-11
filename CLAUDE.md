@@ -20,7 +20,8 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
 | Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
-| Validate frontmatter of all extension files | `java .claude/hooks/ArchHook.java schema` |
+| Validate frontmatter of all extension files, and `.mcp.json` | `java .claude/hooks/ArchHook.java schema` |
+| List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
 ## Architecture of the AI files
 
@@ -33,7 +34,7 @@ skills/                     procedure + exemplars
         ↓ invokes                    ↑ delegates via context: fork
 agents/                     isolated execution
         ↓ cites, never copies
-rules/ + blueprints/        norms and data   ← LEAF
+rules/ + blueprints/ + .mcp.json   norms and data   ← LEAF
 
 decisions/                  history — nobody reads it at runtime, outside the graph
 ```
@@ -62,12 +63,22 @@ decisions/                  history — nobody reads it at runtime, outside the 
    `schemas/extensions.json` (7). Creation skills (`project-bootstrap`, `init-project`)
    and `blueprints/` are left out on purpose — they only serve before the project exists.
    A new norm or skill here is only complete once the step that copies it has also been
-   updated.
-10. **Recognized frontmatter fields are data with a single owner.** The list lives in
-    `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
-    other file that displays it is derived and must match it exactly. A corollary of 2
-    and 7, written separately because its failure mode is silent: the runtime ignores an
-    unknown field without any error, and `claude plugin validate` lets it through too.
+   updated. **An MCP server has the same obligation, per server, not per file:** it is
+   declared for this meta-repo (`.mcp.json`), for the generated project
+   (`project-bootstrap/templates/mcp.json.example`, copied in step 7.5), or both — and
+   the file it's written into **is** that declaration. A server useful to both is
+   written in both files on purpose; that is not a duplication bug, see invariant 2.
+10. **Recognized frontmatter fields, and `.mcp.json`'s server fields, are data with a
+    single owner.** The list lives in `.claude/schemas/extensions.json`, `ArchHook.java
+    schema` is what reads it, and any other file that displays it is derived and must
+    match it exactly. A corollary of 2 and 7, written separately because its failure
+    mode is silent: the runtime ignores an unknown field without any error, and `claude
+    plugin validate` lets it through too — and does not look at `.mcp.json` at all.
+11. **No literal secret in a versioned file.** `.mcp.json` (this repo's or the copy
+    inside a generated project) carries only `${VAR}` / `${VAR:-default}` expansion,
+    `oauth`, or `headersHelper` — never a token, key, or password spelled out. Verified
+    by `ArchHook.java schema`'s secret scan over `headers`/`env`. A leaked token in git
+    history is irreversible; that is why this is a hook and not a review checklist.
 
 ## Routing — when X, read Y
 
@@ -81,9 +92,11 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | REST adapter, controller, DTO, status, OpenAPI | skill `rest-api-architect` |
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
+| Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level | skill `docker-architect` |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
+| Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
@@ -126,3 +139,14 @@ decisions/                  history — nobody reads it at runtime, outside the 
   command (`ls .claude/skills`, not `find … | sed | sort`). This only affects skills
   that restrict Bash: `allowed-tools: Bash` without a filter lets the whole pipeline
   through.
+- **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or
+  editing a server mid-session has no effect until `claude` is restarted.
+- **A project-scoped server in `.mcp.json` needs one-time human approval** the first
+  time it loads (`claude mcp list` shows pending ones). That prompt is the trust
+  boundary a cloned repository can't skip — never work around it with
+  `enableAllProjectMcpServers`.
+- **Server precedence is `local > project > user`, silently.** A personal server with
+  the same name as the team's `.mcp.json` one shadows it — no warning either way.
+- **An unset `${VAR}` in `.mcp.json` doesn't fail generation.** The server loads with
+  the literal `${VAR}` text and fails to connect at runtime instead. `claude mcp list`
+  surfaces the missing-variable warning; frontmatter schema validation does not.

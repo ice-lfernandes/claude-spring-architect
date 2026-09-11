@@ -121,6 +121,9 @@ Seven derived rules:
 - **Skills by capability** — domain, use cases, REST, persistence, messaging, tests;
   each triggers by description, without explicit invocation.
 - **Packaged pipeline** — `/new-feature` runs the full chain end-to-end.
+- **Git offer, behind two confirmations** — after a green bootstrap build or a
+  successful feature implementation, `git-publish` offers to `git init`/commit and
+  `gh repo create`+push. Nothing runs unattended.
 
 ---
 
@@ -172,7 +175,8 @@ claude-spring-architect/
     │   ├── new-feature/           #   orchestrates the 5 above — copied
     │   ├── java-patterns/         #   preloaded into the executor agent — copied
     │   ├── docker-architect/      #   extends docker-compose/Dockerfile after bootstrap — copied
-    │   └── messaging-architect/   #   optional pipeline step — Kafka producer/consumer — copied
+    │   ├── messaging-architect/   #   optional pipeline step — Kafka producer/consumer — copied
+    │   └── git-publish/           #   offers git init/commit + gh create/push, two confirmation gates — copied
     ├── agents/                    # isolated context
     │   ├── project-initializer.md         #   drives /init-project
     │   ├── java-spring-boot-developer.md  #   /new-feature's executor — copied
@@ -190,11 +194,11 @@ generated inside the project during `/init-project`.
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
 skills (`arch-doctor`, `use-case-design`, `domain-modeling`, `persistence-architect`,
 `rest-api-architect`, `java-patterns`, `test-architect`, `new-feature`,
-`docker-architect`, `messaging-architect`), the executor agents (`java-spring-boot-developer.md`,
-`archunit-installer.md`), and `ArchHook.java`. Only `project-bootstrap`, `init-project`,
-`claude-code-architect-designer`, `blueprints/`, and `decisions/` are left out — they
-serve before the project exists, or record decisions about this meta-repo, not the
-generated one.
+`docker-architect`, `messaging-architect`, `git-publish`), the executor agents
+(`java-spring-boot-developer.md`, `archunit-installer.md`), and `ArchHook.java`. Only
+`project-bootstrap`, `init-project`, `claude-code-architect-designer`, `blueprints/`,
+and `decisions/` are left out — they serve before the project exists, or record
+decisions about this meta-repo, not the generated one.
 
 ### Where to write what
 
@@ -328,7 +332,9 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ├─ 5. GENERATES forbidden-imports.txt + <module>/CLAUDE.md
      ├─ 6. INSTALLS hooks
      ├─ 7. VERIFIES build + smoke + tested boundary block
-     └─ 8. REPORT in the fixed output contract
+     ├─ 8. REPORT in the fixed output contract
+     └─ if the build is green: OFFERS git-publish (Skill tool) — two independent
+        confirmations, never runs unattended
 ```
 
 ### `/new-feature` — end-to-end feature
@@ -344,6 +350,9 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ▼  consolidates into UC-NNN-spec.md
      │
      ▼  agent: java-spring-boot-developer (executor, invoked manually at the end)
+     │
+     ▼  if the executor reports success: OFFERS git-publish (Skill tool) — commit +
+        push, behind the same two confirmations
 ```
 
 Each step receives the structured output of the previous one. Free-prose handoff

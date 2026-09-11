@@ -2,16 +2,18 @@
 
 Fonte primária: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 `.claude/skills/claude-code-architect-designer/references/decision-matrix.md`,
-`.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`.
+`.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`,
+`.claude/skills/claude-code-architect-designer/references/mcp-fields.md`.
 
 ## O que faz
 
-Decide **qual das cinco formas** de extensão do Claude Code resolve um cenário
-concreto — skill auto-invocável, skill manual, subagent, rule ou seção do `CLAUDE.md` —
-e só escreve o arquivo depois de aprovação explícita. Uma sexta resposta, legítima e a
-mais barata, é **não criar nada**: ou já existe peça cobrindo o cenário, ou o problema é
-de compliance e pertence a um hook/`permissions.deny`, que esta skill propõe mas nunca
-escreve.
+Decide **qual das seis formas** de extensão do Claude Code resolve um cenário
+concreto — skill auto-invocável, skill manual, subagent, rule, seção do `CLAUDE.md`, ou
+servidor MCP (compartilhado ou por agent) — e só escreve o arquivo depois de aprovação
+explícita. Uma sétima resposta, legítima e a mais barata, é **não criar nada**: ou já
+existe peça cobrindo o cenário, ou um CLI já resolve (`gh`, `psql`, `aws` — § 2.1 da
+matriz de decisão), ou o problema é de compliance e pertence a um hook/`permissions.deny`,
+que esta skill propõe mas nunca escreve.
 
 Invocação manual apenas (`disable-model-invocation: true`) — o modelo nunca decide
 sozinho criar uma nova skill, agent ou rule.
@@ -27,7 +29,7 @@ rule quebraria o invariante 1 do `@CLAUDE.md` (`rules/` é folha: uma rule nunca
 skill, agent ou comando). Uma rule que explicasse quando criar skills e agents estaria
 citando skills e agents dentro de si mesma.
 
-## As cinco formas
+## As seis formas
 
 | # | Forma | Arquivo |
 |---|---|---|
@@ -36,6 +38,13 @@ citando skills e agents dentro de si mesma.
 | 3 | Subagent | `.claude/agents/<name>.md` |
 | 4 | Rule | `.claude/rules/<name>.md` |
 | 5 | Seção do `CLAUDE.md` | `CLAUDE.md` na raiz |
+| 6a | Servidor MCP, compartilhado | `.mcp.json` |
+| 6b | Servidor MCP, só um agent | `mcpServers:` no frontmatter daquele agent |
+
+6b não é um quarto motivo pra existir agent — é o motivo 2 da § 5 da matriz de decisão
+(restringir tools) aplicado a uma conexão externa em vez de uma tool nativa. Um agent só
+existe pelos três motivos já em `references/decision-matrix.md` § 5; 6b só responde
+quais tools ele ganha depois que isso já foi decidido.
 
 ## Fora de escopo — propõe, não escreve
 
@@ -45,6 +54,14 @@ citando skills e agents dentro de si mesma.
 - **`.claude/commands/`.** Nunca — invariante 4, comandos viraram skills com
   `disable-model-invocation`.
 - **Blueprints.** Arquitetura é dado, não extensão (`@.claude/blueprints/_schema.md`).
+- **MCP onde um CLI já resolve, ou uma tool específica que nunca pode ser chamada.**
+  Matriz de decisão § 2.1: `gh`/`psql`/`aws`/etc. vence um servidor novo, e esta skill diz
+  isso e não propõe nada. Uma tool que nunca pode rodar é `permissions.deny` em
+  `mcp__<server>__<tool>` — igual a qualquer outra ação proibida, propõe e para, não
+  escreve a regra.
+- **`~/.claude.json`, MCP de escopo `local`/`user`.** Servidores pessoais ou
+  experimentais (`claude mcp add` sem `--scope project`) não são versionados e não são
+  preocupação desta skill — ela só escreve o que o time compartilha.
 - **Plugin `skill-creator`.** Desabilitado de propósito em `.claude/settings.json`: gera
   skills genéricas, sem conhecimento dos invariantes deste repo.
 
@@ -72,8 +89,8 @@ sequenceDiagram
 
     rect rgb(235,245,235)
     Note over CMD: Fase 2 · Classifica
-    CMD->>DM: aplica tabela de decisão
-    CMD->>CMD: roda os 9 invariantes do CLAUDE.md como veto
+    CMD->>DM: aplica tabela de decisão (§ 2, e § 2.1 se o gatilho é sistema externo)
+    CMD->>CMD: roda os 11 invariantes do CLAUDE.md como veto
     end
 
     rect rgb(245,240,225)
@@ -105,13 +122,13 @@ sequenceDiagram
 produz a peça errada, e peça errada custa mais que nenhuma peça — fica em contexto toda
 sessão, ou nunca dispara.
 
-Dez eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão está
+Treze eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão está
 adivinhando:
 
 | # | Eixo | O que decide |
 |---|---|---|
 | 1 | Sintoma concreto — que erro se repete, que prompt é colado de novo | Se há caso, ou é antecipação |
-| 2 | Gatilho — `/comando`, decisão do modelo, tocar um arquivo, evento de runtime | Formas 1 · 2 · 4 · fora de escopo |
+| 2 | Gatilho — `/comando`, decisão do modelo, tocar um arquivo, evento de runtime, ou alcançar um sistema externo | Formas 1 · 2 · 4 · 6 · fora de escopo |
 | 3 | Frequência — toda sessão, semanal, raro | Sempre carregado vs sob demanda |
 | 4 | Território — quais globs de arquivo, ou nenhum | `paths` na forma 4; `paths` na forma 1 |
 | 5 | Natureza — fato declarativo ou sequência de passos | Formas 4/5 vs 1/2/3 |
@@ -120,17 +137,27 @@ adivinhando:
 | 8 | Destino — só este repo, também o projeto gerado, ou ambos | Passos 6.6/6.7/7 do `project-bootstrap` |
 | 9 | Integração — o que lê, o que escreve, com qual peça existente colide | Conflito de ownership |
 | 10 | Custo de errar | minutos ou dias | Peso no score |
+| 11 | Um CLI já resolve (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | Elimina a Forma 6 antes mesmo dela ser considerada — matriz de decisão § 2.1 |
+| 12 | Formato da credencial — OAuth, token estático, script de header dinâmico, ou nenhuma; só leitura ou leitura/escrita | Forma 6a vs 6b vs `permissions.deny`; se precisa de `oauth`/`headersHelper` |
+| 13 | Destino — só o `.mcp.json` deste repo, só o template do projeto gerado, ou ambos | Qual(is) arquivo(s) a Forma 6a escreve; propagação na Fase 4 passo 7 |
 
 O eixo 9 é checado contra o inventário injetado no topo da skill (`ls .claude/skills`,
 `.claude/agents`, `.claude/rules`, `.claude/decisions`), nunca de memória. Duas peças
 escrevendo no mesmo caminho é bug de ownership, não decisão de estilo.
 
+Os eixos 11-13 só se aplicam quando o eixo 2 (gatilho) nomeia um sistema externo — Jira,
+banco de dados, GitHub, Figma, qualquer coisa alcançável só pela própria API. Pula-los
+nos demais casos: perguntar sobre credencial pra um cenário que não é forma de MCP só
+queima uma pergunta.
+
 ## Fase 2 · Classifica
 
-Aplica a tabela de decisão de `decision-matrix.md` (resumo abaixo), depois roda os nove
-invariantes de `@CLAUDE.md` como veto — os mais comumente violados são o 1 (rule que
-cita skill) e o 5 (agent sem um dos três motivos). Uma proposta que falha um invariante
-**não é apresentada como viável**: aparece com o score que merece e o motivo da rejeição.
+Aplica a tabela de decisão de `decision-matrix.md` (§ 2, e § 2.1 sempre que o eixo 2
+nomeia um sistema externo). Depois roda os onze invariantes de `@CLAUDE.md` como veto —
+os mais comumente violados são o 1 (rule que cita skill), o 5 (agent sem um dos três
+motivos) e, pra MCP, o 11 (segredo literal em `.mcp.json`). Uma proposta que falha um
+invariante **não é apresentada como viável**: aparece com o score que merece e o motivo
+da rejeição.
 
 ### A linha divisória
 
@@ -138,23 +165,27 @@ cita skill) e o 5 (agent sem um dos três motivos). Uma proposta que falha um in
    ┌─ CLAUDE.md ──── fato, sempre em contexto             │
    ├─ rules/ ─────── fato, por território (paths)         │  PERSUASÃO
    ├─ skills/ ────── procedimento, sob demanda            │  (o modelo pode falhar)
-   └─ agents/ ────── execução isolada                     │
+   ├─ agents/ ────── execução isolada                     │
+   └─ .mcp.json ──── tool externa, sob demanda            │
   ═════════════════════════════════════════════════════
    ┌─ permissions ── allow / ask / deny                   │  GARANTIA
    └─ hooks ──────── eventos de lifecycle                 │  (sempre executa)
 ```
 
 Tudo acima da linha é lido pelo modelo: pode ser ignorado, mal interpretado, ou perdido
-num `/compact`. Tudo abaixo executa independente do que o modelo decidir. Consequência:
-se quebrar a regra é bug de compliance/segurança/build, a resposta não está entre as
-cinco formas.
+num `/compact` — inclusive se ele chama ou não uma tool MCP disponível. Tudo abaixo
+executa independente do que o modelo decidir. `.mcp.json` fica do lado da persuasão por
+isso: conectar um servidor não garante que o modelo o usa bem, motivo pelo qual MCP e
+skill se combinam (`@claude-help.md` § 9) em vez de MCP substituir a skill.
+Consequência: se quebrar a regra é bug de compliance/segurança/build, a resposta não
+está entre as seis formas.
 
 ### Tabela de decisão (primeira linha que casa decide)
 
 | Pergunta | Se sim |
 |---|---|
 | Precisa acontecer sempre, sem depender do julgamento do modelo? | **Hook** ou `permissions.deny` — fora de escopo |
-| Precisa acessar sistema externo (Jira, banco, S3)? | **MCP server** — fora de escopo |
+| Precisa acessar sistema externo (Jira, banco, S3) — vai pra § 2.1 primeiro | **Forma 6** — servidor MCP, a menos que § 2.1 elimine |
 | É fato declarativo que vale toda sessão e repo inteiro? | **Forma 5** — seção do `CLAUDE.md` |
 | É fato declarativo que só vale para parte dos arquivos? | **Forma 4** — rule com `paths` |
 | É procedimento de múltiplos passos, ou referência longa e rara? | **Forma 1 ou 2** — skill |
@@ -163,6 +194,24 @@ cinco formas.
 | Precisa de contexto isolado, tools restritas, ou modelo diferente? | **Forma 3** — subagent, e mesmo assim ver § 5 da matriz |
 
 Nenhuma linha casa → resposta é **não criar nada**.
+
+### Sub-tabela § 2.1 — qual forma de MCP, e se é MCP mesmo
+
+De cima pra baixo, mesma regra: **a primeira linha que casa decide**. Fica dentro da
+linha "sistema externo" acima porque o check CLI-first precisa rodar antes da Forma 6
+ser sequer considerada, não depois.
+
+| Pergunta | Se sim |
+|---|---|
+| Um CLI já resolve (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | **Não criar nada** — `Bash` + uma linha em `permissions.allow`. `@claude-help.md` § 9 chama isso de alternativa mais barata; é o jeito mais econômico em contexto de falar com um serviço externo, e o modelo já sabe usar |
+| A tool nunca pode ser chamada, de jeito nenhum? | `permissions.deny` em `mcp__<server>__<tool>` — fora de escopo |
+| Só um agent precisa dela? | **Forma 6b** — `mcpServers` no frontmatter daquele agent |
+| O time inteiro precisa, sem segredo literal no arquivo? | **Forma 6a** — `.mcp.json`, credencial via `${VAR}`, `oauth`, ou `headersHelper` |
+| É pessoal ou experimental, não do time? | `claude mcp add --scope local` — esta skill não escreve isso; não é versionado |
+| O servidor já existe e o modelo só usa mal? | **Forma 1** — uma skill documentando como usar bem as tools dele, não servidor novo |
+
+Nenhuma linha casa → **não criar nada**. Servidor sem chamada observada é peso morto
+desde a primeira sessão: só o nome já custa contexto no startup.
 
 ### Forma 1 vs Forma 2
 
@@ -186,8 +235,18 @@ Mesmo arquivo, uma linha de diferença. Regra prática deste repo:
 Nenhum se aplica → é skill. Este é o anti-padrão #1, e o mais caro: mais uma peça pra
 manter, nenhum ganho. Contra-teste: se a interview com o usuário é o coração da tarefa,
 se o contexto cabe num `references/` da própria skill, ou se a saída final é curta de
-qualquer jeito — qualquer "sim" aponta pra skill, não agent. Único precedente neste
-repo: `init-project` → `project-initializer`.
+qualquer jeito — qualquer "sim" aponta pra skill, não agent. Precedentes neste repo:
+`init-project` → `project-initializer`, `new-feature`/`project-initializer` →
+`git-publish` (este último rejeitado como agent: a interview de confirmação com o
+usuário é o coração da tarefa — ver `@.claude/decisions/0034-git-publish-skill.md`).
+
+**Corolário — `mcpServers` no frontmatter de um agent é o motivo 2, nunca um quarto
+motivo.** Dar a um agent seu próprio servidor MCP é "restringir tools" aplicado a uma
+conexão externa em vez de uma nativa: o resto da sessão não carrega os nomes das tools
+desse servidor em contexto, e nenhum outro agent alcança ele. Não libera uma categoria
+nova de agent — o mesmo teste de três motivos acima ainda decide se o agent deveria
+existir; `mcpServers` só responde *quais* tools ele ganha depois que o agent já está
+justificado.
 
 ### Forma 4 vs Forma 5
 
@@ -220,17 +279,19 @@ precedente). Afirmação sobre o runtime sem fonte é decoração — corta.
 
 ### Rubrica de score (0-10)
 
-Sete critérios, peso igual, ~1.43 pontos cada:
+Oito critérios, peso igual, 1.25 pontos cada. Arredonda pro inteiro mais próximo e
+mostra o que custou pontos:
 
 | # | Critério | Perde ponto quando |
 |---|---|---|
-| 1 | Adequação de forma | Tabela da § 2 aponta pra outra forma |
-| 2 | Conformidade com invariantes | Tensiona um dos nove; violar um trava o score em ≤ 4 |
-| 3 | Custo de contexto | Conhecimento raramente usado fica sempre carregado |
+| 1 | Adequação de forma | Tabela da § 2 (ou § 2.1 pra MCP) aponta pra outra forma |
+| 2 | Conformidade com invariantes | Tensiona um dos onze; violar um trava o score em ≤ 4 |
+| 3 | Custo de contexto | Conhecimento raramente usado fica sempre carregado — pra Forma 6, os nomes das tools de um servidor MCP carregam em todo startup, use a sessão ou não |
 | 4 | Enforcement | Depende de persuasão onde garantia estava disponível |
 | 5 | Custo de manutenção | Adiciona peça ou indireção sem ganho proporcional |
 | 6 | Precedente no repo | Nenhuma forma similar já em uso; design novo |
-| 7 | Propagação completa | Não fecha routing, `00-index`, passos 6.6/6.7/7, ou registro de decisão |
+| 7 | Propagação completa | Não fecha routing, `00-index`, passos 6.6/6.7/7.5, ou registro de decisão da § 9 |
+| 8 | Superfície de confiança | Concede capacidade maior do que a tarefa precisa — servidor MCP que lê arquivos e chama API arbitrária, agent com `permissionMode: bypassPermissions`, skill com `allowed-tools` sem escopo onde uma regra mais estreita bastaria |
 
 Violar invariante trava o score em **≤ 4**, independente do resto. Score **≥ 8** é
 recomendação; **5 a 7** é viável com ressalva escrita; **≤ 4** só aparece pra registrar
@@ -239,7 +300,7 @@ por que foi rejeitado.
 ## Fase 3.5 · Salva o rascunho da decisão
 
 O que a Fase 3 produziu — opções, scores, alternativas rejeitadas, tabela de
-referências — evapora no fim da sessão. Sem registro, a mesma interview de dez eixos
+referências — evapora no fim da sessão. Sem registro, a mesma interview de treze eixos
 recomeça do zero daqui a seis meses.
 
 **Quando salvar arquivo.** Só se pelo menos um for verdade:
@@ -247,6 +308,9 @@ recomeça do zero daqui a seis meses.
 - Duas ou mais opções pontuaram ≥ 5 — houve escolha real.
 - A opção de maior score tensiona um invariante do `@CLAUDE.md`.
 - Eixo 8 respondeu "ambos" — a peça também vai pro projeto gerado.
+- Eixo 13 respondeu "ambos" — o servidor MCP é declarado no `.mcp.json` deste repo e no
+  template do `project-bootstrap`. A duplicação é deliberada (invariante 9), e sem
+  registro ninguém daqui a seis meses distingue isso de drift.
 
 Nenhum desses → nenhum arquivo é salvo. A justificativa vive na seção `## Why this is
 <form>` do arquivo que a Fase 4 cria, e isso basta.
@@ -263,22 +327,38 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
 
 ## Fase 4 · Escreve — só depois de aprovação
 
-1. Gera a partir do exemplar em `templates/` que casa com a forma aprovada.
+1. Gera a partir do exemplar em `templates/` que casa com a forma aprovada. Pra Forma
+   6a, a referência de formato é o próprio `templates/mcp.json.example` desta skill:
+   funde o servidor novo no `.mcp.json` alvo — a raiz deste repo, e/ou
+   `project-bootstrap/templates/mcp.json.example`, conforme o eixo 13 — nunca
+   sobrescreve servidor já declarado lá. Escreve também um doc no formato
+   `templates/mcp-setup.md.example` (o `MCP-SETUP.md` deste repo, ou o do projeto,
+   conforme o eixo 13) listando as variáveis de ambiente que o servidor novo precisa, se
+   houver.
 2. Frontmatter: só campos nativos, lista em `references/frontmatter-fields.md`. Campo
    inventado é silenciosamente ignorado pelo runtime — parece comportamento, é
-   decoração.
+   decoração. Pros campos de um servidor da Forma 6a, a lista equivalente é
+   `references/mcp-fields.md` — mesma disciplina, o bloco `mcp` de
+   `.claude/schemas/extensions.json` é quem de fato é dono.
 3. Nenhum `metadata:` no frontmatter. Ownership, `reads`, handoff vão na seção
    `## Contract` do corpo.
 4. Boilerplate de código vai para `templates/<name>.example` dentro da skill que o
    emite, nunca colado no corpo — invariante 3.
-5. **Seção `## Why this is <form>` no corpo do arquivo criado, sempre.** Três frases: a
+5. **Nenhum segredo literal, nunca, em um `.mcp.json` que esta skill escreve ou edita**
+   — invariante 11. Só `${VAR}` / `${VAR:-default}`, `oauth`, ou `headersHelper`. Se o
+   eixo 12 da interview nomeou um token estático, escreve o placeholder `${VAR}` e passa
+   o nome da variável pro doc de setup do passo 1 — nunca o valor, nem "temporariamente".
+6. **Seção `## Why this is <form>` no corpo do arquivo criado, sempre.** Três frases: a
    forma escolhida, o eixo da interview que motivou, e a forma rejeitada mais próxima
    com o motivo. É o único registro que viaja com o arquivo — sobrevive a quem nunca
    leu `.claude/decisions/`, e à cópia pro projeto gerado. Precedente:
    `.claude/agents/project-initializer.md`, seção "Why this is an agent and not a
-   skill". Pra Forma 5 não há corpo onde colocar: a justificativa vive só no registro
-   de decisão, e se não houver registro, na mensagem de commit.
-6. **Propaga.** Arquivo novo que ninguém referencia não é encontrado:
+   skill". Pra Forma 5, e pro `.mcp.json` da Forma 6a (JSON puro, sem lugar pra prosa),
+   não há corpo onde colocar: a justificativa vive só no registro de decisão, e se não
+   houver registro, na mensagem de commit. Forma 6b tem corpo — é o mesmo arquivo do
+   agent cuja seção "Why this is an agent" já cobre isso; adiciona uma linha nomeando
+   qual servidor e por que fica restrito só àquele agent.
+7. **Propaga.** Arquivo novo que ninguém referencia não é encontrado:
 
    | Você criou | Também atualiza |
    |---|---|
@@ -287,24 +367,32 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
    | Rule | `@.claude/rules/00-index.md` (tabela de rules escritas; remove de "planned") **e** a tabela do passo 6.6 de `project-bootstrap/SKILL.md` |
    | Agent | Tabela de routing do `@CLAUDE.md`, se invocável por nome |
    | Seção do `CLAUDE.md` | Nada mais — mas confirma que o total continua abaixo de ~200 linhas |
+   | Servidor MCP, só este repo (eixo 13 = "meta-repo") | `.mcp.json` na raiz; o doc de setup; linha de routing do `@CLAUDE.md`, se nenhuma já cobre |
+   | Servidor MCP, também o projeto gerado (eixo 13 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/mcp.json.example`, seu próprio doc de setup, e a tabela de cópia do passo 7.5 de `project-bootstrap/SKILL.md` |
 
    Skill de criação (só útil antes do projeto existir) fica **fora** do passo 6.7,
    como `project-bootstrap` e `init-project`. Isso é declarado explicitamente no
    relatório.
 
-   **Delegação, e só neste caso.** Se o eixo 8 respondeu "ambos", a propagação cresce —
-   passos 6.6/6.7/7 do `project-bootstrap`, mais seu `templates/`. Aí, delega **só este
-   passo 6, nenhum outro** pro agent genérico com `model: sonnet`, passando o caminho
-   do registro da Fase 3.5 e a lista exata de arquivos a tocar. São edições mecânicas de
-   tabela com destino fixado por escrito. Sem registro salvo, não delega: o subagent não
-   vê a conversa, e a interview é o que justifica cada linha.
+   **Delegação, e só neste caso.** Se o eixo 8 ou o eixo 13 respondeu "ambos", a
+   propagação cresce — passos 6.6/6.7/7/7.5 do `project-bootstrap`, mais seu
+   `templates/`. Aí, delega **só este passo 7, nenhum outro** pro agent genérico com
+   `model: sonnet`, passando o caminho do registro da Fase 3.5 e a lista exata de
+   arquivos a tocar. São edições mecânicas de tabela com destino fixado por escrito.
+   Sem registro salvo, não delega: o subagent não vê a conversa, e a interview é o que
+   justifica cada linha.
 
-   Passos 1 a 5 **nunca** são delegados. Escrever a `description` decide se a skill
-   dispara, e o `## Contract` decide ownership — isso é design, não transcrição.
+   Passos 1 a 6 **nunca** são delegados. Escrever a `description` decide se a skill
+   dispara, e o `## Contract` decide ownership — isso é design, não transcrição. Pra MCP
+   a mesma divisão vale: qual servidor adicionar, o formato da credencial, e o destino
+   são design; copiar uma entrada de `.mcp.json` já aprovada pra um segundo arquivo é a
+   única parte mecânica.
 
-7. Se salvou rascunho na Fase 3.5, promove: preenche `Decision`, `State` (aprovado por
-   quem, em que data), e a tabela `Propagation` com os arquivos que o passo 6 tocou.
-8. Roda `claude plugin validate .claude/skills` e reporta a saída sem reescrevê-la.
+8. Se salvou rascunho na Fase 3.5, promove: preenche `Decision`, `State` (aprovado por
+   quem, em que data), e a tabela `Propagation` com os arquivos que o passo 7 tocou.
+9. Roda `claude plugin validate .claude/skills` e reporta a saída sem reescrevê-la.
+   **Não cobre `.mcp.json`** — roda `java .claude/hooks/ArchHook.java schema` também,
+   sempre que o passo 1 tocou um `.mcp.json`.
 
 ## Fase 5 · Relatório
 
@@ -403,6 +491,10 @@ lê como instrução.
 | 8 | Código no corpo da skill | Boilerplate colado em markdown | `templates/*.example` |
 | 9 | Peça construída por antecipação | Sem sintoma no eixo 1 da interview | Não criar nada |
 | 10 | Skill de criação copiada pro projeto gerado | Fora do passo 6.7 | Deixa de fora, e diz isso |
+| 11 | MCP onde um CLI já resolve | `gh`/`psql`/`aws`/etc. já instalado | Não criar nada + `permissions.allow` (§ 2.1) |
+| 12 | Segredo literal no `.mcp.json` | Token, chave ou senha escrito em `headers`/`env` | `${VAR}`, `${VAR:-default}`, `oauth`, ou `headersHelper` — invariante 11 |
+| 13 | Servidor MCP sem uso observado | Sem sintoma no eixo 1 da interview; o nome sozinho já custa contexto em todo startup | Não criar nada |
+| 14 | Mesmo servidor duplicado entre escopos sem motivo de destino | Mesmo nome no `.mcp.json` e no `mcpServers` de um agent, ou tanto no `.mcp.json` deste repo quanto no template do projeto, sem uma resposta "ambos" do eixo 13 por trás | Destino único, ou registra o "ambos" na decisão |
 
 ## Exemplo de invocação (fictício)
 
@@ -446,24 +538,28 @@ salva registro — a Fase 4 edita `new-feature/SKILL.md` direto e a seção `## 
 
 ## Contract da skill
 
-**Lê** `@claude-help.md`, `@CLAUDE.md` (os nove invariantes), `@.claude/rules/00-index.md`,
+**Lê** `@claude-help.md`, `@CLAUDE.md` (os onze invariantes), `@.claude/rules/00-index.md`,
 `@.claude/blueprints/_schema.md` quando a decisão toca blueprints, e o inventário
 injetado no topo. Lê o `references/` desta própria skill antes de classificar — a
 matriz é deliberadamente não embutida no corpo.
 
-**Escreve** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, e o
-`CLAUDE.md` raiz **deste repositório**. Só depois de aprovação explícita.
+**Escreve** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, o
+`CLAUDE.md` raiz **deste repositório**, e o `.mcp.json` na raiz deste repo (Forma 6a).
+Só depois de aprovação explícita.
 
 **Também escreve** `.claude/decisions/NNNN-<slug>.md` — e este é o único caminho que
 toca *antes* da aprovação, como rascunho da Fase 3.5. É dona exclusiva do diretório:
 nenhuma outra peça escreve lá, e nada dentro dele é rule.
 
 **Não escreve** `.claude/settings.json`, `.claude/hooks/**`, `.claude/blueprints/**`,
-nem código Java de projeto. Não cria `.claude/commands/`.
+`~/.claude.json`, nem código Java de projeto. Não cria `.claude/commands/`. **Nunca
+escreve um segredo literal** no `.mcp.json` — invariante 11; uma credencial estática do
+eixo 12 vira placeholder `${VAR}` mais uma linha no doc de setup, nunca um valor.
 
-**Delega** no máximo o passo 6 da Fase 4 (propagação), e só quando o eixo 8 é "ambos" e
-um registro de decisão foi salvo. Classificar, propor e escrever o corpo ficam sempre
-nesta thread.
+**Delega** no máximo o passo 7 da Fase 4 (propagação), e só quando o eixo 8 ou o eixo 13
+é "ambos" e um registro de decisão foi salvo. Classificar, propor e escrever o corpo
+ficam sempre nesta thread — o subagent não recebe a conversa, e a interview é o coração
+da tarefa.
 
 **Fica fora do projeto gerado.** É skill de criação, como `project-bootstrap` e
 `init-project`: quem clona um projeto já gerado não tem extensões pra desenhar. O mesmo
@@ -474,9 +570,12 @@ vale pra `.claude/decisions/` — registra decisões sobre este meta-repositóri
 | Onde ver mais | O quê |
 |---|---|
 | `.claude/skills/claude-code-architect-designer/SKILL.md` | Corpo completo da skill, as cinco fases |
-| `.claude/skills/claude-code-architect-designer/references/decision-matrix.md` | Tabela de decisão completa, rubrica de score, anti-padrões |
+| `.claude/skills/claude-code-architect-designer/references/decision-matrix.md` | Tabela de decisão completa (§ 2 e § 2.1), rubrica de score, anti-padrões |
 | `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` | Lista completa de campos nativos por tipo de arquivo |
-| `.claude/skills/claude-code-architect-designer/templates/` | Exemplares usados na Fase 4 — `SKILL.md.example`, `SKILL.command.md.example`, `agent.md.example`, `rule.md.example`, `claude-md-section.md.example`, `decision.md.example` |
+| `.claude/skills/claude-code-architect-designer/references/mcp-fields.md` | Campos reconhecidos de um servidor em `.mcp.json` (Forma 6a/6b) |
+| `.claude/skills/claude-code-architect-designer/templates/` | Exemplares usados na Fase 4 — `SKILL.md.example`, `SKILL.command.md.example`, `agent.md.example`, `rule.md.example`, `claude-md-section.md.example`, `decision.md.example`, `mcp.json.example`, `mcp-setup.md.example` |
 | `.claude/decisions/README.md` | Regras do diretório de registros de decisão |
-| `@CLAUDE.md` | Os nove invariantes usados como veto na Fase 2 |
+| `@CLAUDE.md` | Os onze invariantes usados como veto na Fase 2 |
+| `@.claude/decisions/0033-mcp-in-architect-designer.md` | Decisão que trouxe MCP (Forma 6a/6b) pra dentro desta skill |
+| `@.claude/decisions/0034-git-publish-skill.md` | Exemplo de decisão Forma 1 recente, com a ressalva Forma1-vs-Forma2 do D17 aplicada a um cenário novo |
 | [01-tipos-de-arquivo.md](01-tipos-de-arquivo.md) | Como cada forma funciona segundo o runtime do Claude Code |

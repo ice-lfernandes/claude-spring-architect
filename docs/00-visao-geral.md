@@ -33,6 +33,7 @@ flowchart TB
         SK_DOCKER["skill: docker-architect"]:::skill
         SK_MSG["skill: messaging-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
+        SK_GIT["skill: git-publish"]:::skill
     end
 
     subgraph L2["Execução isolada — agents"]
@@ -56,7 +57,7 @@ flowchart TB
     SK_BOOT -->|lê e copia para o projeto gerado| RULES
     SK_BOOT -->|instala| SETTINGS
     SK_BOOT -->|copia verbatim| HOOK
-    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF
+    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT
     SK_BOOT -->|copia| AG_DEV & AG_ARCH
 
     SK_NF -->|Skill tool, em sequência| SK_UC
@@ -72,6 +73,9 @@ flowchart TB
     SK_REST --> SK_TEST
     SK_NF -->|Agent tool, opcional, após consolidar| AG_DEV
     AG_DEV -->|escreve| SRC["src/** do projeto gerado"]:::out
+    AG_INITZR -.->|Skill tool, se build verde| SK_GIT
+    SK_NF -.->|Skill tool, se DEV reporta sucesso| SK_GIT
+    SK_GIT -->|escreve| GITOUT[".git/ + repo remoto (gh)"]:::out
 
     SK_TEST -->|Agent tool, modo setup, sem argumento| AG_ARCH
     AG_ARCH -->|escreve| ARCHTEST["ArchitectureTest.java + gate JaCoCo"]:::out
@@ -130,3 +134,11 @@ this is Form 3`).
 | `/init-project` | Interview → escolhe blueprint → gera estrutura completa do projeto Spring Boot, sem código de negócio | [02-init-project.md](02-init-project.md) |
 | `/new-feature UC-NNN-slug` | Orquestra 5 skills de design (caso de uso → domínio → persistência → REST → testes) em um spec único, e opcionalmente aciona o executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH | [04-arch-doctor.md](04-arch-doctor.md) |
+
+`git-publish` não é um quarto comando de topo — é uma skill Forma 1 (sem
+`disable-model-invocation`) encadeada automaticamente por `project-initializer` (fim do
+`/init-project`, se o build passou) e por `/new-feature` (fim do executor, se reportar
+sucesso), e também invocável diretamente pelo usuário. Dois portões de
+`AskUserQuestion` no corpo da skill substituem a flag como guarda — mesmo padrão do D17
+(`@.claude/decisions/0007-pipeline-skills-invocation.md`), documentado em
+`@.claude/decisions/0034-git-publish-skill.md`.

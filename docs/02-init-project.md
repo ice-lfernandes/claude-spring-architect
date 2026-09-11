@@ -60,6 +60,9 @@ sequenceDiagram
         BOOT->>BOOT: copia skills de desenvolvimento + agent executor
         BOOT->>BOOT: ./mvnw clean verify + teste de boundary + teste de lombok.config
         BOOT-->>AG: build PASSED ou FAILED
+        opt build PASSED
+            AG->>AG: Skill tool → git-publish (resumo do scaffold como contexto)
+        end
         AG-->>CMD: relatório no formato fixo (§ Output contract)
         CMD-->>U: relatório, sem reescrever
     end
@@ -82,7 +85,7 @@ sequenceDiagram
 | 6 | Gera `CLAUDE.md` raiz + por módulo | `CLAUDE.md`, `*/CLAUDE.md` |
 | 6.5 | Gera CI | `.github/workflows/build.yml` |
 | 6.6 | Copia as rules | `.claude/rules/*.md` |
-| 6.7 | Copia as skills de desenvolvimento | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,java-patterns}/**` |
+| 6.7 | Copia as skills de desenvolvimento | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,java-patterns,git-publish}/**` |
 | 6.8 | Copia os agents de desenvolvimento | `.claude/agents/{java-spring-boot-developer,archunit-installer}.md` |
 | 7 | Instala os hooks | `ArchHook.java`, `extensions.json`, funde `settings.json` |
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
@@ -123,7 +126,7 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, v
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 11 rules + 9 skills + 2 agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Self-contained: 11 rules + 11 skills + 2 agents + ArchHook.java + extensions.json copied — no dead paths ✓
 Docker: base Dockerfile + docker-compose.yml (app service only) — extend with `docker-architect` when a feature needs one
 Build: PASSED
 
@@ -134,6 +137,12 @@ Next steps:
      are guaranteed only by the hook (inside Claude Code), and by the POMs'
      depends_on (in the build) — only if layout: multi-module.
 ```
+
+Como o build passou, `project-initializer` já invocou `git-publish` (via `Skill` tool,
+com o resumo do scaffold como contexto) logo antes de escrever esse relatório. Nada é
+commitado ou enviado sem os dois portões de confirmação de `git-publish` — ver
+[03-new-feature.md § Nota operacional](03-new-feature.md) e
+`@.claude/decisions/0034-git-publish-skill.md`.
 
 > Os números de versão (Java, Spring Boot, Checkstyle, plugin) são **sempre resolvidos
 > em runtime** contra o Spring Initializr e o Maven Central — nunca escritos de

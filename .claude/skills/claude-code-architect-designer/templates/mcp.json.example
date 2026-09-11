@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "example-http": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${EXAMPLE_MCP_TOKEN}"
+      }
+    },
+    "example-stdio": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server@1.4.2"],
+      "env": {
+        "EXAMPLE_DB_URL": "${EXAMPLE_DATABASE_URL:-postgresql://localhost:5432/example}"
+      }
+    }
+  }
+}

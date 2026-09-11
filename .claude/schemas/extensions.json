@@ -66,6 +66,37 @@
     "hook_entry": {
       "required": ["type", "command"],
       "allowed": ["type", "command", "args", "timeout", "statusMessage", "if"]
+    },
+    "allowed": [
+      "$schema", "_comment", "hooks", "permissions", "enabledPlugins",
+      "enabledMcpjsonServers", "disabledMcpjsonServers", "enableAllProjectMcpServers",
+      "allowedMcpServers", "deniedMcpServers"
+    ]
+  },
+
+  "mcp": {
+    "$comment": "Validated by ArchHook.java schema, same as `types` above. Design: .claude/decisions/0033-mcp-in-architect-designer.md",
+    "match": [
+      ".mcp.json",
+      ".claude/skills/project-bootstrap/templates/mcp.json.example"
+    ],
+    "root_allowed": ["mcpServers"],
+    "server_allowed": [
+      "type", "url", "command", "args", "headers", "env",
+      "timeout", "oauth", "headersHelper", "alwaysLoad"
+    ],
+    "required_by_type": {
+      "stdio": ["command"],
+      "http": ["url"],
+      "sse": ["url"],
+      "ws": ["url"]
+    },
+    "name_pattern": "^[a-z][a-z0-9_-]*$",
+    "reserved_names": ["workspace", "computer-use"],
+    "secret_scan": {
+      "fields": ["headers", "env"],
+      "key_pattern": "(?i)(authorization|token|api[_-]?key|secret|password)",
+      "value_prefixes": ["Bearer ", "ghp_", "github_pat_", "sk-", "xoxb-", "AKIA"]
     }
   }
 }

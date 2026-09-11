@@ -34,7 +34,7 @@ step.
 
 | Frontmatter | Effect | Example in this repo |
 |---|---|---|
-| (no control field) | The model decides, from `description`, whether the skill is relevant | `project-bootstrap` — description lists triggers like "scaffolding", "new Spring project" |
+| (no control field) | The model decides, from `description`, whether the skill is relevant | `project-bootstrap` — description lists triggers like "scaffolding", "new Spring project"; `git-publish` — auto-invocable, but the side effect (commit/push) sits behind two `AskUserQuestion` gates in the body, not the frontmatter — same D17 pattern |
 | `disable-model-invocation: true` | Only the user invokes it, by typing `/name` | `init-project`, `new-feature`, `arch-doctor` — the three commands documented here are all side-effect-heavy and **don't** fire on their own |
 | `user-invocable: false` | Only the model invokes it — background knowledge, no visible command | Not used in this repository today |
 
@@ -137,7 +137,7 @@ an agent` (or `## Why this is Form 3`) section, which reason applies:
 
 | Agent | Context | Tools | Model |
 |---|---|---|---|
-| `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion` — restricted | `opus` — validating a dependency graph and restructuring modules fails expensively |
+| `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restricted. `Skill` is on the list only to invoke `git-publish` after a green build; it doesn't open access to any other skill in the repository | `opus` — validating a dependency graph and restructuring modules fails expensively |
 | `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: max` — generating ~19 steps of compilable code |
 | `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
 

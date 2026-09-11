@@ -34,7 +34,7 @@ não um passo único.
 
 | Frontmatter | Efeito | Exemplo neste repo |
 |---|---|---|
-| (nenhum campo de controle) | O modelo decide, a partir da `description`, se a skill é relevante | `project-bootstrap` — description lista gatilhos como "scaffolding", "new Spring project" |
+| (nenhum campo de controle) | O modelo decide, a partir da `description`, se a skill é relevante | `project-bootstrap` — description lista gatilhos como "scaffolding", "new Spring project"; `git-publish` — auto-invocável, mas o efeito colateral (commit/push) fica atrás de dois portões `AskUserQuestion` no corpo, não da frontmatter — mesmo padrão de D17 |
 | `disable-model-invocation: true` | Só o usuário invoca, digitando `/nome` | `init-project`, `new-feature`, `arch-doctor` — os três comandos documentados aqui são side-effect-heavy e **não** disparam sozinhos |
 | `user-invocable: false` | Só o modelo invoca — conhecimento de fundo, sem comando visível | Não usado neste repositório hoje |
 
@@ -135,7 +135,7 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 
 | Agent | Contexto | Tools | Model |
 |---|---|---|---|
-| `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion` — restrito | `opus` — validar grafo de dependências e reestruturar módulos falha caro |
+| `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restrito. `Skill` está na lista só para invocar `git-publish` depois de um build verde; não abre acesso a nenhuma outra skill do repositório | `opus` — validar grafo de dependências e reestruturar módulos falha caro |
 | `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: max` — gerar ~19 passos de código compilável |
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
 

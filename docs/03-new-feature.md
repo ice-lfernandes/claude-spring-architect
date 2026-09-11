@@ -33,6 +33,7 @@ sequenceDiagram
     participant DOCK as skill: docker-architect
     participant MSG as skill: messaging-architect
     participant DEV as agent: java-spring-boot-developer
+    participant GIT as skill: git-publish
 
     U->>NF: /new-feature UC-002-cancelar-pedido
     NF->>NF: guardrail — pom.xml válido, domain package descoberto, disco ok
@@ -70,6 +71,10 @@ sequenceDiagram
         NF->>DEV: Agent tool, spec como contexto
         DEV->>DEV: Bloco 1 domínio → Bloco 2 persistência → Bloco 3 REST → Bloco 4 testes
         DEV-->>U: 4 mensagens intermediárias + resumo final
+        opt executor reporta sucesso
+            NF->>GIT: Skill tool, nome da UC + resumo como contexto
+            GIT-->>U: dois portões de confirmação (commit local, depois remoto)
+        end
     end
 ```
 
@@ -86,6 +91,7 @@ sequenceDiagram
 | opcional | `docker-architect` | encadeada sob demanda por 3, 5 ou messaging-architect | `docker-compose.yml` |
 | — | `new-feature` (consolidação) | 1–5 (+ messaging-architect se presente) | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | spec completa | código em `src/**` |
+| opcional | `git-publish` | encadeada por `new-feature` só se 6 reportar sucesso | commit + push, atrás de dois portões |
 
 `docker-architect` **não é um passo da pipeline** — é encadeada sob demanda por
 `persistence-architect`, `test-architect` ou `messaging-architect` quando o engine de
@@ -95,7 +101,14 @@ entrega externa (Kafka) para o evento — se o evento for só in-process, o pipe
 sem ela. Escreve `25-mensageria.md`, lida na consolidação como parte do bloco de
 domínio. `java-patterns` também não é um passo: seu catálogo viaja pré-carregado dentro
 do executor (campo `skills:` do frontmatter de `java-spring-boot-developer.md`) e é
-aplicado diretamente, nunca invocado como turno separado.
+aplicado diretamente, nunca invocado como turno separado. `git-publish` também não é um
+passo numerado da pipeline de design — é encadeada por `new-feature` **depois** que
+`java-spring-boot-developer` reporta sucesso, nunca pelo executor em si (que mantém o
+tool set restrito por invariante 5/motivo 2 — ver
+[01-tipos-de-arquivo.md § Agent](01-tipos-de-arquivo.md#agent-subagent)). Os dois portões
+de confirmação de `git-publish` decidem se algo é de fato commitado ou enviado; o
+orquestrador só dispara a oferta. Se o executor reportar falha, a invocação é pulada
+inteiramente. Detalhes: `@.claude/decisions/0034-git-publish-skill.md`.
 
 `new-feature` só **propõe** ligar o ArchUnit e o gate de cobertura depois da primeira
 feature (passo 3 do `SKILL.md` — detecção é mecânica, autorizar é do usuário); não
@@ -202,9 +215,27 @@ UC-002-cancelar-pedido implemented ✅ COMPLETE
 ✅ Build: ./mvnw verify — green
 ✅ Checklist: 19/19 complete
 
-🔧 Next step:
-git add .; git commit -m "feat(UC-002-cancelar-pedido): cancelamento de pedido"; git push
+🔧 Next step: the caller (`/new-feature`) offers `git-publish` next — commit and push
+happen there, not in this agent.
 ```
+
+Como o executor reportou sucesso, `new-feature` invoca `git-publish` a seguir (via
+`Skill` tool, passando `UC-002-cancelar-pedido` + o resumo acima como contexto). Dois
+portões de `AskUserQuestion`, nesta ordem:
+
+```
+Portão 1 — commit local
+"Commit these changes now?" → Yes, commit now / No, skip
+
+✅ Committed a1b2c3d — "feat(UC-002-cancelar-pedido): cancelamento de pedido"
+
+Portão 2 — remoto
+"Create a new GitHub repo (gh) and push" / "Push to an existing remote" / "Skip, keep local only"
+
+✅ Pushed to https://github.com/acme/pedidos-api (branch main)
+```
+
+Nenhum `git push` roda sem essas duas respostas explícitas.
 
 ## Nota operacional — execução longa em background
 
