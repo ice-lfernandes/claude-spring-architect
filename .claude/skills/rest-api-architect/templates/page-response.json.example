@@ -1,0 +1,19 @@
+{
+  "_exemplar": "Collection envelope required by .claude/rules/api-rest.md. Two forms: offset and cursor. Never Spring Data's Page serialized directly — its format changes between versions and exposes repository internals.",
+
+  "offset": {
+    "content": [],
+    "page": {
+      "number": 0,
+      "size": 20,
+      "totalElements": 137,
+      "totalPages": 7
+    }
+  },
+
+  "cursor": {
+    "_nota": "nextCursor is opaque; absent on the last page. No totalElements — counting isn't cheap in this mode.",
+    "content": [],
+    "nextCursor": "eyJjcmVhdGVkQXQiOiIyMDI2LTA5LTA2VDEwOjAwOjAwWiIsImlkIjoiMDFKQiJ9"
+  }
+}

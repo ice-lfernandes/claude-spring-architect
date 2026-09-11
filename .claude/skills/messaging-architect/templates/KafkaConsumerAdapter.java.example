@@ -1,0 +1,78 @@
+/*
+ * EXEMPLAR — Kafka consumer adapter. Translates an inbound message into a call on the
+ * target use case's inbound port; never touches the target aggregate directly.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/messaging.md` (idempotent consumer, manual ack, DLQ)
+ *        `.claude/rules/architecture-ddd.md` (Adapters: translate, no business logic)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - dedupe on the event's own identity before calling the use case — a redelivered
+ *    message must not re-run the side effect;
+ *  - manual acknowledgment: the offset only commits after the use case returns
+ *    successfully, never before;
+ *  - a business rejection (typed domain exception) does not retry — it's a poison
+ *    message, route straight to the DLQ instead of exhausting retries first.
+ *
+ * WHAT'S NOT HERE: the DLQ routing and retry backoff themselves — that's
+ * `application-kafka.yml`'s `DefaultErrorHandler`, wired once per consumer group, not
+ * per listener method.
+ */
+
+// --- ReserveStockUseCase.java (declared by domain-modeling, unrelated to Kafka)
+package com.example.demo.application.port.in;
+
+public interface ReserveStockUseCase {
+
+    void reserve(ReserveStockCommand command);
+}
+
+// --- OrderConfirmedPayload.java (adapter-local — mirrors the producer side's shape)
+package com.example.demo.adapter.in.messaging;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record OrderConfirmedPayload(UUID orderId, UUID customerId, Instant occurredAt) {}
+
+// --- ProcessedEventStore.java (dedupe port — persistence-architect owns the table)
+package com.example.demo.application.port.out;
+
+public interface ProcessedEventStore {
+
+    boolean alreadyProcessed(String eventKey);
+
+    void markProcessed(String eventKey);
+}
+
+// --- OrderConfirmedListener.java
+package com.example.demo.adapter.in.messaging;
+
+import com.example.demo.application.port.in.ReserveStockUseCase;
+import com.example.demo.application.port.in.ReserveStockCommand;
+import com.example.demo.application.port.out.ProcessedEventStore;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
+
+public class OrderConfirmedListener {
+
+    private final ReserveStockUseCase reserveStock;
+    private final ProcessedEventStore processedEvents;
+
+    public OrderConfirmedListener(ReserveStockUseCase reserveStock, ProcessedEventStore processedEvents) {
+        this.reserveStock = reserveStock;
+        this.processedEvents = processedEvents;
+    }
+
+    @KafkaListener(topics = "orders.order.confirmed", groupId = "inventory-service")
+    public void onMessage(OrderConfirmedPayload payload, Acknowledgment ack) {
+        String eventKey = payload.orderId() + ":OrderConfirmed";
+        if (processedEvents.alreadyProcessed(eventKey)) {
+            ack.acknowledge();
+            return;
+        }
+
+        reserveStock.reserve(new ReserveStockCommand(payload.orderId(), payload.customerId()));
+        processedEvents.markProcessed(eventKey);
+        ack.acknowledge();
+    }
+}

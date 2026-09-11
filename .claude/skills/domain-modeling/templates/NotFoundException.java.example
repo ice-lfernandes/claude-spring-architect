@@ -1,0 +1,14 @@
+/*
+ * EXEMPLAR — referenced entity doesn't exist. Taxonomy: `.claude/rules/error-handling.md`.
+ * Mapping to HTTP 404 (skill `rest-api-architect`): `.claude/rules/api-rest.md` +
+ * `.claude/skills/rest-api-architect/templates/ApiExceptionHandler.java.example`.
+ * Compiles as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.domain.exception;
+
+public class NotFoundException extends DomainException {
+
+    public NotFoundException(String errorCode, String message) {
+        super(errorCode, message);
+    }
+}

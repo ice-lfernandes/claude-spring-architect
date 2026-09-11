@@ -1,0 +1,45 @@
+/*
+ * EXEMPLAR — DTO ↔ domain translation, manual, in static methods.
+ * MapStruct rejected (decision P5(f)): it brings an annotation processor and hides the
+ * mapping, which is exactly the boundary this file exists to make visible.
+ * Compilable as-is.
+ *
+ * Direction of dependencies: this file knows the domain; the domain doesn't know this
+ * file (`.claude/rules/architecture-ddd.md` § Adapters). This is where the DTO's
+ * `String` becomes `Email`, and this is where the format exception is born if it doesn't.
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
+import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
+import com.exemplo.minhaapi.application.port.in.CreateUserCommand;
+import com.exemplo.minhaapi.domain.model.user.DepartmentId;
+import com.exemplo.minhaapi.domain.model.user.Email;
+import com.exemplo.minhaapi.domain.model.user.User;
+
+// Utility class: final, private constructor. No state, no Spring bean —
+// there's no dependency to inject.
+public final class UserMapper {
+
+    private UserMapper() {}
+
+    public static CreateUserCommand toCommand(CreateUserRequest request, String idempotencyKey) {
+        return new CreateUserCommand(
+                Email.of(request.email()),
+                request.name(),
+                // Absent in the DTO becomes the domain's explicit value, never null
+                // crossing the boundary (`.claude/rules/code-quality.md`).
+                request.departmentId() == null
+                        ? DepartmentId.unassigned()
+                        : DepartmentId.of(request.departmentId()),
+                idempotencyKey);
+    }
+
+    public static UserResponse toResponse(User user) {
+        return new UserResponse(
+                user.id().value().toString(),
+                user.email().value(),
+                user.name(),
+                user.createdAt());
+    }
+}

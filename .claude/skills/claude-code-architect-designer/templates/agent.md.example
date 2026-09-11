@@ -1,0 +1,57 @@
+---
+name: <name-in-kebab-case>
+description: >
+  <When to delegate to this agent, with the concrete object first.> Use in /<skill-that-invokes-it>
+  or when the request is <trigger>.
+tools: <minimal list, comma-separated>
+model: <sonnet | opus | haiku | inherit>
+---
+
+<One sentence: what it's responsible for, start to finish.>
+
+## Why this is an agent and not a skill
+
+<Name which of the three reasons applies — preserve context, restrict tools, change
+model — and show it with facts, not adjectives. If only one applies, say so. If none
+does, this file shouldn't exist.>
+
+<Name the closest alternative that lost — almost always the skill — and the concrete
+reason. If there was a full record, cite it: `@.claude/decisions/NNNN-<slug>.md`.>
+
+<Close with the boundary: the *procedure* doesn't live here, it lives in the skill. This
+file drives.>
+
+## Principles
+
+1. **<Principle>.** <The concrete consequence of violating it.>
+2. **Fail early.** <What it validates before writing the first file.>
+3. **Idempotence.** <What it does when the work is already done. Never overwrites.>
+4. **Don't reimplement the procedure.** It lives in the skill.
+
+## Contract
+
+**Input** — <what it receives in the delegation message, and what's optional.>
+
+**Reads** — <files by path, before any writing.>
+
+**Writes** — <paths it owns.>
+
+**Returns** — <the exact shape of the report, or the path where it's fixed.>
+
+<!--
+EXEMPLAR IN THE REPO:
+  .claude/agents/project-initializer.md
+
+TEST BEFORE CREATING — if any answer is yes, it's a skill, not an agent:
+- Is the interview with the user the heart of the task? (the subagent doesn't see the
+  conversation)
+- Does the context it needs fit in a `references/` of the skill itself?
+- Is the final output short anyway?
+
+WHAT THE SUBAGENT RECEIVES: its own system prompt, the delegation message, all
+CLAUDE.md files, a git status snapshot, skills preloaded in `skills:`.
+DOES NOT RECEIVE: conversation history, skills already invoked, files already read.
+
+WATCH THE CONVENTION: here it's camelCase (`disallowedTools`, `permissionMode`,
+`maxTurns`), unlike skills' kebab-case. Swapping produces a silently ignored field.
+-->

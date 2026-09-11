@@ -1,0 +1,50 @@
+<!--
+EXEMPLAR SECTION FOR THE ROOT `CLAUDE.md`.
+This is not a file to create: it's the block to insert into the existing section it
+corresponds to. Choose ONE of the four blocks below and delete the others.
+
+BEFORE INSERTING:
+- `CLAUDE.md` is loaded on EVERY prompt of EVERY session. Target: < 200 lines.
+  If the total goes over that, the right answer isn't a new line — it's extracting a
+  theme into `.claude/rules/<theme>.md` with `paths`.
+- A declarative fact belongs here. A multi-step procedure does NOT — it goes in a skill.
+- Specific beats vague: "Use 2 spaces of indentation" works; "format nicely" doesn't.
+-->
+
+<!-- BLOCK A · Row in the routing table ("when X, read Y").
+     Use when you created a skill or agent nobody routes to yet. -->
+
+| If the task involves | Go to |
+|---|---|
+| <the symptom the way the user would describe it, not how you classify it> | skill `<name>` |
+
+<!-- BLOCK B · Known pitfall.
+     Use when someone — model or human — has already fallen into it at least once. -->
+
+- **<The pitfall, in bold, as a statement.>** <Why it happens, and what to do instead.
+  One or two sentences. No "be careful".>
+
+<!-- BLOCK C · New invariant (non-negotiable).
+     Use only when the rule is structural and holds for the whole repository.
+     Number it after the last existing one and check it doesn't contradict any earlier
+     one. -->
+
+<N>. **<Short, absolute statement.>** <The concrete consequence of violating it.> <If
+   there's a mechanism that verifies it — hook, test, `permissions.deny` — name it.>
+
+<!-- BLOCK D · Row in the commands table. -->
+
+| <Action, from the point of view of whoever wants it> | `/<command-name>` |
+
+<!--
+AFTER INSERTING:
+- This is the only form without a body where the `## Why this is <form>` section could
+  fit. The justification goes to `.claude/decisions/NNNN-<slug>.md` if there was a
+  record, and to the commit message if there wasn't. A `CLAUDE.md` line with no reason
+  recorded anywhere is the one nobody dares delete later.
+- Confirm no existing invariant became contradictory.
+- If the routed-to piece also applies inside the generated project, also update step 6.7
+  of `.claude/skills/project-bootstrap/SKILL.md` — the generated project's `CLAUDE.md` is
+  a different file, produced from `templates/root.CLAUDE.md.example`.
+- Check the size: `wc -l CLAUDE.md`.
+-->

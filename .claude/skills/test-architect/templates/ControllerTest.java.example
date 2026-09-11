@@ -1,0 +1,152 @@
+/*
+ * EXEMPLAR — inbound REST adapter test, web slice.
+ * Reference shape: `TestFixtures` is a project helper and doesn't exist in this exemplar.
+ *
+ * LEVEL. Web slice: starts up the MVC slice of the Spring context and nothing else. Doesn't
+ * touch the database or the network, so it does **not** carry the `IT` suffix — it runs
+ * under surefire, not failsafe (`.claude/rules/testing.md` § Pyramid and § Names and shape).
+ *
+ * WHAT THIS LEVEL VERIFIES: the HTTP contract. Status, body, headers, deserialization,
+ * bean validation, and the translation of the domain exception into `ProblemDetail`.
+ *
+ * WHAT IT DOESN'T VERIFY, and it's the most common mistake: business rules. The use case
+ * comes substituted by a double. "Email already registered" has a test in the domain and
+ * in the application; here it only asserts that the matching exception comes out as 422
+ * with the right `errorCode`.
+ *
+ * WHERE THE CASES COME FROM. From the `30-rest.md` § 5 partial, which `rest-api-architect`
+ * fixes (D16). This class doesn't invent them: one case too many here is an undocumented
+ * contract, one too few is an unverified contract.
+ *
+ * ASSERTING THE NUMBER ISN'T ENOUGH. A wrong `errorCode` slips through a test that only
+ * checks for 422 (`.claude/rules/api-rest.md` § How to verify).
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
+import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.exception.NotFoundException;
+import com.exemplo.minhaapi.test.TestFixtures;
+import io.micrometer.tracing.Tracer;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(UserController.class)
+class UserControllerTest {
+
+    private static final String VALID_KEY = "0f2b6c1e-4d3a-4f5b-9c8d-7e6f5a4b3c2d";
+    private static final String VALID_BODY =
+            """
+            {"email":"ana@exemplo.com","name":"Ana Silva"}""";
+
+    @Autowired private MockMvc mockMvc;
+
+    @MockitoBean private CreateUserUseCase createUser;
+    @MockitoBean private ListUsersQuery listUsers;
+    // ApiExceptionHandler injects Tracer. Without this double the slice doesn't start, and
+    // the failure shows up as a context error, not a red test — hard to read.
+    @MockitoBean private Tracer tracer;
+
+    @Test
+    @DisplayName("creates and returns 201 with Location and the representation")
+    void createsUser() throws Exception {
+        given(createUser.handle(any())).willReturn(TestFixtures.user());
+
+        mockMvc.perform(
+                        post("/api/v1/users")
+                                .header("Idempotency-Key", VALID_KEY)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_BODY))
+                .andExpect(status().isCreated())
+                // 201 without Location is half a contract. Always assert it.
+                .andExpect(header().exists("Location"))
+                .andExpect(jsonPath("$.email").value("ana@exemplo.com"));
+    }
+
+    @Test
+    @DisplayName("valid body the aggregate rejects is 422 with errorCode")
+    void rejectsBusinessRuleViolation() throws Exception {
+        willThrow(new BusinessRuleViolationException("EMAIL_ALREADY_REGISTERED", "Email already registered"))
+                .given(createUser)
+                .handle(any());
+
+        mockMvc.perform(
+                        post("/api/v1/users")
+                                .header("Idempotency-Key", VALID_KEY)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_BODY))
+                .andExpect(status().isUnprocessableEntity())
+                // Without this line the test passes even with the wrong rule firing.
+                .andExpect(jsonPath("$.errorCode").value("EMAIL_ALREADY_REGISTERED"));
+    }
+
+    @Test
+    @DisplayName("missing required field is 400 with violations and no errorCode")
+    void rejectsInvalidBody() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/users")
+                                .header("Idempotency-Key", VALID_KEY)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"name":"Ana Silva"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.violations[0].field").value("email"))
+                // Bean validation is structural: doesn't come from the domain, so no errorCode.
+                .andExpect(jsonPath("$.errorCode").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("missing Idempotency-Key is 400")
+    void rejectsMissingIdempotencyKey() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/users")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_BODY))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("nonexistent resource is 404 with errorCode")
+    void nonexistentResource() throws Exception {
+        willThrow(new NotFoundException("USER_NOT_FOUND", "User doesn't exist"))
+                .given(listUsers)
+                .byId(any());
+
+        mockMvc.perform(get("/api/v1/users/{userId}", "unknown"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("empty collection is 200 with empty content, never 204")
+    void emptyCollection() throws Exception {
+        given(listUsers.handle(0, 20, "createdAt,desc")).willReturn(TestFixtures.emptyPage());
+
+        mockMvc.perform(get("/api/v1/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.page.totalElements").value(0));
+    }
+
+    @Test
+    @DisplayName("size above the maximum is 400, never silently truncated")
+    void sizeAboveMaximum() throws Exception {
+        mockMvc.perform(get("/api/v1/users").param("size", "500"))
+                .andExpect(status().isBadRequest());
+    }
+}

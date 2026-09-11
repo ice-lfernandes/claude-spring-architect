@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spinning up the process: without it, every edit to any file would pay for a JVM startup.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Write(.claude/**/*.md)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating frontmatter...",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "format"],
+            "statusMessage": "Formatting...",
+            "timeout": 90
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "check"],
+            "statusMessage": "Checking boundaries...",
+            "timeout": 180
+          },
+          {
+            "type": "command",
+            "if": "Edit(.claude/**/*.md)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating frontmatter...",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating frontmatter...",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "tests"],
+            "statusMessage": "Running tests for changed modules...",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(./mvnw:*)",
+      "Bash(mvnw.cmd:*)",
+      "Bash(./gradlew:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./**/*.env)",
+      "Read(./**/secrets/**)",
+      "Read(./**/application-prod.yml)",
+      "Read(./**/application-prod.yaml)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.p12)",
+      "Bash(git push --force:*)"
+    ]
+  }
+}

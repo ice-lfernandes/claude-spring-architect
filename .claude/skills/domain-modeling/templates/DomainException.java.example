@@ -1,0 +1,29 @@
+/*
+ * EXEMPLAR — base of the entire typed family from `.claude/rules/error-handling.md`.
+ * Package `domain.exception` from `packages.map`. `errorCode` is mandatory in the
+ * constructor: there's no `DomainException` without a stable code.
+ * Extending `RuntimeException` directly outside this class is the generic exception
+ * the rule forbids — only the base has that permission, because it's the one that names
+ * the type.
+ * Compiles as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.domain.exception;
+
+public abstract class DomainException extends RuntimeException {
+
+    private final String errorCode;
+
+    protected DomainException(String errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+
+    protected DomainException(String errorCode, String message, Throwable cause) {
+        super(message, cause);
+        this.errorCode = errorCode;
+    }
+
+    public String errorCode() {
+        return errorCode;
+    }
+}

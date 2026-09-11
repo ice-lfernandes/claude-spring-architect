@@ -1,0 +1,98 @@
+/*
+ * EXEMPLAR — the STRUCTURAL half of idempotency: header presence and format.
+ * Compilable as-is.
+ *
+ * READ THIS BEFORE COPYING. Idempotency splits into two halves, and this file is
+ * only the first (decision P5(b), `.claude/decisions/0006-rest-api-architect-design.md`):
+ *
+ *   1. STRUCTURAL — here. Missing or non-UUID header on a route that requires it: 400, and
+ *      the request never reaches the controller.
+ *   2. TRANSACTIONAL — NOT here. `.claude/rules/api-rest.md` requires that recording the key
+ *      and the business effect happen in the SAME transaction. This runs outside the
+ *      application's transaction, so it can't store the key: there would be a window where
+ *      the effect happens and the key doesn't get stored, and a retry duplicates it. That
+ *      half lives in the application layer, where the transaction opens
+ *      (`.claude/rules/architecture-ddd.md` § Application).
+ *
+ * WHY IT'S AN INTERCEPTOR AND NOT A FILTER. A `Filter` runs before the `DispatcherServlet`,
+ * and an exception thrown there does NOT go through `@RestControllerAdvice` — the response
+ * comes out without `ProblemDetail`, outside the rule's contract. `HandlerInterceptor` runs
+ * inside the dispatcher, so `ApiExceptionHandler` catches the exception and the error body
+ * comes out in the right shape. If you prefer a filter, you have to serialize the
+ * `ProblemDetail` by hand in there.
+ *
+ * The table that stores route, caller identity, body hash, status, and response body
+ * (TTL >= 24 h) belongs to `20-persistencia.md`. The `30-rest.md` partial declares it's
+ * needed and names it; it doesn't model it. Shape reference for the other half:
+ * `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
+ * `.../IdempotencyKeyStore.java.example`.
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.domain.exception.ValidationException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.http.HttpMethod;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+@Component
+public class IdempotencyKeyInterceptor implements HandlerInterceptor {
+
+    public static final String HEADER = "Idempotency-Key";
+    // Attribute read by the controller and passed to the command. Keeps the controller from
+    // re-reading the header and validating it again.
+    public static final String ATTRIBUTE = "idempotencyKey";
+
+    // Routes that require the key: POST that creates a resource, moves money, or touches an
+    // external system. Explicit list — requiring it across the whole API puts 400 on harmless actions.
+    private static final Set<String> PROTECTED_POST_PATHS = Set.of("/api/v1/users");
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        if (!requiresKey(request)) {
+            return true;
+        }
+
+        String key = request.getHeader(HEADER);
+        if (key == null || !isUuid(key)) {
+            // 400: required header missing or malformed
+            // (`.claude/rules/api-rest.md` § Errors — 400 family). The body comes out as
+            // ProblemDetail because ApiExceptionHandler maps ValidationException.
+            throw new ValidationException(
+                    "IDEMPOTENCY_KEY_INVALID", "Header " + HEADER + " missing or malformed");
+        }
+
+        request.setAttribute(ATTRIBUTE, key);
+        return true;
+    }
+
+    private boolean requiresKey(HttpServletRequest request) {
+        return HttpMethod.POST.matches(request.getMethod())
+                && PROTECTED_POST_PATHS.contains(request.getRequestURI());
+    }
+
+    private static boolean isUuid(String value) {
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+}
+
+/*
+ * Registration. Its own file in the real project (`WebMvcConfig.java`), in the same module.
+ *
+ * @Configuration
+ * class WebMvcConfig implements WebMvcConfigurer {
+ *     private final IdempotencyKeyInterceptor interceptor;
+ *     WebMvcConfig(IdempotencyKeyInterceptor interceptor) { this.interceptor = interceptor; }
+ *     @Override public void addInterceptors(InterceptorRegistry registry) {
+ *         registry.addInterceptor(interceptor).addPathPatterns("/api/**");
+ *     }
+ * }
+ */

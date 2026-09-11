@@ -1,0 +1,164 @@
+id: vertical-slice
+name: Vertical Slice Architecture (Feature Slices)
+description: >
+  Code grouped by feature, not by technical layer: each use case gets its own
+  self-contained package — Command/Query, Handler, Endpoint, Response — under
+  `features.<feature>.<usecase>`. Only the aggregate crosses slice boundaries, kept in
+  a shared `domain` kernel per `rules/architecture-ddd.md`; the persistence port and its
+  adapter live inside the slice that needs them, not in a shared module every other
+  blueprint here gives persistence. Unlike `layered`'s controller/service/repository
+  siblings shared by every feature, or `hexagonal`'s port/adapter modules shared the
+  same way, adding a feature here means adding one new package, never touching an
+  existing shared class.
+when_to_choose:
+  - Features diverge more than they overlap — one use case's read shape, write shape,
+    and persistence needs have little in common with the next one, so a shared
+    service/repository pair across all of them would be premature abstraction
+  - Team wants new features to cost only new files — "you're not changing shared code
+    and worrying about side effects" (milanjovanovic.tech) — the opposite trade-off
+    from `layered`, where a shared `service` or `repository` package is exactly the
+    file every new feature edits
+  - Independent feature ownership or eventual microservice extraction matters more
+    than cross-feature reuse — a slice that already doesn't reach into another slice's
+    package is most of the seam an extraction needs, the same argument
+    `modular-monolith` makes at the bounded-context level, applied one level down
+trade_offs:
+  - No mediator/pipeline framework (MediatR's C# role) — this blueprint keeps
+    constructor injection per `rules/architecture-ddd.md` § Composition, so the
+    Endpoint calls its Handler directly. None of the free cross-cutting behavior a
+    mediator pipeline gives (validation, logging, transactions wrapped around every
+    handler automatically) — each slice wires its own
+  - Persistence is scoped per slice, not centralized like every other blueprint here —
+    two slices touching the same aggregate can grow near-duplicate ports and JPA
+    queries doing the same job unless deliberately promoted into the shared `domain`
+    kernel — "repeated code across multiple slices may indicate a lack of shared
+    components" (symphonyis Medium article), and this blueprint has no module boundary
+    forcing that promotion, only code review
+  - Sibling-slice isolation ("a slice doesn't call another slice's package directly")
+    has no static `from`/`to` pair to declare in `dependency_rules.forbidden` below —
+    slice names are business data, unknown at blueprint-authoring time, same limitation
+    `modular-monolith` already has for module names. It is enforced later, once a
+    second slice exists, with ArchUnit's `slices()` API (`SlicesRuleDefinition`) rather
+    than a fixed module id — see the comment above `dependency_rules` below
+
+build:
+  layout: single-module
+  tool: maven
+
+# Broad on purpose, same technique as `layered` and `modular-monolith`: there is no
+# Maven module physically delimiting a slice, only the package under one
+# `src/main/java`. Feature names (`order`, `payment`, ...) don't exist yet at
+# blueprint-authoring time — see the `packages.map` comment below for why a per-slice
+# glob can't be pre-created. `**/features/**/*.java` covers every slice, present and
+# future, in one entry; `**/domain/**/*.java` covers the one package this blueprint
+# does create at bootstrap (the shared kernel, below).
+architecture_paths:
+  - "**/domain/**/*.java"
+  - "**/features/**/*.java"
+  - "**/config/**/*.java"
+
+# A single element — layout: single-module — rule 5 of `_schema.md`. The slice
+# boundary (this blueprint's actual reason to exist) is not a Maven module at all —
+# it's a package under `features`, checked at test time by ArchUnit, same enforcement
+# story as `layered`.
+modules:
+  - id: app
+    path: "."
+    depends_on: []
+    contains_main: true
+
+# Only the shared kernel is literal, creatable package data at bootstrap time — a
+# feature's own package (`features.order.createorder`) is business data, not
+# architecture data, exactly like `modular-monolith`'s per-module `internal.domain`:
+# project-bootstrap writes zero business code, and step 4.7 needs a literal path to
+# `mkdir` and stamp a `package-info.java` into, which a future feature name isn't yet.
+# The first real slice is created later, by `use-case-design` + `domain-modeling` +
+# `rest-api-architect`, one package per use case, following the naming convention below.
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    bootstrap.config: "config"
+
+# Naming convention for this blueprint (specific to vertical-slice, not universal —
+# see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest). REPR pattern (Request-Endpoint-Response,
+# ardalis.com / milanjovanovic.tech), one package per use case under `features`:
+#   Slice package: features.<feature>.<usecase>  — e.g. features.order.createorder,
+#   lower-case, no separators (Java package convention), one folder per use case, not
+#   one folder per resource — the same "one class per operation, not per resource"
+#   rule `layered.yaml` already states, applied to the whole slice this time, not just
+#   the service class
+#   Endpoint (thin REST controller, exactly one route):    <Verb><Noun>Endpoint
+#                                           — e.g. CreateOrderEndpoint
+#   Command (write) / Query (read), the Handler's input:   <Verb><Noun>Command / Query
+#                                           — e.g. CreateOrderCommand, GetOrderQuery
+#   Handler (application service — satisfies architecture-ddd.md § Application's "one
+#   inbound abstraction per use case" by construction, one Handler per slice):
+#                                                            <Verb><Noun>Handler
+#                                           — e.g. CreateOrderHandler
+#   Response, the Handler's output, shaped for this slice only, never reused by
+#   another slice even if the fields overlap (see trade_offs above):
+#                                                            <Noun>Response
+#                                           — e.g. OrderResponse
+#   Port (output port, interface — only when the slice needs persistence beyond what
+#   the shared domain aggregate's own repository already gives it):
+#                                                            <Noun>Port
+#                                           — e.g. OrderSummaryPort, kept inside the
+#   slice's own package, not centralized — the trade-off called out above
+#   Adapter implementing a slice-local Port:                <Noun>JpaAdapter
+#   Cross-slice reaction — the ONLY sanctioned way one slice reacts to another, never
+#   a direct call into another slice's package (see dependency_rules comment below):
+#   a `@TransactionalEventListener` on a domain event, past-tense per
+#   architecture-ddd.md (`OrderCreated`, not `CreateOrder`):
+#                                                            <Noun><PastTenseEvent>Listener
+#                                           — e.g. RecommendationOrderCreatedListener,
+#   living in the reacting slice's own package, subscribing to an event published from
+#   the domain aggregate that triggered it
+#   Shared kernel aggregate / value object (framework-free, in `domain.model`): plain
+#   DDD naming, `rules/architecture-ddd.md` and `rules/naming.md` apply unchanged
+#
+# References:
+#   @.claude/blueprints/vertical-slice/references/baeldung-vertical-slice-architecture.md
+#   @.claude/blueprints/vertical-slice/references/milanjovanovic-vertical-slice-architecture.md
+#   @.claude/blueprints/vertical-slice/references/symphonyis-medium.md
+
+# Only `domain -> features` is a static, declarable rule: `domain` is a real package
+# created at bootstrap, `features` is the real (broad) glob every slice falls under.
+# What is NOT here, on purpose, for the same reason `modular-monolith` doesn't declare
+# "module A can't reach module B's internal": sibling-slice isolation
+# (`features.order..` must not import `features.payment..`) has no fixed `from`/`to`
+# pair to write — slice names don't exist yet. It becomes enforceable only once a
+# second slice exists, with ArchUnit's `SlicesRuleDefinition.slices().matching(
+# "..features.(*)..").should().notDependOnEachOther()` — a job for `archunit-installer`
+# or the feature's own `test-architect` pass when that day comes, not for this file.
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [features]
+      reason: "The shared kernel does not know about any feature that uses it — same universal rule as every other blueprint's domain module, architecture-ddd.md § Domain"
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # the only enforcement of domain -> features and, later, sibling-slice isolation

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXEMPLAR — POM of the `domain` module (the most restricted of all).
+  Notice what is NOT here: no Spring starter, no JPA, no Jackson.
+  It's deliberate and is the module's whole reason for existing.
+
+  When generating the other modules, add ONLY the dependencies that module's
+  `depends_on` authorizes in the blueprint. Copying this file and adding starters
+  "in case they're needed later" is how boundaries get lost.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.exemplo</groupId>
+    <artifactId>minha-api</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>domain</artifactId>
+  <name>domain</name>
+
+  <dependencies>
+    <!-- Tests only. The domain has no production dependencies of its own.
+         Lombok is no exception to this: it's inherited from the root POM, is `optional`,
+         and its annotations have SOURCE retention — it doesn't appear in the bytecode or
+         the classpath of anything that depends on this module. DO NOT redeclare it here. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- The Spring Boot plugin does NOT go here: this module isn't executable. -->
+    </plugins>
+  </build>
+</project>

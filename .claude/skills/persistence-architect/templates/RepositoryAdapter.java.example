@@ -1,0 +1,185 @@
+/*
+ * EXEMPLAR — output adapter: implements the ports declared in `10-dominio.md` and
+ * translates between aggregate and entity. Form reference; not a file to copy.
+ * Rules: `.claude/rules/architecture-ddd.md` (adapter has no business logic;
+ *                                             constructor injection, `private final`)
+ *        `.claude/rules/persistence.md` (§ Boundary — zero `@Transactional` here)
+ *        `.claude/rules/error-handling.md` (translation of constraint violation and
+ *                                           concurrency failure)
+ *
+ * WHAT THIS FILE DELIBERATELY DOES NOT HAVE:
+ *   - `@Transactional` — the transaction opens and closes in the application layer
+ *   - any `if` that decides a business rule
+ *   - any persistence type leaking out through the port
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- UserRepositoryAdapter.java
+package com.example.demo.adapter.out.persistence;
+
+import com.example.demo.application.port.out.LoadUserPort;
+import com.example.demo.application.port.out.SaveUserPort;
+import com.example.demo.application.port.out.UserExistsPort;
+import com.example.demo.domain.exception.ConflictException;
+import com.example.demo.domain.model.Email;
+import com.example.demo.domain.model.User;
+import com.example.demo.domain.model.UserId;
+import java.util.Optional;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.stereotype.Component;
+
+@Component
+class UserRepositoryAdapter implements SaveUserPort, LoadUserPort, UserExistsPort {
+
+    private final UserJpaRepository repository;
+    private final UserPersistenceMapper mapper;
+
+    UserRepositoryAdapter(UserJpaRepository repository, UserPersistenceMapper mapper) {
+        this.repository = repository;
+        this.mapper = mapper;
+    }
+
+    @Override
+    public User save(User user) {
+        try {
+            // saveAndFlush, not save: `save` only registers the entity in the
+            // persistence context, and the INSERT reaches the database on flush —
+            // which by default happens at the transaction commit, opened in the
+            // application layer. By then this try/catch has already gone out of scope,
+            // the UNIQUE violation bubbles up wrapped by the transaction manager, and
+            // the client gets a 500 instead of a 409.
+            // The explicit flush brings the INSERT inside the try.
+            return mapper.toDomain(repository.saveAndFlush(mapper.toEntity(user)));
+        } catch (DataIntegrityViolationException cause) {
+            // Constraint violation — the UNIQUE (email) resolved the race between two
+            // concurrent INSERTs. Without this catch the driver/JPA exception would
+            // cross the domain boundary.
+            throw new ConflictException("USER_EMAIL_ALREADY_EXISTS", user.email().value(), cause);
+        } catch (OptimisticLockingFailureException cause) {
+            // Translates the infrastructure detail into the domain's vocabulary.
+            // The port doesn't know Spring or Hibernate types.
+            throw new ConflictException("USER_CONCURRENT_UPDATE", user.id().value().toString(), cause);
+        }
+    }
+
+    @Override
+    public Optional<User> byId(UserId id) {
+        return repository.findById(id.value()).map(mapper::toDomain);
+    }
+
+    @Override
+    public boolean existsByEmail(Email email) {
+        return repository.existsByEmail(email.value());
+    }
+}
+
+// --- OrderRepositoryAdapter.java
+// Second `save` variant: an UPDATE-only port for an aggregate whose domain type
+// deliberately doesn't carry `version` (`@.claude/rules/value-objects.md`'s
+// counter-catalog — optimistic locking is a pure persistence concern here).
+// `UserRepositoryAdapter.save` above stays the reference for a first INSERT, where a
+// fresh detached entity is correct. This one must NOT reuse that shape: a fresh
+// `mapper.toEntity(order)` always carries `version = 0` (Java primitive default), so
+// the second UPDATE's `WHERE version = 0` would match nothing and false-conflict —
+// `@.claude/rules/persistence.md` § Boundary.
+package com.example.demo.adapter.out.persistence;
+
+import com.example.demo.application.port.out.SaveOrderPort;
+import com.example.demo.domain.exception.ConflictException;
+import com.example.demo.domain.exception.NotFoundException;
+import com.example.demo.domain.model.Order;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.stereotype.Component;
+
+@Component
+class OrderRepositoryAdapter implements SaveOrderPort {
+
+    private final OrderJpaRepository repository;
+    private final OrderPersistenceMapper mapper;
+
+    OrderRepositoryAdapter(OrderJpaRepository repository, OrderPersistenceMapper mapper) {
+        this.repository = repository;
+        this.mapper = mapper;
+    }
+
+    @Override
+    public Order save(Order order) {
+        // Load the managed entity instead of building a fresh detached one: the
+        // application layer's own `findById` earlier in this same transaction already
+        // put it in the first-level cache, so this doesn't add a round trip.
+        OrderEntity entity = repository
+                .findById(order.id().value())
+                .orElseThrow(() -> new NotFoundException("ORDER_NOT_FOUND", order.id().value().toString()));
+        // Mutate only the changed fields on the managed instance — Hibernate's
+        // dirty-checking then carries the row's real current `version` into the
+        // UPDATE. A genuine concurrent write is still caught, at flush time.
+        mapper.updateEntity(entity, order);
+        try {
+            return mapper.toDomain(repository.saveAndFlush(entity));
+        } catch (OptimisticLockingFailureException cause) {
+            throw new ConflictException("ORDER_CONCURRENT_UPDATE", order.id().value().toString(), cause);
+        }
+    }
+}
+
+// --- OrderPersistenceMapper.java
+package com.example.demo.adapter.out.persistence;
+
+import com.example.demo.domain.model.Order;
+import org.springframework.stereotype.Component;
+
+@Component
+class OrderPersistenceMapper {
+
+    // No `toEntity(Order)` here on purpose: this port only ever updates a row that
+    // already exists, so there's no first-INSERT case that needs a fresh entity.
+    void updateEntity(OrderEntity entity, Order order) {
+        entity.applyTotal(order.discountPercentage().value(), order.total().amount());
+    }
+
+    Order toDomain(OrderEntity entity) {
+        return Order.rehydrate(entity.getId(), entity.getDiscountPercentage(), entity.getTotal());
+    }
+}
+
+// --- UserPersistenceMapper.java
+package com.example.demo.adapter.out.persistence;
+
+import com.example.demo.domain.model.DepartmentId;
+import com.example.demo.domain.model.Email;
+import com.example.demo.domain.model.User;
+import com.example.demo.domain.model.UserId;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
+
+// Explicit translation in both directions. Neither class inherits from the other and
+// no persistence entity crosses the boundary.
+@Component
+class UserPersistenceMapper {
+
+    UserEntity toEntity(User user) {
+        UUID department = user.departmentId().isAssigned() ? user.departmentId().value() : null;
+        return new UserEntity(
+                user.id().value(),
+                user.email().value(),
+                user.name(),
+                department,
+                UserStatus.valueOf(user.status().name()),
+                user.createdAt());
+    }
+
+    User toDomain(UserEntity entity) {
+        DepartmentId department = entity.getDepartmentId() == null
+                ? DepartmentId.unassigned()
+                : DepartmentId.of(entity.getDepartmentId());
+        return User.rehydrate(
+                UserId.of(entity.getId()),
+                Email.of(entity.getEmail()),
+                entity.getName(),
+                department,
+                com.example.demo.domain.model.UserStatus.valueOf(entity.getStatus().name()),
+                entity.getCreatedAt());
+    }
+}

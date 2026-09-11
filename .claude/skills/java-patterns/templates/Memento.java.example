@@ -1,0 +1,58 @@
+// Exemplar: Memento. Captures an aggregate's internal state so a risky operation can be
+// rolled back, without exposing that state to whoever's doing the capturing. Rare outside
+// editors and explicit-rollback workflows — most "undo" needs are better served by simply
+// reloading from the repository; reach for this only when reloading would lose in-memory
+// work the rollback has to preserve.
+package com.example.domain.model.order;
+
+import java.util.List;
+
+// --- the originator creates and restores from its own memento; nobody else can read one
+public final class Order {
+
+    private OrderStatus status;
+    private List<OrderLine> lines;
+
+    // narrow interface for the caretaker below: opaque, no accessors on it at all
+    public OrderSnapshot snapshot() {
+        return new Captured(status, lines);
+    }
+
+    public void restore(OrderSnapshot snapshot) {
+        // safe: Order is the only class that ever constructs a Captured
+        Captured captured = (Captured) snapshot;
+        this.status = captured.status;
+        this.lines = captured.lines;
+    }
+
+    void applyDiscount(OrderLine line, Money discount) {
+        // the mutation a caretaker might need to roll back — body omitted, not the point here
+    }
+
+    // wide interface: fields visible only inside this file, never through OrderSnapshot
+    private static final class Captured implements OrderSnapshot {
+        private final OrderStatus status;
+        private final List<OrderLine> lines;
+
+        Captured(OrderStatus status, List<OrderLine> lines) {
+            this.status = status;
+            this.lines = List.copyOf(lines);
+        }
+    }
+}
+
+// --- the marker the caretaker actually holds — no methods, so there's nothing to read
+public interface OrderSnapshot {}
+
+// --- the caretaker: holds the snapshot, never inspects it
+// class BulkDiscountService {
+//     void applyWithRollback(Order order, List<OrderLine> targets, Money discount) {
+//         OrderSnapshot before = order.snapshot();
+//         try {
+//             targets.forEach(line -> order.applyDiscount(line, discount));
+//         } catch (BusinessRuleViolationException e) {
+//             order.restore(before);
+//             throw e;
+//         }
+//     }
+// }

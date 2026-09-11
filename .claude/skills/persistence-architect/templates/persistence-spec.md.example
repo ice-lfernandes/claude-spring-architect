@@ -1,0 +1,110 @@
+# UC-001 · Persistence
+
+> Partial of `docs/use-cases/UC-001-create-user/`. Owner: `persistence-architect`.
+> Inherits the aggregate and ports from `10-dominio.md` — doesn't reinvent them.
+> Contains no code. Form references in
+> `.claude/skills/persistence-architect/templates/`.
+> Rules applied, never reproduced: `@.claude/rules/persistence.md`.
+
+| Field | Value |
+|---|---|
+| Mother spec | `00-caso-de-uso.md` |
+| Domain partial | `10-dominio.md` |
+| Aggregate | `User` |
+| Engine | PostgreSQL 16 |
+| Expected volume at 12 months | ~200,000 rows |
+| Divergences from `10-dominio.md` | none |
+
+## 1 · Schema
+
+**Table `users`** — one per aggregate root.
+
+| Column | Type | Nullable | Default | Constraint |
+|---|---|---|---|---|
+| `id` | `uuid` | no | — | PK |
+| `email` | `varchar(254)` | no | — | `UNIQUE (email)` — business key |
+| `name` | `varchar(120)` | no | — | — |
+| `department_id` | `uuid` | yes | `null` | FK → `departments(id)`, `ON DELETE RESTRICT` |
+| `version` | `bigint` | no | `0` | optimistic lock |
+| `created_at` | `timestamptz` | no | — | filled by the application's `Clock`, not the database |
+
+**Indexes**
+
+| Index | Columns | Why |
+|---|---|---|
+| `users_pkey` | `id` | PK, created by the constraint |
+| `uq_users_email` | `email` | Business uniqueness; also serves the `findByEmail` query |
+| `ix_users_department_id` | `department_id` | Foreign key. Without an index, `ON DELETE RESTRICT` does a full scan |
+
+No index on `name`: no query filters by it. An index without a query is write cost with
+no return.
+
+## 2 · Mapping
+
+Aggregate `User` → entity `UserEntity` in `adapter/out/persistence`. Explicit
+translation in both directions; neither class knows the other through inheritance.
+
+| Aggregate field | Domain type | Column | Translation |
+|---|---|---|---|
+| `id` | `UserId` | `id` | `UserId.value()` ↔ `UserId.of(uuid)` |
+| `email` | `Email` | `email` | `Email.value()` ↔ `Email.of(text)` |
+| `name` | `String` | `name` | direct |
+| `departmentId` | `DepartmentId` | `department_id` | `DepartmentId.unassigned()` ↔ `null` in the column |
+| — | — | `version` | entity-only. `@Version`, invisible to the domain |
+
+`Email` and `UserId` don't become `@Embeddable`: they wrap a single value and the column
+is enough. `@Embeddable` only when the value object has two or more fields that travel
+together.
+
+## 3 · Adapter and ports
+
+Each port declared in `10-dominio.md`, and how it's served.
+
+| Port | Signature (from `10-dominio.md`) | Query | Fetch | Index serving it |
+|---|---|---|---|---|
+| `SaveUserPort` | `User save(User user)` | `INSERT` / `UPDATE` by PK | — | `users_pkey` |
+| `LoadUserPort` | `Optional<User> byId(UserId id)` | `SELECT` by PK | — | `users_pkey` |
+| `UserExistsPort` | `boolean existsByEmail(Email email)` | `SELECT EXISTS` | — | `uq_users_email` |
+
+No port returns a collection in this use case, so there's no pagination or `JOIN FETCH`
+to decide. If a listing appears, it's born paginated — rule, § Queries.
+
+**Concurrency:** optimistic locking with `@Version`. Two writes on the same `User` make
+the second one fail; the adapter translates the failure into the conflict exception from
+`@.claude/rules/error-handling.md`.
+
+## 4 · Migrations
+
+| File | Type | Content |
+|---|---|---|
+| `V3__create_users.sql` | expand | Creates `users`, the `UNIQUE`, and the FK index |
+
+New table, so there's no expand/contract pair to schedule. If `users` already existed in
+production, the `version` column would enter as `NULL`-allowed in one migration, be
+backfilled in another, and only a third release would set it `NOT NULL`.
+
+No earlier migration is edited.
+
+## 5 · Configuration
+
+Values decided for this project. The mandatory ones come from the rule and aren't
+re-discussed here — `@.claude/rules/persistence.md` § Configuration.
+
+| Property | Value | Why |
+|---|---|---|
+| `spring.datasource.hikari.maximum-pool-size` | `10` | Twice the container's cores, plus margin. A pool bigger than what the database accepts just moves the queue |
+| `spring.datasource.hikari.connection-timeout` | `3000` | Failing fast beats holding the request |
+| `spring.jpa.properties.hibernate.jdbc.batch_size` | `50` | There's batch insertion during import; without batching that's 50 round trips |
+| `spring.jpa.properties.hibernate.order_inserts` | `true` | Without ordering, the batch breaks on every table change |
+| `spring.jpa.open-in-view` | `false` | Rule. Repeated here only because Spring Boot's default is the opposite |
+
+Full shape in `templates/application-persistence.yml.example`.
+
+## Implementation order
+
+1. `V3__create_users.sql`
+2. `UserEntity` + `UserPersistenceMapper`
+3. `UserJpaRepository` (Spring Data)
+4. `UserRepositoryAdapter` (implements the three ports)
+5. Properties in `application.yml`
+6. Integration test against the real database (Testcontainers) — `40-testes.md`

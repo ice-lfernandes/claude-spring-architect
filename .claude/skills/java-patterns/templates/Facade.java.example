@@ -1,0 +1,33 @@
+// Exemplar: Facade over an external SDK, not over another internal layer. The
+// application service already plays this role for the domain
+// (`.claude/rules/architecture-ddd.md` § Application) — this pattern earns its place
+// only in front of a genuinely external subsystem with a wide, mostly-irrelevant
+// interface. Lives in the adapter.
+package com.example.adapter.out.shipping;
+
+import com.example.domain.model.order.Order;
+
+// CarrierAuthClient, CarrierRatesClient, CarrierBookingClient: the carrier's own SDK,
+// not modeled here — three clients, none of which know about each other.
+public final class ShippingLabelFacade {
+
+    private final CarrierAuthClient authClient;
+    private final CarrierRatesClient ratesClient;
+    private final CarrierBookingClient bookingClient;
+
+    public ShippingLabelFacade(CarrierAuthClient authClient, CarrierRatesClient ratesClient,
+                                CarrierBookingClient bookingClient) {
+        this.authClient = authClient;
+        this.ratesClient = ratesClient;
+        this.bookingClient = bookingClient;
+    }
+
+    // Callers only ever want one thing: a label. The SDK needs four calls, always in
+    // this order, to produce it — the facade is the only place that knows the order.
+    public ShippingLabel issueLabelFor(Order order) {
+        CarrierToken token = authClient.authenticate();
+        CarrierRate rate = ratesClient.cheapestRateFor(order.destination(), token);
+        CarrierBooking booking = bookingClient.book(order.id().value(), rate, token);
+        return bookingClient.generateLabel(booking, token);
+    }
+}

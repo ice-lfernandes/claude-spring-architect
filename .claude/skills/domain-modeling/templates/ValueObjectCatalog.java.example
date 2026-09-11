@@ -1,0 +1,325 @@
+/*
+ * EXEMPLAR — catalog of recurring value objects. Form reference for the executor agent;
+ * not a file to copy verbatim. The minimal canonical shape (record + compact constructor
+ * + `of` factory) is in `ValueObject.java.example` — here are the cases that decide
+ * whether a field deserves its own type.
+ *
+ * Rule that owns the criterion: `.claude/rules/value-objects.md`
+ * Others: `.claude/rules/error-handling.md` (typed family, errorCode UPPER_SNAKE_CASE)
+ *         `.claude/rules/naming.md` (static factory `of`)
+ *         `.claude/rules/architecture-ddd.md` (§ Domain: zero framework, zero I/O)
+ *
+ * RULE ALL BLOCKS ILLUSTRATE: the object stores the NORMALIZED value, not the text as it
+ * arrived. A mask is output formatting, never state.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- Cpf.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+
+/** Individual taxpayer document (Brazilian CPF). Stores 11 digits; the mask is formatting. */
+public record Cpf(String digits) implements Document {
+
+    private static final int LENGTH = 11;
+
+    public Cpf {
+        if (digits == null || digits.length() != LENGTH) {
+            throw new ValidationException("CPF_INVALID_LENGTH", "cpf must have 11 digits");
+        }
+        if (!digits.chars().allMatch(Character::isDigit)) {
+            throw new ValidationException("CPF_NOT_NUMERIC", "cpf can only contain digits");
+        }
+        if (allSameDigit(digits)) {
+            throw new ValidationException("CPF_INVALID", "invalid cpf");
+        }
+        if (checkDigit(digits, 9) != digits.charAt(9) - '0'
+                || checkDigit(digits, 10) != digits.charAt(10) - '0') {
+            throw new ValidationException("CPF_INVALID", "invalid cpf");
+        }
+    }
+
+    /** Accepts with or without a mask: normalization happens before validation. */
+    public static Cpf of(String raw) {
+        if (raw == null) {
+            throw new ValidationException("CPF_REQUIRED", "cpf is required");
+        }
+        return new Cpf(raw.replaceAll("\\D", ""));
+    }
+
+    public String masked() {
+        return digits.substring(0, 3) + '.' + digits.substring(3, 6) + '.'
+                + digits.substring(6, 9) + '-' + digits.substring(9);
+    }
+
+    private static boolean allSameDigit(String value) {
+        return value.chars().distinct().count() == 1;
+    }
+
+    private static int checkDigit(String value, int position) {
+        int sum = 0;
+        int weight = position + 1;
+        for (int i = 0; i < position; i++) {
+            sum += (value.charAt(i) - '0') * weight--;
+        }
+        int remainder = sum % LENGTH;
+        return remainder < 2 ? 0 : LENGTH - remainder;
+    }
+}
+
+// --- Cnpj.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+
+/** Corporate taxpayer document (Brazilian CNPJ). Same shape as Cpf, different length and weights. */
+public record Cnpj(String digits) implements Document {
+
+    private static final int LENGTH = 14;
+    private static final int[] WEIGHTS = {6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2};
+
+    public Cnpj {
+        if (digits == null || digits.length() != LENGTH) {
+            throw new ValidationException("CNPJ_INVALID_LENGTH", "cnpj must have 14 digits");
+        }
+        if (!digits.chars().allMatch(Character::isDigit)) {
+            throw new ValidationException("CNPJ_NOT_NUMERIC", "cnpj can only contain digits");
+        }
+        if (checkDigit(digits, 12) != digits.charAt(12) - '0'
+                || checkDigit(digits, 13) != digits.charAt(13) - '0') {
+            throw new ValidationException("CNPJ_INVALID", "invalid cnpj");
+        }
+    }
+
+    public static Cnpj of(String raw) {
+        if (raw == null) {
+            throw new ValidationException("CNPJ_REQUIRED", "cnpj is required");
+        }
+        return new Cnpj(raw.replaceAll("\\D", ""));
+    }
+
+    private static int checkDigit(String value, int position) {
+        int sum = 0;
+        int offset = WEIGHTS.length - position;
+        for (int i = 0; i < position; i++) {
+            sum += (value.charAt(i) - '0') * WEIGHTS[i + offset];
+        }
+        int remainder = sum % 11;
+        return remainder < 2 ? 0 : 11 - remainder;
+    }
+}
+
+// --- Document.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+
+/*
+ * ONE document field, not two with one of them null. The type knows which it is.
+ * `sealed` lets the compiler require every switch to handle all cases — the chain of
+ * `if (document.length() == 11)` scattered through the code disappears.
+ */
+public sealed interface Document permits Cpf, Cnpj {
+
+    String digits();
+
+    /** Discriminates by normalized length. Ambiguous input is an error, not a default. */
+    static Document of(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new ValidationException("DOCUMENT_REQUIRED", "document is required");
+        }
+        String digits = raw.replaceAll("\\D", "");
+        return switch (digits.length()) {
+            case 11 -> new Cpf(digits);
+            case 14 -> new Cnpj(digits);
+            default -> throw new ValidationException(
+                    "DOCUMENT_INVALID", "document is neither cpf nor cnpj");
+        };
+    }
+}
+
+// --- PhoneNumber.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+
+/*
+ * Phone number in E.164 format: `+` followed by country and subscriber, no separators.
+ * The per-country length isn't hardcoded here — the international standard gives the
+ * global limit, and a country-specific rule is a business decision that goes in the
+ * aggregate or a policy.
+ */
+public record PhoneNumber(String countryCode, String subscriberNumber) {
+
+    private static final int MAX_TOTAL_DIGITS = 15;
+
+    public PhoneNumber {
+        if (countryCode == null || countryCode.isBlank()) {
+            throw new ValidationException("PHONE_COUNTRY_REQUIRED", "country code is required");
+        }
+        if (subscriberNumber == null || subscriberNumber.isBlank()) {
+            throw new ValidationException("PHONE_REQUIRED", "number is required");
+        }
+        if (!isDigits(countryCode) || !isDigits(subscriberNumber)) {
+            throw new ValidationException("PHONE_NOT_NUMERIC", "number can only contain digits");
+        }
+        if (countryCode.length() + subscriberNumber.length() > MAX_TOTAL_DIGITS) {
+            throw new ValidationException("PHONE_TOO_LONG", "number exceeds the E.164 maximum");
+        }
+    }
+
+    /** Accepts "+351 912 345 678" or "351912345678". Without `+`, the country code is required. */
+    public static PhoneNumber of(String raw, String defaultCountryCode) {
+        if (raw == null || raw.isBlank()) {
+            throw new ValidationException("PHONE_REQUIRED", "number is required");
+        }
+        String digits = raw.replaceAll("\\D", "");
+        if (raw.trim().startsWith("+")) {
+            String country = digits.substring(0, Math.min(3, digits.length()));
+            return new PhoneNumber(country, digits.substring(country.length()));
+        }
+        return new PhoneNumber(defaultCountryCode, digits);
+    }
+
+    public String e164() {
+        return "+" + countryCode + subscriberNumber;
+    }
+
+    private static boolean isDigits(String value) {
+        return value.chars().allMatch(Character::isDigit);
+    }
+}
+
+// --- Money.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Currency;
+
+/*
+ * Amount AND currency, together. `BigDecimal` always — `double` loses cents on
+ * addition. Operating across different currencies is a domain error, not a silent
+ * conversion: the exchange rate is I/O, and I/O doesn't belong here
+ * (`architecture-ddd.md` § Domain).
+ */
+public record Money(BigDecimal amount, Currency currency) {
+
+    public Money {
+        if (amount == null) {
+            throw new ValidationException("MONEY_AMOUNT_REQUIRED", "amount is required");
+        }
+        if (currency == null) {
+            throw new ValidationException("MONEY_CURRENCY_REQUIRED", "currency is required");
+        }
+        amount = amount.setScale(currency.getDefaultFractionDigits(), RoundingMode.HALF_UP);
+    }
+
+    public static Money of(BigDecimal amount, String currencyCode) {
+        if (currencyCode == null) {
+            throw new ValidationException("MONEY_CURRENCY_REQUIRED", "currency is required");
+        }
+        return new Money(amount, Currency.getInstance(currencyCode));
+    }
+
+    public static Money zero(Currency currency) {
+        return new Money(BigDecimal.ZERO, currency);
+    }
+
+    public Money add(Money other) {
+        requireSameCurrency(other);
+        return new Money(amount.add(other.amount), currency);
+    }
+
+    public Money subtract(Money other) {
+        requireSameCurrency(other);
+        return new Money(amount.subtract(other.amount), currency);
+    }
+
+    public boolean isNegative() {
+        return amount.signum() < 0;
+    }
+
+    private void requireSameCurrency(Money other) {
+        if (!currency.equals(other.currency)) {
+            throw new ValidationException(
+                    "MONEY_CURRENCY_MISMATCH", "operation between different currencies");
+        }
+    }
+}
+
+// --- Percentage.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.math.BigDecimal;
+
+/** Closed range and explicit scale. `0.15` or `15`? The type answers: 15 means 15%. */
+public record Percentage(BigDecimal value) {
+
+    private static final BigDecimal MAX = BigDecimal.valueOf(100);
+
+    public Percentage {
+        if (value == null) {
+            throw new ValidationException("PERCENTAGE_REQUIRED", "percentage is required");
+        }
+        if (value.signum() < 0 || value.compareTo(MAX) > 0) {
+            throw new ValidationException(
+                    "PERCENTAGE_OUT_OF_RANGE", "percentage out of the 0-100 range");
+        }
+    }
+
+    public static Percentage of(BigDecimal value) {
+        return new Percentage(value);
+    }
+
+    public BigDecimal asFraction() {
+        return value.divide(MAX, 6, java.math.RoundingMode.HALF_UP);
+    }
+}
+
+/*
+ * ============================================================================
+ * COUNTER-EXAMPLE — what NOT to do. None of these blocks is code to generate.
+ * ============================================================================
+ *
+ * 1. PRIMITIVE WHERE THERE WAS A RULE
+ *
+ *    public class Customer {
+ *        private String email;      // format → Email
+ *        private String phone;      // E.164   → PhoneNumber
+ *        private String cpf;        // check digit → Cpf
+ *        private String document;   // cpf or cnpj? → Document
+ *        private double balance;    // which currency? and double loses cents → Money
+ *    }
+ *
+ *    Consequence: validation lives in the caller. Every new caller is a chance to
+ *    forget it, and the aggregate stops guaranteeing its invariant.
+ *
+ * 2. CLASS WHERE THERE WAS NO RULE
+ *
+ *    public record Description(String value) { }   // free text, zero invariant
+ *    public record Name(String value) { }          // same
+ *    public record Comments(String value) { }       // same
+ *
+ *    Ceremony with no gain: one class per field, one more mapping in each adapter,
+ *    and no invalid state made impossible. `name`, `description`, and `comments`
+ *    stay `String`; the length limit is validated in the aggregate's constructor:
+ *
+ *        public Product {
+ *            if (description != null && description.length() > 500) {
+ *                throw new ValidationException(
+ *                        "DESCRIPTION_TOO_LONG", "description exceeds 500 characters");
+ *            }
+ *        }
+ *
+ * 3. TWO FIELDS FOR ONE CONCEPT
+ *
+ *    private String cpf;    // one of the two is always null
+ *    private String cnpj;   // and all the code has to test which one
+ *
+ *    It's a `Document`, sealed, with the compiler requiring both cases in the switch.
+ */

@@ -1,0 +1,23 @@
+# Shape for a PostgreSQL service block appended under docker-compose.yml's `services:`.
+# Tag matched to test-architect's pin in TestcontainersConfiguration.java when one
+# exists — see docker-architect/SKILL.md step 4. Don't ship "latest": a floating tag
+# makes today's container different from next week's.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-appdb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+# Named volume — add under docker-compose.yml's top-level `volumes:`.
+volumes:
+  postgres-data:

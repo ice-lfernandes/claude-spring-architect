@@ -1,0 +1,74 @@
+// Exemplar: State. An aggregate's behavior branches on its own internal state, and the
+// branch is a switch/if-else that grows with each new state. Strategy's close cousin —
+// same fix (extract each branch into its own type), different framing: the type changes
+// over the object's lifetime instead of being picked once by a caller. The line that
+// justifies State over plain Strategy: the states themselves have distinct allowed
+// transitions between them. Two states that never grow past a single if/else are still
+// just an if/else, not a missing pattern.
+package com.example.domain.model.order;
+
+// --- the role every phase implements; Order holds one, delegates to it, replaces it
+interface OrderPhase {
+
+    OrderPhase confirm(Order order);
+
+    OrderPhase cancel(Order order);
+}
+
+// --- one implementation per phase; a transition returns the next phase, or throws
+final class Pending implements OrderPhase {
+
+    @Override
+    public OrderPhase confirm(Order order) {
+        order.assertHasLines();
+        return new Confirmed();
+    }
+
+    @Override
+    public OrderPhase cancel(Order order) {
+        return new Cancelled();
+    }
+}
+
+final class Confirmed implements OrderPhase {
+
+    @Override
+    public OrderPhase confirm(Order order) {
+        throw new BusinessRuleViolationException("ORDER_ALREADY_CONFIRMED", "Order is already confirmed");
+    }
+
+    @Override
+    public OrderPhase cancel(Order order) {
+        order.assertNotShipped();
+        return new Cancelled();
+    }
+}
+
+final class Cancelled implements OrderPhase {
+
+    @Override
+    public OrderPhase confirm(Order order) {
+        throw new BusinessRuleViolationException("ORDER_CANCELLED", "Cancelled order can't be confirmed");
+    }
+
+    @Override
+    public OrderPhase cancel(Order order) {
+        throw new BusinessRuleViolationException("ORDER_ALREADY_CANCELLED", "Order is already cancelled");
+    }
+}
+
+// --- the aggregate holds the current phase and delegates; it never switches on a status enum
+// class Order {
+//     private OrderPhase phase = new Pending();
+//
+//     public void confirm() {
+//         this.phase = phase.confirm(this);
+//     }
+//
+//     public void cancel() {
+//         this.phase = phase.cancel(this);
+//     }
+//
+//     void assertHasLines() { /* guard used by Pending.confirm */ }
+//     void assertNotShipped() { /* guard used by Confirmed.cancel */ }
+// }

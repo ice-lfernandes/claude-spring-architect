@@ -1,0 +1,18 @@
+# Multi-stage build. {{JAVA_VERSION}} is the JDK resolved from the Initializr in step 3
+# — never pinned from memory, same rule as the rest of this skill's version resolution.
+FROM eclipse-temurin:{{JAVA_VERSION}}-jdk-alpine AS build
+WORKDIR /workspace
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+{{MODULE_POM_COPIES}}
+RUN ./mvnw -q dependency:go-offline
+COPY . .
+RUN ./mvnw -q -DskipTests package
+
+FROM eclipse-temurin:{{JAVA_VERSION}}-jre-alpine
+WORKDIR /app
+# {{MAIN_MODULE_JAR_PATH}} is the module with contains_main: true — single-module
+# layouts copy from target/, multi-module layouts from <module>/target/.
+COPY --from=build /workspace/{{MAIN_MODULE_JAR_PATH}} app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

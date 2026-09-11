@@ -1,0 +1,71 @@
+// Exemplar: Visitor. A new operation has to run across every type of an existing class
+// hierarchy, and adding it as a method on each type would mean touching all of them for
+// something that isn't really their responsibility. The rarest fit in a typical Spring
+// Boot codebase — confirm first that the hierarchy is genuinely CLOSED (new operations
+// arrive more often than new types). If new types show up just as often, this pattern
+// inverts the problem instead of solving it: every new type still has to implement every
+// visitor. Below: reporting operations over a small, closed set of discount-line kinds.
+package com.example.domain.model.order;
+
+// --- the closed hierarchy — three kinds of discount line, unlikely to gain a fourth
+public sealed interface DiscountLine permits PercentageLine, FixedAmountLine, LoyaltyLine {
+    void accept(DiscountLineReport report);
+}
+
+public record PercentageLine(Money base, int percent) implements DiscountLine {
+    @Override
+    public void accept(DiscountLineReport report) {
+        report.visit(this);
+    }
+}
+
+public record FixedAmountLine(Money amount) implements DiscountLine {
+    @Override
+    public void accept(DiscountLineReport report) {
+        report.visit(this);
+    }
+}
+
+public record LoyaltyLine(Money base, int loyaltyPoints) implements DiscountLine {
+    @Override
+    public void accept(DiscountLineReport report) {
+        report.visit(this);
+    }
+}
+
+// --- one operation per implementation of this interface; the lines never implement it themselves
+public interface DiscountLineReport {
+    void visit(PercentageLine line);
+
+    void visit(FixedAmountLine line);
+
+    void visit(LoyaltyLine line);
+}
+
+// --- a second operation is a second implementation, no discount line touched again
+final class DiscountLineSummaryReport implements DiscountLineReport {
+
+    private Money total = Money.zero();
+
+    @Override
+    public void visit(PercentageLine line) {
+        total = total.add(line.base().percentage(line.percent()));
+    }
+
+    @Override
+    public void visit(FixedAmountLine line) {
+        total = total.add(line.amount());
+    }
+
+    @Override
+    public void visit(LoyaltyLine line) {
+        total = total.add(line.base().percentage(line.loyaltyPoints()));
+    }
+
+    Money total() {
+        return total;
+    }
+}
+
+// A fourth DiscountLine kind means editing every DiscountLineReport implementation —
+// that cost is exactly what makes the "genuinely closed" check upfront non-optional.

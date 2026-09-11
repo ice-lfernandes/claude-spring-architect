@@ -1,0 +1,12 @@
+# EXEMPLAR — not a standalone file: a fragment to merge into `application.yml`, in the
+# module with `contains_main: true`. Exposes only the three most common read endpoints;
+# `env` and `beans` are deliberately left out — they leak configuration and the bean
+# graph, a risk of sensitive information if exposed without authentication.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

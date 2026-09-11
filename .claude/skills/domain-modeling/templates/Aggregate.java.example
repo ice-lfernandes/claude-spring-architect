@@ -1,0 +1,112 @@
+/*
+ * EXEMPLAR — aggregate root. Invariants enforced here, never by the caller.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/architecture-ddd.md` (zero framework, zero I/O, injected Clock)
+ *        `.claude/rules/code-quality.md` (≤ 200 lines, final fields, no null)
+ *        `.claude/rules/error-handling.md` (typed family)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - a static factory that names the creation (`register`), distinct from reconstruction
+ *    from persistence (`rehydrate`) — the adapter uses the second, the use case the
+ *    first. Confusing them makes the invariant run again over already-valid data,
+ *    or worse, not run when it should;
+ *  - a state transition that returns a new instance, because the record is immutable;
+ *  - `Clock` as a parameter, never `Instant.now()` inside;
+ *  - no reference to another aggregate by object: `DepartmentId`, not `Department`.
+ */
+
+// --- User.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.time.Clock;
+import java.time.Instant;
+
+public record User(UserId id, Email email, String name, DepartmentId departmentId, Instant registeredAt) {
+
+    private static final int NAME_MIN_LENGTH = 2;
+    private static final int NAME_MAX_LENGTH = 120;
+
+    public User {
+        if (id == null) {
+            throw new ValidationException("USER_ID_REQUIRED", "user id is required");
+        }
+        if (email == null) {
+            throw new ValidationException("EMAIL_REQUIRED", "email is required");
+        }
+        if (departmentId == null) {
+            throw new ValidationException("DEPARTMENT_ID_REQUIRED", "department is required");
+        }
+        if (registeredAt == null) {
+            throw new ValidationException("REGISTERED_AT_REQUIRED", "registration date is required");
+        }
+        name = requireValidName(name);
+    }
+
+    /** Creation. Generates identity and stamps the instant — used by the use case. */
+    public static User register(Email email, String name, DepartmentId departmentId, Clock clock) {
+        return new User(UserId.newId(), email, name, departmentId, clock.instant());
+    }
+
+    /** Reconstruction from already-persisted data — used by the output adapter. */
+    public static User rehydrate(
+            UserId id, Email email, String name, DepartmentId departmentId, Instant registeredAt) {
+        return new User(id, email, name, departmentId, registeredAt);
+    }
+
+    /** State transition: a new object, never mutation. */
+    public User assignTo(DepartmentId newDepartmentId) {
+        if (newDepartmentId == null || newDepartmentId.equals(departmentId)) {
+            throw new ValidationException("DEPARTMENT_UNCHANGED", "invalid or unchanged department");
+        }
+        return new User(id, email, name, newDepartmentId, registeredAt);
+    }
+
+    public boolean isAssigned() {
+        return !departmentId.equals(DepartmentId.unassigned());
+    }
+
+    private static String requireValidName(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            throw new ValidationException("USER_NAME_REQUIRED", "name is required");
+        }
+        String trimmed = candidate.trim();
+        if (trimmed.length() < NAME_MIN_LENGTH || trimmed.length() > NAME_MAX_LENGTH) {
+            throw new ValidationException("USER_NAME_LENGTH", "name must be between 2 and 120 characters");
+        }
+        return trimmed;
+    }
+}
+
+// --- DepartmentId.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.util.UUID;
+
+/*
+ * Reference to another aggregate, by id. Never the whole `Department` object: that would
+ * widen this aggregate's boundary and force loading it just to create a user.
+ *
+ * `unassigned()` exists so the field can be mandatory without `null` and without
+ * `Optional` — `code-quality.md` forbids `Optional` on a field, and absence modeled as an
+ * explicit value is what's left. It's the Null Object pattern, applied to a value object.
+ */
+public record DepartmentId(UUID value) {
+
+    private static final UUID UNASSIGNED = new UUID(0L, 0L);
+
+    public DepartmentId {
+        if (value == null) {
+            throw new ValidationException("DEPARTMENT_ID_REQUIRED", "department id is required");
+        }
+    }
+
+    public static DepartmentId of(UUID value) {
+        return new DepartmentId(value);
+    }
+
+    public static DepartmentId unassigned() {
+        return new DepartmentId(UNASSIGNED);
+    }
+}

@@ -1,0 +1,61 @@
+// Exemplar: Mediator. Coordinates several independent reactions to one event without
+// them referencing each other directly. Check first whether an application service
+// already plays this role — a second one here usually means a missing use-case
+// boundary, not a missing pattern. Not Observer: these reactions are called directly,
+// synchronously, by application code — not published from inside an aggregate to
+// decoupled listeners (that's Domain Events, already covered elsewhere in this catalog).
+package com.example.application.order;
+
+import com.example.application.port.out.NotificationPort;
+import com.example.application.port.out.WarehousePort;
+import com.example.domain.model.order.OrderShipped;
+import java.util.List;
+
+// --- each colleague knows only its own job, never the others
+public interface ShipmentReaction {
+
+    void reactTo(OrderShipped event);
+}
+
+public final class NotifyCustomerReaction implements ShipmentReaction {
+
+    private final NotificationPort notifications;
+
+    public NotifyCustomerReaction(NotificationPort notifications) {
+        this.notifications = notifications;
+    }
+
+    @Override
+    public void reactTo(OrderShipped event) {
+        notifications.sendShipmentNotice(event.orderId(), event.customerId());
+    }
+}
+
+public final class ReleaseWarehouseHoldReaction implements ShipmentReaction {
+
+    private final WarehousePort warehouse;
+
+    public ReleaseWarehouseHoldReaction(WarehousePort warehouse) {
+        this.warehouse = warehouse;
+    }
+
+    @Override
+    public void reactTo(OrderShipped event) {
+        warehouse.releaseHold(event.orderId());
+    }
+}
+
+// --- the mediator: colleagues are wired here, never against each other. Adding a
+// third reaction touches this list, not NotifyCustomerReaction or the other one
+public final class OrderShippedMediator {
+
+    private final List<ShipmentReaction> reactions;
+
+    public OrderShippedMediator(List<ShipmentReaction> reactions) {
+        this.reactions = List.copyOf(reactions);
+    }
+
+    public void handle(OrderShipped event) {
+        reactions.forEach(reaction -> reaction.reactTo(event));
+    }
+}

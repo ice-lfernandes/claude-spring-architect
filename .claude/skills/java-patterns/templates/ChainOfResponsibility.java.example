@@ -1,0 +1,68 @@
+// Exemplar: Chain of Responsibility. Validates an order through a sequence of
+// independent checks; each either rejects and stops the chain, or lets it continue.
+// Spring's own HandlerInterceptor chain already is this at the HTTP boundary
+// (`@.claude/skills/rest-api-architect/templates/IdempotencyKeyInterceptor.java.example`)
+// — this shape is for a sequence of checks inside application code, not a second HTTP layer.
+package com.example.application.order;
+
+import com.example.application.port.out.StockLevelPort;
+import com.example.domain.model.order.Order;
+import java.util.List;
+import java.util.Optional;
+
+// --- one check per rule; a new rule is a new file, no file edited
+public interface OrderCheck {
+
+    Optional<String> reject(Order order);
+}
+
+public final class MinimumAmountCheck implements OrderCheck {
+
+    private static final long MINIMUM_MINOR_UNITS = 100;
+
+    @Override
+    public Optional<String> reject(Order order) {
+        return order.total().minorUnits() < MINIMUM_MINOR_UNITS
+                ? Optional.of("ORDER_BELOW_MINIMUM")
+                : Optional.empty();
+    }
+}
+
+public final class StockAvailableCheck implements OrderCheck {
+
+    private final StockLevelPort stockLevel;
+
+    public StockAvailableCheck(StockLevelPort stockLevel) {
+        this.stockLevel = stockLevel;
+    }
+
+    @Override
+    public Optional<String> reject(Order order) {
+        return stockLevel.hasEnoughFor(order) ? Optional.empty() : Optional.of("ORDER_OUT_OF_STOCK");
+    }
+}
+
+// --- the chain: stops at the first rejection, never runs a check that no longer matters
+public final class OrderValidationChain {
+
+    private final List<OrderCheck> checks;
+
+    public OrderValidationChain(List<OrderCheck> checks) {
+        this.checks = List.copyOf(checks);
+    }
+
+    public Optional<String> firstRejection(Order order) {
+        for (OrderCheck check : checks) {
+            Optional<String> rejection = check.reject(order);
+            if (rejection.isPresent()) {
+                return rejection;
+            }
+        }
+        return Optional.empty();
+    }
+}
+
+// --- wiring in the bootstrap; order in the list is the order checks run in
+// @Bean OrderValidationChain orderValidationChain(StockLevelPort stockLevel) {
+//     return new OrderValidationChain(List.of(new MinimumAmountCheck(), new StockAvailableCheck(stockLevel)));
+// }

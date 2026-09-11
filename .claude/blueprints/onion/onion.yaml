@@ -1,0 +1,143 @@
+id: onion
+name: Onion Architecture (Palermo)
+description: >
+  Domain Model and domain services merged into one "Application Core" ring at the
+  center (Palermo's own term — no separate `application` module, unlike
+  `clean-architecture-multi-module`); persistence and presentation as separate outer
+  rings, neither depending on the other. Any outer ring may call any inner ring
+  directly (Palermo's tenet 3) — unlike `layered`'s strict adjacency-only rule.
+when_to_choose:
+  - Team wants Palermo's own terminology (Application Core, Gateway) over hexagonal's
+    port/adapter or clean architecture's use-case-per-class split
+  - Persistence and presentation genuinely don't need to be strangers to each other's
+    existence the way hexagonal forces via separate adapter modules per direction, but
+    should still never call each other directly
+  - Domain model and domain services are designed and changed together, by the same
+    people, most of the time — not worth a fourth `application` module just to keep
+    them apart
+trade_offs:
+  - The domain module is bigger than hexagonal's or clean architecture's — model,
+    services, and every Gateway interface all live there, so more changes touch the
+    same compilation unit
+  - "Any outer ring may call any inner ring" is looser than `layered`'s explicit
+    adjacency rule — easier to write, easier to accidentally couple presentation to a
+    domain service before a real reason to needs it
+  - Persistence gets an indirection hexagonal doesn't: Gateway (domain-facing
+    interface) → Adapter (implements it) → Repository (Spring Data interface the
+    adapter delegates to) — one more file than hexagonal's Port→Adapter pair for the
+    same job
+
+build:
+  layout: multi-module
+  tool: maven
+
+# Globs that identify the code covered by `rules/architecture-ddd.md` (DDD +
+# dependency direction). They go verbatim into the `paths` frontmatter of the file the
+# bootstrap generates at <project>/.claude/rules/architecture-ddd.md — they are not
+# inferred from `modules[].path`, because not every blueprint uses the same directory
+# names.
+architecture_paths:
+  - "domain/**/*.java"
+  - "persistence/**/*.java"
+  - "presentation/**/*.java"
+  - "app/**/*.java"
+
+modules:
+  - id: domain
+    path: domain
+    depends_on: []
+    forbidden_imports:
+      - "org.springframework.."
+      - "jakarta.persistence.."
+      - "jakarta.validation.."
+      - "com.fasterxml.jackson.."
+  - id: persistence
+    path: persistence
+    depends_on: [domain]
+    feature: persistence-jpa
+  - id: presentation
+    path: presentation
+    depends_on: [domain]
+    feature: rest
+  - id: app
+    path: app
+    depends_on: ["*"]
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    domain.service: "domain.service"
+    domain.gateway: "domain.gateway"
+    persistence.persistence: "persistence"
+    presentation.rest: "presentation"
+
+# Naming convention for this blueprint (specific to onion, not universal — see
+# .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest):
+#   Domain service (one class per operation — architecture-ddd.md § Application forbids
+#   a fat interface, applies here too even though services live inside the `domain`
+#   module, not a separate one): <Verb><Noun>Service — e.g. PlaceOrderService, not one
+#   fat OrderService, unlike the sources' looser examples
+#   Gateway (output port, interface, in domain): <Capability>Gateway
+#                                           — e.g. PersistenceGateway, OrderGateway
+#   Adapter (implements a Gateway, in persistence): <Capability><Technology>Adapter
+#                                           — e.g. OrderJpaAdapter
+#   Repository (Spring Data interface, used BY the Adapter, never directly by domain):
+#                                              <Noun>Repository — e.g. OrderRepository
+#   Controller (thin, delegates immediately to a Facade): <Noun>Controller
+#                                           — e.g. OrderController
+#   Facade (the real presentation-layer work: DTO→Model, calls the domain service,
+#   Model→DTO, plus validation/security — @Valid, @PreAuthorize belong here, not the
+#   controller): <Noun>Facade — e.g. OrderFacade
+#   Persisted entity: <Noun>Entity            — e.g. OrderEntity
+#   Cross-layer mapper: <Noun>Mapper          — e.g. OrderMapper
+#
+# References:
+#   @.claude/blueprints/onion/references/palermo-part1-onion-architecture.md
+#   @.claude/blueprints/onion/references/palermo-part2-onion-architecture.md
+#   @.claude/blueprints/onion/references/palermo-part3-onion-architecture.md
+#   @.claude/blueprints/onion/references/palermo-part4-after-four-years.md
+#   @.claude/blueprints/onion/references/akshay-dipta-medium.md
+#   @.claude/blueprints/onion/references/jnavez-dev-to.md
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [persistence, presentation, app]
+      reason: "The domain does not know about infrastructure or presentation — Palermo's tenet 2: inner layers define interfaces, outer layers implement them"
+    - from: persistence
+      to: [presentation]
+      reason: "Two outer rings don't talk to each other sideways — neither is more central than the other, so there's no dependency-toward-center argument for this edge"
+    - from: presentation
+      to: [persistence]
+      reason: "Same reason, the other direction — presentation calls a domain service or a Gateway, never a persistence Adapter directly"
+  # What is NOT forbidden, on purpose: presentation → domain and persistence → domain
+  # are both encouraged, not just allowed — Palermo's tenet 3 explicitly says any outer
+  # ring may call any inner ring directly, unlike `layered`'s adjacency-only rule.
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # data read by the `test-architect` skill; the bootstrap does not generate architecture tests

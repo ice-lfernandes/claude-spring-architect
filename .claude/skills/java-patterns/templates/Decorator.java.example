@@ -1,0 +1,44 @@
+// Exemplar: Decorator over an output port. Adds cross-cutting behavior
+// without touching the real implementation or the domain. Lives in the adapter, not the domain.
+// Before using: confirm that Spring's @Cacheable or @Retryable doesn't already solve this.
+package com.example.adapter.out.persistence;
+
+import com.example.application.port.out.OrderRepositoryPort;
+import com.example.domain.model.order.Order;
+import com.example.domain.model.order.OrderId;
+import java.util.Optional;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Component;
+
+@Component
+@Primary // the decorator is what the application receives; the delegate stays behind it
+public final class CachedOrderRepository implements OrderRepositoryPort {
+
+    private final OrderRepositoryPort delegate;
+    private final OrderCache cache;
+
+    public CachedOrderRepository(OrderRepositoryAdapter delegate, OrderCache cache) {
+        this.delegate = delegate;
+        this.cache = cache;
+    }
+
+    @Override
+    public Optional<Order> findById(OrderId id) {
+        return cache.get(id).or(() -> {
+            Optional<Order> found = delegate.findById(id);
+            found.ifPresent(cache::put);
+            return found;
+        });
+    }
+
+    @Override
+    public void save(Order order) {
+        delegate.save(order);
+        cache.evict(order.id());
+    }
+}
+
+// Exemplar invariants:
+// - implements the same port, not a sub-interface — LSP intact
+// - no business rule here; only caching
+// - the domain and application don't know the decorator exists

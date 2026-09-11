@@ -1,0 +1,129 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  EXEMPLAR — goes to <project>/config/checkstyle/checkstyle.xml (step 4.6).
+
+  Each module here corresponds to ONE limit written in .claude/rules/code-quality.md.
+  Don't add style checks (imports, braces, spacing): Spotless handles that,
+  and a duplicate check gives a red build over something the formatter would already fix.
+
+  If you change a number here, change it in the rule too — and vice versa. A divergence
+  between the two is a bug: the rule tells the model one thing and the build enforces another.
+
+  Severity `error` on purpose: the POM has violationSeverity=error and Checkstyle runs
+  in the `validate` phase, so a violation breaks the build before compiling.
+-->
+<module name="Checker">
+  <property name="severity" value="error"/>
+  <property name="charset" value="UTF-8"/>
+
+  <!-- Generated files and exemplars are excluded -->
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern" value="[\\/](target|generated-sources)[\\/].*$"/>
+  </module>
+
+  <!-- code-quality.md: class ≤ 200 lines -->
+  <module name="FileLength">
+    <property name="max" value="200"/>
+  </module>
+
+  <module name="TreeWalker">
+
+    <!-- code-quality.md: method ≤ 20 lines -->
+    <module name="MethodLength">
+      <property name="max" value="20"/>
+      <property name="countEmpty" value="false"/>
+    </module>
+
+    <!-- code-quality.md: ≤ 3 parameters. Injection constructor is exempt — the
+         dependency limit is a review decision, not a count (see § Composition in
+         architecture-ddd.md). -->
+    <module name="ParameterNumber">
+      <property name="max" value="3"/>
+      <property name="tokens" value="METHOD_DEF"/>
+    </module>
+
+    <!-- Static factory of an aggregate or value object is exempt from ParameterNumber.
+         An aggregate with four required fields has no way to receive them in three
+         parameters without inventing a grouping the domain doesn't have, and naming.md requires
+         construction to go through a factory (`of`, `from`, `create`) instead of a public
+         constructor — the limit would punish exactly the shape the rule mandates using.
+         The name list is the one from `.claude/rules/naming.md` § Classes and methods.
+         The union in the query covers the two nodes where Checkstyle anchors this violation
+         depending on version (the METHOD_DEF or its IDENT). -->
+    <module name="SuppressionXpathSingleFilter">
+      <property name="checks" value="ParameterNumber"/>
+      <property name="query"
+                value="//METHOD_DEF[MODIFIERS/LITERAL_STATIC and IDENT[@text='of' or @text='from' or @text='create' or @text='rehydrate' or @text='register']]
+                     | //METHOD_DEF[MODIFIERS/LITERAL_STATIC]/IDENT[@text='of' or @text='from' or @text='create' or @text='rehydrate' or @text='register']"/>
+    </module>
+
+    <!-- code-quality.md: cyclomatic complexity ≤ 10 -->
+    <module name="CyclomaticComplexity">
+      <property name="max" value="10"/>
+    </module>
+
+    <!-- code-quality.md: nesting ≤ 2 levels -->
+    <module name="NestedIfDepth">
+      <property name="max" value="2"/>
+    </module>
+    <module name="NestedForDepth">
+      <property name="max" value="2"/>
+    </module>
+    <module name="NestedTryDepth">
+      <property name="max" value="1"/>
+    </module>
+
+    <!-- code-quality.md: no magic numbers or strings -->
+    <module name="MagicNumber">
+      <property name="ignoreAnnotation" value="true"/>
+      <property name="ignoreHashCodeMethod" value="true"/>
+    </module>
+
+    <!-- code-quality.md: guard clause first, no else after return -->
+    <module name="AvoidNestedBlocks"/>
+    <module name="EmptyBlock">
+      <property name="option" value="text"/>
+    </module>
+
+    <!-- code-quality.md: hidden side effect / dead code -->
+    <module name="EqualsHashCode"/>
+    <module name="ModifiedControlVariable"/>
+    <module name="MissingSwitchDefault"/>
+    <module name="FallThrough"/>
+
+    <!-- error-handling.md: never generic. ArchUnit catches the `throw`;
+         this one catches the `catch (Exception e)` that swallows everything. -->
+    <module name="IllegalCatch">
+      <property name="illegalClassNames"
+                value="java.lang.Exception, java.lang.RuntimeException, java.lang.Throwable"/>
+    </module>
+    <module name="IllegalThrows">
+      <property name="illegalClassNames"
+                value="java.lang.Exception, java.lang.RuntimeException, java.lang.Throwable"/>
+    </module>
+
+    <!-- code-quality.md: comments — no commented-out code left nearby -->
+    <module name="TodoComment">
+      <property name="format" value="TODO(?!\s*\(#\d+\))"/>
+      <property name="severity" value="warning"/>
+    </module>
+
+    <!-- naming.md: the rule file is the owner; here only what's mechanical -->
+    <module name="PackageName">
+      <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+    </module>
+    <module name="TypeName"/>
+    <module name="MethodName"/>
+
+    <!-- lowercase `log` is allowed alongside SCREAMING_SNAKE_CASE. It's the name SLF4J uses
+         throughout its documentation and in practically all Java code anyone writes by
+         hand; requiring `LOG` here would break the build over a convention nobody follows.
+         Every other constant still follows the usual format. -->
+    <module name="ConstantName">
+      <property name="format" value="^(log|[A-Z][A-Z0-9]*(_[A-Z0-9]+)*)$"/>
+    </module>
+  </module>
+</module>

@@ -1,0 +1,63 @@
+// Exemplar: Flyweight. Money instances stop carrying their own display rules — they
+// share one immutable CurrencyFormat per currency code instead of duplicating it.
+// Only worth it under real volume (thousands of Money alive at once); profile first.
+package com.example.domain.model.pricing;
+
+import com.example.domain.exception.ValidationException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+// --- the shared, immutable state — one instance per currency code, never per Money
+public final class CurrencyFormat {
+
+    private final String symbol;
+    private final int decimalPlaces;
+
+    private CurrencyFormat(String symbol, int decimalPlaces) {
+        this.symbol = symbol;
+        this.decimalPlaces = decimalPlaces;
+    }
+
+    static CurrencyFormat of(String symbol, int decimalPlaces) {
+        return new CurrencyFormat(symbol, decimalPlaces);
+    }
+
+    public String display(long minorUnits) {
+        double scale = Math.pow(10, decimalPlaces);
+        return symbol + String.format("%." + decimalPlaces + "f", minorUnits / scale);
+    }
+}
+
+// --- the factory that interns: the same currency code always returns the same
+// instance, so a million Money in BRL share one CurrencyFormat, not a million copies
+public final class CurrencyFormats {
+
+    private static final Map<String, CurrencyFormat> CACHE = new ConcurrentHashMap<>();
+
+    private CurrencyFormats() {
+    }
+
+    public static CurrencyFormat of(String currencyCode) {
+        return CACHE.computeIfAbsent(currencyCode, CurrencyFormats::load);
+    }
+
+    private static CurrencyFormat load(String currencyCode) {
+        return switch (currencyCode) {
+            case "BRL" -> CurrencyFormat.of("R$", 2);
+            case "USD" -> CurrencyFormat.of("$", 2);
+            default -> throw new ValidationException("CURRENCY_UNKNOWN", "unknown currency: " + currencyCode);
+        };
+    }
+}
+
+// --- Money holds a reference, not a copy of the display rule
+public record Money(long minorUnits, CurrencyFormat format) {
+
+    public static Money of(long minorUnits, String currencyCode) {
+        return new Money(minorUnits, CurrencyFormats.of(currencyCode));
+    }
+
+    public String display() {
+        return format.display(minorUnits);
+    }
+}

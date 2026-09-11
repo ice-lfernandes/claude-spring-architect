@@ -1,0 +1,10 @@
+# Base pair — app service only. Every service a use case needs afterward (a database,
+# a broker) is added by the docker-architect skill, never by hand-editing this file
+# alongside it: single owner after generation, see docker-architect/SKILL.md.
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker

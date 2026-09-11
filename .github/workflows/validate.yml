@@ -1,0 +1,345 @@
+name: validate
+
+# Proves the three claims this template makes about itself:
+#   1. the hooks run on Linux, macOS and Windows (decision D8)
+#   2. each norm has a single owning file
+#   3. adding a blueprint doesn't require touching skills, agents or commands
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hooks-cross-platform:
+    name: hooks · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Same line on all three OSes. No shell, no chmod, no variants.
+      - name: doctor
+        run: java .claude/hooks/ArchHook.java doctor
+
+      - name: hook blocks forbidden import
+        run: java .claude/.ci/BoundaryTest.java
+
+  design:
+    name: design invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: frontmatter schema (extensions.json is the single owner — invariant 10)
+        run: java .claude/hooks/ArchHook.java schema
+
+      # `claude plugin validate` isn't run here: the CLI isn't on the runner, and
+      # installing it would add a dependency outside java/git/curl (see CLAUDE.md §
+      # Dependencies). It's a local-only, human-run complement — see docs/07-ci-validate.md.
+
+      - name: skill name doesn't shadow a native slash command
+        run: |
+          NATIVE="doctor init context memory clear compact cost bug config model permissions agents mcp hooks output-style add-dir terminal-setup vim resume rewind todos usage statusline login logout"
+          FAIL=0
+          for d in .claude/skills/*/; do
+            n=$(basename "$d")
+            for native in $NATIVE; do
+              if [ "$n" = "$native" ]; then
+                echo "❌ skill '$n' shadows the native /$native command — it would run instead of it, silently."
+                FAIL=1
+              fi
+            done
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ No skill shadows a native slash command."
+          exit $FAIL
+
+      - name: decisions/ doesn't grow paths or enter 00-index.md
+        run: |
+          FAIL=0
+          if grep -l "^paths:" .claude/decisions/*.md 2>/dev/null; then
+            echo "❌ A file in decisions/ declares paths: — that makes it auto-load like a rule."
+            echo "   decisions/ is history: no paths, records what was decided, not what holds today."
+            FAIL=1
+          fi
+          for f in .claude/decisions/*.md; do
+            n=$(basename "$f")
+            if grep -q "$n" .claude/rules/00-index.md; then
+              echo "❌ $n is listed in 00-index.md — decisions/ isn't a rule and has no owning entry there."
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ decisions/ carries no paths and isn't indexed as a rule."
+          exit $FAIL
+
+      # Citing a specific decision record from a rule/skill ("Recorded in
+      # decisions/00NN-...") is the normal, established pattern here — it's how a
+      # norm points to the reasoning behind it. What invariant 8 forbids is a
+      # version written as fact to *use*, not a dated note of what was last verified.
+      - name: no hardcoded Spring/Java version outside decisions/ (invariant 8)
+        run: |
+          FAIL=0
+          HITS=$(grep -rnE "Spring Boot [0-9]+\.[0-9]+|Java (1[0-9]|2[0-9])\b" \
+                   .claude/rules .claude/skills .claude/blueprints CLAUDE.md 2>/dev/null \
+                 | grep -v "JDK 21+" \
+                 | grep -v "Tested to compile" || true)
+          if [ -n "$HITS" ]; then
+            echo "❌ A version is written from memory instead of resolved via Spring Initializr:"
+            echo "$HITS"
+            FAIL=1
+          fi
+          [ "$FAIL" -eq 0 ] && echo "✅ No hardcoded Spring/Java version outside decisions/ and dated test notes."
+          exit $FAIL
+
+      - name: new blueprint doesn't touch prompts
+        run: |
+          cp .claude/blueprints/custom-template/custom.template.yaml .claude/blueprints/_ci-probe.yaml
+          CHANGED=$(git status --porcelain .claude/skills .claude/agents)
+          rm .claude/blueprints/_ci-probe.yaml
+          if [ -n "$CHANGED" ]; then
+            echo "❌ Adding a blueprint changed prompts:"; echo "$CHANGED"; exit 1
+          fi
+          echo "✅ Blueprints are data, not prompts."
+
+      - name: rules is a leaf of the graph
+        run: |
+          if grep -rniE "\bskills?\b|\bagents?\b|\bsubagents?\b" .claude/rules/ ; then
+            echo "❌ A rule mentions a skill or agent. rules/ references no one."
+            exit 1
+          fi
+          echo "✅ rules/ is a leaf."
+
+      - name: norm contains no code boilerplate
+        run: |
+          if grep -rnE "^\s*(public|protected)\s+(abstract\s+|final\s+)?(class|record|interface|enum)\s" .claude/rules/ ; then
+            echo "❌ Class declaration inside a rule."
+            echo "   Boilerplate lives in skills/<name>/templates/*.example, not in rules/."
+            exit 1
+          fi
+          echo "✅ No classes declared in rules/. Short illustrative snippets are allowed."
+
+      - name: no new commands/
+        run: |
+          if [ -d .claude/commands ]; then
+            echo "❌ .claude/commands/ exists. Slash commands live as skills with"
+            echo "   disable-model-invocation: true."
+            exit 1
+          fi
+          echo "✅ No commands/."
+
+      - name: exemplars have the .example suffix at the end
+        run: |
+          BAD=$(find .claude/skills -path '*/templates/*' -type f ! -name '*.example')
+          if [ -n "$BAD" ]; then
+            echo "❌ Exemplar without the .example suffix at the end (escapes the precondition glob):"
+            echo "$BAD"; exit 1
+          fi
+          echo "✅ Uniform exemplar naming."
+
+      - name: blueprint-declared templates exist on disk
+        run: |
+          FAIL=0
+          for bp in .claude/blueprints/*/*.yaml; do
+            grep -oE '(templates/[A-Za-z0-9._-]+)' "$bp" | sort -u | while read -r t; do
+              if [ ! -f ".claude/skills/project-bootstrap/$t" ]; then
+                echo "❌ $bp points to $t, which does not exist."; exit 1
+              fi
+            done || FAIL=1
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every templates.<role> resolves to a real file."
+          exit $FAIL
+
+      # Only within rules/: duplication between NORMS is the bug. A skill citing the
+      # norm is the correct direction of the graph, and an exemplar may repeat the
+      # text of the invariant it illustrates.
+      - name: each norm has a single owner
+        run: |
+          FAIL=0
+          for term in "Constructor injection" "Zero framework" "RuntimeException"; do
+            HITS=$(grep -rl "$term" .claude/rules/ || true)
+            N=$(echo "$HITS" | grep -c . || true)
+            if [ "$N" -gt 1 ]; then
+              echo "❌ '$term' is a rule written in $N files under rules/:"
+              echo "$HITS"; FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ No duplicated rules between files in rules/."
+          exit $FAIL
+
+      - name: no dependencies outside the Java ecosystem
+        run: |
+          if grep -rn --include="*.json" --include="*.yaml" --include="*.sh" \
+               --exclude="settings.local.json" \
+               -E "pip install|python3? |npm install|node " .claude/ ; then
+            echo "❌ Dependency outside the Java ecosystem (see decision D7)."; exit 1
+          fi
+          echo "✅ Only JDK, Maven, git and curl."
+
+      # Gap 8 of lessons-learned-001: `api-rest.md` declared `**/adapter/in/rest/**`, which
+      # two of the three blueprints don't have. The norm never entered context and nothing warned.
+      - name: every norm `paths` matches some blueprint
+        run: |
+          FAIL=0
+          for norma in .claude/rules/*.md; do
+            # Only the first occurrence: `paths:` lives in the frontmatter, at the top of the file.
+            # `next` required after the print: gsub rewrites $0, and without it the already
+            # cleaned line would stop matching `^  - ` and fire the exit one line too
+            # early — only the first glob of each rule was checked.
+            GLOBS=$(awk '/^paths:/{f=1;next}
+                         f&&/^  - /{s=$0; gsub(/[" -]/,"",s); print s; next}
+                         f{exit}' "$norma")
+            [ -z "$GLOBS" ] && continue
+            for glob in $GLOBS; do
+              # Layout-independent globs: valid in any blueprint, don't have to
+              # match any declared package.
+              case "$glob" in
+                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+              esac
+              # `**/adapter/in/rest/**` → `adapter.in.rest`, which is how packages.map
+              # writes it. A glob shorter than the declared package counts as a match:
+              # `**/domain/**` covers `domain.model`, and that's legitimate territory.
+              PKG=$(echo "$glob" | sed -e 's|^\*\*/||' -e 's|/\*\*.*$||' -e 's|/\*.*$||' -e 's|/|.|g')
+              PKG_RE=$(echo "$PKG" | sed 's|\.|\\.|g')
+              if ! grep -rqE ": \"?${PKG_RE}(\"|\\.|$)" .claude/blueprints/*/*.yaml; then
+                echo "❌ $norma: glob '$glob' points to '$PKG', which no"
+                echo "   packages.map declares. The rule never auto-loads where that"
+                echo "   package doesn't exist, and the failure mode is silent."
+                FAIL=1
+              fi
+            done
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every rule glob has a matching package in a blueprint."
+          exit $FAIL
+
+      # The previous check proves the glob names a package that exists somewhere. It doesn't prove
+      # it exists in THIS blueprint — and that was the failure: `api-rest.md` named the hexagonal
+      # blueprint's package and the other two blueprints were left without the norm. The guarantee is step 6.6
+      # rewriting `paths` at generation time, and this check is what requires the norm to be there.
+      - name: norm with territory is in the bootstrap's derivation table
+        run: |
+          FAIL=0
+          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
+          for norma in .claude/rules/*.md; do
+            GLOBS=$(awk '/^paths:/{f=1;next}
+                         f&&/^  - /{s=$0; gsub(/[" -]/,"",s); print s; next}
+                         f{exit}' "$norma")
+            [ -z "$GLOBS" ] && continue
+            TERRITORY=0
+            for glob in $GLOBS; do
+              case "$glob" in
+                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+              esac
+              TERRITORY=1
+            done
+            [ "$TERRITORY" -eq 0 ] && continue
+            NAME=$(basename "$norma")
+            if ! grep -q "\`$NAME\` | derived \`paths:\`" "$BOOTSTRAP"; then
+              echo "❌ $NAME has a glob by package and is not in the derivation table of"
+              echo "   step 6.6. The generated project takes this file's glob as-is,"
+              echo "   and the rule doesn't load in blueprints with a different package name."
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every rule with territory is derived at generation."
+          exit $FAIL
+
+  exemplar-imports:
+    name: exemplar imports resolve against the real classpath
+    runs-on: ubuntu-latest
+    # Half of lessons-learned-001's gaps (4, 5, 9) were the same mistake: an exemplar
+    # names a package that the current Spring Boot or Testcontainers version no longer has.
+    # The exemplar "compiles in the head of whoever wrote it" and only blows up in the generated project.
+    # This job resolves every `import` against the JARs the Initializr resolves today.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # No `cache: maven` — this repo has no pom.xml anywhere (it's not a Java
+          # app, see CLAUDE.md line 1); setup-java's maven cache scans the checkout
+          # for one to build a restore key and hard-fails when it finds none. The
+          # reference project this job builds a classpath from lives in /tmp/ref,
+          # downloaded below, outside the checkout — caching against the repo was
+          # never meaningful here.
+
+      # Versions never written from memory — invariant 8 of CLAUDE.md.
+      - name: reference project from the Initializr
+        run: |
+          curl -sS https://start.spring.io/starter.tgz \
+            -d type=maven-project -d language=java -d javaVersion=21 \
+            -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka \
+            -o /tmp/starter.tgz
+          mkdir -p /tmp/ref && tar xzf /tmp/starter.tgz -C /tmp/ref
+          # micrometer-tracing-bridge-otel is managed by the Boot BOM: no version here,
+          # which is what keeps this workflow from pinning a number that ages on its own.
+          sed -i 's|</dependencies>|<dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency></dependencies>|' /tmp/ref/pom.xml
+          grep -m1 -A1 '<artifactId>spring-boot-starter-parent' /tmp/ref/pom.xml
+
+      - name: build the classpath
+        run: |
+          cd /tmp/ref
+          ./mvnw -q -B dependency:build-classpath \
+            -Dmdep.outputFile=/tmp/cp.txt -Dmdep.includeScope=test
+          wc -c /tmp/cp.txt
+
+      - name: every exemplar import exists in a JAR
+        run: |
+          CP=$(cat /tmp/cp.txt)
+          FAIL=0
+          # Only the prefixes the reference project brings. An import from springdoc or
+          # archunit isn't checkable here and is skipped on purpose — better not to
+          # check than to treat as verified what wasn't verified.
+          PREFIXES='^(org\.springframework|org\.testcontainers|jakarta|io\.micrometer|org\.junit|org\.assertj|org\.slf4j|org\.hibernate|lombok)\.'
+          IMPORTS=$(grep -rhoE '^ *import (static )?[a-z][a-zA-Z0-9_.]+;' \
+                      .claude/skills/*/templates/*.java.example \
+                    | sed -E 's/^ *import (static )?//; s/;$//' | sort -u)
+          for fqcn in $IMPORTS; do
+            echo "$fqcn" | grep -qE "$PREFIXES" || continue
+            # Static import: the class is the second-to-last segment.
+            CLASS=$(echo "$fqcn" | grep -qE '\.[a-z][a-zA-Z0-9_]*$' \
+                     && echo "$fqcn" | sed -E 's/\.[^.]+$//' || echo "$fqcn")
+            if ! javap -cp "$CP" "$CLASS" > /dev/null 2>&1; then
+              echo "❌ $CLASS does not exist in any JAR of the reference project."
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every checkable exemplar import resolves."
+          exit $FAIL
+
+      # Gap 5: the constant doesn't disappear, it's deprecated — the compiler warns and the warning
+      # gets lost. javap doesn't distinguish, so it's verified by name.
+      - name: exemplars don't use known deprecated symbols
+        run: |
+          FAIL=0
+          # Each entry: symbol that must not appear, and why. Add a line
+          # whenever a new version renames something — it's the record that keeps the
+          # exemplar from regressing to the old name on the next rewrite.
+          DENY="HttpStatus.UNPROCESSABLE_ENTITY=deprecated in Spring Framework 7; RFC 9110 renamed it to UNPROCESSABLE_CONTENT
+          org.springframework.boot.test.autoconfigure.orm.jpa=Boot 3 package; in Boot 4 it's org.springframework.boot.data.jpa.test.autoconfigure
+          org.springframework.boot.test.autoconfigure.web.servlet=Boot 3 package; in Boot 4 it's org.springframework.boot.webmvc.test.autoconfigure
+          org.testcontainers.containers.PostgreSQLContainer=Testcontainers 1.x package; in 2.x it's org.testcontainers.postgresql"
+          echo "$DENY" | while IFS= read -r linha; do
+            SYMBOL=$(echo "$linha" | sed -e 's/=.*//' -e 's/^ *//')
+            REASON=$(echo "$linha" | sed 's/^[^=]*=//')
+            [ -z "$SYMBOL" ] && continue
+            if grep -rn --fixed-strings "$SYMBOL" .claude/skills/*/templates/*.java.example; then
+              echo "❌ '$SYMBOL' — $REASON"
+              exit 1
+            fi
+          done || FAIL=1
+          [ "$FAIL" -eq 0 ] && echo "✅ No denylist symbol in the exemplars."
+          exit $FAIL

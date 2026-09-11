@@ -1,0 +1,81 @@
+# UC-001 · Tests
+
+> Partial of `docs/use-cases/UC-001-create-user/`. Owner: `test-architect`.
+> Inherits the invariants from `10-dominio.md`, the queries from `20-persistencia.md`, and
+> the contract cases from `30-rest.md` — doesn't reinvent them.
+> Contains no code. Reference shapes in `.claude/skills/test-architect/templates/`.
+> Rules applied, never reproduced: `@.claude/rules/testing.md`.
+
+| Field | Value |
+|---|---|
+| Partials read | `00`, `10`, `20`, `30` |
+| Engine in integration tests | PostgreSQL 16, ephemeral container |
+| Invariants from `10-dominio.md` | 4 |
+| Invariants with a named test | 4 |
+
+## 1 · Distribution by level
+
+Each behavior at **one** level. Repetition across levels is a bug in the distribution.
+
+| Behavior | Level | Why here |
+|---|---|---|
+| `Email` rejects an invalid format | Domain unit | Value object rule; needs no context at all |
+| Name outside 1..120 characters is rejected | Domain unit | Aggregate invariant, guaranteed in the constructor |
+| `User` is born with no department when none is given | Domain unit | Aggregate's initial state |
+| Already-registered email aborts the use case | Application unit | Orchestration: the read port is substituted by a double |
+| Creation persists and is re-read with the same values | Integration | Mapping and SQL only fail against the real engine |
+| `UNIQUE (email)` rejects the second insert | Integration | Database constraint, not a domain one |
+| HTTP contract (201, 422, 400, 409) | Web slice | **Cases defined in `30-rest.md` § 5** — here only the level and the data. Touches no I/O: the use case comes substituted by a double, so it's `Test` and not `IT` |
+| Dependency direction and names | Architecture | Runs once for the project, not per use case |
+
+No happy-path use case test repeated at the integration level: it's already in the
+application unit test, and what integration adds is the mapping, not the orchestration.
+
+## 2 · Cases per test class
+
+| Class | Level | Methods |
+|---|---|---|
+| `EmailTest` | Domain | `acceptsValidAddress` · `rejectsAddressWithoutAtSign` · `normalizesToLowercase` |
+| `UserTest` | Domain | `rejectsEmptyName` · `rejectsNameAboveLimit` · `bornWithNoDepartmentWhenNoneGiven` |
+| `CreateUserServiceTest` | Application | `createsUserWhenEmailIsFree` · `rejectsAlreadyRegisteredEmail` |
+| `UserRepositoryJpaAdapterIT` | Integration | `persistsAndRereadsTheSameAggregate` · `rejectsDuplicateEmail` · `doesNotLoadDepartmentWhenNotNeeded` |
+| `UserControllerTest` | Web slice | One method per row of `30-rest.md` § 5's table |
+
+Each method asserts the exception **and** the stable code, never just the type:
+`rejectsAlreadyRegisteredEmail` asserts `EMAIL_ALREADY_REGISTERED`, not just
+`BusinessRuleViolationException`.
+
+`IT` suffix on the integration ones. Without it failsafe doesn't run them and `verify`
+exits 0 without executing them.
+
+## 3 · Data and doubles
+
+**Factory** — `TestFixtures`, one method per aggregate, returns the valid case. The
+test changes only the field under test and nothing else.
+
+| Element | In the test |
+|---|---|
+| `TestFixtures.user()` | Valid user: `ana@exemplo.com`, "Ana Silva", no department |
+| `LoadUserPort` | Double. Returns empty in the happy case, present in the registered-email case |
+| `SaveUserPort` | Double. Returns the argument; real persistence belongs to the integration test |
+| `Clock` | `Clock.fixed(2026-01-15T10:00:00Z, UTC)`. Without a fixed instant the test fails at 3 a.m. |
+| Database | Ephemeral container, PostgreSQL 16. Migrations run in the same order as in production |
+
+No double for the aggregate or the value objects: they're cheap to build and it's the
+real constructor that validates.
+
+## 4 · Coverage and gaps
+
+| Invariant from `10-dominio.md` | Test that guarantees it |
+|---|---|
+| Email has a valid format | `EmailTest.rejectsAddressWithoutAtSign` |
+| Name between 1 and 120 characters | `UserTest.rejectsEmptyName` · `rejectsNameAboveLimit` |
+| Email is unique in the system | `CreateUserServiceTest.rejectsAlreadyRegisteredEmail` + `UserRepositoryJpaAdapterIT.rejectsDuplicateEmail` |
+| Given department must exist | `CreateUserServiceTest` — **still to write** |
+
+**Deliberately left uncovered:** `UserResponse`'s accessors and `UserMapper`'s trivial
+mapping. They're structure with no branches; a test here raises the number and
+protects nothing.
+
+One open gap: the table's last invariant has no named test. Close it before
+implementing — an invariant with no test is an invariant nobody guarantees.

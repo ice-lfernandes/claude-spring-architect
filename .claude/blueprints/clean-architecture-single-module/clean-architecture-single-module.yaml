@@ -1,0 +1,105 @@
+id: clean-architecture-single-module
+name: Clean Architecture (Uncle Bob) — single-module
+description: >
+  Same domain/application/infrastructure separation as
+  `clean-architecture-multi-module`, but in a single Maven module — the modules become
+  packages, the boundary is no longer enforced by the compiler and is instead enforced
+  only by ArchUnit.
+when_to_choose:
+  - Small/medium project where 3 poms and Maven's multi-module orchestration are
+    overhead nobody is going to amortize
+  - Team that accepts the boundary being validated at test time (ArchUnit), not at
+    build time (separate module)
+  - Same layering discipline as multi-module, without the cost of maintaining 3
+    `pom.xml` files
+
+trade_offs:
+  - The boundary is no longer enforced by `mvn compile` — a class in `domain` CAN
+    physically import Spring; only the ArchUnit test catches it, and only when someone
+    runs the tests
+  - A single jar, a single classpath — nothing stops an improper import from compiling
+  - If the project grows to the point of needing independent deployment per layer,
+    migrating to `clean-architecture-multi-module` means splitting poms after the
+    fact, not before
+
+build:
+  layout: single-module
+  tool: maven
+
+# Globs by package, not by module folder — there is no Maven module physically
+# delimiting each layer, only the package under the same `src/main/java`.
+architecture_paths:
+  - "**/domain/**/*.java"
+  - "**/application/**/*.java"
+  - "**/infrastructure/**/*.java"
+
+# A single element — layout: single-module — rule 5 of `_schema.md`. No
+# `forbidden_imports` here: in this architecture that field applies per package, not
+# per module, and it's the `dependency_rules.forbidden` below (read by the generated
+# ArchUnit when `features.archunit: true`) that does the actual check, not Maven.
+modules:
+  - id: app
+    path: "."
+    depends_on: []
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    application.usecase: "application.usecase"
+    application.port: "application.port"
+    infrastructure.rest: "infrastructure.rest"
+    infrastructure.persistence: "infrastructure.persistence"
+    infrastructure.messaging: "infrastructure.messaging"
+    infrastructure.config: "infrastructure.config"
+
+# Same naming convention as `clean-architecture-multi-module` — splitting into a
+# module or a package doesn't change the class vocabulary:
+#   Use case (concrete, no interface): <Verb><Noun>UseCase  — e.g. CreateUserUseCase
+#   Output port (interface, lives in application, implemented by infra):
+#                            <Capability>                    — e.g. SendNotification, RegisterEvent, DataProvider
+#   Port implementation (lives in infrastructure): <Capability><Technology>Adapter
+#                                                      — e.g. SendNotificationEmailAdapter, DataProviderJpaAdapter
+#   Controller:              <Noun>Controller            — e.g. UserController
+#   Persisted entity:        <Noun>Entity                — e.g. UserEntity
+#   Cross-layer mapper:      <Noun>Mapper                — e.g. UserMapper
+#
+# References: same as `clean-architecture-multi-module`, splitting into a single
+# module doesn't change the underlying architecture — only the build unit.
+#   @.claude/blueprints/clean-architecture-multi-module/references/descomplicando-dev-to.md
+#   @.claude/blueprints/clean-architecture-multi-module/references/porto-seguro-medium.md
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [application, infrastructure]
+      reason: "The domain does not know about use cases or infrastructure"
+    - from: application
+      to: [infrastructure]
+      reason: "The application depends on ports (interfaces), not on infrastructure implementations"
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # not optional in practice here: it's the only boundary enforcement that exists

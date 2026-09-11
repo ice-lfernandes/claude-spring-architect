@@ -1,0 +1,116 @@
+id: clean-architecture-multi-module
+name: Clean Architecture (Uncle Bob) — multi-module
+description: >
+  Domain at the center, concrete use cases in the application layer, infrastructure as
+  the single outer module — three modules, dependency rule still enforced by Maven.
+when_to_choose:
+  - Business rules that need to stay isolated from infrastructure details
+  - Small/medium team that wants the domain→application→infra boundary without extra
+    interface+impl boilerplate per use case
+  - Need to swap infrastructure (DB, messaging, web framework) without touching
+    business rules, but without needing separate modules per adapter type
+trade_offs:
+  - A use case is a single class (no interface of its own) — swapping its implementation
+    means editing the application layer, not just the infra
+  - REST, persistence and messaging share an `infrastructure` module — no build isolation
+    between adapters, a messaging dependency pulls in the whole module
+  - Main, config and wiring live inside `infrastructure` — there's no separate bootstrap
+    assembling the graph from outside
+
+build:
+  layout: multi-module
+  tool: maven
+
+# Globs that identify the code covered by `rules/architecture-ddd.md` (DDD +
+# dependency direction). They go verbatim into the `paths` frontmatter of the file the
+# bootstrap generates at <project>/.claude/rules/architecture-ddd.md — they are not
+# inferred from `modules[].path`, because not every blueprint uses the same directory
+# names.
+architecture_paths:
+  - "domain/**/*.java"
+  - "application/**/*.java"
+  - "infrastructure/**/*.java"
+
+modules:
+  - id: domain
+    path: domain
+    depends_on: []
+    forbidden_imports:
+      - "org.springframework.."
+      - "jakarta.persistence.."
+      - "jakarta.validation.."
+      - "com.fasterxml.jackson.."
+  - id: application
+    path: application
+    depends_on: [domain]
+    forbidden_imports:
+      - "jakarta.persistence.."
+      - "org.springframework.web.."
+  - id: infrastructure
+    path: infrastructure
+    depends_on: [application, domain]
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    application.usecase: "application.usecase"
+    application.port: "application.port"
+    infrastructure.rest: "infrastructure.rest"
+    infrastructure.persistence: "infrastructure.persistence"
+    infrastructure.messaging: "infrastructure.messaging"
+    infrastructure.config: "infrastructure.config"
+
+# Naming convention for this blueprint (specific to clean-architecture, not universal —
+# see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest). A use case is a single class — no interface of
+# its own — because the interface/impl split for the use case is what this blueprint cut
+# to stay simpler than the version with a `usecase` module:
+#   Use case (concrete, no interface): <Verb><Noun>UseCase  — e.g. CreateUserUseCase
+#   Output port (interface, lives in application, implemented by infra):
+#                            <Capability>                    — e.g. SendNotification, RegisterEvent, DataProvider
+#   Port implementation (lives in infrastructure): <Capability><Technology>Adapter
+#                                                      — e.g. SendNotificationEmailAdapter, DataProviderJpaAdapter
+#   Controller:              <Noun>Controller            — e.g. UserController
+#   Persisted entity:        <Noun>Entity                — e.g. UserEntity
+#   Cross-layer mapper:      <Noun>Mapper                — e.g. UserMapper
+#
+# References used to design this blueprint (not loaded automatically,
+# for human reference only):
+#   @.claude/blueprints/clean-architecture/references/descomplicando-dev-to.md
+#   @.claude/blueprints/clean-architecture/references/porto-seguro-medium.md
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [application, infrastructure]
+      reason: "The domain does not know about use cases or infrastructure"
+    - from: application
+      to: [infrastructure]
+      reason: "The application depends on ports (interfaces), not on infrastructure implementations"
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # data read by the `test-architect` skill; the bootstrap does not generate architecture tests

@@ -1,0 +1,43 @@
+/*
+ * EXEMPLAR — domain unit test. Compilable as-is.
+ *
+ * The cheapest and most valuable level: no Spring context, no I/O, milliseconds.
+ * A business rule tested only through HTTP is a rule nobody can debug.
+ *
+ * Two things this exemplar demonstrates that always get it wrong:
+ *   - asserting the exception's stable code, not just its type. Two different rules that
+ *     throw ValidationException both pass a test that only checks the type.
+ *   - the method name describing the behavior, not the method called.
+ */
+package com.exemplo.minhaapi.domain.model.user;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.exemplo.minhaapi.domain.exception.ValidationException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class EmailTest {
+
+    @Test
+    @DisplayName("accepts a valid address and normalizes it to lowercase")
+    void normalizesToLowercase() {
+        Email email = Email.of("Ana@Exemplo.COM");
+
+        assertThat(email.value()).isEqualTo("ana@exemplo.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ana", "ana@", "@exemplo.com", "", "   "})
+    @DisplayName("rejects an address without email shape")
+    void rejectsInvalidAddress(String invalid) {
+        assertThatThrownBy(() -> Email.of(invalid))
+                .isInstanceOf(ValidationException.class)
+                // Without this line the test passes even with the wrong rule firing.
+                .extracting("errorCode")
+                .isEqualTo("EMAIL_INVALID");
+    }
+}

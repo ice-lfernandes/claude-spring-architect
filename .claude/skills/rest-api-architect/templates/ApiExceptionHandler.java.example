@@ -1,0 +1,176 @@
+/*
+ * EXEMPLAR — @RestControllerAdvice that translates the typed family from
+ * `.claude/rules/error-handling.md` into `ProblemDetail` (RFC 7807), native to Spring
+ * Boot 4 (no custom error DTO). Lives in the module with `feature: rest`
+ * (`adapter-in-rest` in the hexagonal blueprint), never in the domain — it's here, and
+ * only here, that a business exception becomes an HTTP response.
+ * Compilable as-is — not pseudo-code.
+ *
+ * Three extension fields, and no others (`.claude/rules/api-rest.md` § Error body):
+ *   errorCode  — every error coming from the domain
+ *   traceId    — every 5xx, the same identifier that went into the log
+ *   violations — bean validation in the adapter, and never with errorCode
+ *
+ * TWO VARIANTS, and the choice isn't the executor's: it's the blueprint's
+ * `feature: observability` that fixes it, and `.claude/rules/observability.md` §
+ * Correlation that requires writing it in a comment. Confirm with
+ * `./mvnw dependency:tree | grep micrometer-tracing` before choosing.
+ *
+ *   feature active → this variant. traceId source: Micrometer Tracing (decision P5(c),
+ *                    `.claude/decisions/0006-rest-api-architect-design.md`).
+ *   feature off    → variant at the end of the file. Injecting `Tracer` without the bridge
+ *                    on the classpath doesn't cause a compile error: there's no bean, and the
+ *                    context blows up at startup, far from the cause.
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.exception.ConflictException;
+import com.exemplo.minhaapi.domain.exception.DomainException;
+import com.exemplo.minhaapi.domain.exception.NotFoundException;
+import com.exemplo.minhaapi.domain.exception.ValidationException;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class ApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    private final Tracer tracer;
+
+    public ApiExceptionHandler(Tracer tracer) {
+        this.tracer = tracer;
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ProblemDetail handleNotFound(NotFoundException e, HttpServletRequest request) {
+        return problemDetail(HttpStatus.NOT_FOUND, e, request);
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    public ProblemDetail handleValidation(ValidationException e, HttpServletRequest request) {
+        return problemDetail(HttpStatus.BAD_REQUEST, e, request);
+    }
+
+    @ExceptionHandler(BusinessRuleViolationException.class)
+    public ProblemDetail handleBusinessRuleViolation(
+            BusinessRuleViolationException e, HttpServletRequest request) {
+        // UNPROCESSABLE_CONTENT, not UNPROCESSABLE_ENTITY: RFC 9110 renamed the status and
+        // Spring Framework 7 deprecated the old constant. The number is still 422.
+        return problemDetail(HttpStatus.UNPROCESSABLE_CONTENT, e, request);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ProblemDetail handleConflict(ConflictException e, HttpServletRequest request) {
+        return problemDetail(HttpStatus.CONFLICT, e, request);
+    }
+
+    // Bean validation is structural: the body never reached the domain. Carries `violations`
+    // and never `errorCode` — there's no domain exception to supply it.
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleBeanValidation(
+            MethodArgumentNotValidException e, HttpServletRequest request) {
+        List<Violation> violations =
+                e.getBindingResult().getFieldErrors().stream()
+                        .map(ApiExceptionHandler::toViolation)
+                        .toList();
+        log.debug("Bean validation failed at {}: {}", request.getRequestURI(), violations);
+        ProblemDetail problem =
+                ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("violations", violations);
+        return problem;
+    }
+
+    // Malformed JSON, incompatible type, or unknown enum: 400 shape-wise, no
+    // per-field violations — deserialization stopped before there were any fields.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleUnreadableBody(
+            HttpMessageNotReadableException e, HttpServletRequest request) {
+        log.debug("Unreadable body at {}", request.getRequestURI(), e);
+        ProblemDetail problem =
+                ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request body");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        return problem;
+    }
+
+    // Fallback — the only untyped exception allowed to exist here: it's the handler
+    // that catches what escaped, not code that throws it. Never leaks the real
+    // message/stack trace in the body — that stays in the log only, tied by traceId.
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnexpected(Exception e, HttpServletRequest request) {
+        // A single value, computed once, written in both places. The rule requires the
+        // identifier in the body to be *the same* as the one that went into the log; calling
+        // it twice would leave that to chance.
+        String traceId = currentTraceId();
+        log.error("Unmapped error at {} [traceId={}]", request.getRequestURI(), traceId, e);
+        ProblemDetail problem =
+                ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("traceId", traceId);
+        return problem;
+    }
+
+    private ProblemDetail problemDetail(HttpStatus status, DomainException e, HttpServletRequest request) {
+        log.warn("{} at {}: {}", e.errorCode(), request.getRequestURI(), e.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, e.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("errorCode", e.errorCode());
+        return problem;
+    }
+
+    // No traceId outside an active span. Returning "unavailable" keeps the field
+    // present on every 5xx, as the rule requires, and tells the truth about what happened.
+    private String currentTraceId() {
+        Span span = tracer.currentSpan();
+        return span == null ? "unavailable" : span.context().traceId();
+    }
+
+    private static Violation toViolation(FieldError error) {
+        return new Violation(error.getField(), error.getDefaultMessage());
+    }
+
+    public record Violation(String field, String message) {}
+}
+
+/*
+ * ─── VARIANT: project without `feature: observability` ───────────────────────────────
+ *
+ * Replace the constructor and the `currentTraceId()` above with what follows, and remove
+ * the `io.micrometer.tracing` imports. Everything else stays the same.
+ *
+ * The identifier stops correlating with a distributed trace and instead correlates
+ * the response with this service's log line, and nothing else. This is a deliberate
+ * degradation, allowed by `.claude/rules/observability.md` § Correlation, and the Javadoc
+ * below is mandatory: without it nobody can tell this choice apart from a missing
+ * configuration.
+
+    // Without a tracing bridge on the classpath there's no `Tracer` bean, and injecting it
+    // would prevent the context from starting. The identifier is generated here: it meets
+    // the requirement that every 5xx carry correlation, without promising a distributed
+    // correlation this project doesn't have. To get that, enable `feature: observability`
+    // in the blueprint and go back to the variant at the top.
+    public ApiExceptionHandler() {
+        // no dependencies
+    }
+
+    private String currentTraceId() {
+        return UUID.randomUUID().toString();
+    }
+
+ * Additional import: java.util.UUID
+ * ─────────────────────────────────────────────────────────────────────────────────────
+ */

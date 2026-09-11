@@ -1,0 +1,146 @@
+# UC-001 · Create user
+
+> Parent spec. Fixes the boundary and the names; **doesn't** detail any layer.
+> Per-layer detail lives in this folder's partials, each with its own owner.
+> Partial status: `10-dominio.md` ❌ · `20-persistencia.md` ❌ · `30-rest.md` ❌ · `40-testes.md` ❌
+
+| Field | Value |
+|---|---|
+| Identifier | `UC-001-create-user` |
+| Date | 2026-09-07 |
+| Trigger | user creation, over HTTP — inbound REST adapter. **The exact path and verb belong to `rest-api-architect`, in `30-rest.md`** |
+| Side effects | **1** — `INSERT` into `users` |
+| Transaction | opens at the inbound port, closes before the response |
+| Idempotency | no — `POST` creates. Email collision is 409, not a repeat of the 201 |
+| Concurrency | the `UNIQUE(email)` constraint is the arbiter; no application-level lock |
+| Active blueprint | `hexagonal` |
+
+## Trigger, payload, and response
+
+**In**
+
+| Field | Type | Required | Rule |
+|---|---|---|---|
+| `email` | string | ✅ | valid format, unique in the system |
+| `name` | string | ✅ | 2 to 120 characters |
+| `department` | string | ➖ | one of `Department`'s values |
+
+**Out**
+
+Situations, not statuses. The HTTP code for each is `rest-api-architect`'s decision —
+this spec fixing it was what produced divergence with `30-rest.md`, which then had to
+correct it in prose.
+
+| Situation | Result |
+|---|---|
+| created | reference to the created resource + `id`, `email`, `name` |
+| malformed payload | rejected without touching the domain |
+| email already in use | conflict with existing state |
+
+## Flow
+
+1. The inbound adapter receives the request and validates the payload's **shape**.
+2. Translates it into the domain command `CreateUserCommand`.
+3. The inbound port `CreateUserUseCase` executes: builds the `User` aggregate, which
+   validates its invariants in the constructor.
+4. The outbound port `UserRepository` persists it.
+5. The adapter translates the returned aggregate into the response.
+
+Nothing in this flow names annotations, columns, or framework types — that belongs to
+the partials.
+
+## Components
+
+State: **NEW** to be created · **CHANGE** already exists and changes · **REUSE**
+already exists and serves.
+
+| File | Layer | Role | State | Detailed by |
+|---|---|---|---|---|
+| `adapter/in/rest/UserController.java` | inbound adapter | receives HTTP | NEW | `rest-api-architect` |
+| `adapter/in/rest/dto/CreateUserRequest.java` | inbound adapter | input DTO | NEW | `rest-api-architect` |
+| `adapter/in/rest/dto/UserResponse.java` | inbound adapter | output DTO | NEW | `rest-api-architect` |
+| `adapter/in/rest/UserMapper.java` | inbound adapter | DTO ↔ domain | NEW | `rest-api-architect` |
+| `application/port/in/CreateUserUseCase.java` | application | inbound port | NEW | `domain-modeling` |
+| `application/port/in/CreateUserCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/service/CreateUserService.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/port/out/UserRepository.java` | application | outbound port | NEW | `domain-modeling` |
+| `domain/model/User.java` | domain | aggregate | NEW | `domain-modeling` |
+| `domain/model/Email.java` | domain | value object | NEW | `domain-modeling` |
+| `domain/exception/EmailAlreadyUsedException.java` | domain | exception | NEW | `domain-modeling` |
+| `adapter/out/persistence/UserRepositoryAdapter.java` | outbound adapter | implements the port | NEW | `persistence-architect` |
+| `adapter/out/persistence/UserEntity.java` | outbound adapter | persistence entity | NEW | `persistence-architect` |
+| `adapter/out/persistence/UserJpaRepository.java` | outbound adapter | Spring Data interface | NEW | `persistence-architect` |
+| `db/migration/V3__create_users.sql` | infrastructure | migration | NEW | `persistence-architect` |
+
+Paths derived from the active blueprint's `packages.map`. If the blueprint changes,
+this table is what gets rewritten — never the flow above.
+
+## Invariants
+
+| Rule | Guaranteed by | Who violates it |
+|---|---|---|
+| `email` has a valid format | `Email`'s constructor | caller with an arbitrary string |
+| `email` is unique in the system | `UNIQUE` constraint + check at the outbound port | race between two requests |
+| `name` is 2 to 120 characters | `User`'s constructor | overly long payload |
+
+Invariants live in the aggregate, never in the caller —
+`@.claude/rules/architecture-ddd.md`.
+
+## Errors
+
+| Scenario | Exception | Family | Expected result |
+|---|---|---|---|
+| email already registered | `EmailAlreadyUsedException` | Conflict | 409 |
+| malformed email | `ValidationException` | Validation | 400 |
+| required field missing | (shape validation in the adapter) | — | 400 |
+
+Family and `errorCode` follow `@.claude/rules/error-handling.md`. The mapping to HTTP
+belongs to the `30-rest.md` partial, not this spec — the use case is
+transport-agnostic.
+
+## Expected tests
+
+| Level | Target | Detailed by |
+|---|---|---|
+| unit | `User`: rejects invalid email and short name | `test-architect` |
+| unit | `CreateUserService`: propagates `EmailAlreadyUsedException` | `test-architect` |
+| slice | controller: 201, 400, and 409 | `test-architect` |
+| integration | `UserRepositoryAdapter` against a real database | `test-architect` |
+
+## Out of scope for this use case
+
+Written down so nobody merges it back in by accident:
+
+- Sending a welcome email → **UC-002**, reactive to the `UserCreated` event. Out
+  because SMTP isn't transactional with the `INSERT`.
+- Updating and deleting a user → their own use cases, their own triggers.
+- Authentication and token issuance → outside this use case's domain.
+
+## Implementation order
+
+Derived from the Components table, in compile order.
+
+- [ ] 1. `domain/model/Email.java`
+- [ ] 2. `domain/model/User.java`
+- [ ] 3. `domain/exception/EmailAlreadyUsedException.java`
+- [ ] 4. `application/port/in/CreateUserCommand.java`
+- [ ] 5. `application/port/in/CreateUserUseCase.java`
+- [ ] 6. `application/port/out/UserRepository.java`
+- [ ] 7. `application/service/CreateUserService.java`
+- [ ] 8. `db/migration/V3__create_users.sql`
+- [ ] 9. `adapter/out/persistence/` (entity, Spring Data, adapter)
+- [ ] 10. `adapter/in/rest/` (DTOs, mapper, controller)
+- [ ] 11. tests for the levels above
+- [ ] 12. `./mvnw clean verify` green
+
+<!--
+HOW TO USE THIS:
+- Generated by the `use-case-design` skill (step 7) into
+  docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md
+- This exemplar uses `hexagonal`. With another blueprint, only the paths column changes.
+- Fixed sections, in this order. An empty section gets "none" written in — deleting a
+  section hides a question nobody asked.
+- The `Detailed by` column is declarative. The skill invokes nobody.
+- While partials 10- through 40- don't exist yet, this spec stands on its own; the
+  header records their status.
+-->

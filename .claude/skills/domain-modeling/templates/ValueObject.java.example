@@ -1,0 +1,81 @@
+/*
+ * EXEMPLAR — value object. Immutable, validates in the compact constructor, no
+ * framework.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/code-quality.md` (immutability, no null, no magic number)
+ *        `.claude/rules/error-handling.md` (typed family, errorCode UPPER_SNAKE_CASE)
+ *        `.claude/rules/naming.md` (static factory `of`, name states the role)
+ *
+ * NOTE ON THE CONSTRUCTOR: `naming.md` asks for a static factory and not a public
+ * constructor. In a public `record` the canonical constructor can't be less accessible
+ * than the type — that's a language limitation, not carelessness. The invariant is still
+ * guaranteed either way because validation is in the compact constructor: no
+ * construction path bypasses it. The `of` factory exists to name the intent and to allow
+ * normalizing before validating.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- Email.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+public record Email(String value) {
+
+    private static final Pattern FORMAT = Pattern.compile("^[^@\\s]+@[^@\\s.]+\\.[^@\\s]+$");
+    private static final int MAX_LENGTH = 254;
+
+    public Email {
+        if (value == null || value.isBlank()) {
+            throw new ValidationException("EMAIL_REQUIRED", "email is required");
+        }
+        if (value.length() > MAX_LENGTH) {
+            throw new ValidationException("EMAIL_TOO_LONG", "email exceeds the maximum length");
+        }
+        if (!FORMAT.matcher(value).matches()) {
+            throw new ValidationException("EMAIL_INVALID", "email has an invalid format");
+        }
+    }
+
+    public static Email of(String raw) {
+        if (raw == null) {
+            throw new ValidationException("EMAIL_REQUIRED", "email is required");
+        }
+        return new Email(raw.trim().toLowerCase(Locale.ROOT));
+    }
+
+    public String domain() {
+        return value.substring(value.indexOf('@') + 1);
+    }
+}
+
+// --- UserId.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.util.UUID;
+
+public record UserId(UUID value) {
+
+    public UserId {
+        if (value == null) {
+            throw new ValidationException("USER_ID_REQUIRED", "user id is required");
+        }
+    }
+
+    public static UserId of(UUID value) {
+        return new UserId(value);
+    }
+
+    public static UserId newId() {
+        return new UserId(UUID.randomUUID());
+    }
+
+    @Override
+    public String toString() {
+        return value.toString();
+    }
+}

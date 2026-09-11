@@ -1,0 +1,52 @@
+// Exemplar: Factory Method. Two carriers need structurally different label
+// shapes — international carries customs fields domestic never has. Not
+// this repo's usual static-factory idiom (`of`/`from`): that fits one
+// product with input validation, not two products with different fields.
+// A third carrier arriving later is a new subclass here, not a new branch.
+package com.example.domain.model.shipping;
+
+public abstract class ShippingLabelFactory {
+
+    // Template step: framing shared by every carrier, independent of which
+    // concrete label comes back from createLabel.
+    public final ShippingLabel labelFor(Order order) {
+        ShippingLabel label = createLabel(order);
+        label.assignTrackingNumber(TrackingNumber.generate());
+        return label;
+    }
+
+    protected abstract ShippingLabel createLabel(Order order);
+
+    public static ShippingLabelFactory forCarrier(Carrier carrier) {
+        return switch (carrier) {
+            case DOMESTIC -> new DomesticLabelFactory();
+            case INTERNATIONAL -> new InternationalLabelFactory();
+        };
+    }
+}
+
+// --- one factory per product; a third carrier is a new file here, not a
+// new branch in forCarrier's switch growing an unrelated method
+final class DomesticLabelFactory extends ShippingLabelFactory {
+
+    @Override
+    protected ShippingLabel createLabel(Order order) {
+        return ShippingLabel.domestic(order.shippingAddress());
+    }
+}
+
+final class InternationalLabelFactory extends ShippingLabelFactory {
+
+    @Override
+    protected ShippingLabel createLabel(Order order) {
+        // Customs fields exist on this product only — the reason a single
+        // ShippingLabel.of(...) with an ever-growing parameter list was the
+        // wrong fix once a second carrier showed up.
+        return ShippingLabel.international(order.shippingAddress(), CustomsDeclaration.of(order));
+    }
+}
+
+// --- collaborators this exemplar assumes but doesn't define: Order,
+// ShippingLabel (with domestic(...)/international(...) static factories and
+// assignTrackingNumber(...)), TrackingNumber, CustomsDeclaration, and the
+// Carrier enum (DOMESTIC, INTERNATIONAL).

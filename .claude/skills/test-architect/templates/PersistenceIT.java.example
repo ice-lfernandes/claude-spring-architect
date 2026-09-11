@@ -1,0 +1,87 @@
+/*
+ * EXEMPLAR — persistence integration test. Compilable as-is.
+ *
+ * IT suffix, not Test: it's the suffix failsafe picks up. With the wrong suffix the test
+ * doesn't run in `./mvnw verify`, which still exits 0 — a silent failure, the worst kind.
+ *
+ * Against the real engine, at the production version. An in-memory database doesn't count:
+ * the dialect diverges and a migration that passes there breaks in production
+ * (`.claude/rules/testing.md` § Database in integration tests).
+ *
+ * Migrations run here, in the same order as in production. A schema created by automatic
+ * generation would be testing against a database that exists nowhere.
+ *
+ * What this level verifies, and nothing else: mapping, SQL, database constraints, fetch
+ * strategy. Business rules have their test in the domain.
+ */
+package com.exemplo.minhaapi.adapter.out.persistence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.exemplo.minhaapi.domain.exception.ConflictException;
+import com.exemplo.minhaapi.domain.model.user.User;
+import com.exemplo.minhaapi.test.TestFixtures;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
+import org.testcontainers.DockerClientFactory;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+
+@DataJpaTest
+@Testcontainers
+@Import(UserRepositoryJpaAdapter.class)
+@EnabledIf("dockerAvailable")
+class UserRepositoryJpaAdapterIT {
+
+    // static: one container per class, not one per method. @ServiceConnection wires the
+    // datasource with zero lines of configuration.
+    // Testcontainers 2.x: the class moved from `org.testcontainers.containers` to its own
+    // `org.testcontainers.postgresql` module, and stopped being generic — no `<?>`.
+    @Container @ServiceConnection
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+
+    // Guard allowed on a development machine, never in CI — see
+    // `.claude/rules/testing.md` § Database in integration tests.
+    static boolean dockerAvailable() {
+        return DockerClientFactory.instance().isDockerAvailable();
+    }
+
+    @Autowired private UserRepositoryJpaAdapter adapter;
+
+    @Test
+    @DisplayName("persists and re-reads the same aggregate")
+    void persistsAndRereadsTheSameAggregate() {
+        User saved = adapter.save(TestFixtures.user());
+
+        User reread = adapter.findById(saved.id()).orElseThrow();
+
+        // Assert field by field, not the whole object: what's being verified is the
+        // translation of each column, and the aggregate's equals may be id-only.
+        assertThat(reread.email().value()).isEqualTo("ana@exemplo.com");
+        assertThat(reread.name()).isEqualTo("Ana Silva");
+        assertThat(reread.createdAt()).isEqualTo(saved.createdAt());
+    }
+
+    // This is the test that proves the adapter flushes inside its own try/catch. With
+    // `save` instead of `saveAndFlush`, the INSERT only reaches the database at commit and
+    // the driver's exception escapes translation — the test then sees Spring's exception,
+    // not the domain's. Asserting the `errorCode` and not just the type is what makes this
+    // failure detectable: `.claude/rules/testing.md` § Names and shape.
+    @Test
+    @DisplayName("the UNIQUE constraint rejects the second identical email")
+    void rejectsDuplicateEmail() {
+        adapter.save(TestFixtures.userWithEmail("ana@exemplo.com"));
+
+        assertThatThrownBy(() -> adapter.save(TestFixtures.userWithEmail("ana@exemplo.com")))
+                .isInstanceOf(ConflictException.class)
+                .extracting("errorCode")
+                .isEqualTo("USER_EMAIL_ALREADY_EXISTS");
+    }
+}

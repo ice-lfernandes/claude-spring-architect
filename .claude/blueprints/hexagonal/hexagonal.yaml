@@ -1,0 +1,119 @@
+id: hexagonal
+name: Hexagonal (Ports & Adapters)
+description: >
+  Domain at the center, ports as interfaces, input and output adapters at the edges.
+when_to_choose:
+  - More than one input or output channel (REST + messaging + batch)
+  - Need to swap infrastructure without touching the domain
+  - Use case tests without spinning up the Spring context
+trade_offs:
+  - More modules and more explicit mapping than layered
+  - Steeper entry curve for newcomers to the project
+  - Overkill for simple CRUD
+
+build:
+  layout: multi-module
+  tool: maven
+
+# Globs that identify the code covered by `rules/architecture-ddd.md` (DDD +
+# dependency direction). They go verbatim into the `paths` frontmatter of the file the
+# bootstrap generates at <project>/.claude/rules/architecture-ddd.md — they are not
+# inferred from `modules[].path`, because not every blueprint uses the same directory
+# names.
+architecture_paths:
+  - "domain/**/*.java"
+  - "application/**/*.java"
+  - "adapters/**/*.java"
+  - "bootstrap/**/*.java"
+
+modules:
+  - id: domain
+    path: domain
+    depends_on: []
+    forbidden_imports:
+      - "org.springframework.."
+      - "jakarta.persistence.."
+      - "jakarta.validation.."
+      - "com.fasterxml.jackson.."
+  - id: application
+    path: application
+    depends_on: [domain]
+    forbidden_imports:
+      - "jakarta.persistence.."
+      - "org.springframework.web.."
+  - id: adapter-in-rest
+    path: adapters/adapter-in-rest
+    depends_on: [application, domain]
+    feature: rest
+  - id: adapter-out-persistence
+    path: adapters/adapter-out-persistence
+    depends_on: [application, domain]
+    feature: persistence-jpa
+  - id: adapter-in-messaging
+    path: adapters/adapter-in-messaging
+    depends_on: [application, domain]
+    feature: messaging-kafka
+  - id: adapter-out-messaging
+    path: adapters/adapter-out-messaging
+    depends_on: [application, domain]
+    feature: messaging-kafka
+  - id: bootstrap
+    path: bootstrap
+    depends_on: ["*"]
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    application.port.in: "application.port.in"
+    application.port.out: "application.port.out"
+    application.service: "application.service"
+    adapter.in.rest: "adapter.in.rest"
+    adapter.out.persistence: "adapter.out.persistence"
+    adapter.in.messaging: "adapter.in.messaging"
+    adapter.out.messaging: "adapter.out.messaging"
+
+# Naming convention for this blueprint (specific to hexagonal, not universal —
+# see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest):
+#   Input port:  <Verb><Noun>UseCase   — e.g. ConfirmOrderUseCase
+#   Output port: <Noun><Action>Port        — e.g. OrderRepositoryPort
+#   Implementation:    <Verb><Noun>Service     — e.g. ConfirmOrderService
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [application, "adapters/*", bootstrap]
+      reason: "The domain does not know who uses it"
+    - from: application
+      to: ["adapters/*", bootstrap]
+      reason: "The application depends on ports, not on implementations"
+    - from: "adapters/*"
+      to: ["adapters/*"]
+      reason: "Adapters do not talk to each other — they communicate through the application"
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # data read by the `test-architect` skill; the bootstrap does not generate architecture tests

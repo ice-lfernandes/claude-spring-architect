@@ -1,0 +1,127 @@
+id: layered
+name: Layered (N-Tier)
+description: >
+  Classic controller → service → repository stack, single Maven module, with the
+  package vocabulary most Spring Boot tutorials already use instead of hexagonal's
+  port/adapter naming. Still DDD-pure at the core — `rules/architecture-ddd.md` never
+  relaxes across blueprints — the real difference from
+  `clean-architecture-single-module` is package naming and one file less per output
+  boundary: `ItemRepository extends JpaRepository` directly, no separate port + adapter
+  pair.
+when_to_choose:
+  - Team already fluent in Spring Boot's controller/service/repository vocabulary,
+    where hexagonal's port/adapter naming would be pure translation overhead
+  - One input channel (REST) and one output channel (a single relational database) —
+    the indirection a port buys for swapping infrastructure has no use case here
+  - CRUD-shaped feature set where a Spring Data repository interface is already the
+    right amount of abstraction between the service and the database
+trade_offs:
+  - Same single-module cost as `clean-architecture-single-module` — nothing stops an
+    improper import from compiling, only ArchUnit catches it, and only when someone
+    runs the tests
+  - Still requires one service class per use case (`rules/architecture-ddd.md` §
+    Application — "fat interfaces are a smell"), unlike the fat, one-class-per-resource
+    `ItemService` both reference articles use — see `references/` for the reasoning
+  - Adding a second input or output channel later means editing the `service` class's
+    dependencies directly — there is no port to swap behind, unlike `hexagonal`
+
+build:
+  layout: single-module
+  tool: maven
+
+# Globs by package, not by module folder — same technique as
+# `clean-architecture-single-module`: there is no Maven module physically delimiting a
+# layer here, only the package under the same `src/main/java`. Listed individually,
+# not grouped under one shared "infrastructure" parent, because this blueprint keeps
+# controller/repository/entity/dto/mapper/config as flat siblings — the classic n-tier
+# layout both reference articles show, not hexagonal's nested adapter packages.
+architecture_paths:
+  - "**/domain/**/*.java"
+  - "**/service/**/*.java"
+  - "**/repository/**/*.java"
+  - "**/controller/**/*.java"
+  - "**/entity/**/*.java"
+  - "**/dto/**/*.java"
+  - "**/mapper/**/*.java"
+  - "**/config/**/*.java"
+
+# A single element — layout: single-module — rule 5 of `_schema.md`. No
+# `forbidden_imports` here: in this architecture that field applies per package, not
+# per module, and it's `dependency_rules.forbidden` below (read by the generated
+# ArchUnit when `features.archunit: true`) that does the actual check, not Maven.
+modules:
+  - id: app
+    path: "."
+    depends_on: []
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "domain.model"
+    domain.event: "domain.event"
+    domain.exception: "domain.exception"
+    service: "service"
+    controller.rest: "controller"
+    repository.persistence: "repository"
+    entity: "entity"
+    dto: "dto"
+    mapper: "mapper"
+    bootstrap.config: "config"
+
+# Naming convention for this blueprint (specific to layered, not universal — see
+# .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest):
+#   Use case (one class per operation — architecture-ddd.md § Application forbids a
+#   fat interface): <Verb><Noun>Service — e.g. CreateItemService, GetItemService,
+#   not one fat ItemService with four methods, unlike both reference articles below
+#   Repository (Spring Data interface — the actual boundary between service and DB,
+#   no separate port + adapter pair): <Noun>Repository
+#                                           — e.g. ItemRepository extends JpaRepository<ItemEntity, UUID>
+#   Controller:  <Noun>Controller          — e.g. ItemController
+#   DTO:         <Verb><Noun>Request / <Noun>Response
+#                                           — e.g. CreateItemRequest, ItemResponse
+#   Entity:      <Noun>Entity              — e.g. ItemEntity
+#   Mapper:      <Noun>Mapper              — e.g. ItemMapper (entity<->domain, domain<->dto)
+#
+# References:
+#   @.claude/blueprints/layered/references/armwaseem-medium.md
+#   @.claude/blueprints/layered/references/kamilmazurek-layered-template.md
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [service, repository, controller]
+      reason: "The domain does not know about services, repositories, or controllers"
+    - from: repository
+      to: [service, controller]
+      reason: "The repository is a leaf adapter — it never calls back into the layers that use it"
+    - from: controller
+      to: [repository]
+      reason: "Strict layering: the controller only talks to the service directly below it, never skips to the repository (kamilmazurek.pl)"
+    - from: service
+      to: [controller]
+      reason: "The service layer does not know who calls it"
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # not optional in practice here: it's the only boundary enforcement that exists

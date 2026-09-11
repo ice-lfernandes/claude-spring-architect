@@ -1,0 +1,64 @@
+---
+paths:
+  - "<glob for this rule's territory>"
+status: active
+---
+
+# <Theme> — <what the rule covers, in three or four words>
+
+<The rule's single principle, in one sentence. If you need two sentences to state it,
+it's probably two rules.>
+
+## Why this is a rule and not a <`CLAUDE.md` section | skill>
+
+<Three sentences, no adjectives. Why it's a declarative fact with territory, and not a
+universal fact or a procedure. The interview axis that motivated it. If there was a full
+record, cite it: `@.claude/decisions/NNNN-<slug>.md`. Do NOT name skills or agents here —
+invariant 1. If the justification needs to name them, it doesn't belong in this rule: it
+lives only in the decision record.>
+
+## <Subtheme>
+
+- <Imperative, verifiable rule. "Zero framework in the domain," not "avoid frameworks.">
+- <Rule with a concrete value. "Maximum 4 parameters," not "few parameters.">
+- <When the rule has an exception, write the exception here, not in a footnote.>
+
+## <Subtheme>
+
+- <…>
+
+## Admitted exception
+
+<The single situation where the rule yields, and what has to happen for it to yield — an
+ADR, an approval, a test. If there's no exception, delete the section; don't write
+"none".>
+
+## How to verify
+
+```bash
+<command that proves compliance — build, test, lint>
+```
+
+<!--
+EXEMPLARS IN THE REPO:
+  .claude/rules/naming.md            `paths: ["**/*.java"]`, single principle
+  .claude/rules/code-quality.md      numeric limits, verified by Checkstyle
+  .claude/rules/architecture-ddd.md  the only one without its own `paths`, by design
+
+INVARIANTS THIS FORM MUST MEET:
+1. `rules/` is a LEAF. This rule NEVER mentions a skill, an agent, or a command.
+   If you need to, it's a procedure: it belongs in a skill.
+2. SINGLE OWNER. The theme lives in this file. Others cite it by path
+   (`@.claude/rules/<file>.md`) and never reproduce the content.
+3. No code boilerplate here. It goes to the `templates/` of the skill that emits it.
+
+WHEN CREATING, ALSO UPDATE:
+- `.claude/rules/00-index.md` — move from the "planned" table to "written," with the
+  "Verified by" column filled in.
+- `.claude/skills/project-bootstrap/SKILL.md` step 6.6 (copy table) and the
+  `## Skill contract` list. A rule that exists here and doesn't reach the generated
+  project is exactly the failure that step closes.
+
+STATUS: `active` applies now · `draft` is a proposal, don't apply · `deprecated` stays
+for reading old code.
+-->

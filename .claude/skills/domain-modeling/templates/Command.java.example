@@ -1,0 +1,30 @@
+/*
+ * EXEMPLAR — input command for a use case.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/architecture-ddd.md` (no HTTP, JPA, or messaging types)
+ *        `.claude/rules/naming.md` (`<Verb><Noun>Command`)
+ *
+ * WHY THE TYPES ARE PRIMITIVES AND NOT VALUE OBJECTS:
+ * the command is the boundary where the outside world enters and hasn't been validated
+ * yet. If the field were `Email`, someone would have to build it beforehand — and that
+ * someone would be the adapter, which would then know the domain and decide when the
+ * invariant fires. With `String`, it's the use case implementation that builds the value
+ * object, and the `ValidationException` always originates in the same place, whether the
+ * request comes from REST, a job, or a test.
+ *
+ * Exception: identifiers the caller already has validated in hand (`UUID`) enter as JDK
+ * types; converting them to a VO is the implementation's job, not the caller's.
+ *
+ * VALIDATION THAT DOES **NOT** LIVE HERE: `jakarta.validation` (`@NotBlank`, `@Email`)
+ * belongs to the input adapter's DTO — `rest-api-architect`. These are two layers of
+ * defense: the DTO blocks structural shape before the use case; the value object blocks
+ * the domain invariant. Annotating the command merges the two and drags `jakarta` into
+ * the application layer.
+ */
+
+// --- CreateUserCommand.java
+package com.example.demo.application.port.in;
+
+import java.util.UUID;
+
+public record CreateUserCommand(String email, String name, UUID departmentId) {}

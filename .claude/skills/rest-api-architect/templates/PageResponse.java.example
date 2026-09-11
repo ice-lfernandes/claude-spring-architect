@@ -1,0 +1,48 @@
+/*
+ * EXEMPLAR — collection envelope required by `.claude/rules/api-rest.md` § Pagination.
+ * Serialized shape in `page-response.json.example`; this is the class that produces it.
+ * Compilable as-is.
+ *
+ * Why it exists: Spring Data's `Page`, serialized directly, changes shape between
+ * versions and exposes repository internals. This record is our own contract and only
+ * changes when we decide to change it.
+ *
+ * Default pagination is offset (decision P5(h)). The cursor form is at the end, and is
+ * used only when volume is high or the set changes while paging.
+ */
+package com.exemplo.minhaapi.adapter.in.rest.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
+
+@Schema(description = "Page of results, offset form")
+public record PageResponse<T>(
+        @Schema(description = "Elements of the page. Empty is 200, never 204.") List<T> content,
+        @Schema(description = "Page metadata") PageMetadata page) {
+
+    public static <T> PageResponse<T> of(List<T> content, int number, int size, long totalElements) {
+        int totalPages = size == 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+        return new PageResponse<>(content, new PageMetadata(number, size, totalElements, totalPages));
+    }
+
+    @Schema(description = "Offset pagination metadata")
+    public record PageMetadata(
+            @Schema(description = "Current page, 0-based", example = "0") int number,
+            @Schema(description = "Elements per page", example = "20") int size,
+            @Schema(description = "Total elements", example = "137") long totalElements,
+            @Schema(description = "Total pages", example = "7") int totalPages) {}
+
+    /*
+     * Cursor form. Its own file in the real project (`CursorPageResponse.java`).
+     * `nextCursor` is opaque and absent on the last page — hence the NON_NULL. Has no
+     * totalElements: counting isn't cheap with a cursor.
+     * The cursor carries the sort key; it's not a base64-encoded offset.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(description = "Page of results, cursor form")
+    public record CursorPageResponse<T>(
+            @Schema(description = "Elements of the page") List<T> content,
+            @Schema(description = "Cursor for the next page; absent on the last one")
+                    String nextCursor) {}
+}

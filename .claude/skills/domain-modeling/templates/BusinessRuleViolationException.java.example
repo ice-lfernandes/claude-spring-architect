@@ -1,0 +1,19 @@
+/*
+ * EXEMPLAR — well-formed input, but violates a business rule (insufficient stock,
+ * expired deadline). The `cause` constructor exists only to wrap a caught
+ * library/framework exception — never to rethrow a generic one without translation.
+ * Taxonomy: `.claude/rules/error-handling.md`. Mapping to HTTP 422: `.claude/rules/api-rest.md`.
+ * Compiles as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.domain.exception;
+
+public class BusinessRuleViolationException extends DomainException {
+
+    public BusinessRuleViolationException(String errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public BusinessRuleViolationException(String errorCode, String message, Throwable cause) {
+        super(errorCode, message, cause);
+    }
+}

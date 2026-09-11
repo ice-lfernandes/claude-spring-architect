@@ -1,0 +1,68 @@
+# Starting point for your own architecture.
+# Copy it, edit it, and validate against the 5-rule checklist in _schema.md.
+# Validation is done by the agent when it reads the file — there is no script and
+# no external dependencies. The build is the final arbiter.
+
+id: custom
+name: "My architecture"
+description: >
+  Describe in one sentence what characterizes this architecture.
+when_to_choose:
+  - "Objective criterion 1"
+  - "Objective criterion 2"
+trade_offs:
+  - "Honest cost 1"   # a blueprint with no trade-offs is poorly written
+
+build:
+  layout: multi-module          # multi-module | single-module
+  tool: maven                   # maven | gradle
+
+# Required: globs identifying your code covered by rules/architecture-ddd.md.
+# The bootstrap uses this verbatim as the `paths` of the generated file — it does not
+# guess it from modules[].path.
+architecture_paths:
+  - "core/**/*.java"
+  - "app/**/*.java"
+
+modules:
+  - id: core
+    path: core
+    depends_on: []
+    forbidden_imports: ["org.springframework.."]
+  - id: app
+    path: app
+    depends_on: [core]
+    contains_main: true
+
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    core: "core"
+    app: "app"
+
+dependency_rules:
+  direction: inward             # inward | explicit
+  forbidden:
+    - from: core
+      to: [app]
+      reason: "The core does not know who uses it"
+
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: false
+  uuid-v7: false # turn on together with persistence-jpa if the primary key is a UUID
+  flyway: false
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: false
+  testcontainers: true
+  actuator: true
+  observability: false # without a tracing bridge, the 5xx traceId is generated locally
+  archunit: false

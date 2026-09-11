@@ -1,0 +1,15 @@
+/*
+ * EXEMPLAR — invariant violated while constructing the aggregate/value object:
+ * malformed or missing data. Not to be confused with the adapter's bean validation
+ * (`jakarta.validation` on the DTO) — these are different layers of defense.
+ * Taxonomy: `.claude/rules/error-handling.md`. Mapping to HTTP 400: `.claude/rules/api-rest.md`.
+ * Compiles as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.domain.exception;
+
+public class ValidationException extends DomainException {
+
+    public ValidationException(String errorCode, String message) {
+        super(errorCode, message);
+    }
+}

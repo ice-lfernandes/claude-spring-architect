@@ -1,0 +1,345 @@
+# UC-NNN — <feature-name>
+
+Complete feature specification. Consolidation of the 5 partials into an implementation plan. Recipient: `java-spring-boot-developer` agent.
+
+---
+
+## 1. Use case
+
+**Scope:** [2-3 sentences describing what the feature does and why it matters]
+
+**Boundary:** [List of side effects that define the feature's limit]
+
+**Canonical names:** [Actor | Action | Result table from caso-de-uso.md]
+
+---
+
+## 2. Domain model ⚠️ read first
+
+**Main root aggregate:**
+[Name and responsibility]
+[Identity: which field is the ID, type, generation]
+[Canonical constructor: required parameters and validations]
+
+**Value objects:**
+```
+Email: normalized string, pattern validation, immutable
+Quantity: long > 0, immutable
+[other feature-specific VOs]
+```
+
+**Critical invariants:**
+
+- **Invariant 1:** [Description] → checked in method `[aggregate name]`
+- **Invariant 2:** [Description] → checked in method `[aggregate name]`
+
+[Each invariant has a guardrail in the constructor or in a method that modifies it.]
+
+**Ports (interfaces):**
+
+- **Input:** `UC[CamelCase]UseCase` — input contract
+- **Output:** `[Resource]Repository`, `DomainEventPublisher`, `[ExternalService]Port`
+
+**Events:**
+```
+[AggregateCreated]: {aggregateId, createdAt, name}
+[AggregateModified]: {aggregateId, modifiedAt, field, oldValue, newValue}
+```
+
+---
+
+## 3. Persistence ⚠️ implement after 2
+
+**JPA entity:**
+
+```
+@Entity
+@Table(name = "table_name")
+public class [Entity]JpaEntity {
+  @Id
+  private [IdType] id;
+
+  @Column(nullable = false, unique = true)
+  private [ColumnType] field;
+}
+```
+
+**Relations:**
+- [Aggregate]JpaEntity ← [Related]JpaEntity: [1:1 | 1:N | N:N]
+- Cascade: `[PERSIST | REMOVE | ...]`
+- OrphanRemoval: `[true | false]`
+
+**Migrations:**
+
+```sql
+-- V001__create_table_name.sql
+CREATE TABLE table_name (
+  id [TYPE] PRIMARY KEY,
+  field [TYPE] NOT NULL UNIQUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_field ON table_name(field);
+```
+
+**Required indexes:**
+- Search index on field X (query hot path)
+- Composite index (field1, field2) if pagination orders by both
+
+**Transactions:**
+
+- Isolation level: `READ_COMMITTED` (default)
+- Optimistic locking: yes/no (if yes, add `@Version`)
+- Timeout: `[N] ms`
+
+---
+
+## 3.5 YAML properties (application.yml)
+
+**Persistence:**
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+          fetch_size: 50
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dbname
+    username: postgres
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  jpa:
+    show-sql: false
+```
+
+**OpenAPI/Swagger:**
+```yaml
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+  swagger-ui:
+    tagsSorter: alpha
+```
+
+**REST default pagination:**
+```yaml
+spring:
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+        one-indexed-parameters: false
+```
+
+**Transactions:**
+```yaml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 10
+        order_inserts: true
+        order_updates: true
+```
+
+**Micrometer Tracing (500 error with traceId):**
+```yaml
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus
+```
+
+**Bean Validation (422 with violations):**
+```yaml
+# Nothing specific — Spring Boot 3.x enables it automatically
+```
+
+---
+
+## 4. REST API ⚠️ implement after 2
+
+**Resources:**
+
+```
+POST /api/v1/resource-name → 201 Created
+  Request: CreateResourceRequest
+  Response: ResourceResponse
+  Errors: 400, 422, 409
+
+GET /api/v1/resource-name/{id} → 200 OK
+  Response: ResourceResponse
+  Errors: 404, 500
+
+PATCH /api/v1/resource-name/{id} → 200 OK
+  Request: UpdateResourceRequest
+  Response: ResourceResponse
+  Errors: 400, 404, 409, 422, 500
+```
+
+**DTOs:**
+
+```java
+record CreateResourceRequest(String field, Long quantity) {}
+record UpdateResourceRequest(String field, Long quantity) {}
+record ResourceResponse(String id, String field, Long quantity, LocalDateTime createdAt) {}
+```
+
+**Error map:**
+
+| HTTP | Condition | Body |
+|------|----------|------|
+| 422 | Validation failed (invalid Email, Quantity ≤ 0) | `{errorCode: "VALIDATION_ERROR", violations: [...]}` |
+| 404 | Resource not found | `{errorCode: "NOT_FOUND", message: "Resource UC-NNN-id not found"}` |
+| 409 | Business rule violated (invariant) | `{errorCode: "CONFLICT", message: "..."}` |
+| 400 | Malformed body (invalid JSON) | `{errorCode: "BAD_REQUEST", message: "..."}` |
+| 500 | Internal error (with `traceId` via Micrometer Tracing) | `{errorCode: "INTERNAL_ERROR", traceId: "..."}` |
+
+**Pagination:**
+
+```
+GET /api/v1/resource-name?offset=0&limit=20 → 200 OK
+Response: {
+  data: [ResourceResponse, ...],
+  offset: 0,
+  limit: 20,
+  total: 150,
+  hasMore: true
+}
+```
+
+**Idempotency:**
+
+```
+POST /api/v1/resource-name
+  Header: Idempotency-Key: uuid
+  → If it already exists, returns 201 with the prior resource
+
+PATCH /api/v1/resource-name/{id}
+  Header: If-Match: previous-etag
+  → If the ETag doesn't match, returns 409
+```
+
+**YAML properties (application.yml):**
+
+```yaml
+# Idempotency-Key interceptor + registration
+spring:
+  mvc:
+    log-request-details: true
+  # or register IdempotencyKeyInterceptor via @Configuration
+
+# Error handling — ProblemDetail (native to Spring Boot 3)
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: never
+    include-exception: false
+
+# Bean Validation — 422 with violations
+# Automatic, no specific YAML needed
+
+# Tracing (Micrometer) — 500 with traceId
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  observations:
+    enable:
+      tomcat: true
+```
+
+---
+
+## 5. Tests ⚠️ validates 1-4
+
+**Pyramid (4 levels):**
+
+1. **Unit (domain):** Aggregate + VOs in isolation, no I/O. Examples:
+   - Email.of(invalid) → throws ValidationException
+   - Quantity.of(-1) → throws ValidationException
+   - Aggregate invariant 1 verified
+
+2. **Integration (components + DB):** Repository + transactions. Examples:
+   - Create and read from the DB
+   - Migration applied + valid schema
+   - No N+1 (eager loading where needed)
+
+3. **Contract (REST client):** Controller slice `@WebMvcTest`. Examples:
+   - POST → 201 Created, Location header
+   - POST validation failure → 422 with violations
+   - Idempotent PATCH → If-Match returns 409 if the ETag diverged
+
+4. **E2E (rare):** Full pipeline POST → DB → verify with GET.
+
+**Critical cases:**
+
+- [ ] Create with valid data → 201 Created
+- [ ] Create with validation failure → 422 with errorCode + violations
+- [ ] Read non-existent → 404 with errorCode
+- [ ] Modify violating an invariant → 409 with errorCode
+- [ ] Pagination offset > total → 200 with empty data
+- [ ] No N+1 query (use `SELECT DISTINCT` or eager fetch)
+
+**Coverage:**
+
+- **Target:** 80% lines, 70% branches
+- **Exclude:** `@SpringBootApplication` class, config beans, `@EnableSpringDataWebSupport`
+- **Verify:** JaCoCo in the `verify` phase
+
+---
+
+## Implementation order (checklist)
+
+[ ] 1. Create migration V001__create_table_name.sql
+[ ] 2. Create JpaEntity + @Table + @Column
+[ ] 3. Create Repository interface (Spring Data)
+[ ] 4. Create domain aggregate + constructor + invariants
+[ ] 5. Create VOs + validations in the constructor
+[ ] 6. Create ports (input UseCase, output Repository)
+[ ] 7. Create domain events
+[ ] 8. Implement repository adapter (JpaRepository)
+[ ] 9. Create controller + `@PostMapping` + `@GetMapping` + `@PatchMapping`
+[ ] 10. Create DTOs + manual mapper (don't use automatic `@Mapping`)
+[ ] 11. Create `ApiExceptionHandler` (handle the 5 error shapes) + ProblemDetail
+[ ] 12. Update `application.yml` (JPA, OpenAPI, pagination, tracing, validation)
+[ ] 13. Register the Idempotency-Key interceptor if needed
+[ ] 14. Create test fixtures (builders, test data)
+[ ] 15. Create `AggregateTest` — unit (isolated domain)
+[ ] 16. Create `RepositoryIT` — integration (DB + transactions)
+[ ] 17. Create `ControllerTest` — contract (REST slice + Idempotency-Key)
+[ ] 18. Verify coverage ≥ 80/70 (JaCoCo report)
+[ ] 19. Run `./mvnw verify` — green build + passing CI
+
+---
+
+## Resolved divergences
+
+Audit only. **The blocks above already carry the winning value** — whoever implements
+doesn't need to read this section, and nothing here contradicts what's above. One line
+per fact that two partials fixed differently; empty when there were none.
+
+| Fact | Discarded value | Adopted value | Decided by |
+|---|---|---|---|
+| Resource path | `/v1/people` (`00-caso-de-uso.md`) | `/api/v1/people` | `30-rest.md` — `api-rest.md` § Resources and URIs |
+| Invalid payload status | `422` (`00-caso-de-uso.md`) | `400` | `30-rest.md` — `422` is reserved for `BusinessRuleViolationException` |

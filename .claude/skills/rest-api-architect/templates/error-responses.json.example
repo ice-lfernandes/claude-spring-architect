@@ -1,0 +1,53 @@
+{
+  "_exemplar": "Error body shapes required by .claude/rules/api-rest.md. A catalog by scenario — not a payload to copy whole. Each value is the expected response in a contract test; use it as a fixture, not as a class to generate.",
+
+  "422-regra-de-negocio": {
+    "type": "about:blank",
+    "title": "Business rule violated",
+    "status": 422,
+    "detail": "Insufficient stock for the order",
+    "instance": "/api/v1/orders/123/confirm",
+    "errorCode": "ORDER_OUT_OF_STOCK"
+  },
+
+  "404-nao-encontrado": {
+    "type": "about:blank",
+    "title": "Not Found",
+    "status": 404,
+    "detail": "Order 123 doesn't exist",
+    "instance": "/api/v1/orders/123",
+    "errorCode": "ORDER_NOT_FOUND"
+  },
+
+  "409-chave-de-idempotencia-reutilizada": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "Idempotency-Key already used with a different body",
+    "instance": "/api/v1/orders",
+    "errorCode": "IDEMPOTENCY_KEY_REUSED"
+  },
+
+  "400-bean-validation": {
+    "_nota": "Structural, doesn't come from the domain — hence no errorCode.",
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "Invalid request",
+    "instance": "/api/v1/orders",
+    "violations": [
+      { "field": "customerId", "message": "must not be null" },
+      { "field": "items", "message": "must have at least 1 element" }
+    ]
+  },
+
+  "500-nao-mapeada": {
+    "_nota": "detail is always generic. Real message and stack trace only in the log. traceId mandatory on every 5xx.",
+    "type": "about:blank",
+    "title": "Internal Server Error",
+    "status": 500,
+    "detail": "Internal error",
+    "instance": "/api/v1/orders/123/confirm",
+    "traceId": "0af7651916cd43dd8448eb211c80319c"
+  }
+}

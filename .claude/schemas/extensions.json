@@ -1,0 +1,71 @@
+{
+  "$comment": "Single owner of the frontmatter fields recognized by the Claude Code runtime. Read by .claude/hooks/ArchHook.java in `schema` mode. Add a field HERE, never in the Java. Design and rationale: .claude/decisions/0001-schema-frontmatter-extensions.md",
+
+  "forbidden_everywhere": ["metadata"],
+
+  "types": {
+    "skill": {
+      "match": ".claude/skills/*/SKILL.md",
+      "case": "kebab",
+      "required": ["name", "description"],
+      "allowed": [
+        "name",
+        "description",
+        "when_to_use",
+        "argument-hint",
+        "arguments",
+        "disable-model-invocation",
+        "user-invocable",
+        "allowed-tools",
+        "disallowed-tools",
+        "model",
+        "effort",
+        "paths",
+        "context",
+        "agent",
+        "background",
+        "hooks"
+      ]
+    },
+
+    "agent": {
+      "match": ".claude/agents/*.md",
+      "case": "camel",
+      "required": ["name", "description"],
+      "allowed": [
+        "name",
+        "description",
+        "tools",
+        "disallowedTools",
+        "model",
+        "permissionMode",
+        "maxTurns",
+        "skills",
+        "mcpServers",
+        "hooks",
+        "memory",
+        "background",
+        "effort",
+        "isolation",
+        "color"
+      ]
+    },
+
+    "rule": {
+      "match": ".claude/rules/*.md",
+      "required": ["status"],
+      "allowed": ["paths", "status"],
+      "enum": {
+        "status": ["active", "draft", "deprecated"]
+      }
+    }
+  },
+
+  "settings": {
+    "match": ".claude/settings.json",
+    "hook_entry": {
+      "required": ["type", "command"],
+      "allowed": ["type", "command", "args", "timeout", "statusMessage", "if"]
+    }
+  }
+}

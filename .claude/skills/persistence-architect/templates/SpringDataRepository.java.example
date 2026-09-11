@@ -1,0 +1,49 @@
+/*
+ * EXEMPLAR — Spring Data interface. Internal adapter detail: no layer inside knows it.
+ * Form reference for the executor agent; not a file to copy.
+ * Rules: `.claude/rules/persistence.md` (§ Boundary, § Queries)
+ *        `.claude/rules/naming.md`
+ */
+
+// --- UserJpaRepository.java
+package com.example.demo.adapter.out.persistence;
+
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+interface UserJpaRepository extends JpaRepository<UserEntity, UUID> {
+
+    // `exists` returns a boolean from the database. Loading the entity just to throw it
+    // away is one extra round trip and deserialization.
+    boolean existsByEmail(String email);
+
+    Optional<UserEntity> findByEmail(String email);
+
+    // `@EntityGraph` resolves the N+1 declaratively: one query instead of one per row.
+    // Only one collection per graph — two produce a cartesian product.
+    @EntityGraph(attributePaths = "roles")
+    Optional<UserEntity> findWithRolesById(UUID id);
+
+    // Bound parameter, never concatenated. Projection because the listing doesn't need
+    // the whole aggregate.
+    @Query("""
+           select new com.example.demo.adapter.out.persistence.UserSummary(u.id, u.name, u.email)
+           from UserEntity u
+           where u.departmentId = :departmentId
+           order by u.name asc, u.id asc
+           """)
+    java.util.List<UserSummary> summariesByDepartment(@Param("departmentId") UUID departmentId,
+                                                      org.springframework.data.domain.Pageable pageable);
+}
+
+// --- UserSummary.java
+package com.example.demo.adapter.out.persistence;
+
+import java.util.UUID;
+
+// Projection. Lives in the adapter and never leaves it without translation.
+public record UserSummary(UUID id, String name, String email) {}

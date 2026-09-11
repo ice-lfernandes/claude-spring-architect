@@ -1,0 +1,65 @@
+/*
+ * EXEMPLAR — Kafka producer adapter. Implements the outbound port `domain-modeling`
+ * already declared for the event; doesn't invent its own interface.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/messaging.md` (payload shape, idempotent producer, topic naming)
+ *        `.claude/rules/architecture-ddd.md` (Adapters: translate, no business logic)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the domain event never serializes directly: an explicit payload record, only the
+ *    fields the consumer needs;
+ *  - the aggregate id as the partition key, so events of the same aggregate stay ordered;
+ *  - the adapter is the only class in the codebase that imports `KafkaTemplate`.
+ *
+ * WHAT'S NOT HERE: retry/backoff and DLQ wiring — that's `application-kafka.yml`'s
+ * `DefaultErrorHandler`, not per-adapter code. Schema registry — not assumed until a use
+ * case needs it (`.claude/rules/messaging.md` § Topics and serialization).
+ */
+
+// --- PublishOrderConfirmedPort.java (declared by domain-modeling, in application/port/out)
+package com.example.demo.application.port.out;
+
+import com.example.demo.domain.event.OrderConfirmed;
+
+public interface PublishOrderConfirmedPort {
+
+    void publish(OrderConfirmed event);
+}
+
+// --- OrderConfirmedPayload.java (adapter-local, never the domain event itself)
+package com.example.demo.adapter.out.messaging;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record OrderConfirmedPayload(UUID orderId, UUID customerId, Instant occurredAt) {
+
+    static OrderConfirmedPayload from(com.example.demo.domain.event.OrderConfirmed event) {
+        return new OrderConfirmedPayload(
+                event.orderId().value(), event.customerId().value(), event.occurredAt());
+    }
+}
+
+// --- OrderConfirmedPublisher.java
+package com.example.demo.adapter.out.messaging;
+
+import com.example.demo.application.port.out.PublishOrderConfirmedPort;
+import com.example.demo.domain.event.OrderConfirmed;
+import org.springframework.kafka.core.KafkaTemplate;
+
+public class OrderConfirmedPublisher implements PublishOrderConfirmedPort {
+
+    private static final String TOPIC = "orders.order.confirmed";
+
+    private final KafkaTemplate<String, OrderConfirmedPayload> kafkaTemplate;
+
+    public OrderConfirmedPublisher(KafkaTemplate<String, OrderConfirmedPayload> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override
+    public void publish(OrderConfirmed event) {
+        String partitionKey = event.orderId().value().toString();
+        kafkaTemplate.send(TOPIC, partitionKey, OrderConfirmedPayload.from(event));
+    }
+}

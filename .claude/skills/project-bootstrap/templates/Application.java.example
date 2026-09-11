@@ -1,0 +1,19 @@
+/*
+ * EXEMPLAR — @SpringBootApplication class, in the module with `contains_main: true`.
+ * The Initializr generates this class at the root of the single-module project; step 4
+ * of SKILL.md moves it (doesn't rewrite it) into the `bootstrap` module (or
+ * the blueprint's equivalent), adjusting only the package to `packages.map`.
+ * Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class MinhaApiApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(MinhaApiApplication.class, args);
+    }
+}

@@ -1,0 +1,139 @@
+// EXEMPLAR — ArchUnit tests. Lives in the module with `contains_main: true` (bootstrap),
+// in `src/test/java`, because it's the only module that sees every class on the classpath.
+//
+// This is the deterministic half of the enforcement. The `ArchHook.java check` hook blocks
+// in the editor; these rules block in CI and on the machine of whoever isn't using Claude Code.
+//
+// The package names below are `hexagonal` blueprint's. When generating, replace them
+// with the active blueprint's real `packages.map` values — never copy them literally.
+// A blueprint with no `application.port.out` doesn't get the rule that names it.
+package com.exemplo.minhaapi;
+
+import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
+import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
+import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
+import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
+import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@AnalyzeClasses(packages = "com.exemplo.minhaapi", importOptions = ImportOption.DoNotIncludeTests.class)
+class ArchitectureTest {
+
+    // --- Dependency direction (@.claude/rules/architecture-ddd.md) ------------------
+    // One rule per line of the blueprint's `dependency_rules.forbidden`.
+
+    @ArchTest
+    static final ArchRule domain_knows_no_one = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("..application..", "..adapter..", "..bootstrap..");
+
+    @ArchTest
+    static final ArchRule application_does_not_know_adapters = noClasses()
+            .that().resideInAPackage("..application..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("..adapter..", "..bootstrap..");
+
+    @ArchTest
+    static final ArchRule adapters_do_not_talk_to_each_other = SlicesRuleDefinition
+            .slices().matching("..adapter.(*)..")
+            .should().notDependOnEachOther();
+
+    @ArchTest
+    static final ArchRule no_cycles_between_packages = SlicesRuleDefinition
+            .slices().matching("com.exemplo.minhaapi.(*)..")
+            .should().beFreeOfCycles();
+
+    // --- Domain purity (same rule; mirrors the blueprint's `forbidden_imports`) -----
+
+    @ArchTest
+    static final ArchRule domain_has_no_framework = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("org.springframework..", "jakarta..", "com.fasterxml.jackson..");
+
+    @ArchTest
+    static final ArchRule domain_has_no_system_clock = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().callMethod(LocalDateTime.class, "now")
+            .orShould().callMethod(LocalDate.class, "now")
+            .orShould().callMethod(Clock.class, "systemDefaultZone")
+            .because("Clock is injected — see rules/architecture-ddd.md");
+
+    // --- Composition (@.claude/rules/architecture-ddd.md § Composition) -------------
+
+    @ArchTest
+    static final ArchRule no_field_injection = NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
+
+    @ArchTest
+    static final ArchRule no_service_locator = noClasses()
+            .that().resideOutsideOfPackage("..bootstrap..")
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("org.springframework.context.ApplicationContext");
+
+    // --- Naming (@.claude/rules/naming.md) ------------------------------------------
+
+    @ArchTest
+    static final ArchRule no_impl_suffix = noClasses()
+            .should().haveSimpleNameEndingWith("Impl")
+            .because("the name says the role, not that it's the implementation of something");
+
+    @ArchTest
+    static final ArchRule outbound_ports_are_interfaces = classes()
+            .that().resideInAPackage("..application.port.out..")
+            .should().beInterfaces();
+
+    // `.and().haveSimpleNameNotEndingWith("package-info")` on every rule below:
+    // `project-bootstrap` generates a `package-info.java` in every package, ArchUnit
+    // imports it as a class, and a naming rule with no exclusion fails on it on the
+    // very first run — the file isn't named `*Service`/`*Controller`/`*Entity` because
+    // it isn't one.
+    @ArchTest
+    static final ArchRule use_case_implementations = classes()
+            .that().resideInAPackage("..application.service..")
+            .and().haveSimpleNameNotEndingWith("package-info")
+            .should().haveSimpleNameEndingWith("Service");
+
+    @ArchTest
+    static final ArchRule controllers_in_rest_adapter = classes()
+            .that().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
+            .and().haveSimpleNameNotEndingWith("package-info")
+            .should().resideInAPackage("..adapter.in.rest..")
+            .andShould().haveSimpleNameEndingWith("Controller");
+
+    @ArchTest
+    static final ArchRule jpa_entities_have_entity_suffix = classes()
+            .that().areAnnotatedWith("jakarta.persistence.Entity")
+            .and().haveSimpleNameNotEndingWith("package-info")
+            .should().haveSimpleNameEndingWith("Entity")
+            .andShould().resideInAPackage("..adapter.out.persistence..");
+
+    // --- Code quality (@.claude/rules/code-quality.md) ------------------------------
+
+    @ArchTest
+    static final ArchRule no_generic_exceptions = NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
+
+    @ArchTest
+    static final ArchRule private_final_fields_in_domain = fields()
+            .that().areDeclaredInClassesThat().resideInAPackage("..domain..")
+            .and().areNotStatic()
+            .should().bePrivate()
+            .andShould().beFinal()
+            .because("value objects and aggregates are immutable");
+
+    @ArchTest
+    static final ArchRule no_java_util_logging = NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
+
+    @ArchTest
+    static final ArchRule no_system_out = NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
+}

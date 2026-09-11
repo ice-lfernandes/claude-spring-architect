@@ -1,0 +1,52 @@
+// Exemplar: Bridge. A notification's TYPE (confirmed, shipped, cancelled) and its
+// DELIVERY channel (email, SMS) vary on two genuinely independent axes — without this,
+// every new type needs one class per channel. Lives in the application layer.
+// Before using: confirm it's really two axes, not one axis with a config flag — Bridge
+// for a single varying axis is Strategy with extra ceremony.
+package com.example.application.notification;
+
+// --- implementation hierarchy: how the message actually reaches the customer
+public interface NotificationChannel {
+    void deliver(Customer customer, String message);
+}
+
+public final class EmailChannel implements NotificationChannel {
+
+    private final EmailSender sender;
+
+    public EmailChannel(EmailSender sender) {
+        this.sender = sender;
+    }
+
+    @Override
+    public void deliver(Customer customer, String message) {
+        sender.send(customer.email(), message);
+    }
+}
+
+// --- abstraction hierarchy: what happened, independent of how it's delivered.
+// `protected`, not `private`: subclasses call the channel directly — that's the bridge.
+public abstract class OrderNotification {
+
+    protected final NotificationChannel channel;
+
+    protected OrderNotification(NotificationChannel channel) {
+        this.channel = channel;
+    }
+
+    public abstract void notify(Order order);
+}
+
+// --- one concrete type; a new one (OrderShippedNotification) is a new file, no
+// existing file edited, and it works with every channel already implemented
+public final class OrderConfirmedNotification extends OrderNotification {
+
+    public OrderConfirmedNotification(NotificationChannel channel) {
+        super(channel);
+    }
+
+    @Override
+    public void notify(Order order) {
+        channel.deliver(order.customer(), "Order " + order.id().value() + " confirmed");
+    }
+}

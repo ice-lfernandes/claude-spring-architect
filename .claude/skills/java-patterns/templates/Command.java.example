@@ -1,0 +1,61 @@
+// Exemplar: Command (full GoF shape — execute + undo). Only justified when queuing,
+// logging, retry, or undo is a real requirement. This repo's own lightweight input
+// records (`@.claude/skills/domain-modeling/templates/Command.java.example`) already
+// cover ordinary use-case input and don't need any of this — don't reach for this
+// shape just because the word "command" matches.
+package com.example.application.inventory;
+
+import com.example.application.port.out.StockLevelPort;
+import com.example.domain.model.inventory.ProductId;
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+public interface InventoryCommand {
+
+    void execute();
+
+    void undo();
+}
+
+// --- one command per reversible action; the invoker never knows which one it's running
+public final class ReserveStockCommand implements InventoryCommand {
+
+    private final StockLevelPort stockLevel;
+    private final ProductId productId;
+    private final int quantity;
+
+    public ReserveStockCommand(StockLevelPort stockLevel, ProductId productId, int quantity) {
+        this.stockLevel = stockLevel;
+        this.productId = productId;
+        this.quantity = quantity;
+    }
+
+    @Override
+    public void execute() {
+        stockLevel.reserve(productId, quantity);
+    }
+
+    @Override
+    public void undo() {
+        stockLevel.release(productId, quantity);
+    }
+}
+
+// --- the invoker: runs commands, keeps the ones that succeeded so a later failure
+// can unwind exactly what was done, in reverse order — this is what "undo" buys that
+// a plain method call doesn't
+public final class ReversibleInventoryBatch {
+
+    private final Deque<InventoryCommand> executed = new ArrayDeque<>();
+
+    public void run(InventoryCommand command) {
+        command.execute();
+        executed.push(command);
+    }
+
+    public void rollback() {
+        while (!executed.isEmpty()) {
+            executed.pop().undo();
+        }
+    }
+}

@@ -1,0 +1,50 @@
+# EXEMPLAR — persistence properties. Form reference, not a file to copy.
+# Rules: `.claude/rules/persistence.md` (§ Migrations and § Configuration)
+#
+# Values marked RULE are mandatory and not up for per-project debate. Values marked
+# SIZE depend on volume and hardware: decide them in the `20-persistencia.md` partial
+# and write the reason next to them. An implicit default value in production is a bug.
+#
+# Credentials come from the environment. No secret in this file.
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10          # SIZE — a pool bigger than what the database accepts just moves the queue
+      minimum-idle: 10               # SIZE — equal to the max avoids latency spikes from opening connections
+      connection-timeout: 3000       # RULE — without a timeout, a stuck request holds the connection until the pool runs out
+      validation-timeout: 2000       # RULE
+      idle-timeout: 600000           # SIZE
+      max-lifetime: 1800000          # SIZE — below the database side's connection timeout
+      pool-name: app-pool
+
+  jpa:
+    open-in-view: false              # RULE — Spring Boot's default is `true`; keeping it hides N+1
+    show-sql: false                  # RULE — SQL is observed via the logger, at a level per environment
+    hibernate:
+      ddl-auto: validate             # RULE — `update` and `create-drop` are forbidden in every environment
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50             # SIZE — 0 disables batching
+          time_zone: UTC             # RULE — instants stored in UTC
+        order_inserts: true          # RULE when batching — without this the batch breaks on every table change
+        order_updates: true
+        query:
+          fail_on_pagination_over_collection_fetch: true   # RULE — turns in-memory pagination into an error, not slowness
+          in_clause_parameter_padding: true                # groups `IN (?, ?, ?)` plans and reduces recompilations
+        default_batch_fetch_size: 16 # SIZE — mitigates residual N+1; doesn't replace a deliberate `JOIN FETCH`
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true        # RULE — catches an applied migration that was edited afterward
+    out-of-order: false              # RULE — an out-of-order version hides divergence between environments
+
+logging:
+  level:
+    org.hibernate.SQL: INFO                                  # DEBUG only in development
+    org.hibernate.orm.jdbc.bind: WARN                        # TRACE shows the bound values — never in production

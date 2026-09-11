@@ -1,0 +1,45 @@
+// Exemplar: Composite. Individual order lines and bundles of them price the same way
+// through one interface — the caller never checks which one it has. Lives in the
+// domain — zero framework.
+package com.example.domain.model.order;
+
+import java.util.List;
+
+public interface Priceable {
+    Money price();
+}
+
+// --- leaf: a single product line
+public final class OrderLine implements Priceable {
+
+    private final String productId;
+    private final int quantity;
+    private final Money unitPrice;
+
+    public OrderLine(String productId, int quantity, Money unitPrice) {
+        this.productId = productId;
+        this.quantity = quantity;
+        this.unitPrice = unitPrice;
+    }
+
+    @Override
+    public Money price() {
+        return unitPrice.multiply(quantity);
+    }
+}
+
+// --- composite: a bundle, possibly of bundles, priced by summing its members. The
+// caller calls price() the same way on a bundle as on a single line — that's the point.
+public final class LineBundle implements Priceable {
+
+    private final List<Priceable> members;
+
+    public LineBundle(List<Priceable> members) {
+        this.members = List.copyOf(members);
+    }
+
+    @Override
+    public Money price() {
+        return members.stream().map(Priceable::price).reduce(Money::add).orElseThrow();
+    }
+}

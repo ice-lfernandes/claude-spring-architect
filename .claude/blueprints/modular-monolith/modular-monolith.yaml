@@ -1,0 +1,155 @@
+id: modular-monolith
+name: Modular Monolith (Spring Modulith)
+description: >
+  One deployable, several bounded-context modules as direct sub-packages of the
+  application root, each with a hidden `internal` package and a small, deliberate
+  public surface — enforced at test time by `ApplicationModules.verify()`. Inside
+  `internal`, every module still gets the same domain/application/adapter layering as
+  `hexagonal`, at full rigor — `rules/architecture-ddd.md` never relaxes.
+when_to_choose:
+  - Several bounded contexts (order, inventory, shipping...) that don't yet justify
+    separate deployables, but do need a boundary stronger than "please don't import
+    that package"
+  - Want a real exit path to microservices later — a module that already can't reach
+    another module's internals is most of the seam a service split needs
+  - One team, or a few teams that can agree on module contracts, not yet at the scale
+    where independent deployment pays for itself
+trade_offs:
+  - A second, framework-specific verification tool on top of ArchUnit — `internal`
+    isolation is `ApplicationModules.verify()`'s job, not `archunit-installer`'s; the
+    intra-module domain/application/adapter direction is still ArchUnit's, as usual
+  - Module names are feature data, not architecture data — this blueprint can't
+    pre-create them the way `hexagonal` pre-creates `domain`/`application`/`adapters`,
+    so several rule globs only start matching once the first real module exists (see
+    the comments below and `references/`)
+  - Still a single deployable: a runaway module can still exhaust the same JVM's
+    memory or thread pool as every other module — Modulith buys structural isolation,
+    not runtime isolation
+
+build:
+  layout: single-module
+  tool: maven
+
+# Broad on purpose. Domain/application/adapter repeat once per bounded-context module
+# (`order.internal.domain`, `inventory.internal.domain`, ...) and the module names
+# don't exist yet at blueprint-authoring time — see the `packages.map` comment below
+# for why a per-module glob can't be derived the usual way. `**/internal/**/*.java`
+# alone covers every module's three layers in one entry; `**/shared/**/*.java` covers
+# the one module this blueprint does create at bootstrap (see below).
+architecture_paths:
+  - "**/shared/**/*.java"
+  - "**/internal/**/*.java"
+  - "**/config/**/*.java"
+
+# A single element — layout: single-module — rule 5 of `_schema.md`. Spring Modulith's
+# own module boundary (this blueprint's actual reason to exist) is not a Maven module
+# at all — it's detected from the package tree at test time by `ApplicationModules`.
+# `dependency_rules.forbidden` below still governs the one thing that IS static across
+# every module: the domain → application → adapter direction inside each of them.
+modules:
+  - id: app
+    path: "."
+    depends_on: []
+    contains_main: true
+
+# Unlike every other blueprint here, this map does NOT describe the architecture's only
+# domain/application/adapter set — it describes `shared`, the one bounded-context
+# module this blueprint creates at bootstrap. Two reasons a real module can't be
+# pre-created: (1) `project-bootstrap` writes zero business code, and a module's name
+# (`order`, `inventory`, ...) is business data, not architecture data — unlike `domain`
+# or `application`, which are the same in every feature; (2) `packages.map` values must
+# be literal, creatable package paths (step 4.7 writes a `package-info.java` for each
+# one) — a wildcard like `<module>.internal.domain` isn't a path `mkdir` accepts.
+# `shared` sidesteps both: it's a real, well-known modular-monolith pattern (a Shared
+# Kernel for the few VOs/events genuinely common to more than one module, marked
+# `@ApplicationModule(type = OPEN)` so other modules may reference it freely), not a
+# stand-in business module, and it gives project-bootstrap's step 4.7 something literal
+# to create — satisfying the "at least one glob matches something built in step 4.7"
+# check the same way `hexagonal`'s `domain/` skeleton does. The first real
+# bounded-context module (`order`, ...) is created later, by `domain-modeling`, the
+# first time a use case needs one — same package shape as `shared`, minus the `OPEN`
+# marker, nested one level under `<module>.` instead of at the root.
+packages:
+  base: "{{groupId}}.{{artifactName}}"
+  map:
+    domain.model: "shared.internal.domain.model"
+    domain.event: "shared.internal.domain.event"
+    domain.exception: "shared.internal.domain.exception"
+    application: "shared.internal.application"
+    adapter.rest: "shared.internal.adapter.rest"
+    adapter.persistence: "shared.internal.adapter.persistence"
+    bootstrap.config: "config"
+
+# project-bootstrap step 6.6 derives api-rest.md/persistence.md/value-objects.md/
+# observability.md's `paths` from the map above by default — which would only cover
+# `shared`. For THIS blueprint, override that: each of those four rules' `paths` needs
+# a SECOND, broader entry, `**/internal/<same role, `.`→`/`>/**/*.java`, alongside the
+# literal one derived from this map — the literal entry proves the rule loads something
+# real today (`shared`), the wildcard one is what makes it fire again once `order`,
+# `inventory`, or any other module gets its own `internal.adapter.rest`. Don't skip the
+# literal one even though the wildcard subsumes it later: without it, step 6.6's
+# "at least one glob matches something built in step 4.7" check has nothing to point at.
+
+# Naming convention for this blueprint (specific to modular-monolith, not universal —
+# see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
+# .claude/rules/naming.md for the rest). Same vocabulary as `hexagonal`, applied inside
+# every module's own `internal` package:
+#   Input port:  <Verb><Noun>UseCase   — e.g. PlaceOrderUseCase, in order.internal.application
+#   Output port: <Noun><Action>Port    — e.g. OrderRepositoryPort, in order.internal.application
+#   Implementation: <Verb><Noun>Service — e.g. PlaceOrderService, in order.internal.application
+# The one addition this blueprint makes over hexagonal — the module's PUBLIC surface,
+# living directly under `<module>` (never `internal`):
+#   Provided interface (what other modules may call): <Module>Api — e.g. OrderApi
+#   Published domain event (what other modules may react to via
+#   @ApplicationModuleListener): same past-tense convention as any domain event
+#   (rules/architecture-ddd.md), e.g. OrderPlaced — but placed at `<module>` root, not
+#   `internal.domain.event`, specifically because a listener in another module needs to
+#   import the type. An event only that module itself reacts to stays internal.
+#
+# References:
+#   @.claude/blueprints/modular-monolith/references/spring-io-modulith-project.md
+#   @.claude/blueprints/modular-monolith/references/baeldung-spring-modulith.md
+#   @.claude/blueprints/modular-monolith/references/spring-io-introducing-modulith.md
+#   @.claude/blueprints/modular-monolith/references/stackademic-modular-monolith.md
+
+dependency_rules:
+  direction: inward
+  forbidden:
+    - from: domain
+      to: [application, adapter]
+      reason: "The domain does not know about use cases or adapters — inside every module's internal package, matched with ArchUnit's `..` wildcard since the module name isn't fixed (archunit-installer translates this once real modules exist)"
+    - from: application
+      to: [adapter]
+      reason: "The application depends on ports (interfaces), not on adapter implementations"
+    - from: adapter
+      to: [adapter]
+      reason: "Adapters do not talk to each other inside a module — they communicate through the application, same as hexagonal"
+  # What is NOT here on purpose: any rule forbidding one module from reaching another
+  # module's `internal` package. That check has no fixed `from`/`to` to declare —
+  # module names are unknown until a real feature creates one — so it isn't expressed
+  # as a forbidden entry at all. It's `ApplicationModules.verify()`'s job
+  # (ModularityTests.java, written by project-bootstrap step 4.7 when
+  # `features.spring-modulith` is active — see that step, not archunit-installer).
+
+# Real, compilable exemplars (not templates to swap mechanically).
+# The project base comes from Spring Initializr; these files provide the SHAPE.
+templates:
+  parent_pom: templates/pom.parent.xml.example
+  module_pom: templates/pom.module.xml.example
+  module_docs: templates/module.CLAUDE.md.example
+  settings: templates/settings.json.example
+
+features:
+  rest: true
+  validation: true # required with `rest`: api-rest.md requires bean validation on the DTO
+  persistence-jpa: true
+  uuid-v7: true # persistence.md requires UUID v7 and JDK 21 only generates v4
+  flyway: true
+  messaging-kafka: false
+  messaging-sqs: false
+  openapi: true
+  testcontainers: true
+  actuator: true
+  observability: true # tracing bridge; without it the 5xx traceId is degraded (observability.md)
+  archunit: true # covers the intra-module domain/application/adapter direction only — see dependency_rules above
+  spring-modulith: true # the actual reason for this blueprint; see project-bootstrap step 4.7 and references/dependency-catalog.md

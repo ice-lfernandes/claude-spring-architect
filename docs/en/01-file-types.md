@@ -1,0 +1,289 @@
+# File types — runtime mechanics
+
+This document explains, for each type of piece used in `.claude/`, what it is, what
+it's for, when it enters context, and who invokes it — the model or the user. Every
+claim about runtime behavior cites the corresponding section of `claude-help.md` (root
+of this repository), which is the single source on how Claude Code behaves in this
+project.
+
+---
+
+## Skill
+
+**Lives at:** `.claude/skills/<name>/SKILL.md`, plus optional `templates/` and
+`references/` inside the same folder.
+
+**What it is:** a markdown file with instructions that becomes part of Claude's
+repertoire — "the most flexible extension" (`claude-help.md` § 5). The folder name
+becomes the command: `.claude/skills/arch-doctor/SKILL.md` creates `/arch-doctor`.
+
+**Purpose:** package a procedure — a checklist or a flow that would otherwise be
+pasted repeatedly into chat. In this repository, every design skill
+(`use-case-design`, `domain-modeling`, `persistence-architect`, `rest-api-architect`,
+`test-architect`) owns a single layer of a feature spec; `project-bootstrap` owns the
+8-step procedure that generates a project from scratch.
+
+**When it enters context:** only when invoked. Unlike a `CLAUDE.md`, a skill's body
+doesn't load at session start — it loads on the turn it's used, and the rendered
+content enters as a message and **stays for subsequent turns**; Claude doesn't re-read
+the file afterward (`claude-help.md` § Content lifecycle). That's why a skill should
+write permanent instructions ("always do X throughout this task"), not a one-time
+step.
+
+**Who invokes it — model or user:**
+
+| Frontmatter | Effect | Example in this repo |
+|---|---|---|
+| (no control field) | The model decides, from `description`, whether the skill is relevant | `project-bootstrap` — description lists triggers like "scaffolding", "new Spring project" |
+| `disable-model-invocation: true` | Only the user invokes it, by typing `/name` | `init-project`, `new-feature`, `arch-doctor` — the three commands documented here are all side-effect-heavy and **don't** fire on their own |
+| `user-invocable: false` | Only the model invokes it — background knowledge, no visible command | Not used in this repository today |
+
+The three central commands in this document are all `disable-model-invocation: true` —
+a deliberate decision: generating a project or running the feature pipeline has too
+large a side effect to fire from inference over the conversation.
+
+**Recognized frontmatter fields** (single source: `.claude/schemas/extensions.json`,
+validated by `ArchHook.java schema` — `CLAUDE.md` § Invariant 10):
+
+```
+name, description, when_to_use, argument-hint, arguments,
+disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,
+model, effort, paths, context, agent, background, hooks
+```
+
+A field outside this list (e.g. `metadata:`) doesn't raise an error — the runtime
+**silently ignores** unknown fields, and `claude plugin validate` lets it through too
+(`CLAUDE.md` § Known pitfalls). It's `ArchHook.java schema` that blocks it.
+
+**Dynamic context injection:** the `` !`command` `` syntax runs a command **before**
+the content reaches the model and substitutes its output. That's what lets
+`init-project` list available blueprints dynamically
+(`` !`find .claude/blueprints ...` ``) and `arch-doctor` embed the real output of
+`ArchHook.java doctor` inside the skill body (`claude-help.md` § Dynamic context
+injection). A command that fails (exit ≠ 0) **aborts the entire invocation** — which
+is why `CLAUDE.md` § Known pitfalls warns about pipes inside
+`allowed-tools: Bash(command:*)`: each pipe segment needs its own rule, or the whole
+command gets blocked before it runs.
+
+**`context: fork`:** runs the skill in an isolated subagent, without seeing the
+conversation history — the skill's body becomes the subagent's prompt
+(`claude-help.md` § `context: fork`). No skill in this repository uses this field
+today: skills here prefer to explicitly delegate via the `Agent tool` to a named
+`.claude/agents/*.md` when isolation is needed (see § Agent below).
+
+---
+
+## Rule
+
+**Lives at:** `.claude/rules/<name>.md`.
+
+**What it is:** a norm — "what must be true," never a procedure. `CLAUDE.md` §
+Invariant 1 is categorical: *"a norm never mentions a skill, an agent, or a command. If
+it needs to, it's a procedure and belongs in a skill."*
+
+**Purpose:** fix a standard that applies whenever certain files are touched — naming
+convention (`naming.md`), exception taxonomy (`error-handling.md`), Clean Code limits
+(`code-quality.md`), and so on. Each norm has a **single owner**
+(`CLAUDE.md` § Invariant 2) — whoever needs it cites the path, never copies the
+content.
+
+**When it enters context:** two mechanisms, the first being preferable
+(`.claude/rules/00-index.md` § How a rule enters context):
+
+1. **Auto-loading via `paths`** — the rule declares globs in the frontmatter, and
+   enters context on its own when a matching file is touched. It doesn't depend on
+   someone remembering to cite it.
+2. **Explicit citation** — for cross-cutting rules that no glob captures
+   (`00-index.md` itself). Whoever needs it cites the path.
+
+Without `paths`, the rule loads **at the same priority as the project's `CLAUDE.md`**,
+i.e. every session (`claude-help.md` § 4). In this repository, `architecture-ddd.md`
+is the only rule with no `paths` of its own by design: the globs come from the active
+blueprint's `architecture_paths`, and only exist once the project has been generated.
+
+**Who invokes it:** nobody invokes a rule — it **loads**, either automatically (via
+`paths`) or by citation. There's no `/rule-name` command. That's why the
+`00-index.md` table lists, for each rule, "Verified by" instead of "Invoked by": a
+rule that needs mechanical verification points to a hook, a build plugin
+(Checkstyle), or a test (ArchUnit) — never to itself.
+
+**Recognized frontmatter** (`.claude/schemas/extensions.json`):
+
+```
+status (required: active | draft | deprecated), paths (optional)
+```
+
+No other field is allowed on a rule — the schema for this type is the strictest of
+the three.
+
+---
+
+## Agent (subagent)
+
+**Lives at:** `.claude/agents/<name>.md`.
+
+**What it is:** a specialized assistant that runs in an **isolated context window**,
+with its own system prompt, tool access, and optionally its own model
+(`claude-help.md` § 7). The frontmatter defines the metadata; the markdown body
+becomes the subagent's **system prompt**.
+
+**Purpose — and when NOT to become an agent:** `CLAUDE.md` § Invariant 5 sets the
+criterion: an agent is only justified for one of three reasons — preserving context
+(verbose output that shouldn't pollute the main conversation), restricting tools, or
+switching model. If none applies, the piece is a skill.
+
+This repository's three agents each document explicitly, in their own `## Why this is
+an agent` (or `## Why this is Form 3`) section, which reason applies:
+
+| Agent | Context | Tools | Model |
+|---|---|---|---|
+| `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion` — restricted | `opus` — validating a dependency graph and restructuring modules fails expensively |
+| `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: max` — generating ~19 steps of compilable code |
+| `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
+
+**When it enters context:** only when invoked — never automatically via `paths`
+(agents don't have that field). It **doesn't see** the main conversation's history,
+nor the main session's auto memory, nor what was read before (`claude-help.md` § What
+the subagent sees). It does see: its own system prompt, the `CLAUDE.md` hierarchy,
+git status, the delegation message, and skills preloaded via its own frontmatter's
+`skills:` field — that's how `java-spring-boot-developer` loads the entire
+`java-patterns` catalog without invoking it as a separate turn.
+
+**Who invokes it:** always another piece of the system, never the user directly via
+`/agent-name` — that command doesn't exist. Here, it's always a skill that delegates
+via the `Agent tool`: `init-project` delegates to `project-initializer`,
+`new-feature` delegates to `java-spring-boot-developer` after consolidating the spec,
+`test-architect` delegates to `archunit-installer` in setup mode (no argument).
+
+**Fork — a different kind of agent:** a *fork* inherits the entire conversation
+instead of starting from scratch (`claude-help.md` § Forks). Only the final result
+returns to the main conversation — internal tool calls stay out of its context. None
+of this repository's agents is a fork — all of them receive only the delegation
+message, on purpose, because the point is precisely **not** to inherit the noise of
+the design conversation.
+
+**Recognized frontmatter fields** (`.claude/schemas/extensions.json`, `case: camel`):
+
+```
+name, description, tools, disallowedTools, model, permissionMode,
+maxTurns, skills, mcpServers, hooks, memory, background, effort,
+isolation, color
+```
+
+**Silently ignored files:** an agent with no `name`, with `---` not on the first
+line, with `name` starting with `-` or containing `:`, with `name` but no
+`description`, or with invalid YAML — Claude Code simply skips the file, with no
+visible error (`claude-help.md` § Files silently ignored). That's why this repository
+validates with `java .claude/hooks/ArchHook.java schema`, which is strict where the
+runtime stays silent.
+
+---
+
+## `CLAUDE.md`
+
+**Lives at:** repository root (or `.claude/CLAUDE.md`), with additional hierarchy at
+`~/.claude/CLAUDE.md` (user) and `./CLAUDE.local.md` (personal, outside git).
+
+**What it is:** the project memory file — instructions the team versions and that
+everyone (human or model) reads. `claude-help.md` § 3 describes the full hierarchy;
+every level is **additive**, never replacing another.
+
+**Purpose in this repository:** index and routing, not a manual. `CLAUDE.md` § How a
+rule enters context and this file's own `## Routing` section work as an "if the task
+involves X, go to Y" table — the norm itself lives in the cited skill or rule, never
+inside `CLAUDE.md`.
+
+**When it enters context:** always, at session start — files in the current
+directory **and every directory above it** load at startup; files in subdirectories
+load on demand, when Claude reads something in there (`claude-help.md` § File
+hierarchy). Unlike a skill, there's no way for a `CLAUDE.md` to load "only when
+needed" — it's always paid for, hence the goal of staying under 200 lines
+(`claude-help.md` § Writing an effective CLAUDE.md).
+
+**Who invokes it:** nobody — it loads automatically. The `/init` command generates an
+initial `CLAUDE.md` from existing code; `/memory` lists and opens memory files
+(native to Claude Code, distinct from this repository's own memory).
+
+**Two relevant versions here:**
+
+| `CLAUDE.md` | Role |
+|---|---|
+| This repository's root | Documents the meta-repository — architecture invariants of `.claude/`, routing table to this repo's skills |
+| `.claude/skills/project-bootstrap/templates/root.CLAUDE.md.example` | Template for the `CLAUDE.md` that `project-bootstrap` writes **inside the generated project** — different data (name, modules, resolved versions), same discipline of staying small and citing by path |
+
+`CLAUDE.md` § Known pitfalls is explicit: *"the `CLAUDE.md` at the root of a generated
+project is not this file."* Confusing the two is the most common mistake when editing
+this repository.
+
+---
+
+## Hook
+
+**Lives at:** `.claude/settings.json` (configuration) + `.claude/hooks/ArchHook.java`
+(logic).
+
+**What it is:** a script triggered on lifecycle events — "deterministic: it always
+happens on the event, regardless of what the model decides. That's the difference
+between asking and guaranteeing" (`claude-help.md` § 8). It's the only piece in this
+system the model **cannot** opt to skip.
+
+**Purpose:** everything that must always hold, without depending on the model
+remembering — `CLAUDE.md` § Invariant 6: *"if a rule must always hold, it's a hook or
+`permissions.deny` — not prose in markdown."* `ArchHook.java` has five modes:
+
+| Mode | Event | Blocks? | What it does |
+|---|---|---|---|
+| `check` | `PostToolUse` (Write\|Edit) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module |
+| `format` | `PostToolUse` (Write\|Edit) | Never | `spotless:apply` on the touched module |
+| `tests` | `Stop` | Yes (exit 2) | Runs tests of the modules changed since `HEAD` |
+| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter against `.claude/schemas/extensions.json` |
+| `doctor` | Manual (`/arch-doctor`) | Never | Diagnoses the setup on this machine |
+
+**When it enters context:** hooks don't "enter context" as text — they run as an
+**external process** (here, `java ArchHook.java <mode>`), and what returns to the model
+is structured output (stderr becomes the block reason) or JSON (`claude-help.md` §
+Structured JSON output). The `if` field in each `settings.json` entry filters by
+permission rule **before** spawning the JVM — without it, every `Write` would pay for
+starting a JVM for nothing (`_comment` field in `.claude/settings.json`).
+
+**Who invokes it:** the runtime, automatically, on the configured event — never the
+model or the user directly. The only way to run `ArchHook.java` "manually" is via
+`java .claude/hooks/ArchHook.java doctor` in the terminal, or indirectly through the
+`arch-doctor` skill, which embeds that call via `` !`command` `` inside its own body
+(see § Skill above).
+
+**Exec form vs. shell form:** `settings.json` uses **exec form** (`command: java` +
+`args: [...]`) instead of shell form — no shell, no execute bit, identical across
+Linux, macOS, and Windows (`claude-help.md` § Configuration; `CLAUDE.md` §
+Commands). That's why no step of `project-bootstrap` runs `chmod`.
+
+**Exit codes:**
+
+| Code | Behavior |
+|---|---|
+| `0` | Success — if stdout is valid JSON, it's parsed |
+| `2` | **Blocks the action** (on events that support blocking) — stderr becomes the reason shown to the model |
+| Other | Non-blocking error — the action proceeds |
+
+In `PostToolUse`, exit `2` doesn't undo the action (the tool already ran), but stderr
+is shown to Claude — that's how `check` reports a boundary violation after the file
+has already been written: the write happened, but the model is warned to fix it.
+
+**Where to configure:** `.claude/settings.json` (of this project, versioned) is the
+only location used here — there's no personal `~/.claude/settings.json` nor
+`.claude/settings.local.json` involved in this flow (`claude-help.md` § Where to
+configure lists the other options, including hooks via skill/subagent frontmatter,
+not used in this repository).
+
+---
+
+## Comparison summary
+
+| | Skill | Rule | Agent | `CLAUDE.md` | Hook |
+|---|---|---|---|---|---|
+| Format | `SKILL.md` + folder | standalone `.md` | standalone `.md` | standalone `.md` | `.json` + script |
+| Contains | Procedure | Norm | System prompt + config | Index/routing | Deterministic logic |
+| Enters context | On invocation | Auto (`paths`) or always | On invocation, isolated | Always, at startup | Never as text — runs as a process |
+| Invoked by | Model and/or user (`disable-model-invocation`) | Nobody — loads | Another skill/agent, via Agent tool | Nobody — loads | Runtime, on the event |
+| Can cite | Rules, blueprints, other skills, agents | Nothing (leaf) | Rules, skills it follows | Skills, rules, agents (by path) | Nothing — it's code |
+| Blocks something? | Not by itself | Not by itself | Not by itself | Not by itself | Yes, with exit 2 |

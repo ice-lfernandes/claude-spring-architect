@@ -1,0 +1,65 @@
+<!--
+Exemplar of the ROOT CLAUDE.md of a generated project. Written in step 6 of
+SKILL.md with the {{...}} placeholders already resolved. This file is not the
+CLAUDE.md of this meta-repository — that one is at the root of ai-spring-setup.
+Target: under 200 lines. Only facts and routing; rules stay in rules/.
+Lines for skills not yet written are dropped from the table — routing to something
+that doesn't exist is worse than not routing at all.
+-->
+
+# {{projectName}}
+
+Spring Boot · Java {{javaVersion}} · Build: {{buildTool}} · Architecture: **{{blueprint.name}}**
+
+## Commands
+
+| Action | Command |
+|---|---|
+| Full build | `{{buildCmd}}` |
+| Tests | `{{testCmd}}` |
+| Run locally | `{{runCmd}}` |
+| Format | `{{formatCmd}}` |
+
+## Invariants (non-negotiable)
+
+1. The `domain` module doesn't import Spring, JPA, Jackson, or any framework.
+2. Dependencies always point inward: adapters → application → domain.
+3. No framework exception crosses the domain boundary.
+4. Every new public class is born with a test. No exception.
+5. Constructor injection — never `@Autowired` on a field.
+6. Secrets never go into versioned configuration files.
+
+## Routing — when X, read Y
+
+Include only the rows whose skills were actually copied into `.claude/skills/` in step
+6.7. Run `ls .claude/skills/` before writing — a row pointing to a skill that doesn't
+exist makes the model search and fail silently.
+
+Today four are copied; the remaining rows stay out until the skills exist:
+
+| If the task involves | Use |
+|---|---|
+| Designing a use case before implementing it | skill `use-case-design` |
+| Aggregate, value object, invariant, ports | skill `domain-modeling` |
+| Table, JPA mapping, migration, index, slow query, datasource | skill `persistence-architect` |
+| Endpoint, controller, DTO, OpenAPI | skill `rest-api-architect` |
+| Design pattern, growing `if`/`switch` chain, class with too many responsibilities | skill `java-patterns` |
+| Tests, coverage, installing ArchUnit | skill `test-architect` |
+| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
+| Diagnosing hooks and enforcement | `/arch-doctor` |
+| Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |
+
+## Rules
+
+The detailed rules live in `.claude/rules/` — index at `.claude/rules/00-index.md`.
+Read the rule **when** you need it. Don't load them all: each one is the single source
+of truth for its topic and is cited, never copied.
+
+## Module structure
+
+{{#each modules}}
+- `{{path}}` — depends on: {{#if depends_on}}{{depends_on}}{{else}}nothing{{/if}}
+{{/each}}
+
+Each module with restrictions has its own local `CLAUDE.md`, generated from the
+blueprint. If the restriction changes, change the blueprint — not the markdown.

@@ -1,0 +1,68 @@
+/*
+ * EXEMPLAR — input and output DTOs. Two files in the real project
+ * (`CreateUserRequest.java` and `UserResponse.java`, names from
+ * `.claude/rules/naming.md`); shown together here to display the pair.
+ *
+ * Rules this exemplar demonstrates:
+ *   - record, immutable, no Lombok (`.claude/rules/lombok.md` doesn't even apply: there's
+ *     no mutable field to protect).
+ *   - bean validation only for SHAPE. "email has email format" is 400; "email already
+ *     registered" belongs to the aggregate and gives 422. Mixing the two puts a business
+ *     rule in the adapter.
+ *   - @Schema with description, example, and explicit requiredMode on each field.
+ *     requiredMode is NEVER inferred from the presence of @NotNull (`.claude/rules/api-rest.md`).
+ *   - no domain type in here. The DTO doesn't know about `Email` or `UserId`.
+ */
+package com.exemplo.minhaapi.adapter.in.rest.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
+
+@Schema(description = "Data to create a user")
+public record CreateUserRequest(
+        @Schema(
+                        description = "User's email. Unique in the system.",
+                        example = "ana@exemplo.com",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                @NotBlank
+                @Email
+                @Size(max = 254)
+                String email,
+        @Schema(
+                        description = "Full name",
+                        example = "Ana Silva",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                @NotBlank
+                @Size(max = 120)
+                String name,
+        @Schema(
+                        description = "Department to associate with. Absent = no department.",
+                        example = "3f1c...",
+                        requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+                String departmentId) {}
+
+/*
+ * Response. In the real project it's its own file — two public types don't fit in the
+ * same file. It's `public` here because the neighboring exemplar's `UserMapper` imports it.
+ * It's not the serialized aggregate: a new field on the aggregate doesn't leak into the
+ * contract by accident, and renaming a domain field doesn't break clients.
+ */
+@Schema(description = "Representation of a user")
+public record UserResponse(
+        @Schema(
+                        description = "Opaque identifier",
+                        example = "3f1c9a2e-...",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                String id,
+        @Schema(description = "Email", example = "ana@exemplo.com", requiredMode = Schema.RequiredMode.REQUIRED)
+                String email,
+        @Schema(description = "Full name", example = "Ana Silva", requiredMode = Schema.RequiredMode.REQUIRED)
+                String name,
+        @Schema(
+                        description = "Creation instant, UTC",
+                        example = "2026-09-07T10:15:30Z",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                Instant createdAt) {}

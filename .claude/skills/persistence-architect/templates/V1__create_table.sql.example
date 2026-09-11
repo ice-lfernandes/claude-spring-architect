@@ -1,0 +1,68 @@
+-- EXEMPLAR — Flyway migration. Form reference; not a file to copy.
+-- Rules: `.claude/rules/persistence.md` (§ Migrations)
+--
+-- NAME: V<N>__<verb>_<object>.sql, all snake_case. The <N> follows the highest existing one.
+-- IMMUTABLE: once applied, don't edit it. Fix with a new migration — editing this one
+-- changes the checksum and blocks the application from starting.
+-- ONE LOGICAL CHANGE PER FILE.
+
+-- ---------------------------------------------------------------------------
+-- V3__create_users.sql — new table
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE users (
+    id            uuid         NOT NULL,
+    email         varchar(254) NOT NULL,
+    name          varchar(120) NOT NULL,
+    department_id uuid         NULL,
+    status        varchar(20)  NOT NULL,
+    created_at    timestamptz  NOT NULL,   -- with time zone, written in UTC by the application
+    version       bigint       NOT NULL DEFAULT 0,
+    CONSTRAINT pk_users PRIMARY KEY (id),
+    CONSTRAINT uq_users_email UNIQUE (email),
+    CONSTRAINT fk_users_department FOREIGN KEY (department_id)
+        REFERENCES departments (id) ON DELETE RESTRICT
+);
+
+-- Every foreign key gets an index. The engine doesn't create one on the referencing
+-- side, and without it ON DELETE RESTRICT does a full scan of `users` on every deletion.
+CREATE INDEX ix_users_department_id ON users (department_id);
+
+-- ---------------------------------------------------------------------------
+-- V4__add_users_last_login.sql — new column on a table already in production (EXPAND)
+-- ---------------------------------------------------------------------------
+-- Enters allowing NULL. Never NOT NULL right away: the old version of the application
+-- is still running and doesn't know how to fill the column.
+
+-- ALTER TABLE users ADD COLUMN last_login_at timestamptz NULL;
+
+-- ---------------------------------------------------------------------------
+-- V5__backfill_users_last_login.sql — backfill (EXPAND, next release)
+-- ---------------------------------------------------------------------------
+-- In batches when the table is large: a single UPDATE locks the table and fills the WAL.
+
+-- UPDATE users SET last_login_at = created_at WHERE last_login_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- V6__enforce_users_last_login.sql — tightening (CONTRACT, only once nobody writes NULL)
+-- ---------------------------------------------------------------------------
+
+-- ALTER TABLE users ALTER COLUMN last_login_at SET NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Index on a large production table — its own migration, outside a transaction
+-- ---------------------------------------------------------------------------
+-- Flyway opens a transaction by default; CREATE INDEX CONCURRENTLY doesn't run inside
+-- one. Mark the file with the prefix that disables the transaction in your setup, or
+-- apply it separately. Without CONCURRENTLY, creation blocks writes to the table until
+-- it finishes.
+
+-- CREATE INDEX CONCURRENTLY ix_users_status ON users (status);
+
+-- ---------------------------------------------------------------------------
+-- Destructive — release after the one that stopped using the column
+-- ---------------------------------------------------------------------------
+-- Never in the same deploy that removes the usage: an application rollback would find
+-- the column already dropped and fail to start.
+
+-- ALTER TABLE users DROP COLUMN legacy_code;

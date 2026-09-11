@@ -1,0 +1,27 @@
+# EXEMPLAR — Kafka producer/consumer configuration.
+# Rules: `.claude/rules/messaging.md` § Delivery semantics, § Configuration
+# Mandatory values come from the rule; sizing (group id, offset reset) is this skill's
+# per-use-case call, fixed in the `25-mensageria.md` partial, not re-decided here.
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+      retries: 3
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.example.demo.adapter.in.messaging"
+    listener:
+      ack-mode: manual
+      # Backoff: 3 attempts, 1s / 2s / 4s, then DLQ — wired once in a
+      # DefaultErrorHandler + DeadLetterPublishingRecoverer bean, not per @KafkaListener.

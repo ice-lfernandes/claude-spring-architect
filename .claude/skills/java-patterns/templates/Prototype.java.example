@@ -1,0 +1,50 @@
+// Exemplar: Prototype. Clones an object that's expensive or unsafe to rebuild from
+// scratch instead of re-running everything that produced it. Lives in the domain —
+// zero framework. Rare fit: only when reconstruction genuinely costs something — a
+// plain copy constructor doesn't need this pattern, it needs nothing.
+package com.example.domain.model.pricing;
+
+import java.util.List;
+
+// One evaluation of every DiscountPolicy against the order, then reused freely.
+public interface PricingQuote {
+
+    PricingQuote copy();
+
+    Money finalPrice();
+}
+
+// --- the expensive path: runs once, evaluates every policy against the order
+public final class EvaluatedPricingQuote implements PricingQuote {
+
+    private final Money basePrice;
+    private final List<Money> appliedDiscounts;
+    private final Money finalPrice;
+
+    public EvaluatedPricingQuote(Money basePrice, List<DiscountPolicy> policies, Order order) {
+        this.basePrice = basePrice;
+        this.appliedDiscounts = policies.stream()
+                .filter(policy -> policy.appliesTo(order))
+                .map(policy -> policy.discountFor(order))
+                .toList();
+        this.finalPrice = appliedDiscounts.stream().reduce(basePrice, Money::subtract);
+    }
+
+    // The cheap path: no policy runs again. Every later quote for the same order —
+    // a retry, a follow-up screen — clones this instead of rebuilding it.
+    private EvaluatedPricingQuote(Money basePrice, List<Money> appliedDiscounts, Money finalPrice) {
+        this.basePrice = basePrice;
+        this.appliedDiscounts = appliedDiscounts;
+        this.finalPrice = finalPrice;
+    }
+
+    @Override
+    public PricingQuote copy() {
+        return new EvaluatedPricingQuote(basePrice, appliedDiscounts, finalPrice);
+    }
+
+    @Override
+    public Money finalPrice() {
+        return finalPrice;
+    }
+}

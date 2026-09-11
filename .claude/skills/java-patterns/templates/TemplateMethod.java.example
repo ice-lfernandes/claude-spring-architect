@@ -1,0 +1,81 @@
+// Exemplar: Template Method. Several classes implement the same algorithm with the same
+// steps in the same order, and only the steps that genuinely vary should differ between
+// them. Prefer composition (Strategy, or a plain injected collaborator) when a single step
+// varies — a `protected abstract` hook for one step is overkill a constructor argument
+// already solves. This earns its keep only when ≥ 2 steps vary together in a fixed skeleton,
+// as below: transform and destination both change per variant, fetch/validate/finalize don't.
+package com.example.application.export;
+
+// --- the skeleton: fetch, validate, transform, write, finalize — fixed order, fixed count
+public abstract class OrderExportRoutine {
+
+    // final: the order of steps is the one invariant no subclass may touch
+    public final void run(OrderId id) {
+        Order order = fetch(id);
+        validate(order);
+        String payload = transform(order);
+        write(payload);
+        finalizeExport(id);
+    }
+
+    // shared steps — same for every variant, no reason to repeat them
+    private Order fetch(OrderId id) {
+        return orderRepository().byId(id)
+                .orElseThrow(() -> new NotFoundException("ORDER_NOT_FOUND", id.toString()));
+    }
+
+    private void validate(Order order) {
+        order.assertExportable();
+    }
+
+    private void finalizeExport(OrderId id) {
+        exportLog().recordCompleted(id);
+    }
+
+    // the two steps that actually vary between variants — everything else stays put
+    protected abstract String transform(Order order);
+
+    protected abstract void write(String payload);
+
+    protected abstract OrderRepositoryPort orderRepository();
+
+    protected abstract ExportLogPort exportLog();
+}
+
+// --- variant 1: CSV to a local file — only transform() and write() differ
+final class CsvFileExport extends OrderExportRoutine {
+
+    private final OrderRepositoryPort repository;
+    private final ExportLogPort exportLog;
+    private final CsvWriterPort writer;
+
+    CsvFileExport(OrderRepositoryPort repository, ExportLogPort exportLog, CsvWriterPort writer) {
+        this.repository = repository;
+        this.exportLog = exportLog;
+        this.writer = writer;
+    }
+
+    @Override
+    protected String transform(Order order) {
+        return CsvOrderFormat.of(order);
+    }
+
+    @Override
+    protected void write(String payload) {
+        writer.appendLine(payload);
+    }
+
+    @Override
+    protected OrderRepositoryPort orderRepository() {
+        return repository;
+    }
+
+    @Override
+    protected ExportLogPort exportLog() {
+        return exportLog;
+    }
+}
+
+// If a third variant only ever changed transform() and never write(), that's the signal
+// to stop subclassing and inject a Strategy for transform() instead — this shape earns
+// its keep only while both steps keep varying together.

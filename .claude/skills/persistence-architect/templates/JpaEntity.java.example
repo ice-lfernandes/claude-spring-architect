@@ -1,0 +1,106 @@
+/*
+ * EXEMPLAR — persistence entity. Lives in the output adapter, never in the domain.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/persistence.md` (§ Boundary, § Mapping, § Identity)
+ *        `.claude/rules/lombok.md` (`@Data` and `@Setter` forbidden)
+ *        `.claude/rules/architecture-ddd.md` (adapter has no business logic)
+ *
+ * WHY IT ISN'T A RECORD: Hibernate requires a no-arg constructor and fields mutable by
+ * reflection. That's why this class exists separate from the aggregate, which is
+ * immutable. Two classes, two owners, one explicit translation between them.
+ *
+ * WHY `equals` AND `hashCode` ARE NOT HERE: the rule forbids basing them on a
+ * database-generated id — while the entity is transient the id is null and the contract
+ * breaks inside a `Set`. If they're really needed, base them on the business key
+ * (`email`), not the PK.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- UserEntity.java
+package com.example.demo.adapter.out.persistence;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import java.time.Instant;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
+
+@Entity
+@Table(name = "users")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)   // required by Hibernate, closed to everyone else
+// All fields are private, so the modifier is declared once
+// (`.claude/rules/lombok.md` § @FieldDefaults). No `makeFinal`: Hibernate writes the
+// fields by reflection and needs them mutable — the exception the rule allows for.
+@FieldDefaults(level = AccessLevel.PRIVATE)
+class UserEntity {
+
+    // Id assigned by the application: the aggregate is already born with a `UserId`, so
+    // there's no "half-created" state waiting for a database id. Where the id comes
+    // from the database, prefer `GenerationType.SEQUENCE` — `IDENTITY` disables insert
+    // batching.
+    @Id
+    @Column(name = "id", nullable = false, updatable = false)
+    UUID id;
+
+    @Column(name = "email", nullable = false, length = 254, unique = true)
+    String email;
+
+    @Column(name = "name", nullable = false, length = 120)
+    String name;
+
+    // Absence modeled as null in the column. The mapper translates to the domain's Null
+    // Object (`DepartmentId.unassigned()`) — the domain never sees null.
+    @Column(name = "department_id")
+    UUID departmentId;
+
+    // STRING, never ORDINAL: reordering the enum would corrupt already-stored rows.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    UserStatus status;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    Instant createdAt;
+
+    // Optimistic locking. Invisible to the domain: the adapter translates the failure
+    // into the conflict exception from `.claude/rules/error-handling.md`.
+    @Version
+    @Column(name = "version", nullable = false)
+    long version;
+
+    UserEntity(UUID id, String email, String name, UUID departmentId,
+               UserStatus status, Instant createdAt) {
+        this.id = id;
+        this.email = email;
+        this.name = name;
+        this.departmentId = departmentId;
+        this.status = status;
+        this.createdAt = createdAt;
+    }
+
+    // No setters. The entity changes through methods that say what changed — and even
+    // these decide nothing: the rule was already applied on the aggregate before it got
+    // here.
+    void applyName(String newName) {
+        this.name = newName;
+    }
+
+    void applyDepartment(UUID newDepartmentId) {
+        this.departmentId = newDepartmentId;
+    }
+}
+
+// --- UserStatus.java
+package com.example.demo.adapter.out.persistence;
+
+// Persistence-side enum. Mirrors the domain's; not the same type.
+enum UserStatus { ACTIVE, SUSPENDED, CLOSED }

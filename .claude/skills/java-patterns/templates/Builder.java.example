@@ -1,0 +1,74 @@
+// Exemplar: Builder. Order construction has six fields, most optional, and a
+// step order that matters (items must exist before a coupon can be priced
+// against them). "Builder" is accepted here the same way "Adapter" and
+// "Repository" are elsewhere in this repo: a JDK-idiomatic role name, not a
+// pattern name smuggled into the class name.
+// Lives in the domain. Not Lombok @Builder — that generates a setter-shaped
+// builder for every field with no way to enforce "items before coupon";
+// this one validates once, in build(), and nowhere else.
+package com.example.domain.model.order;
+
+import com.example.domain.exception.ValidationException;
+import java.util.ArrayList;
+import java.util.List;
+
+public final class OrderBuilder {
+
+    private CustomerId customerId;
+    private final List<OrderLine> items = new ArrayList<>();
+    private Address shippingAddress;
+    private CouponCode couponCode;
+    private String giftMessage;
+    private OrderPriority priority = OrderPriority.STANDARD;
+
+    public OrderBuilder customer(CustomerId customerId) {
+        this.customerId = customerId;
+        return this;
+    }
+
+    public OrderBuilder addItem(OrderLine item) {
+        items.add(item);
+        return this;
+    }
+
+    public OrderBuilder shippingAddress(Address address) {
+        this.shippingAddress = address;
+        return this;
+    }
+
+    // Coupon needs at least one item to know what it discounts — the step
+    // order the header mentions. Enforced here, not in build(): the caller
+    // finds out at the exact call that broke it, not three lines later.
+    public OrderBuilder couponCode(CouponCode couponCode) {
+        if (items.isEmpty()) {
+            throw new ValidationException("ORDER_COUPON_NEEDS_ITEMS", "Add items before a coupon code");
+        }
+        this.couponCode = couponCode;
+        return this;
+    }
+
+    public OrderBuilder giftMessage(String giftMessage) {
+        this.giftMessage = giftMessage;
+        return this;
+    }
+
+    public OrderBuilder priority(OrderPriority priority) {
+        this.priority = priority;
+        return this;
+    }
+
+    public Order build() {
+        if (customerId == null) {
+            throw new ValidationException("ORDER_CUSTOMER_REQUIRED", "Order requires a customer");
+        }
+        if (items.isEmpty()) {
+            throw new ValidationException("ORDER_ITEMS_REQUIRED", "Order requires at least one item");
+        }
+        return Order.of(customerId, List.copyOf(items), shippingAddress, couponCode, giftMessage, priority);
+    }
+}
+
+// --- collaborators this exemplar assumes but doesn't define: CustomerId,
+// OrderLine, Address, CouponCode, OrderPriority (enum: STANDARD, EXPRESS),
+// and Order.of(...) — the aggregate's own static factory, which re-checks
+// nothing the builder already validated and does the rest (id, createdAt).

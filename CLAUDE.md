@@ -1,0 +1,128 @@
+# ai-spring-setup
+
+Meta-repository: generates Spring Boot projects already prepared for AI-assisted
+development. **It is not a Java application** — it has no `pom.xml`, does not compile,
+has no Maven tests. What gets edited here are instruction files, data, and a hook.
+
+Purpose, features and status: `@README.md`.
+
+## Dependencies
+
+`java` (JDK 21+) · `git` · `curl`. Nothing else. Zero Python, zero shell, zero `mvn` on
+PATH — the wrapper comes in the Initializr's `starter.tgz`.
+
+## Commands
+
+| Action | Command |
+|---|---|
+| Diagnose the setup on this machine | `/arch-doctor` |
+| Create a project from a blueprint | `/init-project` |
+| Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
+| Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
+| Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
+| Validate frontmatter of all extension files | `java .claude/hooks/ArchHook.java schema` |
+
+## Architecture of the AI files
+
+Clean Architecture applied to `.claude/` itself. Dependencies point in one direction:
+
+```
+hooks/ + settings.json      infra/enforcement — deterministic
+        ↓ verifies
+skills/                     procedure + exemplars
+        ↓ invokes                    ↑ delegates via context: fork
+agents/                     isolated execution
+        ↓ cites, never copies
+rules/ + blueprints/        norms and data   ← LEAF
+
+decisions/                  history — nobody reads it at runtime, outside the graph
+```
+
+## Invariants (non-negotiable)
+
+1. **`rules/` is a leaf.** A norm never mentions a skill, an agent, or a command. If it
+   needs to, it's a procedure and belongs in a skill.
+2. **Each norm has a single owning file.** Others cite it by path
+   (`@.claude/rules/naming.md`). A norm written in two places has diverged — that's a bug.
+3. **Code boilerplate lives in `templates/` inside the skill that emits it**, with the
+   `.example` suffix. Never inside a norm, never pasted into the body of a `SKILL.md`.
+4. **No new `commands/` are created.** Slash commands were merged into skills: write
+   `skills/<name>/SKILL.md` and control invocation with `disable-model-invocation`.
+5. **An agent exists only for one of three reasons:** preserving context, restricting
+   tools, or changing model. If none applies, it's a skill.
+6. **If a rule must always hold, it's a hook or `permissions.deny`** — not prose in
+   markdown.
+7. **Architectures are data.** Adding a blueprint must never require editing a skill, an
+   agent, or a command.
+8. **Java and Spring Boot versions are never written from memory.** They are resolved at
+   runtime via Spring Initializr; without network access, ask.
+9. **The generated project is self-contained.** Whoever clones it does not have
+   `ai-spring-setup`. Everything cited from inside the project must exist inside the
+   project: norms (step 6.6), development skills (6.7), `ArchHook.java` and
+   `schemas/extensions.json` (7). Creation skills (`project-bootstrap`, `init-project`)
+   and `blueprints/` are left out on purpose — they only serve before the project exists.
+   A new norm or skill here is only complete once the step that copies it has also been
+   updated.
+10. **Recognized frontmatter fields are data with a single owner.** The list lives in
+    `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
+    other file that displays it is derived and must match it exactly. A corollary of 2
+    and 7, written separately because its failure mode is silent: the runtime ignores an
+    unknown field without any error, and `claude plugin validate` lets it through too.
+
+## Routing — when X, read Y
+
+| If the task involves | Go to |
+|---|---|
+| Creating a project from scratch | skill `project-bootstrap` |
+| Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the five | skill `claude-code-architect-designer` |
+| Designing a use case before implementing it; knowing whether a request is one or several | skill `use-case-design` |
+| Aggregate, value object, invariant, ports of an already-designed use case | skill `domain-modeling` |
+| Table, JPA mapping, migration, index, slow query, datasource properties | skill `persistence-architect` |
+| REST adapter, controller, DTO, status, OpenAPI | skill `rest-api-architect` |
+| Tests, coverage, installing ArchUnit | skill `test-architect` |
+| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
+| Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level | skill `docker-architect` |
+| Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
+| Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
+| Which norm covers what | `@.claude/rules/00-index.md` |
+| Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
+| Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
+| Contract every blueprint fulfills | `@.claude/blueprints/_schema.md` |
+| Frontmatter fields the runtime recognizes | `@claude-help.md` |
+| How each piece of Claude Code works | `@claude-help.md` |
+
+## Known pitfalls
+
+- **A skill cannot have the name of a native slash command.** The folder name becomes
+  the command, and `/doctor`, `/init`, `/context`, `/memory` already exist in the
+  runtime. That's why this repo's diagnostic skill is called `arch-doctor`. Shadowing a
+  native command doesn't produce an error — it runs the wrong command.
+- **`.claude/settings.json` is only read at session startup.** Editing hooks mid-session
+  has no effect — `claude` must be restarted.
+- **The runtime silently ignores unknown frontmatter.** An invented field is decoration,
+  not behavior. List of native fields in `@claude-help.md`.
+- **Everything the model must obey lives in the body of the file**, never in
+  frontmatter. `metadata.*` was removed from skills and agents: ownership, `reads`,
+  `handoff`, and contracts live in the `## Contrato` section of the body. Do not put
+  `metadata:` back into a `SKILL.md` — it costs tokens on every invocation and enforces
+  nothing.
+- **The `CLAUDE.md` at the root of a generated project is not this file.** It is
+  produced from
+  `.claude/skills/project-bootstrap/templates/root.CLAUDE.md.example`.
+- **`claude plugin validate` does not validate fields.** It accepts `metadata:`, accepts
+  camelCase in a skill, and accepts an invented field, always with `✔ Validation
+  passed`. It does not look at `.claude/agents/`, `.claude/rules/`, or
+  `.claude/settings.json`. It catches malformed YAML, nothing else. What validates
+  fields is `java .claude/hooks/ArchHook.java schema`.
+- **`.claude/decisions/` is neither a norm nor living documentation.** It records what
+  was decided on the date, not what holds true today. It has no `paths`, does not enter
+  `00-index.md`, and does not go into the generated project. It is superseded by a new
+  record; the old one is not rewritten.
+- **This repository does not run `./mvnw`.** `ArchHook` exits 0 when it doesn't find
+  the wrapper; here that's expected, not a failure.
+- **`allowed-tools` with `Bash(command:*)` checks each segment of the pipe separately.**
+  An injection `` !`a | b | c` `` in the body needs a rule for `a`, `b`, and `c`; miss
+  one and the whole command is blocked before it runs. Write injections as a single
+  command (`ls .claude/skills`, not `find … | sed | sort`). This only affects skills
+  that restrict Bash: `allowed-tools: Bash` without a filter lets the whole pipeline
+  through.

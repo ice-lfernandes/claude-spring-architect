@@ -1,0 +1,38 @@
+/*
+ * EXEMPLAR — written once, at bootstrap time, when `features.spring-modulith` is
+ * active (`modular-monolith` blueprint). Unlike ArchUnit (installed later, by
+ * `test-architect`'s setup mode, only once business classes exist — a `should()` rule
+ * over zero classes fails vacuously), `ApplicationModules.of(...).verify()` is safe to
+ * write immediately: zero modules means zero structural violations, a genuinely green
+ * and meaningful result, not a vacuous one. It starts enforcing the moment the first
+ * bounded-context package appears — no separate "setup mode" needed for this one.
+ * Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi;
+
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.modulith.core.ApplicationModules;
+
+class ModularityTests {
+
+    // Rebuilding the model on every test run — not caching it in a static field — keeps
+    // this test honest about the *current* package structure, including a module added
+    // five minutes ago in the same session.
+    ApplicationModules modules = ApplicationModules.of(MinhaApiApplication.class);
+
+    @Test
+    void verifiesModularStructure() {
+        modules.verify();
+    }
+
+    @Test
+    void writesDocumentationSnippets() {
+        // Non-blocking: a Documenter failure here is a diagram problem, never a
+        // structural one — verifiesModularStructure() above is the actual gate.
+        assertThatCode(() -> new org.springframework.modulith.docs.Documenter(modules)
+                        .writeDocumentation())
+                .doesNotThrowAnyException();
+    }
+}

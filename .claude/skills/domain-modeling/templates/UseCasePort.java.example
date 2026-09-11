@@ -1,0 +1,92 @@
+/*
+ * EXEMPLAR — a use case's ports: input, output, and the implementation that ties them
+ * together.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/architecture-ddd.md` (one input abstraction per use case,
+ *          the transaction opens and closes in the application layer, no HTTP/JPA
+ *          types in signatures)
+ *        `.claude/rules/naming.md` (`<Verb><Noun>UseCase` / `…Service`, no Impl)
+ *        `.claude/rules/code-quality.md` (constructor injection, private final fields)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - an input port with **one** method. A fat interface is a smell: two methods here
+ *    are almost always two use cases;
+ *  - an output port declared in the application layer and implemented in the adapter —
+ *    the dependency points inward;
+ *  - `@Transactional` in the implementation, which belongs to the application layer. In
+ *    the domain it would be framework crossing the boundary; in the adapter, the
+ *    transaction would open too late.
+ *
+ * THE SPRING ANNOTATION IN THIS FILE IS DELIBERATE: `architecture-ddd.md` puts
+ * composition and configuration in the application layer and the bootstrap, not the
+ * domain. `Email`, `User`, and the events import nothing from `org.springframework` —
+ * these are the ones that can.
+ */
+
+// --- CreateUserUseCase.java
+package com.example.demo.application.port.in;
+
+import com.example.demo.domain.model.UserId;
+
+public interface CreateUserUseCase {
+
+    /**
+     * @throws com.example.demo.domain.exception.ValidationException malformed data
+     * @throws com.example.demo.domain.exception.ConflictException email already registered
+     */
+    UserId create(CreateUserCommand command);
+}
+
+// --- UserRepository.java
+package com.example.demo.application.port.out;
+
+import com.example.demo.domain.model.Email;
+import com.example.demo.domain.model.User;
+
+public interface UserRepository {
+
+    boolean existsByEmail(Email email);
+
+    User save(User user);
+}
+
+// --- CreateUserService.java
+package com.example.demo.application.service;
+
+import com.example.demo.application.port.in.CreateUserCommand;
+import com.example.demo.application.port.in.CreateUserUseCase;
+import com.example.demo.application.port.out.UserRepository;
+import com.example.demo.domain.exception.ConflictException;
+import com.example.demo.domain.model.DepartmentId;
+import com.example.demo.domain.model.Email;
+import com.example.demo.domain.model.User;
+import com.example.demo.domain.model.UserId;
+import java.time.Clock;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CreateUserService implements CreateUserUseCase {
+
+    private final UserRepository userRepository;
+    private final Clock clock;
+
+    public CreateUserService(UserRepository userRepository, Clock clock) {
+        this.userRepository = userRepository;
+        this.clock = clock;
+    }
+
+    @Override
+    @Transactional
+    public UserId create(CreateUserCommand command) {
+        Email email = Email.of(command.email());
+        if (userRepository.existsByEmail(email)) {
+            throw new ConflictException("EMAIL_ALREADY_USED", "email already registered");
+        }
+        DepartmentId departmentId = command.departmentId() == null
+                ? DepartmentId.unassigned()
+                : DepartmentId.of(command.departmentId());
+        User user = User.register(email, command.name(), departmentId, clock);
+        return userRepository.save(user).id();
+    }
+}

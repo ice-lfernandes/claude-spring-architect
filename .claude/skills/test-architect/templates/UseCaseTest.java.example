@@ -1,0 +1,74 @@
+/*
+ * EXEMPLAR — application unit test. Compilable as-is.
+ *
+ * Verifies ORCHESTRATION, not business rules: that the use case calls the right ports,
+ * in the right order, and propagates what the domain rejects. The aggregate's
+ * invariants already have their own test at the domain level and aren't repeated here.
+ *
+ * No Spring context: the service is assembled with `new`, because its dependencies come
+ * in through the constructor. If a test like this needs a Spring context to start, the
+ * problem is in the class's design, not in the test.
+ *
+ * Doubles only on the ports — what crosses the boundary. The aggregate and the value
+ * objects are used for real.
+ */
+package com.exemplo.minhaapi.application.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+import com.exemplo.minhaapi.application.port.in.CreateUserCommand;
+import com.exemplo.minhaapi.application.port.out.LoadUserPort;
+import com.exemplo.minhaapi.application.port.out.SaveUserPort;
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.model.user.DepartmentId;
+import com.exemplo.minhaapi.domain.model.user.Email;
+import com.exemplo.minhaapi.domain.model.user.User;
+import com.exemplo.minhaapi.test.TestFixtures;
+import java.util.Optional;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+class CreateUserServiceTest {
+
+    private final LoadUserPort loadUser = mock(LoadUserPort.class);
+    private final SaveUserPort saveUser = mock(SaveUserPort.class);
+    private final CreateUserService service =
+            new CreateUserService(loadUser, saveUser, TestFixtures.CLOCK);
+
+    @Test
+    @DisplayName("creates the user when the email is free")
+    void createsUserWhenEmailIsFree() {
+        given(loadUser.findByEmail(any())).willReturn(Optional.empty());
+        given(saveUser.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        User created = service.handle(command("ana@exemplo.com"));
+
+        assertThat(created.email().value()).isEqualTo("ana@exemplo.com");
+        verify(saveUser).save(any());
+    }
+
+    @Test
+    @DisplayName("rejects when the email is already registered, and nothing is saved")
+    void rejectsAlreadyRegisteredEmail() {
+        given(loadUser.findByEmail(any())).willReturn(Optional.of(TestFixtures.user()));
+
+        assertThatThrownBy(() -> service.handle(command("ana@exemplo.com")))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting("errorCode")
+                .isEqualTo("EMAIL_ALREADY_REGISTERED");
+
+        // The assertion that catches the worst bug: rejecting and saving at the same time.
+        verify(saveUser, never()).save(any());
+    }
+
+    private CreateUserCommand command(String email) {
+        return new CreateUserCommand(
+                Email.of(email), "Ana Silva", DepartmentId.unassigned(), "idempotency-key");
+    }
+}

@@ -1,0 +1,51 @@
+// Exemplar: Strategy. Replaces a switch over type that grows with each new rule.
+// Lives in the domain — zero framework. Name says the role (Policy), never the pattern.
+package com.example.domain.model.pricing;
+
+import java.util.List;
+
+public interface DiscountPolicy {
+
+    boolean appliesTo(Order order);
+
+    Money discountFor(Order order);
+}
+
+// --- one implementation per rule; new rule = new file, no file edited
+public final class LoyaltyDiscount implements DiscountPolicy {
+
+    private static final int MIN_ORDERS_FOR_LOYALTY = 10;
+
+    @Override
+    public boolean appliesTo(Order order) {
+        return order.customer().completedOrders() >= MIN_ORDERS_FOR_LOYALTY;
+    }
+
+    @Override
+    public Money discountFor(Order order) {
+        return order.total().percentage(5);
+    }
+}
+
+// --- the selector doesn't know the implementations: it receives them
+public final class DiscountCalculator {
+
+    private final List<DiscountPolicy> policies;
+
+    public DiscountCalculator(List<DiscountPolicy> policies) {
+        this.policies = List.copyOf(policies);
+    }
+
+    public Money bestDiscountFor(Order order) {
+        return policies.stream()
+                .filter(policy -> policy.appliesTo(order))
+                .map(policy -> policy.discountFor(order))
+                .max(Money::compareTo)
+                .orElse(Money.zero(order.total().currency()));
+    }
+}
+
+// --- wiring in the bootstrap; Spring injects all implementations into the List
+// @Bean DiscountCalculator discountCalculator(List<DiscountPolicy> policies) {
+//     return new DiscountCalculator(policies);
+// }

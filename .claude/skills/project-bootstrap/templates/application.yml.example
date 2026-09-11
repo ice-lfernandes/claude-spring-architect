@@ -1,0 +1,46 @@
+# EXEMPLAR — application.yml for the module with `contains_main: true`.
+# Each block is tagged with the feature that justifies it. If that feature isn't
+# active in the blueprint, the block doesn't go in — don't copy the whole file blindly.
+# Tested to compile and start up with Spring Boot 4 · Java 21.
+
+spring:
+  application:
+    name: minha-api
+
+  # feature: persistence-jpa
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/minhaapi}
+    username: ${DB_USERNAME:minhaapi}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The schema belongs to Flyway. Hibernate never alters it.
+      ddl-auto: validate
+
+  # feature: flyway
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# feature: actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# feature: openapi
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    root: INFO

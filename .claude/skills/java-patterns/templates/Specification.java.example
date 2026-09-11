@@ -1,0 +1,69 @@
+// Exemplar: Specification. "High-value order" was checked with an `if` in
+// a service and, separately, encoded again as a filter in the persistence
+// adapter — one business rule, two places to forget when it changes. DDD
+// idiom (Evans/Fowler), not one of the 23 GoF patterns.
+// Lives in the domain: the rule is business, however it eventually gets used.
+package com.example.domain.model.order;
+
+import java.util.List;
+
+public interface Specification<T> {
+
+    boolean isSatisfiedBy(T candidate);
+
+    default Specification<T> and(Specification<T> other) {
+        return candidate -> this.isSatisfiedBy(candidate) && other.isSatisfiedBy(candidate);
+    }
+
+    default Specification<T> or(Specification<T> other) {
+        return candidate -> this.isSatisfiedBy(candidate) || other.isSatisfiedBy(candidate);
+    }
+
+    default Specification<T> negate() {
+        return candidate -> !this.isSatisfiedBy(candidate);
+    }
+
+    // Filters an already-loaded collection. Fine for a handful of orders in
+    // memory; wrong tool for a table — see the query-side note below.
+    default List<T> filter(List<T> candidates) {
+        return candidates.stream().filter(this::isSatisfiedBy).toList();
+    }
+}
+
+// --- the rule, written once
+public final class HighValueOrder implements Specification<Order> {
+
+    private final Money threshold;
+
+    public HighValueOrder(Money threshold) {
+        this.threshold = threshold;
+    }
+
+    @Override
+    public boolean isSatisfiedBy(Order order) {
+        return order.total().isGreaterThan(threshold);
+    }
+}
+
+// --- reused where a service used to have its own `if`
+public final class ExpediteHighValueOrders {
+
+    private final Specification<Order> highValue;
+
+    public ExpediteHighValueOrders(Money highValueThreshold) {
+        this.highValue = new HighValueOrder(highValueThreshold);
+    }
+
+    public List<Order> expeditableAmong(List<Order> orders) {
+        return highValue.filter(orders);
+    }
+}
+
+// --- reused where the persistence adapter used to encode the same rule as
+// its own separate WHERE clause. The specification doesn't write SQL; the
+// adapter reads `threshold` off it and builds the query — one definition of
+// "high value", two consumers instead of two definitions.
+//
+// interface OrderRepositoryPort {
+//     List<Order> findAbove(Money threshold); // adapter translates, spec supplies the value
+// }

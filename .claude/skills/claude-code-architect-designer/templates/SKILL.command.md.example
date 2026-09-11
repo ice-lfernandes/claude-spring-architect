@@ -1,0 +1,64 @@
+---
+name: <name-in-kebab-case>
+description: >
+  <What it does, in one sentence, with the concrete object first.> <If it has a side
+  effect, say so here.> Explicit invocation only.
+argument-hint: "[<argument>] [--<flag> <value>]"
+disable-model-invocation: true
+allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
+---
+
+## <Relevant state, injected before the model reads>
+
+!`<cheap, deterministic command that shows real state>`
+
+## Arguments
+
+$ARGUMENTS
+
+---
+
+# <Readable Name>
+
+## Why this is a manual skill and not <closest rejected form>
+
+<Three sentences, no adjectives. Why it's manual invocation: side effect, or the user is
+the one who decides the moment. The interview axis that motivated it. The closest
+alternative and the concrete reason it lost. If there was a full record, cite it:
+`@.claude/decisions/NNNN-<slug>.md`.>
+
+## When NOT to use
+
+<The condition under which this skill should stop instead of acting. Example: "If the
+directory already contains `pom.xml`, don't initialize: report what you found.">
+
+## Procedure
+
+1. <Step with an imperative verb.>
+2. <Step that fails early: validate before writing the first file.>
+3. <Write step, generated from `templates/`.>
+4. <Verification step, with the concrete command.>
+
+## Contract
+
+**Reads** <files by path>.
+
+**Writes** <paths it owns>.
+
+**Does not** <out of scope, and the alternative>.
+
+<!--
+EXEMPLARS IN THE REPO:
+  .claude/skills/init-project/SKILL.md     manual ritual that delegates to a subagent
+  .claude/skills/arch-doctor/SKILL.md      diagnostic, `!`command`` injection, fixes nothing
+
+WHEN THIS FORM:
+- The skill writes files in the user's project (this repo's default).
+- It has a side effect: generates, installs, publishes.
+- DON'T use this form if another piece needs to chain it: the field hides it from the
+  model. The five skills of `/new-feature` are Form 1 for this reason (D17).
+
+IF DELEGATING TO A SUBAGENT:
+  add `context: fork` + `agent: <name>` to the frontmatter, keep the body thin, and
+  justify in the body which of the agent's three reasons applies.
+-->

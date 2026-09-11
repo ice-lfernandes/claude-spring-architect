@@ -1,0 +1,28 @@
+# EXEMPLAR — goes to <project>/lombok.config (root, next to the root pom.xml).
+#
+# This file is the mechanical half of .claude/rules/lombok.md. The rule's prohibitions
+# are enforced here by the compiler, with file and line, instead of by review.
+#
+# Lombok reads the `lombok.config` in the file's folder and in every folder above it, until
+# it finds `config.stopBubbling = true`. A single file at the root covers every module
+# in the project — don't copy this into each module.
+#
+# If you add or remove a prohibition, also change rules/lombok.md in the same
+# pass. Rule and build disagreeing is a bug.
+
+config.stopBubbling = true
+
+# rules/lombok.md: forbidden. @Data generates setters on every field and equals/hashCode
+# over mutable state — the aggregate stops guaranteeing its invariants.
+lombok.data.flagUsage = ERROR
+
+# rules/lombok.md: forbidden, on class and on field. State changes go through a method
+# with a business name, which validates before writing.
+lombok.setter.flagUsage = ERROR
+
+# @Getter remains allowed: the rule's condition (the returned object must be
+# immutable) isn't expressible here and is checked in review.
+
+# JaCoCo and ArchUnit ignore what Lombok generates. Without this, a well-tested aggregate
+# shows up with low coverage because of getters and constructors nobody wrote.
+lombok.addLombokGeneratedAnnotation = true

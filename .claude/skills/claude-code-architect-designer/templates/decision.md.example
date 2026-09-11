@@ -1,0 +1,67 @@
+# NNNN · <The decision, as a short statement>
+
+- **Date:** <YYYY-MM-DD>
+- **Scenario:** <the original request, one sentence, in the user's words>
+- **Decision:** <Form N — path of the created file>
+- **State:** approved by <who>, on <YYYY-MM-DD>
+
+## Interview
+
+Only the axes that eliminated forms. An axis answered that didn't change anything isn't
+included.
+
+| Axis | Answer | Forms it eliminated |
+|---|---|---|
+| <N — axis name> | <user's answer, summarized> | <forms, or "—"> |
+
+## Options evaluated
+
+| # | Option | Score | Verdict |
+|---|---|---|---|
+| 1 | `<proposed file>` | <0-10> | **Approved** |
+| 2 | `<proposed file>` | <0-10> | Rejected — <reason in one line> |
+| 3 | create nothing | <0-10> | Rejected — <reason in one line> |
+
+### Option 1 — `<file>` (score <N>)
+
+**Motivator:** <the interview axis that justifies it>
+
+**Pros:** <…>
+
+**Cons:** <…, including the invariant it strains, if any>
+
+**Points cut in the rubric:** <§ 8 criterion → why>
+
+### Option 2 — `<file>` (score <N>)
+
+<same, shorter: just enough that nobody re-proposes it without reading this>
+
+## References
+
+| Claim | Source |
+|---|---|
+| <what was claimed about the runtime or the repo> | `@claude-help.md` § <N> · `@CLAUDE.md` invariant <N> · `<file that serves as precedent>` |
+
+## Propagation
+
+| File | Change |
+|---|---|
+| `<path>` | <what was added> |
+
+Goes to the generated project: **<yes, via step 6.6/6.7 — or no, and why>**
+
+<!--
+HOW TO USE:
+- File created by Phase 3 of the `claude-code-architect-designer` skill as a draft,
+  BEFORE approval, with all options and without the "State" line.
+- Promoted in Phase 4 after approval: fills in "Decision", "State", and "Propagation".
+- If the user doesn't approve any option, the draft stays with
+  `State: rejected — no option approved`. Don't delete it: it avoids repeating the
+  interview.
+
+NAME: .claude/decisions/NNNN-<slug>.md — NNNN is the highest existing + 1.
+  ls .claude/decisions/[0-9]*.md | tail -1
+
+NOT A RULE. Doesn't enter `00-index.md`, has no frontmatter, has no `paths`.
+DOES NOT GO TO THE GENERATED PROJECT — invariant 9.
+-->

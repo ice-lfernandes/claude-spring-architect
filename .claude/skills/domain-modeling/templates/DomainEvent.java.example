@@ -1,0 +1,55 @@
+/*
+ * EXEMPLAR — domain event. Past fact, immutable, framework-free.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/architecture-ddd.md` (past-tense name, injected Clock)
+ *        `.claude/rules/naming.md` (`<Aggregate><VerbInPast>`)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - a sealed interface that marks what is an event, without forcing state inheritance;
+ *  - `occurredAt` as a record component, coming from a `Clock` passed in from outside;
+ *  - minimal payload: identity and what the consumer needs to act without going back to
+ *    the emitter for more. A fat event couples both sides; an anemic event forces a
+ *    callback.
+ *
+ * WHAT'S NOT HERE: publishing, serialization, topic, delivery guarantee. That's the
+ * messaging adapter's job — `messaging-architect`. A domain event doesn't know Kafka
+ * exists.
+ */
+
+// --- DomainEvent.java
+package com.example.demo.domain.event;
+
+import java.time.Instant;
+
+public sealed interface DomainEvent permits UserCreated {
+
+    Instant occurredAt();
+}
+
+// --- UserCreated.java
+package com.example.demo.domain.event;
+
+import com.example.demo.domain.exception.ValidationException;
+import com.example.demo.domain.model.Email;
+import com.example.demo.domain.model.UserId;
+import java.time.Clock;
+import java.time.Instant;
+
+public record UserCreated(UserId userId, Email email, Instant occurredAt) implements DomainEvent {
+
+    public UserCreated {
+        if (userId == null) {
+            throw new ValidationException("USER_ID_REQUIRED", "user id is required");
+        }
+        if (email == null) {
+            throw new ValidationException("EMAIL_REQUIRED", "email is required");
+        }
+        if (occurredAt == null) {
+            throw new ValidationException("OCCURRED_AT_REQUIRED", "event instant is required");
+        }
+    }
+
+    public static UserCreated from(UserId userId, Email email, Clock clock) {
+        return new UserCreated(userId, email, clock.instant());
+    }
+}

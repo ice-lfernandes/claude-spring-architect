@@ -1,0 +1,20 @@
+/*
+ * EXEMPLAR — conflicting state: duplicate, concurrent modification. The `cause`
+ * constructor exists only to wrap a caught library/framework exception (e.g.
+ * `DataIntegrityViolationException` from the persistence adapter) — never to rethrow a
+ * generic one without translation. Taxonomy: `.claude/rules/error-handling.md`.
+ * Mapping to HTTP 409: `.claude/rules/api-rest.md`.
+ * Compiles as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.domain.exception;
+
+public class ConflictException extends DomainException {
+
+    public ConflictException(String errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public ConflictException(String errorCode, String message, Throwable cause) {
+        super(errorCode, message, cause);
+    }
+}

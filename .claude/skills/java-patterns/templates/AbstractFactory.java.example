@@ -1,0 +1,60 @@
+// Exemplar: Abstract Factory. A payment method's validator and its
+// reference formatter must always agree on which method they're for —
+// CreditCard's validator paired with Pix's formatter is a bug, and nothing
+// stopped it when both were looked up independently by a shared `type`
+// field. One factory per method makes that pairing the only option.
+package com.example.domain.model.payment;
+
+public interface PaymentMethodFactory {
+
+    PaymentValidator validator();
+
+    PaymentReferenceFormatter formatter();
+}
+
+// --- one factory per family; the two collaborators it returns can never
+// disagree on which payment method they belong to
+public final class CreditCardFactory implements PaymentMethodFactory {
+
+    @Override
+    public PaymentValidator validator() {
+        return new CreditCardValidator();
+    }
+
+    @Override
+    public PaymentReferenceFormatter formatter() {
+        return new CreditCardReferenceFormatter();
+    }
+}
+
+public final class PixFactory implements PaymentMethodFactory {
+
+    @Override
+    public PaymentValidator validator() {
+        return new PixValidator();
+    }
+
+    @Override
+    public PaymentReferenceFormatter formatter() {
+        return new PixReferenceFormatter();
+    }
+}
+
+// --- the caller asks for a family, never for the two collaborators separately
+public final class PaymentMethodFactories {
+
+    private PaymentMethodFactories() {
+    }
+
+    public static PaymentMethodFactory forType(PaymentMethodType type) {
+        return switch (type) {
+            case CREDIT_CARD -> new CreditCardFactory();
+            case PIX -> new PixFactory();
+        };
+    }
+}
+
+// --- collaborators this exemplar assumes but doesn't define: PaymentValidator
+// (validate(PaymentDetails)), PaymentReferenceFormatter (format(PaymentReference)),
+// the four concrete Validator/Formatter classes per method, and
+// PaymentMethodType (enum: CREDIT_CARD, PIX).

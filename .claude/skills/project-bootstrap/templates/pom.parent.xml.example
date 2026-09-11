@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXEMPLAR — root (parent) POM of a hexagonal multi-module project.
+  Compilable as-is. When generating, adjust coordinates, modules, and the
+  spring-boot-starter-parent version that came from the Spring Initializr.
+  DO NOT pin versions based on this file: it's a reference for SHAPE.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version><!-- resolved by the Initializr --></version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.exemplo</groupId>
+  <artifactId>minha-api</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>minha-api</name>
+
+  <properties>
+    <java.version><!-- resolved by the Initializr --></java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Resolved at runtime (curl to Maven Central), never from memory. A number
+         written by hand here is the same mistake as pinning the Spring Boot version: it
+         goes stale silently and, when it points to a version that doesn't exist, breaks
+         the build of the freshly generated project. -->
+    <spotless.version><!-- resolved in step 4 --></spotless.version>
+    <checkstyle.plugin.version><!-- resolved in step 4.6 --></checkstyle.plugin.version>
+    <checkstyle.version><!-- resolved in step 4.6 --></checkstyle.version>
+    <!-- The Spring Boot parent does NOT manage this one — verified empty against its
+         dependencyManagement. Without a pinned version here, Maven resolves whatever's
+         newest at build time: unpinned, non-reproducible. Resolved in step 4.6. -->
+    <jacoco.version><!-- resolved in step 4.6 --></jacoco.version>
+  </properties>
+
+  <!-- Topological order: innermost first -->
+  <modules>
+    <module>domain</module>
+    <module>application</module>
+    <module>adapters/adapter-in-rest</module>
+    <module>adapters/adapter-out-persistence</module>
+    <module>bootstrap</module>
+  </modules>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>domain</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>application</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- ArchUnit doesn't go here. The bootstrap doesn't generate architecture tests: the
+           `test-architect` skill writes them, and it's the one that adds the
+           `com.tngtech.archunit:archunit-junit5` entry to this block, with whatever version it resolves. -->
+    </dependencies>
+  </dependencyManagement>
+
+  <!-- Inherited by ALL modules, `domain` included. No <version>: the Spring Boot parent
+       pins it. Don't write it here.
+
+       `optional` keeps it out of the classpath of anything depending on these modules, and
+       the annotations used have SOURCE retention — no Lombok reaches the published
+       bytecode. That's why it doesn't count as a framework under rules/architecture-ddd.md
+       § Domain and is legitimate in the innermost module.
+
+       What can be generated with it is in rules/lombok.md; @Data and @Setter are
+       forbidden and the root `lombok.config` breaks the build for whoever uses them. -->
+  <dependencies>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <!-- Used by the format.sh hook. Without this, the hook does nothing. -->
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>${spotless.version}</version>
+          <configuration>
+            <java>
+              <!-- DO NOT use googleJavaFormat: it requires add-exports to jdk.compiler on
+                   JDK 16+, and the format hook runs on every Write/Edit — it would always fail. -->
+              <palantirJavaFormat/>
+              <removeUnusedImports/>
+            </java>
+          </configuration>
+        </plugin>
+
+        <!-- Mechanical half of rules/code-quality.md: length, parameters,
+             complexity, nesting, magic numbers. What Checkstyle catches
+             isn't up for debate in review. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-checkstyle-plugin</artifactId>
+          <version>${checkstyle.plugin.version}</version>
+          <dependencies>
+            <!-- The plugin brings an old Checkstyle by default; this override
+                 pins the tool's version, not just the plugin's. -->
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>${checkstyle.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <!-- Absolute via `${maven.multiModuleProjectDirectory}`, not relative: a
+                 relative path resolves at the root and fails in every submodule, which
+                 runs with its own directory as the base. -->
+            <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle/checkstyle.xml</configLocation>
+            <includeTestSourceDirectory>false</includeTestSourceDirectory>
+            <consoleOutput>true</consoleOutput>
+            <failOnViolation>true</failOnViolation>
+            <violationSeverity>error</violationSeverity>
+          </configuration>
+          <executions>
+            <execution>
+              <id>checkstyle-validate</id>
+              <phase>validate</phase>
+              <goals>
+                <goal>check</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+      </plugin>
+
+      <!-- rules/naming.md separates `<Class>Test` (unit, surefire) from `<Class>IT`
+           (integration, failsafe). Surefire doesn't pick up the `IT` suffix, and
+           spring-boot-starter-parent manages failsafe's version but doesn't wire up any
+           execution. Without this block the `*IT`s don't run anywhere — not locally,
+           not in CI's `./mvnw -B clean verify`, which would go green without running them.
+           No `<version>`: the Spring Boot parent pins it. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Coverage: instrumentation and report, no gate. The limits in
+           rules/testing.md (80% lines, 70% branches) only make sense over code that
+           exists, and a freshly generated project has none — the `check` either
+           passes vacuously, which proves nothing, or breaks the build for having nothing
+           to measure. The `test-architect` skill's setup mode adds the `check`
+           execution, in the same pass that installs ArchUnit: the two enforcements that
+           depend on code existing come in through the same door.
+           `<version>` IS required here, unlike failsafe above: the Spring Boot parent
+           manages failsafe's version but not JaCoCo's — confirmed empty against the
+           parent's dependencyManagement. Omitting it resolves whatever's newest at
+           build time, non-reproducibly. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <configuration>
+          <excludes>
+            <!-- Startup and configuration class: structure with no branches. Including them
+                 makes the number go up without testing anything. DTOs and entities stay in the calculation. -->
+            <exclude>**/*Application.class</exclude>
+            <exclude>**/config/**</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

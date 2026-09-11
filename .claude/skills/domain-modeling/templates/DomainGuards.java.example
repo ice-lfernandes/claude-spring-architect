@@ -1,0 +1,261 @@
+/*
+ * EXEMPLAR — reusable invariant guards, shared by model objects.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ *
+ * Rules: `.claude/rules/error-handling.md` (typed family; `errorCode` mandatory in
+ *          every constructor; forbidden to throw a generic JDK exception)
+ *        `.claude/rules/value-objects.md` (validation in the compact constructor)
+ *        `.claude/rules/architecture-ddd.md` (§ Domain: zero framework, zero I/O)
+ *        `.claude/rules/code-quality.md` (no `null` crossing a boundary)
+ *
+ * WHY: the same check — required, not blank, within range — repeats in every value
+ * object and every aggregate. Hand-written in N places, it diverges: one throws with
+ * `errorCode`, another without; one does `trim`, another doesn't.
+ *
+ * TRADE-OFF, measured and not theoretical: a `default` method is a public member of
+ * whoever implements the interface. `new Email("x@y.z").requireText(...)` compiles from
+ * any package — and still compiles even with the interface declared package-private,
+ * because the method is inherited by the public type. Tested with `javac`, exits 0 in
+ * both cases. Consequence: the guards become part of each model object's public API.
+ *
+ * The trade-off is accepted because no guard has state or effect: calling it from
+ * outside throws or returns the argument, and nothing else. If that's unacceptable in a
+ * project, the final block shows the static variant, which isn't inherited by anyone —
+ * same signature, no `implements`, with `import static`.
+ *
+ * DO NOT PUT HERE: business rule of a concrete aggregate. A guard is structural (`null`,
+ * empty, length, range, sign). "A confirmed order can't be changed" is an aggregate
+ * invariant and lives in its method.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- DomainGuards.java
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.BusinessRuleViolationException;
+import com.example.demo.domain.exception.ValidationException;
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.List;
+
+/**
+ * Structural guards shared by model objects. No state, no I/O, no framework: each
+ * method validates and returns the value, so it can be used in an assignment.
+ *
+ * <p>All methods require {@code errorCode} in {@code UPPER_SNAKE_CASE} — without it the
+ * exception isn't traceable, and `.claude/rules/error-handling.md` makes it mandatory.
+ */
+public interface DomainGuards {
+
+    /** Required. Replaces `Objects.requireNonNull`, which throws `NullPointerException`. */
+    default <T> T requireNonNull(T value, String errorCode, String message) {
+        if (value == null) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Required text. Returns already normalized: storing it with spaces is a deferred bug. */
+    default String requireText(String value, String errorCode, String message) {
+        if (value == null || value.isBlank()) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value.trim();
+    }
+
+    /** Maximum length. Applies to the already-normalized text. */
+    default String requireMaxLength(String value, int max, String errorCode, String message) {
+        if (value != null && value.length() > max) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Exact length — documents, positional codes. */
+    default String requireLength(String value, int length, String errorCode, String message) {
+        if (value == null || value.length() != length) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Digits only. The value already arrives without a mask. */
+    default String requireDigits(String value, String errorCode, String message) {
+        if (value == null || value.isEmpty() || !value.chars().allMatch(Character::isDigit)) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Count strictly greater than zero. */
+    default int requirePositive(int value, String errorCode, String message) {
+        if (value <= 0) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Non-negative amount. `BigDecimal`, never `double` — `.claude/rules/value-objects.md`. */
+    default BigDecimal requireNotNegative(BigDecimal value, String errorCode, String message) {
+        if (value == null || value.signum() < 0) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Closed range [min, max]. */
+    default BigDecimal requireRange(
+            BigDecimal value, BigDecimal min, BigDecimal max, String errorCode, String message) {
+        if (value == null || value.compareTo(min) < 0 || value.compareTo(max) > 0) {
+            throw new ValidationException(errorCode, message);
+        }
+        return value;
+    }
+
+    /** Required, non-empty collection. Returns an immutable copy: the caller can't change it later. */
+    default <T> List<T> requireNotEmpty(
+            Collection<T> values, String errorCode, String message) {
+        if (values == null || values.isEmpty()) {
+            throw new ValidationException(errorCode, message);
+        }
+        return List.copyOf(values);
+    }
+
+    /** Defensive copy of an optional collection. Empty instead of `null`. */
+    default <T> List<T> immutableCopy(Collection<T> values) {
+        return values == null ? List.of() : List.copyOf(values);
+    }
+
+    /**
+     * Business rule, not structure. Used in an aggregate transition method —
+     * `confirm()`, `cancel(reason)` — never in the constructor.
+     */
+    default void requireRule(boolean condition, String errorCode, String message) {
+        if (!condition) {
+            throw new BusinessRuleViolationException(errorCode, message);
+        }
+    }
+}
+
+// --- Email.java  (usage in a value object)
+package com.example.demo.domain.model;
+
+import com.example.demo.domain.exception.ValidationException;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+/*
+ * Calling an instance method inside a `record`'s compact constructor is legal and
+ * tested: `this` is available, and the guards don't touch fields. Fields are assigned
+ * after the body, with the parameter values — so reassigning the parameter
+ * (`value = ...`) is what makes normalization enter the final state.
+ */
+public record Email(String value) implements DomainGuards {
+
+    private static final Pattern FORMAT = Pattern.compile("^[^@\\s]+@[^@\\s.]+\\.[^@\\s]+$");
+    private static final int MAX_LENGTH = 254;
+
+    public Email {
+        value = requireText(value, "EMAIL_REQUIRED", "email is required")
+                .toLowerCase(Locale.ROOT);
+        requireMaxLength(value, MAX_LENGTH, "EMAIL_TOO_LONG", "email exceeds the maximum length");
+        if (!FORMAT.matcher(value).matches()) {
+            throw new ValidationException("EMAIL_INVALID", "email has an invalid format");
+        }
+    }
+
+    public static Email of(String raw) {
+        return new Email(raw);
+    }
+}
+
+// --- Order.java  (usage in an aggregate: structural guard in the constructor, rule in the transition)
+package com.example.demo.domain.model;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+
+public final class Order implements DomainGuards {
+
+    private final OrderId id;
+    private final Email customerEmail;
+    private final List<OrderLine> lines;
+    private OrderStatus status;
+    private Instant confirmedAt;
+
+    private Order(OrderId id, Email customerEmail, List<OrderLine> lines) {
+        this.id = requireNonNull(id, "ORDER_ID_REQUIRED", "order id is required");
+        this.customerEmail =
+                requireNonNull(customerEmail, "ORDER_CUSTOMER_REQUIRED", "customer is required");
+        this.lines = requireNotEmpty(lines, "ORDER_EMPTY", "order has no lines");
+        this.status = OrderStatus.DRAFT;
+    }
+
+    public static Order open(OrderId id, Email customerEmail, List<OrderLine> lines) {
+        return new Order(id, customerEmail, lines);
+    }
+
+    /** Transition: the guard here is a business rule, and throws the other family's exception. */
+    public void confirm(Clock clock) {
+        requireRule(status == OrderStatus.DRAFT, "ORDER_NOT_DRAFT", "order is no longer a draft");
+        this.status = OrderStatus.CONFIRMED;
+        this.confirmedAt = Instant.now(clock);
+    }
+
+    /** Collection comes out immutable — `.claude/rules/lombok.md` forbids `@Getter` over a mutable field. */
+    public List<OrderLine> lines() {
+        return lines;
+    }
+}
+
+/*
+ * ============================================================================
+ * VARIANT — static guards, no inheritance. Choose ONE of the two per project.
+ * ============================================================================
+ *
+ * When to use: if adding public methods to every model object is unacceptable.
+ * A `static` method on an interface is NOT inherited by whoever implements it, so
+ * there's no API leak — and no `implements` either.
+ *
+ *   // --- DomainGuards.java
+ *   package com.example.demo.domain.model;
+ *
+ *   public final class DomainGuards {
+ *
+ *       private DomainGuards() { }
+ *
+ *       public static <T> T requireNonNull(T value, String errorCode, String message) {
+ *           if (value == null) {
+ *               throw new ValidationException(errorCode, message);
+ *           }
+ *           return value;
+ *       }
+ *       // … the rest, same signatures with `static`
+ *   }
+ *
+ *   // --- Email.java
+ *   import static com.example.demo.domain.model.DomainGuards.requireText;
+ *
+ *   public record Email(String value) {
+ *       public Email {
+ *           value = requireText(value, "EMAIL_REQUIRED", "email is required");
+ *       }
+ *   }
+ *
+ * Cost: `import static` in every file, and the reader can't tell from the class
+ * signature that it shares guards. Gain: `Email`'s public API stays just `Email`.
+ *
+ * WHAT'S NOT DONE IN EITHER VARIANT:
+ *
+ * - A guard that returns `boolean` instead of throwing. The caller forgets to check;
+ *   the invalid object is born anyway.
+ * - A guard without `errorCode`. `throw new DomainRuleException(message)` doesn't exist
+ *   in this taxonomy: `.claude/rules/error-handling.md` fixes four final types and makes
+ *   `errorCode` mandatory in every constructor.
+ * - `Objects.requireNonNull`, `IllegalArgumentException`, `assert`. A generic JDK
+ *   exception leaking out of the domain is forbidden by the same rule.
+ * - A guard with I/O — checking uniqueness against the database. That's an output port
+ *   called by the use case, not a construction invariant.
+ */

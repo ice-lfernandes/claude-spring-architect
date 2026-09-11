@@ -1,0 +1,57 @@
+/*
+ * EXEMPLAR — test data factory. Reference shape: the return types of the queries
+ * (`ListUsersQuery.Result`) are whatever the project declares.
+ *
+ * Why it exists: building the aggregate by hand in every test buries the field the
+ * scenario wants to vary among ten others that don't matter. The factory returns the
+ * valid case; the test changes only what it's testing.
+ *
+ * One factory per aggregate, shared. Two factories for the same aggregate diverge at
+ * the first new field.
+ */
+package com.exemplo.minhaapi.test;
+
+import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.domain.model.user.DepartmentId;
+import com.exemplo.minhaapi.domain.model.user.Email;
+import com.exemplo.minhaapi.domain.model.user.User;
+import com.exemplo.minhaapi.domain.model.user.UserId;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
+
+public final class TestFixtures {
+
+    // Fixed instant. A test that compares against the current instant fails at 3 a.m. and
+    // passes at noon — the worst kind of failure, because it looks intermittent.
+    public static final Clock CLOCK =
+            Clock.fixed(Instant.parse("2026-01-15T10:00:00Z"), ZoneOffset.UTC);
+
+    private TestFixtures() {}
+
+    /** Valid user. Change only the field under test. */
+    public static User user() {
+        return User.create(
+                UserId.of(UUID.fromString("3f1c9a2e-0000-4000-8000-000000000001")),
+                Email.of("ana@exemplo.com"),
+                "Ana Silva",
+                DepartmentId.unassigned(),
+                CLOCK);
+    }
+
+    /** Empty page. A collection with no results is 200 with `content: []`, never 204. */
+    public static ListUsersQuery.Result emptyPage() {
+        return new ListUsersQuery.Result(List.of(), 0);
+    }
+
+    public static User userWithEmail(String email) {
+        return User.create(
+                UserId.of(UUID.randomUUID()),
+                Email.of(email),
+                "Ana Silva",
+                DepartmentId.unassigned(),
+                CLOCK);
+    }
+}

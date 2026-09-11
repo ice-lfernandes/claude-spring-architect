@@ -1,0 +1,35 @@
+<!--
+EXEMPLAR — goes to <project>/src/main/resources/logback-spring.xml.
+
+This file is the mechanical half of .claude/rules/logging.md § logback.xml. The rule
+fixes the pattern and the field; this file is where it actually runs.
+
+One file, in the module with `contains_main: true`, no per-module copy — logback
+resolves this file from the classpath root, so it has to live under `src/main/resources`
+to be found at all. A copy in another module only creates places to diverge.
+`logback-spring.xml` (not plain `logback.xml`) so Spring Boot's own profile-aware
+initialization picks it up, instead of plain Logback resolving it before Boot's context
+exists.
+
+traceId is an MDC key. Where the value comes from (tracing bridge vs. generated UUID)
+is .claude/rules/observability.md's decision, not this file's — this file only reserves
+the field's place in the line.
+
+No JSON encoder here by default. If the project later declares a structured-logging
+dependency (e.g. logstash-logback-encoder), replace the PatternLayoutEncoder below with
+that encoder in the same change that adds the dependency — update
+.claude/rules/logging.md's pattern line too, so the rule and this file don't diverge.
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{ISO8601} %-5level [traceId=%X{traceId}] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+
+</configuration>

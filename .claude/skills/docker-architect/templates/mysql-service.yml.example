@@ -1,0 +1,23 @@
+# Shape for a MySQL service block appended under docker-compose.yml's `services:`.
+# Tag matched to test-architect's pin in TestcontainersConfiguration.java when one
+# exists — see docker-architect/SKILL.md step 4. Don't ship "latest".
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+# Named volume — add under docker-compose.yml's top-level `volumes:`.
+volumes:
+  mysql-data:

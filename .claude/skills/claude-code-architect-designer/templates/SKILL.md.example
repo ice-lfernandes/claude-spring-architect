@@ -1,0 +1,66 @@
+---
+name: <name-in-kebab-case>
+description: >
+  <What it does, in one sentence, with the concrete object first.> Use when the request
+  involves <trigger 1>, <trigger 2>, <trigger 3>, or "<phrase the user would write>".
+allowed-tools: Read, Write, Edit, Glob, Grep
+paths:
+  - "<glob that limits automatic activation>"
+---
+
+# <Readable Name>
+
+<One or two sentences: what problem it solves and for whom. Don't repeat the
+`description`.>
+
+<If there's an entry condition, write it as a rule, not a suggestion. Example: "Entry
+rule: no pattern without a symptom observed in the code.">
+
+## Why this is <form> and not <closest rejected form>
+
+<Three sentences, no adjectives. The form chosen. The interview axis that motivated it.
+The closest alternative and the concrete reason it lost. If there was a full record, cite
+it: `@.claude/decisions/NNNN-<slug>.md`.>
+
+## Procedure
+
+1. <Step with an imperative verb. One step, one verifiable action.>
+2. <Step that cites the rule by path — `@.claude/rules/<file>.md` — and never copies it.>
+3. <Step that generates from `templates/<File>.example`, if there's boilerplate.>
+4. <Verification step: the concrete command that proves it worked.>
+
+## <Content section — catalog, table, or criteria>
+
+<The substance of the skill. Table when the decision is "which case is this"; list when
+it's a sequence. No prose the model already knows.>
+
+| <Symptom / Input> | <Response> | When **not** |
+|---|---|---|
+| | | |
+
+## Contract
+
+**Reads** <rule and data files, by path>.
+
+**Writes** <paths this skill owns>. No other skill touches these paths.
+
+**Does not** <what's out of scope, and where it goes instead>.
+
+<!--
+EXEMPLARS IN THE REPO — read before writing:
+  .claude/skills/java-patterns/SKILL.md     skill with a catalog and templates
+  .claude/skills/arch-doctor/SKILL.md       short skill with `!`command`` injection
+  .claude/skills/test-architect/SKILL.md           skill with two modes, chosen by argument
+
+REMINDERS:
+- No `metadata:` in the frontmatter. Contract goes in the body.
+- `## Why this is <form>` is mandatory and stays short. It's the only record of the
+  decision that travels with the file; the full record, when it exists, is in
+  `.claude/decisions/`.
+- Code boilerplate goes to `templates/<File>.example`, never pasted here.
+- Long reference goes to `references/<theme>.md`, which loads only on invocation.
+- A new rule is a file in `rules/` — don't write it inside this skill.
+- `paths` only if there's real territory; otherwise delete the field.
+- A skill that writes files in the user's project gets
+  `disable-model-invocation: true` — use the other exemplar.
+-->
