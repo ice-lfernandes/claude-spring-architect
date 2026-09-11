@@ -334,11 +334,16 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
 ### `/new-feature` — end-to-end feature
 
 ```
-/new-feature <name>
+/new-feature UC-NNN-<slug>
      │
-     ▼  agent: feature-builder (the only agent authorized to orchestrate)
+     ▼  skill: new-feature (orchestrates, no agent involved in this part)
      │
-     OpenAPI contract → domain → use case → adapters → tests → docs
+     use-case-design → domain-modeling → persistence-architect
+        → messaging-architect (conditional) → rest-api-architect → test-architect
+     │
+     ▼  consolidates into UC-NNN-spec.md
+     │
+     ▼  agent: java-spring-boot-developer (executor, invoked manually at the end)
 ```
 
 Each step receives the structured output of the previous one. Free-prose handoff
