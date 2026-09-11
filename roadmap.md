@@ -1,6 +1,6 @@
 # Roadmap
 
-Status of `ai-spring-setup` by delivery phase, followed by a checklist of every major
+Status of `claude-spring-architect` by delivery phase, followed by a checklist of every major
 feature and pattern the meta-repo claims to have. This file records the current state;
 it is not a norm and is not loaded by any skill or hook.
 

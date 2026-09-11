@@ -1178,7 +1178,7 @@ Bash or external processes are **not** captured. It doesn't replace git.
 
 ## 14. How this repository uses all of this
 
-`ai-spring-setup` is a live example of the ecosystem applied to Spring Boot project
+`claude-spring-architect` is a live example of the ecosystem applied to Spring Boot project
 scaffolding. Mapping between the theory above and the files here:
 
 ```

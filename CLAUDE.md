@@ -1,4 +1,4 @@
-# ai-spring-setup
+# claude-spring-architect
 
 Meta-repository: generates Spring Boot projects already prepared for AI-assisted
 development. **It is not a Java application** — it has no `pom.xml`, does not compile,
@@ -57,7 +57,7 @@ decisions/                  history — nobody reads it at runtime, outside the 
 8. **Java and Spring Boot versions are never written from memory.** They are resolved at
    runtime via Spring Initializr; without network access, ask.
 9. **The generated project is self-contained.** Whoever clones it does not have
-   `ai-spring-setup`. Everything cited from inside the project must exist inside the
+   `claude-spring-architect`. Everything cited from inside the project must exist inside the
    project: norms (step 6.6), development skills (6.7), `ArchHook.java` and
    `schemas/extensions.json` (7). Creation skills (`project-bootstrap`, `init-project`)
    and `blueprints/` are left out on purpose — they only serve before the project exists.

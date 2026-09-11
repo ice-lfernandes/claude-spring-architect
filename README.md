@@ -1,4 +1,4 @@
-# AI Spring Setup
+# Claude Spring Architect
 
 [![CI](https://github.com/ice-lfernandes/claude-spring-architect/actions/workflows/validate.yml/badge.svg)](https://github.com/ice-lfernandes/claude-spring-architect/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -127,7 +127,7 @@ Seven derived rules:
 ## Structure
 
 ```
-ai-spring-setup/
+claude-spring-architect/
 ├── CLAUDE.md                      # facts about this meta-repo (not the generated project's)
 ├── CONTEXT.md                     # continuity log: what's done, what's left, what can't break
 └── .claude/
@@ -225,8 +225,8 @@ git init
 git commit --allow-empty -m "chore: initial repository"
 
 # 2. install .claude/ BEFORE starting the session
-unzip -q ~/Downloads/ai-spring-setup-scaffold.zip -d /tmp/ais
-cp -r /tmp/ais/ai-spring-setup/.claude .
+unzip -q ~/Downloads/claude-spring-architect-scaffold.zip -d /tmp/ais
+cp -r /tmp/ais/claude-spring-architect/.claude .
 
 # 3. confirm the tools (nothing to install)
 java --version && git --version && curl --version | head -1
