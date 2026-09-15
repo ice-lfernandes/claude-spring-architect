@@ -688,10 +688,12 @@ public class ArchHook {
         if (!m.find()) return;
         String name = m.group(1);
 
-        // A reader of the trail closes the run in progress and starts none of its own:
-        // otherwise every read would append a report about reading, and the next read
-        // would be mostly reads. Closing is the point — within one session a report is
-        // stuck at "em andamento" until something ends the run.
+        // An observer closes the run in progress and starts none of its own. Closing
+        // already happened anyway (any second `/command` closes), so what this drops is
+        // the empty report an observer would leave behind — and, for `/audit-usage`, the
+        // feedback loop of a report about reading reports. The close is the useful half:
+        // within one session a report is stuck at "em andamento" until something ends
+        // the run, so asking for it is what finalizes it.
         if (isAuditExcluded(name)) {
             auditRender(dir, log, in, true);
             return;
@@ -721,9 +723,10 @@ public class ArchHook {
     }
 
     /**
-     * Skills that read the trail instead of producing work — `/audit-usage`. The list is
-     * data in extensions.json's `audit.exclude_skills`, never here: same single-owner
-     * discipline as `redact` (invariants 7 and 10).
+     * Skills that observe instead of producing work — `/audit-usage` reads the trail,
+     * `/arch-doctor` reads the setup. The list is data in extensions.json's
+     * `audit.exclude_skills`, never here: same single-owner discipline as `redact`
+     * (invariants 7 and 10).
      */
     static boolean isAuditExcluded(String skill) {
         return asStrList(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))),

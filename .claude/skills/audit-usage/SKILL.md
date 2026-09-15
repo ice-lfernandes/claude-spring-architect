@@ -122,11 +122,14 @@ The hook already answers "what happened in **this** run". Nothing answers "what 
 last twenty runs cost, and which skill is eating the budget" — that needs the ledger
 parsed and aggregated, which is a procedure, not a norm and not enforcement.
 
-`audit-usage` is the one `disable-model-invocation: true` skill the trail does **not**
-record, declared in `.claude/schemas/extensions.json` under `audit.exclude_skills`.
-Without that, reading the trail would append a report about reading the trail, and every
-later read would be mostly reads. Invoking it still **closes** whatever run is open, so
-what gets read is a finished report instead of one stuck at `⏳ em andamento`.
+`audit-usage` is one of the skills the trail does **not** record — the observers, listed
+in `.claude/schemas/extensions.json` under `audit.exclude_skills` alongside
+`arch-doctor`. Without that, reading the trail would append a report about reading the
+trail, and every later read would be mostly reads.
+
+Invoking it still **closes** whatever run is open, and that is the useful half: within a
+single session a report stays stamped `⏳ em andamento` until something ends the run, so
+asking for the report is what finalizes it.
 
 ## Contract
 

@@ -36,7 +36,10 @@ Include only the rows whose skills were actually copied into `.claude/skills/` i
 6.7. Run `ls .claude/skills/` before writing — a row pointing to a skill that doesn't
 exist makes the model search and fail silently.
 
-Today four are copied; the remaining rows stay out until the skills exist:
+Every skill named below is copied by step 6.7 today, so every row stays. Don't skip the
+`ls` anyway, and don't replace this sentence with a count — it already said "four" while
+the table listed eleven. The table is what drifts, when a skill is added here and the
+copy step isn't updated alongside it.
 
 | If the task involves | Use |
 |---|---|

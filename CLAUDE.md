@@ -99,7 +99,7 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
 | Auditing what a `/command` run in a **generated project** cost and which skills it chained | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, step 7 parts 4-5 |
-| Reading that trail back — spend per skill across runs, which report to open | skill `audit-usage` — runs in the **generated project**, where the trail exists; here it reports the trail is off. The only `disable-model-invocation` skill the hook doesn't record, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
+| Reading that trail back — spend per skill across runs, which report to open | skill `audit-usage` — runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
@@ -151,12 +151,12 @@ decisions/                  history — nobody reads it at runtime, outside the 
   `@.claude/decisions/0035-auditoria-execucao-hook.md`. The consequence for
   `/audit-usage` is that running it **here** correctly reports the trail is off — its
   territory is the generated project, and it is exercised there, not in this repo.
-- **`/audit-usage` is the one manual skill the trail doesn't record.** It's listed in
-  `audit.exclude_skills` in `@.claude/schemas/extensions.json`, so reading the trail
-  doesn't append a report about reading the trail. Invoking it still *closes* the run in
-  progress — which is also the only way, inside a live session, to get a report that
-  isn't stamped `⏳ em andamento`. Why:
-  `@.claude/decisions/0036-skill-audit-usage.md`.
+- **The trail doesn't record its observers.** `/audit-usage` and `/arch-doctor` carry
+  `disable-model-invocation: true` but change nothing, so they're listed in
+  `audit.exclude_skills` in `@.claude/schemas/extensions.json` and leave no report of
+  their own. Invoking one still *closes* the run in progress — which it already did, and
+  which is the only way, inside a live session, to get a report that isn't stamped
+  `⏳ em andamento`. Why: `@.claude/decisions/0036-skill-audit-usage.md`.
 - **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or
   editing a server mid-session has no effect until `claude` is restarted.
 - **A project-scoped server in `.mcp.json` needs one-time human approval** the first
