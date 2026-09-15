@@ -685,7 +685,20 @@ public class ArchHook {
         if (prompt == null) return;
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)(.*)$", Pattern.DOTALL)
                 .matcher(prompt);
-        if (!m.find() || !isOrchestrator(m.group(1))) return;
+        if (!m.find()) return;
+        String name = m.group(1);
+
+        // An observer closes the run in progress and starts none of its own. Closing
+        // already happened anyway (any second `/command` closes), so what this drops is
+        // the empty report an observer would leave behind — and, for `/audit-usage`, the
+        // feedback loop of a report about reading reports. The close is the useful half:
+        // within one session a report is stuck at "em andamento" until something ends
+        // the run, so asking for it is what finalizes it.
+        if (isAuditExcluded(name)) {
+            auditRender(dir, log, in, true);
+            return;
+        }
+        if (!isOrchestrator(name)) return;
 
         // A second `/command` in the same session ends the run in progress: the report
         // of what already ran is worth more than a run left open forever.
@@ -700,13 +713,24 @@ public class ArchHook {
         // it is what the report puts in the title. Redacting one and not the other
         // leaks the secret in the most visible line of the file.
         append(log, ev("run_start",
-                "skill", m.group(1),
+                "skill", name,
                 "args", redact(m.group(2).strip()),
                 "prompt", redacted,
                 "prompt_sha256", sha256(prompt),
                 "redacted", String.valueOf(!redacted.equals(stripped)),
                 "head", gitShort(),
                 "perm_before", String.join(" ", localPermissions())));
+    }
+
+    /**
+     * Skills that observe instead of producing work — `/audit-usage` reads the trail,
+     * `/arch-doctor` reads the setup. The list is data in extensions.json's
+     * `audit.exclude_skills`, never here: same single-owner discipline as `redact`
+     * (invariants 7 and 10).
+     */
+    static boolean isAuditExcluded(String skill) {
+        return asStrList(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))),
+                "audit", "exclude_skills")).contains(skill);
     }
 
     static boolean isOrchestrator(String skill) {

@@ -75,7 +75,8 @@
   },
 
   "audit": {
-    "$comment": "Read by ArchHook.java `audit` mode before the initial prompt is written into the versioned .claude/audit-usage/ report. Not frontmatter: it lives here because this file is the single owner of every pattern list the hook reads. Each `patterns` entry MUST expose the key part as group 1 — the replacement keeps $1 and blanks the rest. Design: .claude/decisions/0035-auditoria-execucao-hook.md",
+    "$comment": "Read by ArchHook.java `audit` mode. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt is written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. `exclude_skills` names the skills that carry `disable-model-invocation: true`, and so would be audited, but that OBSERVE instead of producing work — `audit-usage` reads the trail, `arch-doctor` reads the setup. Invoking one closes the run in progress and opens none of its own. Closing was already what happened (any second `/command` closes), so this only drops the empty report an observer would otherwise leave behind; the gain is that a report read mid-session is finished rather than stuck at `⏳ em andamento`. For `audit-usage` it also breaks a feedback loop: reading the trail would append a report about reading, and the next read would be mostly reads. Design: .claude/decisions/0035-auditoria-execucao-hook.md and .claude/decisions/0036-skill-audit-usage.md",
+    "exclude_skills": ["audit-usage", "arch-doctor"],
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
