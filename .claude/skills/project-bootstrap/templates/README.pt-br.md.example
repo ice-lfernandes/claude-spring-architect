@@ -1,0 +1,88 @@
+<!--
+Exemplar da README.pt-br.md do projeto (opção em português; o inglês é o padrão em
+README.md). Escrito no passo 8.5 do SKILL.md, depois do Verify, com os placeholders
+{{...}} já resolvidos a partir de dados já calculados nos passos 1-8 — nada aqui é
+inventado. Mesma regra do § andaime: o comentário do topo só existe para explicar o
+"porquê" da README *do projeto gerado*; qualquer trecho que descreva este arquivo como
+exemplar ou cite o `.example` irmão é cortado quando o passo 8.5 escreve o arquivo real.
+-->
+
+# {{projectName}}
+
+Projeto Spring Boot gerado por [claude-spring-architect](https://github.com/ice-lfernandes/claude-spring-architect),
+já preparado para desenvolvimento assistido por IA com Claude Code.
+
+*[English version](README.md)*
+
+## Origem
+
+Gerado a partir do meta-repo `claude-spring-architect`, com:
+
+```
+{{initCommand}}
+```
+
+| Parâmetro | Valor |
+|---|---|
+| groupId | `{{groupId}}` |
+| artifactId | `{{artifactId}}` |
+| Nome do projeto | `{{projectName}}` |
+| Diretório de destino | `{{targetDirectory}}` |
+
+O comando foi executado a partir do repositório `claude-spring-architect`, mas este
+projeto é autocontido — nada aqui depende do meta-repo existir na máquina de quem clona.
+Veja `CLAUDE.md` para a arquitetura completa; este arquivo só orienta uma primeira
+leitura.
+
+## Blueprint
+
+`{{blueprint.id}}` — {{blueprint.oneLineDescription}}
+
+## Stack e versões
+
+Resolvidas em tempo real pelo Spring Initializr no momento da geração — nunca fixadas de
+memória:
+
+- Java {{javaVersion}}
+- Spring Boot {{springBootVersion}}
+- Build: {{buildTool}}
+
+## Features ativas
+
+{{featuresList}}
+
+## Arquitetura do `.claude/`
+
+Este projeto carrega seu próprio `.claude/`, organizado da mesma forma que o meta-repo
+que o gerou:
+
+- **Hooks** (`.claude/hooks/ArchHook.java`) fazem a aplicação determinística — limites
+  entre camadas (`.claude/forbidden-imports.txt`), frontmatter, configuração do Lombok.
+  O que eles checam, nada contorna sem editar o hook.
+- **Skills** (`.claude/skills/`) carregam o procedimento. Invoque uma diretamente como
+  `/<nome-da-skill>`, ou descreva a tarefa e o Claude roteia até ela.
+- **Agents** (`.claude/agents/`) rodam um passo isolado que uma skill delega — por
+  contexto, tools restritas, ou modelo diferente.
+- **Rules** (`.claude/rules/`) são a folha: normas citadas por skills e agents, nunca
+  invocam nada. Índice em `.claude/rules/00-index.md`.
+
+### Skills disponíveis
+
+{{skillsList}}
+
+### Agents disponíveis
+
+{{agentsList}}
+
+## Relatório da geração
+
+Capturado aqui no meta-repo, ao final da execução que criou este projeto — não
+reconstruído depois:
+
+```
+{{outputContractBlock}}
+```
+
+## Próximos passos
+
+{{nextStepsBlock}}
