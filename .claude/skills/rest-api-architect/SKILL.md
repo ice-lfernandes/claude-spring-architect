@@ -120,7 +120,11 @@ chain, this isn't the right skill.
    `operationId`, the inbound port it serves, success status. Resources and verbs per
    `@.claude/rules/api-rest.md`; class names per `@.claude/rules/naming.md`. An
    endpoint with no inbound port behind it doesn't get written — it's a guessed
-   contract.
+   contract. OpenAPI documentation for each operation (`@Operation`, every
+   `@ApiResponse`, `@Parameter` with examples, request body example) is extracted into
+   its own composed annotation, suffix `OpenApiDocs` — one per operation, applied on the
+   method next to `@PostMapping`/`@GetMapping`/etc — shape in
+   `templates/OpenApiDocs.java.example`.
 
 5. **Fix the DTOs.** Input and output, field by field. DTO validation is **shape**
    only; business rule stays in the aggregate and comes out as 422. No domain type in
@@ -163,6 +167,7 @@ question nobody asked.
 | Block | Fixes | Shape exemplar |
 |---|---|---|
 | Endpoints | Method, path, `operationId`, port, success status | `Controller.java.example` |
+| OpenAPI docs | `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, applied on the endpoint | `OpenApiDocs.java.example` |
 | DTOs | Input and output, fields, shape validation, translation | `Dtos.java.example` · `RestMapper.java.example` |
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
 | Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `IdempotencyKeyInterceptor.java.example` |
