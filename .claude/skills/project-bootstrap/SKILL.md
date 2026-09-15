@@ -55,7 +55,8 @@ and `application.yml.example` (step 3), `features/actuator/application-actuator.
 and `features/observability/application-observability.yml.example`
 (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
-`settings.json.example` (step 7) and `ci.yml.example` (step 8) — plus whatever the
+`settings.json.example` and `audit-pricing.json.example` (step 7), and
+`ci.yml.example` (step 8) — plus whatever the
 active blueprint's `templates:` declares. Don't count files against a fixed number: the
 folder grows, the number falls behind, and the precondition starts failing for nothing.
 If a cited exemplar is missing, or a tool is missing: **stop and report**, naming what's
@@ -668,11 +669,36 @@ Three parts, and the first one is easy to forget:
    the hook and forgetting the schema delivers enforcement that looks on and isn't.
 3. Merge `templates/settings.json.example` into `<project>/.claude/settings.json`,
    preserving what's already there. The template already brings the `schema` mode's
-   three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`).
+   three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`) and the ten
+   `audit` triggers of part 4.
+4. Create `<project>/.claude/audit-usage/` and copy
+   `templates/audit-pricing.json.example` into it as `pricing.json`. **The directory is
+   the on/off switch**: `ArchHook.java audit` returns immediately when it doesn't
+   exist, so skipping this part doesn't break anything — it just means the project has
+   no execution trail, and the `settings.json` entries of part 3 pay a process start
+   for nothing. `pricing.json` ships with `null` prices on purpose: the report prints
+   "não configurado" instead of a confident `US$ 0.00` built from a number nobody
+   checked — same discipline as invariant 8. Tell the user, in the final report, that
+   filling it in is what turns tokens into money.
+5. Append `.claude/audit-usage/.state/` to the project's `.gitignore` (the one the
+   Initializr delivered in step 6.5). That subdirectory is the append-only event log of
+   a run **in progress**; the reports and `history.jsonl` next to it are versioned on
+   purpose, the live state is not. Without this line, every `Stop` leaves a dirty
+   working tree.
 
 There's no `chmod`: the hooks run in **exec form** (`command: java` + `args`), without
 a shell and without an execute bit — that's what makes them identical on Linux, macOS,
 and Windows.
+
+**What the trail records, and why it's a hook.** Every skill in the project carrying
+`disable-model-invocation: true` gets one Markdown report per execution in
+`.claude/audit-usage/`: the initial prompt (redacted), the chain of skills and agents
+with duration bars, aggregate token use and estimated cost, permissions granted
+mid-run, rules inferred from the files touched, rework, and the commits produced. It is
+a hook and not a skill because the record has to exist even when the model forgets, the
+session dies, or the user interrupts — `@CLAUDE.md` invariant 6. Design:
+`.claude/decisions/0035-auditoria-execucao-hook.md` (this repo only; the record doesn't
+travel, invariant 9).
 
 ### 7.5 · Copy designed MCP servers, if any exist
 
@@ -782,6 +808,7 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Audit trail: .claude/audit-usage/ active — one report per `/command` execution. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
@@ -873,6 +900,9 @@ other skill touches these files:
 - `.claude/hooks/ArchHook.java` — verbatim copy, see step 7
 - `.claude/schemas/extensions.json` — verbatim copy, see step 7
 - `.claude/settings.json` — merge, see step 7
+- `.claude/audit-usage/pricing.json` and the `.claude/audit-usage/` directory itself —
+  step 7 part 4. The reports and `history.jsonl` inside it are written afterwards by
+  `ArchHook.java audit`, never by this skill
 - `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
   7.5. Absent in most bootstraps, on purpose
 - `config/checkstyle/checkstyle.xml`
