@@ -56,7 +56,8 @@ and `features/observability/application-observability.yml.example`
 (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
 `settings.json.example` and `audit-pricing.json.example` (step 7), `ci.yml.example`
-(step 8), and `README.md.example` and `README.pt-br.md.example` (step 8.5) — plus whatever the
+(step 8), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
+`GENESIS.md.example` (step 8.6) — plus whatever the
 active blueprint's `templates:` declares. Don't count files against a fixed number: the
 folder grows, the number falls behind, and the precondition starts failing for nothing.
 If a cited exemplar is missing, or a tool is missing: **stop and report**, naming what's
@@ -840,6 +841,35 @@ answers "what is this, how was it made, what can I do with it" with no need to o
 `CLAUDE.md` or ask the meta-repo. The cross-link at the top of each is the only coupling
 between the two.
 
+### 8.6 · Write the audit genesis record
+
+Runs **after** the README (8.5), for the same reason: the Output contract block it
+embeds only exists once step 8 has finished. Fixes a different gap than 8.5 —
+`@.claude/lessons-learned/lessons-learned-004.md` Gap 1: `.claude/audit-usage/` (step 7
+part 4) exists in the freshly generated project, but the hook that fills it
+(`ArchHook.java audit`) has never run there, because that hook only fires from a live
+session rooted at the *generated* project, and the run that creates the project happens
+from a session rooted at the *meta-repo* instead. Without this step the trail is
+structurally empty on day one — not a missing report, a run nobody could have recorded.
+
+Write `<project>/.claude/audit-usage/GENESIS.md` from
+`templates/GENESIS.md.example`, same read-it-understand-it-write-the-equivalent rule as
+every other exemplar here. `{{initCommand}}`, `{{blueprint.id}}`,
+`{{blueprint.oneLineDescription}}`, `{{groupId}}`, `{{artifactId}}`, `{{buildTool}}`, and
+`{{outputContractBlock}}` resolve exactly as documented for the same placeholders in
+step 8.5 — same values, second destination. `{{startIso}}` is this run's own start
+timestamp (interview's first question, step 1); `{{endIso}}` is now, at the moment this
+step runs; `{{buildStatus}}` is step 8's own `PASSED`/`FAILED` verdict, restated, never
+re-derived.
+
+**Never overclaim fidelity.** This file names itself a reconstruction, not a hook
+report, and stays that way — no invented per-tool-call timeline, no cost, no ranked
+stages, none of the fields `ArchHook.java audit`'s own reports carry. A later
+`/audit-usage` reader must be able to tell this entry apart from every report that
+follows it in the same directory. Written once; a second `/init-project` run never
+overwrites it (idempotence — § Preconditions already stops before this step if the
+project exists).
+
 ## Output contract
 
 ```
@@ -858,7 +888,7 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
-Audit trail: .claude/audit-usage/ active — one report per `/command` execution. Fill pricing.json to see cost
+Audit trail: .claude/audit-usage/ active — one report per `/command` execution from now on. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
@@ -954,6 +984,9 @@ other skill touches these files:
 - `.claude/audit-usage/pricing.json` and the `.claude/audit-usage/` directory itself —
   step 7 part 4. The reports and `history.jsonl` inside it are written afterwards by
   `ArchHook.java audit`, never by this skill
+- `.claude/audit-usage/GENESIS.md` — step 8.6, once, the only report in that directory
+  this skill ever writes itself. Everything else in that directory after it is
+  `ArchHook.java audit`'s alone
 - `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
   7.5. Absent in most bootstraps, on purpose
 - `config/checkstyle/checkstyle.xml`
