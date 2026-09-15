@@ -1,0 +1,44 @@
+<!--
+Exemplar of the first entry in the generated project's `.claude/audit-usage/` — written
+by step 8.6 of SKILL.md, right after the README (8.5), from data step 1-8 already
+computed. Not a hook-produced report: `ArchHook.java audit`'s trail only starts once a
+live session opens with this project as its root, and this run happens before that's
+possible (`@.claude/lessons-learned/lessons-learned-004.md` Gap 1,
+`@.claude/decisions/0037-genesis-audit-record.md`). The header saying so stays in the
+real file — it's the only thing telling a later `/audit-usage` reader this entry has no
+per-tool-call granularity behind it. Everything else in this top comment is cut when
+step 8.6 writes the real file.
+-->
+
+# 🌱 Genesis — the `/init-project` run that created this project
+
+This is **not** a report from `ArchHook.java audit`. That hook's trail only starts once
+a live Claude Code session opens with this project as its root — the run that created
+the project happened before any such session could exist here. This entry is a one-time,
+meta-repo-side reconstruction from the data that run already had in hand: no
+per-tool-call timeline, no cost breakdown, no ranked stages — that granularity was never
+captured, because no hook was watching yet. Every report that follows this one in this
+directory *is* hook-produced, and looks different.
+
+| | |
+|---|---|
+| Command | `{{initCommand}}` |
+| Blueprint | `{{blueprint.id}}` — {{blueprint.oneLineDescription}} |
+| Coordinates | `{{groupId}}:{{artifactId}}` |
+| Build tool | {{buildTool}} |
+| Started | {{startIso}} |
+| Finished | {{endIso}} |
+| Build | {{buildStatus}} |
+
+## Output contract
+
+The exact block reported to the user at the end of the run, verbatim:
+
+```
+{{outputContractBlock}}
+```
+
+---
+
+*Written once, by `project-initializer`, at the end of the run that created this
+project. Never rewritten, never appended to.*

@@ -55,8 +55,9 @@ and `application.yml.example` (step 3), `features/actuator/application-actuator.
 and `features/observability/application-observability.yml.example`
 (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
-`settings.json.example` and `audit-pricing.json.example` (step 7), and
-`ci.yml.example` (step 8) — plus whatever the
+`settings.json.example` and `audit-pricing.json.example` (step 7), `ci.yml.example`
+(step 8), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
+`GENESIS.md.example` (step 8.6) — plus whatever the
 active blueprint's `templates:` declares. Don't count files against a fixed number: the
 folder grows, the number falls behind, and the precondition starts failing for nothing.
 If a cited exemplar is missing, or a tool is missing: **stop and report**, naming what's
@@ -791,6 +792,84 @@ Every skill the root `CLAUDE.md` routes to must have `SKILL.md` in the project. 
 agent the root `CLAUDE.md` delegates to must have `<name>.md` in `.claude/agents/`. A
 dead path here is exactly the failure steps 6.6, 6.7, 6.8, and 7 exist to prevent.
 
+### 8.5 · Generate the project README
+
+Runs **after** Verify, on purpose: everything this step writes — the build status, the
+boundary and Lombok probe results — only exists once step 8 has finished. A README
+written earlier would either lie about the build or need a second pass to patch it.
+Without this step the generated project ships with no README at all: `HELP.md` is the
+Initializr's own boilerplate, and `CLAUDE.md` targets an AI reader, not a human seeing
+the repository for the first time — `@.claude/lessons-learned/lessons-learned-004.md`
+Gap 2.
+
+Write two files at `<project>/`, from `templates/README.md.example` (English, the
+default) and `templates/README.pt-br.md.example` (Portuguese) — same shape rule as every
+other exemplar in this skill: read it, understand it, write the equivalent, don't
+mechanically substitute. Same andaime rule as step 4/6: the top comment explaining the
+file is an exemplar is cut; a citation to a rule or invariant stays.
+
+Every `{{...}}` placeholder resolves from data this procedure already computed —
+**nothing here is invented**:
+
+- `{{projectName}}`, `{{groupId}}`, `{{artifactId}}`, `{{targetDirectory}}` — step 3's
+  inputs.
+- `{{initCommand}}` — the literal `/init-project` invocation that started this run,
+  arguments included, exactly as the user or the command line gave it. This is the
+  README's only source for "how was this made" — the generated project has no other
+  record of it, since git history starts at `git-publish`'s first commit, after
+  generation.
+- `{{blueprint.id}}`, `{{blueprint.oneLineDescription}}` — step 1/2, the `name` and a
+  one-line cut of the blueprint YAML's own description. Don't paraphrase past what the
+  YAML says.
+- `{{javaVersion}}`, `{{springBootVersion}}`, `{{buildTool}}` — step 3's resolved
+  versions, the same ones already in the Output contract below. Never re-resolve, never
+  restate from memory.
+- `{{featuresList}}` — the active features from step 3/4.7, one bullet each.
+- `{{skillsList}}`, `{{agentsList}}` — one bullet per entry actually copied in step 6.7
+  / 6.8 (`ls .claude/skills/`, `ls .claude/agents/` — don't hand-copy the tables from
+  this SKILL.md, they list what *can* be copied, not what a given blueprint's feature
+  set actually triggered), each with the one-line "Why" already written for it in 6.7's
+  and 6.8's tables — reuse that sentence, don't invent a new one.
+- `{{outputContractBlock}}` — the exact block this step's successor (§ Output contract)
+  renders, pasted verbatim. The README and the report given to the user are the same
+  text; this is not a second, independently-written summary that can drift from the
+  first.
+- `{{nextStepsBlock}}` — the same "Next steps" list as the Output contract, verbatim.
+
+Both files are self-contained: reading only `README.md` (or only `README.pt-br.md`)
+answers "what is this, how was it made, what can I do with it" with no need to open
+`CLAUDE.md` or ask the meta-repo. The cross-link at the top of each is the only coupling
+between the two.
+
+### 8.6 · Write the audit genesis record
+
+Runs **after** the README (8.5), for the same reason: the Output contract block it
+embeds only exists once step 8 has finished. Fixes a different gap than 8.5 —
+`@.claude/lessons-learned/lessons-learned-004.md` Gap 1: `.claude/audit-usage/` (step 7
+part 4) exists in the freshly generated project, but the hook that fills it
+(`ArchHook.java audit`) has never run there, because that hook only fires from a live
+session rooted at the *generated* project, and the run that creates the project happens
+from a session rooted at the *meta-repo* instead. Without this step the trail is
+structurally empty on day one — not a missing report, a run nobody could have recorded.
+
+Write `<project>/.claude/audit-usage/GENESIS.md` from
+`templates/GENESIS.md.example`, same read-it-understand-it-write-the-equivalent rule as
+every other exemplar here. `{{initCommand}}`, `{{blueprint.id}}`,
+`{{blueprint.oneLineDescription}}`, `{{groupId}}`, `{{artifactId}}`, `{{buildTool}}`, and
+`{{outputContractBlock}}` resolve exactly as documented for the same placeholders in
+step 8.5 — same values, second destination. `{{startIso}}` is this run's own start
+timestamp (interview's first question, step 1); `{{endIso}}` is now, at the moment this
+step runs; `{{buildStatus}}` is step 8's own `PASSED`/`FAILED` verdict, restated, never
+re-derived.
+
+**Never overclaim fidelity.** This file names itself a reconstruction, not a hook
+report, and stays that way — no invented per-tool-call timeline, no cost, no ranked
+stages, none of the fields `ArchHook.java audit`'s own reports carry. A later
+`/audit-usage` reader must be able to tell this entry apart from every report that
+follows it in the same directory. Written once; a second `/init-project` run never
+overwrites it (idempotence — § Preconditions already stops before this step if the
+project exists).
+
 ## Output contract
 
 ```
@@ -809,10 +888,11 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
-Audit trail: .claude/audit-usage/ active — one report per `/command` execution. Fill pricing.json to see cost
+Audit trail: .claude/audit-usage/ active — one report per `/command` execution from now on. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
+Docs: README.md (English, default) + README.pt-br.md — origin, blueprint, stack, skills/agents, this report
 
 Next steps:
   1. /use-case-design <first-use-case-name>
@@ -904,6 +984,9 @@ other skill touches these files:
 - `.claude/audit-usage/pricing.json` and the `.claude/audit-usage/` directory itself —
   step 7 part 4. The reports and `history.jsonl` inside it are written afterwards by
   `ArchHook.java audit`, never by this skill
+- `.claude/audit-usage/GENESIS.md` — step 8.6, once, the only report in that directory
+  this skill ever writes itself. Everything else in that directory after it is
+  `ArchHook.java audit`'s alone
 - `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
   7.5. Absent in most bootstraps, on purpose
 - `config/checkstyle/checkstyle.xml`
@@ -912,6 +995,8 @@ other skill touches these files:
 - `src/main/java/**/package-info.java` — one per role in `packages.map`, step 4.7. **No
   other `.java`**: business classes come from the `/new-feature` pipeline
 - `.github/workflows/*`
+- `README.md` and `README.pt-br.md` — step 8.5, after Verify. English is the default,
+  Portuguese the linked option
 
 `.gitignore` is deliberately left out — it comes from the Initializr (step 6.5).
 
