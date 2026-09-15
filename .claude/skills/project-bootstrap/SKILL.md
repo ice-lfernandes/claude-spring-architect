@@ -52,6 +52,7 @@ Check that the exemplars the procedure cites are there —
 `pom.parent.xml.example` and `pom.module.xml.example` (step 4),
 `checkstyle.xml.example` (4.6), `lombok.config.example` (4.8), `Application.java.example`
 and `application.yml.example` (step 3), `features/actuator/application-actuator.yml.example`
+and `features/observability/application-observability.yml.example`
 (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
 `settings.json.example` (step 7) and `ci.yml.example` (step 8) — plus whatever the
@@ -60,6 +61,12 @@ folder grows, the number falls behind, and the precondition starts failing for n
 If a cited exemplar is missing, or a tool is missing: **stop and report**, naming what's
 missing. Don't improvise a root POM or invent Spring Boot versions from what you think
 you know — the version you have in memory is stale by construction.
+
+Step 4.10 additionally reads `docker-architect`'s own `templates/postgres-service.yml.example`
+and `templates/otel-collector-service.yml.example` (plus its
+`templates/otel-collector-config.yml.example`) when `persistence-jpa` or `observability`
+is active — see § 4.10. Missing either when the matching feature is active: same
+stop-and-report rule.
 
 Naming convention: the `.example` suffix always comes **last**
 (`pom.parent.xml.example`, `DomainException.java.example`). An exemplar with the suffix
@@ -296,6 +303,7 @@ a rule — cite it by path, invariant 2.
 | Feature | What this step does |
 |---|---|
 | `actuator` | Merges `templates/features/actuator/application-actuator.yml.example` into the `application.yml` of the module with `contains_main: true` (the same file from step 6, not a new one) |
+| `observability` | Merges `templates/features/observability/application-observability.yml.example` into the same `application.yml` — the tracing bridge's export destination. Owned exemplar, same mechanism as `actuator`'s; the container it points at is provisioned in step 4.10, not here — this step only writes config |
 | `flyway` | Creates `src/main/resources/db/migration/` in the module with the `infrastructure.persistence` role, **empty**. No `.gitkeep` and no `V1__`: `spring.flyway.fail-on-missing-locations` defaults to `false` (verified in `spring-boot-flyway`'s metadata), so a missing or empty location doesn't break startup. The first migration comes from `persistence-architect`, with a real schema |
 | `persistence-jpa`, `rest`, `openapi`, `testcontainers`, `archunit` | Nothing here. They're dependencies (step 3) and POM configuration (step 4). The code that uses them comes from the first feature |
 | `spring-modulith` | Writes `<main-module>/src/test/java/**/ModularityTests.java`, from `templates/features/spring-modulith/ModularityTests.java.example`, adjusting only the package and the `@SpringBootApplication` class reference. Safe to write now, unlike ArchUnit — `ApplicationModules.of(...).verify()` passes meaningfully over zero modules; it isn't gated behind business code existing |
@@ -348,12 +356,16 @@ produces.
 
 ### 4.10 · Generate the base `Dockerfile` and `docker-compose.yml`
 
-The base pair only — one `app` service, nothing else. Every service a use case needs
-afterward (a database, a broker) is added later by the `docker-architect` skill, not
-here: this step doesn't know yet what `persistence-architect` will decide, and
-inventing a Postgres service with no aggregate to back it is the same mistake
-`@.claude/decisions/0011-bootstrap-without-business-code.md` already closed for Java
-classes.
+The base pair, plus a container for every feature that's **already active in the
+blueprint** and needs one to run. A container is not business code: provisioning the
+Postgres that `application.yml`'s own datasource URL already points at (or the OTLP
+collector its tracing endpoint already points at) invents nothing — the config from
+step 4.7.b already committed to that dependency existing. What *does* stay deferred to
+`docker-architect`, invoked later by hand or chained from `persistence-architect` /
+`messaging-architect` / `test-architect`, is anything a **use case** decides that isn't
+already implied by an active `features:` flag: a non-default engine, a broker, an
+extra datastore. `@.claude/decisions/0011-bootstrap-without-business-code.md` governs
+that second category — a made-up aggregate competing with a real spec — not this one.
 
 1. Write `<project>/Dockerfile` with the shape of `templates/Dockerfile.example`,
    filling `{{JAVA_VERSION}}` with the version resolved in step 3 and
@@ -366,8 +378,28 @@ classes.
    above.
 2. Write `<project>/docker-compose.yml` with the shape of
    `templates/docker-compose.yml.example`, verbatim — no substitution needed, it has no
-   `{{...}}` placeholders.
-3. Same rule as § andaime (step 4): the exemplar's top comment explaining *why* stays;
+   `{{...}}` placeholders. This is the base `app` service only.
+3. **For each active feature with a matching service template, apply
+   `docker-architect`'s own merge procedure (its `SKILL.md` steps 3-5) against the
+   `docker-compose.yml` just written** — `docker-architect` stays the single owner of
+   every service block, this step only decides *when* to call it for features the
+   blueprint already turned on:
+   - `persistence-jpa` → `docker-architect/templates/postgres-service.yml.example`.
+     Postgres, not a placeholder: it's the engine `application.yml.example`'s
+     `datasource.url` already assumes, so this doesn't introduce a new decision, it
+     makes the two files agree. If `persistence-architect` later designs a different
+     engine for a real use case, that's a `docker-architect` re-invocation like any
+     other, swapping the service the normal way.
+   - `observability` → `docker-architect/templates/otel-collector-service.yml.example`,
+     plus its init script `templates/otel-collector-config.yml.example` mounted per
+     `docker-architect/SKILL.md` step 6.
+   - Wire the `app` service's environment for each service added, same as
+     `docker-architect/SKILL.md` step 5 — `SPRING_DATASOURCE_URL` pointing at
+     `postgres`'s compose hostname, `OTLP_ENDPOINT` pointing at
+     `otel-collector`'s.
+   - A feature with no service template (`rest`, `openapi`, `testcontainers`, `flyway`
+     — Flyway rides on the same Postgres connection, `archunit`) adds nothing here.
+4. Same rule as § andaime (step 4): the exemplar's top comment explaining *why* stays;
    anything describing the file as a template goes.
 
 ### 5 · Generate the boundary map
@@ -750,7 +782,7 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
-Docker: base Dockerfile + docker-compose.yml (app service only) — extend with `docker-architect` when a feature needs one
+Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
 
@@ -833,8 +865,11 @@ other skill touches these files:
 - `.claude/forbidden-imports.txt`
 - `.claude/rules/*.md` — full copy of this repo's rules, see step 6.6
 - `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,git-publish}/**` — see step 6.7
-- `Dockerfile` and `docker-compose.yml` — base pair only, step 4.10. Every service added
-  afterward is `docker-architect`'s, not this skill's
+- `Dockerfile` and `docker-compose.yml` — base pair, step 4.10, plus (via
+  `docker-architect`'s own templates and merge procedure, called from the same step)
+  one service per blueprint feature that's already active and needs a container
+  (`persistence-jpa`, `observability` today). Every service a **use case** adds
+  afterward is `docker-architect`'s alone, invoked on its own thread, not this skill's
 - `.claude/hooks/ArchHook.java` — verbatim copy, see step 7
 - `.claude/schemas/extensions.json` — verbatim copy, see step 7
 - `.claude/settings.json` — merge, see step 7

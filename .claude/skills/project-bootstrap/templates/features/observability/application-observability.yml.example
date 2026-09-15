@@ -1,0 +1,13 @@
+# EXEMPLAR — not a standalone file: a fragment to merge into `application.yml`, in the
+# module with `contains_main: true`. Feature: observability. The tracing bridge
+# dependency (added in step 3) makes the correlation identifier come from the active
+# span — @.claude/rules/observability.md's "correlation identifier — origin" clause.
+# This fragment is what gives that bridge somewhere to export spans to; without it the
+# bridge is on the classpath but silently drops everything it records.
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

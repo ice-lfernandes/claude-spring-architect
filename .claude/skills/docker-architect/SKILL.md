@@ -37,11 +37,15 @@ generates the base pair, only grows it.
 
 ## How it's invoked
 
-Two paths, both real: `/docker-architect` by hand, when the user wants a service added
-or checked; and chained by `persistence-architect` or `test-architect`, mid-procedure,
-when their spec names a dependency `docker-compose.yml` doesn't have yet. That's why it
-carries no `disable-model-invocation` — a skill the model can't see is a skill a sibling
-skill can't call.
+Three paths, all real: `/docker-architect` by hand, when the user wants a service added
+or checked; chained by `persistence-architect`, `messaging-architect`, or
+`test-architect`, mid-procedure, when their spec names a dependency
+`docker-compose.yml` doesn't have yet; and chained by `project-bootstrap` itself,
+right after it writes the base pair in its own step 4.10, once per blueprint feature
+that's already active and needs a container (`persistence-jpa` → Postgres,
+`observability` → the OTLP collector) — see `project-bootstrap/SKILL.md` step 4.10.
+That's why it carries no `disable-model-invocation` — a skill the model can't see is a
+skill a sibling skill can't call.
 
 The guard against firing on an unborn project isn't the frontmatter: it's the entry rule
 above.
@@ -59,8 +63,8 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 
 | Piece | Owns | Doesn't touch |
 |---|---|---|
-| `project-bootstrap` | Base `Dockerfile` + `docker-compose.yml` (`app` service only), once, at generation | Any service added later |
-| **this skill** | Every service added to `docker-compose.yml`/`Dockerfile` after the base pair exists | The engine choice itself — that's `20-persistencia.md`'s call, this skill reads it |
+| `project-bootstrap` | Base `Dockerfile` + `docker-compose.yml` (`app` service), once, at generation. Also *decides when* to call this skill for a feature already active in the blueprint (`persistence-jpa`, `observability`) — never writes the service block itself | Any service a use case adds later; the shape of any service block, ever |
+| **this skill** | Every service block in `docker-compose.yml`/`Dockerfile` — the ones `project-bootstrap` calls it for at generation, and the ones added later by hand or chained from a UC-driven skill | The engine choice itself — that's `20-persistencia.md`'s call, this skill reads it |
 | `persistence-architect` | Engine choice, schema, datasource properties (`20-persistencia.md`) | `docker-compose.yml` directly — invokes this skill instead |
 | `messaging-architect` | Broker choice, topic, consumer group (`25-mensageria.md`) | `docker-compose.yml` directly — invokes this skill instead |
 | `test-architect` | The pinned image tag inside `TestcontainersConfiguration.java` (one line, Java side) | The compose-side service definition — invokes this skill instead, and both should agree on the same tag |
@@ -77,6 +81,10 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
      for whether `testcontainers` is active and which image tag `test-architect` already
      pinned in `TestcontainersConfiguration.java`
      (`grep -rn "DockerImageName.parse" src/test`).
+   - If called from `project-bootstrap` at generation time: the feature already decided
+     it — `persistence-jpa` means Postgres (the engine `application.yml.example`'s
+     `datasource.url` already assumes), `observability` means the OTLP collector. No
+     engine question to ask; go straight to step 3.
    - If invoked manually with no folder: `AskUserQuestion` — engine (Postgres, MySQL,
      Kafka, other), version/tag, port, whether it needs an init script. Don't ask what a
      given spec already answers.
@@ -95,15 +103,20 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 
 5. **Wire the app service's environment**, only the variables that change because of
    step 4 (`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD` pointing at the new service's
-   hostname and port from compose's internal network). Don't invent datasource
-   properties beyond connectivity — sizing and the rest are
+   hostname and port from compose's internal network; `OTLP_ENDPOINT` pointing at the
+   collector's, e.g. `http://otel-collector:4318/v1/traces`, for the OTLP service).
+   Don't invent datasource properties beyond connectivity — sizing and the rest are
    `@.claude/rules/persistence.md`'s and `persistence-architect`'s call, not this
    skill's.
 
-6. **Init script, only if step 2 found one is needed.** Write it under
-   `docker/init/<service>/` and mount it read-only in the service's `volumes:`. Skip
-   this entirely when the schema comes from a Flyway migration instead — one source of
-   schema truth, not two.
+6. **Init script.** Write it under `docker/init/<service>/` and mount it read-only in
+   the service's `volumes:`, from the matching `templates/<name>-config.<ext>.example`
+   when one exists. For a database service this is conditional on step 2 finding one is
+   needed, and skipped entirely when the schema comes from a Flyway migration instead —
+   one source of schema truth, not two. For the OTel collector it isn't conditional:
+   the collector has no built-in default pipeline and refuses to start without
+   `templates/otel-collector-config.yml.example` mounted, so this step always runs for
+   that service.
 
 7. **Report and stop.** Service added, image tag used (and whether it matches
    `test-architect`'s pin), files changed. Don't invoke anyone — a sibling skill that
@@ -113,9 +126,10 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 
 | Engine | Template | When **not** |
 |---|---|---|
-| PostgreSQL | `templates/postgres-service.yml.example` | Engine chosen in `20-persistencia.md` isn't Postgres |
+| PostgreSQL | `templates/postgres-service.yml.example` | Engine chosen in `20-persistencia.md` isn't Postgres — or, at bootstrap time, when `persistence-jpa` isn't active in the blueprint |
 | MySQL | `templates/mysql-service.yml.example` | Engine chosen in `20-persistencia.md` isn't MySQL |
 | Kafka | `templates/kafka-service.yml.example` | Broker chosen in `25-mensageria.md` isn't Kafka, or there is none |
+| OpenTelemetry Collector | `templates/otel-collector-service.yml.example` + init script `templates/otel-collector-config.yml.example` | `observability` isn't active in the blueprint. No engine choice to make here — one vendor-neutral collector, always the same shape, unlike Postgres/MySQL/Kafka which branch on a real decision |
 | H2 | — no service | In-memory, runs inside the JVM; nothing to containerize |
 
 Other engines and brokers (Oracle, RabbitMQ, SQS via LocalStack) follow the same shape as
@@ -127,15 +141,17 @@ one today.
 ## Contract
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, `25-mensageria.md`, and
-`40-testes.md` when a folder is given, `docker-compose.yml`, `Dockerfile`,
-`TestcontainersConfiguration.java` (image tag only), `@.claude/rules/persistence.md`, and
-`@.claude/rules/messaging.md`.
+`40-testes.md` when a folder is given; the active blueprint's `features:` (`persistence-jpa`,
+`observability`) when called from `project-bootstrap` at generation time; plus
+`docker-compose.yml`, `Dockerfile`, `TestcontainersConfiguration.java` (image tag only),
+`@.claude/rules/persistence.md`, and `@.claude/rules/messaging.md`.
 
-**Writes** `docker-compose.yml` (service blocks after the base pair), `Dockerfile`
-(build-stage additions only, never the base image or base stages
-`project-bootstrap` wrote), and `docker/init/**` when an init script is needed. No other
-skill touches `docker-compose.yml` after the base generation — this is the single
-owner.
+**Writes** `docker-compose.yml` (every service block, including the ones added at
+generation time for an already-active feature), `Dockerfile` (build-stage additions
+only, never the base image or base stages `project-bootstrap` wrote), and `docker/init/**`
+when an init script is needed. No other skill writes a service block into
+`docker-compose.yml` — not even `project-bootstrap`, which only decides *when* to call
+this skill — this is the single owner.
 
 **Does not** choose the database engine (`persistence-architect`'s call via
 `20-persistencia.md`) or the broker (`messaging-architect`'s call via

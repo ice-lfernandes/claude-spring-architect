@@ -1,0 +1,24 @@
+# Init script for the `otel-collector` service — mounted read-only, see
+# docker-architect/SKILL.md step 6. The collector has no built-in default pipeline; it
+# refuses to start without this file. `debug` is the exporter here on purpose: it needs
+# no backend, no credentials, and no network beyond the collector itself — swap it (or
+# add a second exporter) once the project has a real tracing backend to send to.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

@@ -1,0 +1,14 @@
+# Shape for an OpenTelemetry Collector service block appended under docker-compose.yml's
+# `services:`. Speaks OTLP/HTTP on :4318 — the same port
+# `management.otlp.tracing.endpoint` defaults to in application.yml. Vendor-neutral
+# exporter (`debug`, logs spans to its own stdout): no backend chosen yet — swap the
+# exporter in `otel-collector-config.yml`, not this file, once the project picks one
+# (Jaeger, Tempo, a SaaS vendor). Version resolved against the registry, not memory —
+# same rule as every other version in this repo.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./docker/init/otel-collector/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4318:4318"
