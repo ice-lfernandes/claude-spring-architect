@@ -74,6 +74,18 @@
     ]
   },
 
+  "audit": {
+    "$comment": "Read by ArchHook.java `audit` mode before the initial prompt is written into the versioned .claude/audit-usage/ report. Not frontmatter: it lives here because this file is the single owner of every pattern list the hook reads. Each `patterns` entry MUST expose the key part as group 1 — the replacement keeps $1 and blanks the rest. Design: .claude/decisions/0035-auditoria-execucao-hook.md",
+    "redact": {
+      "patterns": [
+        "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
+        "(?i)(--(?:token|password|api-key)[ =])\\S+",
+        "()-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+      ],
+      "value_prefixes": ["Bearer ", "ghp_", "github_pat_", "sk-", "xoxb-", "AKIA"]
+    }
+  },
+
   "mcp": {
     "$comment": "Validated by ArchHook.java schema, same as `types` above. Design: .claude/decisions/0033-mcp-in-architect-designer.md",
     "match": [

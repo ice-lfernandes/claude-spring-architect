@@ -1,7 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spinning up the process: without it, every edit to any file would pay for a JVM startup.",
+  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spinning up the process: without it, every edit to any file would pay for a JVM startup. The `audit` entries record the execution trail of the orchestrator skills into .claude/audit-usage/; each one returns immediately when that directory does not exist or no run is open, so the JVM cost outside an orchestrator run is a process start and nothing more. Delete the directory to switch the trail off.",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "prompt"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write",
@@ -15,12 +27,113 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "Skill|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "call"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "perm"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "perm"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "fail"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "agent"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "compact"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "stopfail"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "close"],
+            "timeout": 60
+          }
+        ]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "file"],
+            "timeout": 20
+          },
           {
             "type": "command",
             "command": "java",
@@ -49,6 +162,13 @@
     "Stop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "audit", "flush"],
+            "statusMessage": "Recording the execution trail...",
+            "timeout": 60
+          },
           {
             "type": "command",
             "command": "java",

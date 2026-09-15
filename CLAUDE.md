@@ -20,6 +20,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
 | Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
+| Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
 | Validate frontmatter of all extension files, and `.mcp.json` | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
@@ -97,6 +98,7 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
+| Auditing what a `/command` run in a **generated project** cost and which skills it chained | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, step 7 parts 4-5 |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
@@ -139,6 +141,13 @@ decisions/                  history — nobody reads it at runtime, outside the 
   command (`ls .claude/skills`, not `find … | sed | sort`). This only affects skills
   that restrict Bash: `allowed-tools: Bash` without a filter lets the whole pipeline
   through.
+- **The `audit` mode is off in this repository, on purpose.** It switches itself on by
+  the presence of `.claude/audit-usage/`, and this meta-repo doesn't create the
+  directory: the trail is a feature of the *generated* project, wired in
+  `project-bootstrap/templates/settings.json.example`, not in this repo's
+  `settings.json`. Copying those hook entries here would start auditing the design of
+  the tool instead of its use. What it records and why it isn't a skill:
+  `@.claude/decisions/0035-auditoria-execucao-hook.md`.
 - **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or
   editing a server mid-session has no effect until `claude` is restarted.
 - **A project-scoped server in `.mcp.json` needs one-time human approval** the first

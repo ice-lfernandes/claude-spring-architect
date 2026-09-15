@@ -12,6 +12,7 @@
 //   format  PostToolUse — spotless on the touched module              (never blocks)
 //   tests   Stop        — tests of the changed modules                (blocks)
 //   schema  Pre/PostToolUse + Stop — frontmatter of extension files   (blocks)
+//   audit   lifecycle   — execution trail of the orchestrator skills  (never blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
 //
 // Dependencies: JDK. Nothing else.
@@ -19,6 +20,7 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Instant;
 import java.util.*;
 import java.util.regex.*;
 import java.util.stream.*;
@@ -44,6 +46,7 @@ public class ArchHook {
                 case "format" -> format(filePath(stdin));
                 case "tests"  -> tests(stdin);
                 case "schema" -> schema(stdin);
+                case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "doctor" -> doctor();
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
@@ -194,6 +197,20 @@ public class ArchHook {
                 "all extension files pass",
                 badSchema < 0 ? "no " + SCHEMA_FILE + " — validation OFF"
                               : badSchema + " files with invalid frontmatter");
+        Path auditDir = ROOT.resolve(AUDIT_DIR);
+        if (Files.isDirectory(auditDir)) {
+            long runs = 0;
+            try (Stream<Path> s = Files.list(auditDir)) {
+                runs = s.filter(f -> f.toString().endsWith(".md")).count();
+            } catch (IOException ignored) { }
+            boolean priced = auditCost(new Tokens(1, 0, 0, 0, "probe")) != null
+                    || Files.isRegularFile(auditDir.resolve("pricing.json"));
+            report("Audit", true, runs + " execution(s) recorded"
+                    + (priced ? "" : " — pricing.json missing, no cost estimate"), "");
+        } else {
+            err("  Audit ............. ⚪ no " + AUDIT_DIR + " — execution trail OFF (optional)");
+        }
+
         Path mcpFile = ROOT.resolve(".mcp.json");
         if (Files.isRegularFile(mcpFile)) {
             List<String> mcpErrs = new ArrayList<>();
@@ -600,6 +617,588 @@ public class ArchHook {
                 ? Files.readString(p, StandardCharsets.UTF_8) : null; }
         catch (IOException e) { return null; }
     }
+
+    // ── audit ────────────────────────────────────────────────────────────────
+    //
+    // Execution trail of the project's orchestrator skills — the ones carrying
+    // `disable-model-invocation: true`. It is a hook and not a skill because the record
+    // has to survive the model forgetting, the session dying, and the user pressing
+    // Ctrl+C. A skill can promise that; only a lifecycle event delivers it.
+    //
+    // Phases (args[1]), one per hook event:
+    //   prompt    UserPromptSubmit               opens a run when the prompt is `/<orchestrator>`
+    //   call      PreToolUse Skill|Task          one node of the chain
+    //   file      PostToolUse Write|Edit         file touched — feeds rule inference by glob
+    //   fail      PostToolUseFailure             rework counter
+    //   stopfail  StopFailure                    the turn ended in error
+    //   perm      PermissionRequest|Denied       permission asked for mid-run
+    //   agent     SubagentStop                   closes the current agent node
+    //   compact   PreCompact                     the context overflowed
+    //   flush     Stop                           rewrites the report
+    //   close     SessionEnd                     stamps the final status and closes the run
+    //
+    // Every phase appends one line to .claude/audit-usage/.state/<session>.ndjson, and
+    // the report is DERIVED from that log at flush time. Append-only survives a kill -9;
+    // a read-modify-write of a structured file does not.
+    //
+    // Switched off by the absence of .claude/audit-usage/: every phase returns
+    // immediately. That is why this meta-repository, which does not create the
+    // directory, pays nothing for a mode wired only into the generated project.
+
+    static final String AUDIT_DIR = ".claude/audit-usage";
+    static final Locale PT = Locale.forLanguageTag("pt-BR");
+
+    static void audit(String phase, String stdin) throws Exception {
+        Path dir = ROOT.resolve(AUDIT_DIR);
+        if (!Files.isDirectory(dir)) return;
+
+        Object in = Json.parse(stdin);
+        String session = asStr(get(in, "session_id"));
+        if (session == null || session.isBlank()) session = "unknown";
+        Path log = dir.resolve(".state").resolve(session.replaceAll("[^A-Za-z0-9_-]", "_") + ".ndjson");
+
+        switch (phase) {
+            case "prompt"   -> auditPrompt(dir, log, in);
+            case "call"     -> auditCall(log, in);
+            case "file"     -> auditFile(log, in);
+            case "fail"     -> append(log, ev("fail", "tool", asStr(get(in, "tool_name"))));
+            case "stopfail" -> append(log, ev("stop_fail"));
+            case "perm"     -> append(log, ev("perm",
+                                       "tool", asStr(get(in, "tool_name")),
+                                       "event", asStr(get(in, "hook_event_name"))));
+            case "agent"    -> append(log, ev("agent_end"));
+            case "compact"  -> append(log, ev("compact"));
+            case "flush"    -> auditRender(dir, log, in, false);
+            case "close"    -> auditRender(dir, log, in, true);
+            default         -> { }
+        }
+    }
+
+    /**
+     * Opens a run when the prompt invokes an orchestrator. Which skills qualify is data,
+     * not code: any `.claude/skills/<name>/SKILL.md` carrying
+     * `disable-model-invocation: true` counts, so a skill written later is audited
+     * without this file being touched — @CLAUDE.md invariant 7.
+     */
+    static void auditPrompt(Path dir, Path log, Object in) throws Exception {
+        String prompt = asStr(get(in, "prompt"));
+        if (prompt == null) return;
+        Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)(.*)$", Pattern.DOTALL)
+                .matcher(prompt);
+        if (!m.find() || !isOrchestrator(m.group(1))) return;
+
+        // A second `/command` in the same session ends the run in progress: the report
+        // of what already ran is worth more than a run left open forever.
+        if (Files.isRegularFile(log)) auditRender(dir, log, in, true);
+
+        Files.createDirectories(log.getParent());
+        Files.writeString(log, "", StandardCharsets.UTF_8);
+
+        String stripped = prompt.strip();
+        String redacted = redact(stripped);
+        // `args` is redacted too, not just `prompt`: it is a slice of the same text and
+        // it is what the report puts in the title. Redacting one and not the other
+        // leaks the secret in the most visible line of the file.
+        append(log, ev("run_start",
+                "skill", m.group(1),
+                "args", redact(m.group(2).strip()),
+                "prompt", redacted,
+                "prompt_sha256", sha256(prompt),
+                "redacted", String.valueOf(!redacted.equals(stripped)),
+                "head", gitShort(),
+                "perm_before", String.join(" ", localPermissions())));
+    }
+
+    static boolean isOrchestrator(String skill) {
+        String content = readOrNull(ROOT.resolve(".claude/skills").resolve(skill).resolve("SKILL.md"));
+        if (content == null) return false;
+        Map<String, String> fm = frontmatter(content);
+        return fm != null && "true".equals(fm.get("disable-model-invocation"));
+    }
+
+    static void auditCall(Path log, Object in) {
+        Map<String, Object> ti = asMap(get(in, "tool_input"));
+        if (ti == null) return;
+        String tool = asStr(get(in, "tool_name"));
+        if ("Skill".equals(tool)) {
+            append(log, ev("skill", "name", asStr(ti.get("skill")), "args", asStr(ti.get("args"))));
+        } else if ("Task".equals(tool) || "Agent".equals(tool)) {
+            append(log, ev("agent",
+                    "name", asStr(ti.get("subagent_type")),
+                    "detail", asStr(ti.get("description")),
+                    "model", asStr(ti.get("model"))));
+        }
+    }
+
+    static void auditFile(Path log, Object in) {
+        String f = asStr(get(in, "tool_input", "file_path"));
+        if (f == null) return;
+        append(log, ev("file", "op", asStr(get(in, "tool_name")),
+                "path", relative(Paths.get(f))));
+    }
+
+    /** One NDJSON event. A null value is dropped instead of written as "null". */
+    static String ev(String name, String... kv) {
+        StringBuilder b = new StringBuilder("{\"t\":").append(System.currentTimeMillis())
+                .append(",\"iso\":\"").append(Instant.now()).append('"')
+                .append(",\"e\":\"").append(name).append('"');
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            if (kv[i + 1] == null) continue;
+            b.append(",\"").append(kv[i]).append("\":\"")
+             .append(jsonEscape(kv[i + 1])).append('"');
+        }
+        return b.append('}').toString();
+    }
+
+    static String jsonEscape(String s) {
+        StringBuilder b = new StringBuilder();
+        for (char c : s.toCharArray()) {
+            switch (c) {
+                case '"'  -> b.append("\\\"");
+                case '\\' -> b.append("\\\\");
+                case '\n' -> b.append("\\n");
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default   -> {
+                    if (c < 0x20) b.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
+                    else b.append(c);
+                }
+            }
+        }
+        return b.toString();
+    }
+
+    /** Appends to an open run. No open run, no record — that is the off switch. */
+    static void append(Path log, String line) {
+        if (!Files.isRegularFile(log)) return;
+        try {
+            Files.writeString(log, line + "\n", StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException ignored) { }
+    }
+
+    /**
+     * Blanks anything credential-shaped before the prompt reaches a versioned file.
+     * The patterns live in extensions.json's `audit.redact` block, never here — same
+     * single-owner discipline as every other list this hook reads (invariant 10). A
+     * secret pasted into a prompt and committed is irreversible; invariant 11 exists
+     * for exactly this, and `.claude/audit-usage/` is versioned on purpose.
+     */
+    static String redact(String text) {
+        Map<String, Object> r = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))),
+                "audit", "redact"));
+        if (r == null) return text;
+        String out = text;
+        for (String p : asStrList(r.get("patterns"))) {
+            try { out = Pattern.compile(p).matcher(out).replaceAll("$1[REDACTED]"); }
+            catch (Exception ignored) { }
+        }
+        for (String prefix : asStrList(r.get("value_prefixes"))) {
+            out = Pattern.compile(Pattern.quote(prefix) + "\\S+").matcher(out)
+                    .replaceAll(Matcher.quoteReplacement(prefix + "[REDACTED]"));
+        }
+        return out;
+    }
+
+    static String sha256(String s) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(s.getBytes(StandardCharsets.UTF_8));
+            StringBuilder b = new StringBuilder();
+            for (byte x : d) b.append(String.format(Locale.ROOT, "%02x", x));
+            return b.substring(0, 16);
+        } catch (Exception e) { return "?"; }
+    }
+
+    static String gitShort() {
+        try {
+            Proc p = run(gitCmd(), "rev-parse", "--short", "HEAD");
+            return p.exit == 0 && !p.out.isEmpty() ? p.out.get(0).strip() : null;
+        } catch (Exception e) { return null; }
+    }
+
+    /**
+     * `permissions.*` of settings.local.json — where a rule granted mid-session lands.
+     * Diffing this file before and after is the only observation of "permission added"
+     * that does not depend on an undocumented hook payload.
+     */
+    static List<String> localPermissions() {
+        Map<String, Object> p = asMap(get(Json.parse(
+                readOrNull(ROOT.resolve(".claude/settings.local.json"))), "permissions"));
+        if (p == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String k : List.of("allow", "ask", "deny")) {
+            for (String v : asStrList(p.get(k))) out.add(k + ": " + v);
+        }
+        return out;
+    }
+
+    record Node(String kind, String name, String detail, long start, int depth) {}
+
+    record Tokens(long in, long out, long cacheRead, long cacheWrite, String model) {
+        long billable() { return in + out + cacheWrite; }
+        long contextRead() { return in + cacheRead; }
+    }
+
+    /**
+     * Rewrites the report from the event log, from scratch, every time. Idempotent by
+     * construction: an execution killed halfway keeps the last flush, marked
+     * "em andamento", instead of leaving nothing behind.
+     */
+    static void auditRender(Path dir, Path log, Object in, boolean closing) throws Exception {
+        if (!Files.isRegularFile(log)) return;
+        List<Map<String, Object>> events = new ArrayList<>();
+        for (String line : Files.readAllLines(log, StandardCharsets.UTF_8)) {
+            Map<String, Object> e = asMap(Json.parse(line));
+            if (e != null && asStr(e.get("e")) != null) events.add(e);
+        }
+        if (events.isEmpty()) return;
+        Map<String, Object> s0 = events.get(0);
+        if (!"run_start".equals(asStr(s0.get("e")))) return;
+
+        String skill    = orDash(asStr(s0.get("skill")));
+        String args     = asStr(s0.get("args"));
+        String startIso = asStr(s0.get("iso"));
+        long   startMs  = num(s0.get("t"));
+        long   lastMs   = num(events.get(events.size() - 1).get("t"));
+        final long endMs = lastMs > startMs ? lastMs : System.currentTimeMillis();
+        long   total    = Math.max(1, endMs - startMs);
+
+        List<Node> nodes = new ArrayList<>();
+        Set<String> touched = new LinkedHashSet<>();
+        Map<String, Integer> fails = new LinkedHashMap<>();
+        Map<String, Integer> ops = new LinkedHashMap<>();
+        List<String> perms = new ArrayList<>();
+        int compacts = 0;
+        boolean errored = false;
+        int depth = 1;
+
+        for (Map<String, Object> e : events) {
+            String kind = asStr(e.get("e"));
+            switch (kind) {
+                case "skill" -> nodes.add(new Node("skill", orDash(asStr(e.get("name"))),
+                        asStr(e.get("args")), num(e.get("t")), depth));
+                case "agent" -> {
+                    nodes.add(new Node("agent", orDash(asStr(e.get("name"))),
+                            asStr(e.get("model")), num(e.get("t")), depth));
+                    depth++;
+                }
+                case "agent_end" -> depth = Math.max(1, depth - 1);
+                case "file" -> {
+                    String path = asStr(e.get("path"));
+                    if (path != null) touched.add(path);
+                    ops.merge(orDash(asStr(e.get("op"))), 1, Integer::sum);
+                }
+                case "fail" -> fails.merge(orDash(asStr(e.get("tool"))), 1, Integer::sum);
+                case "stop_fail" -> errored = true;
+                case "compact" -> compacts++;
+                case "perm" -> perms.add(orDash(asStr(e.get("tool"))));
+                default -> { }
+            }
+        }
+
+        Tokens tk = auditTokens(asStr(get(in, "transcript_path")), startIso);
+        List<String> added = new ArrayList<>(localPermissions());
+        added.removeAll(Arrays.asList(orEmpty(asStr(s0.get("perm_before"))).split(" ")));
+        String headStart = asStr(s0.get("head"));
+        String headEnd   = gitShort();
+
+        String status = !closing ? "⏳ em andamento"
+                : errored ? "❌ erro"
+                : fails.isEmpty() ? "✅ sucesso"
+                : "⚠️ sucesso com falhas recuperadas";
+
+        StringBuilder md = new StringBuilder();
+        md.append("# 🧾 Auditoria de execução — `/").append(skill)
+          .append(args == null || args.isBlank() ? "" : " " + args).append("`\n\n");
+
+        md.append("| | |\n|---|---|\n")
+          .append("| 🎯 Skill | `/").append(skill).append("` |\n")
+          .append("| 🕐 Início | ").append(startIso).append(" |\n")
+          .append("| 🏁 Fim | ").append(Instant.ofEpochMilli(endMs)).append(" |\n")
+          .append("| ⏱️ Duração | ").append(hms(total)).append(" |\n")
+          .append("| ").append(status.substring(0, status.indexOf(' ')))
+          .append(" Status | ").append(status.substring(status.indexOf(' ') + 1)).append(" |\n")
+          .append("| 🤖 Modelo | ").append(orDash(tk.model())).append(" |\n")
+          .append("| 🌿 HEAD | ").append(orDash(headStart)).append(" → ")
+          .append(orDash(headEnd)).append(" |\n\n");
+
+        md.append("## 📜 Comando inicial\n\n```text\n")
+          .append(orEmpty(asStr(s0.get("prompt")))).append("\n```\n\n")
+          .append("`sha256` do texto original (antes da redação): `")
+          .append(orDash(asStr(s0.get("prompt_sha256")))).append("` · segredos removidos: ")
+          .append("true".equals(asStr(s0.get("redacted"))) ? "**sim**" : "não").append("\n\n");
+
+        List<Node> ranked = new ArrayList<>(nodes);
+        ranked.sort((a, b) -> Long.compare(dur(b, nodes, endMs), dur(a, nodes, endMs)));
+        if (!ranked.isEmpty()) {
+            md.append("## 🏆 Etapas mais caras\n\n| # | Etapa | Duração | % |\n|---|---|---|---|\n");
+            for (int i = 0; i < Math.min(3, ranked.size()); i++) {
+                Node n = ranked.get(i);
+                long d = dur(n, nodes, endMs);
+                md.append("| ").append(i + 1).append(" | `").append(n.name()).append("` | ")
+                  .append(hms(d)).append(" | ").append(pct(d, total)).append(" |\n");
+            }
+            md.append('\n');
+        }
+
+        md.append("## 🔗 Encadeamento\n\n```text\n");
+        md.append(pad("/" + skill, 46)).append(bar(1.0)).append(' ')
+          .append(pad(hms(total), 9)).append("100%\n");
+        for (int i = 0; i < nodes.size(); i++) {
+            Node n = nodes.get(i);
+            long d = dur(n, nodes, endMs);
+            boolean last = i == nodes.size() - 1;
+            String label = "  ".repeat(Math.max(0, n.depth() - 1)) + (last ? "└─ " : "├─ ")
+                    + ("agent".equals(n.kind()) ? "🤖 " : "📘 ") + n.name()
+                    + (n.detail() == null || n.detail().isBlank() ? "" : " (" + n.detail() + ")");
+            md.append(pad(label, 46)).append(bar((double) d / total)).append(' ')
+              .append(pad(hms(d), 9)).append(pct(d, total)).append('\n');
+        }
+        md.append("```\n\n")
+          .append("> Duração de um nó = do seu início até o próximo nó de mesma profundidade")
+          .append(" ou menor. É atribuição por janela, não medição isolada.\n\n");
+
+        md.append("## 📊 Tokens (agregado)\n\n")
+          .append("| Métrica | Valor |\n|---|---|\n")
+          .append("| ⬇️ input | ").append(n(tk.in())).append(" |\n")
+          .append("| ⬆️ output | ").append(n(tk.out())).append(" |\n")
+          .append("| ♻️ cache read | ").append(n(tk.cacheRead())).append(" |\n")
+          .append("| 💾 cache write | ").append(n(tk.cacheWrite())).append(" |\n")
+          .append("| 🧮 faturável (input + output + cache write) | **").append(n(tk.billable())).append("** |\n");
+        String cost = auditCost(tk);
+        md.append("| 💰 custo estimado | ")
+          .append(cost == null ? "— (preencha `" + AUDIT_DIR + "/pricing.json`)" : "**" + cost + "**")
+          .append(" |\n\n");
+        long ctx = tk.contextRead();
+        double hit = ctx == 0 ? 0 : (double) tk.cacheRead() / ctx;
+        md.append("Cache hit ").append(pct(tk.cacheRead(), Math.max(1, ctx))).append(" ")
+          .append(bar(hit)).append("\n\n");
+
+        md.append("## 🔐 Permissões adicionadas durante a execução\n\n");
+        if (added.isEmpty()) {
+            md.append("Nenhuma. `settings.local.json` não mudou entre o início e o fim.\n\n");
+        } else {
+            md.append("| Regra |\n|---|\n");
+            for (String a : added) md.append("| `").append(a).append("` |\n");
+            md.append('\n');
+        }
+        if (!perms.isEmpty()) {
+            md.append("Solicitações observadas (").append(perms.size()).append("): ")
+              .append(String.join(", ", new LinkedHashSet<>(perms))).append("\n\n");
+        }
+
+        md.append("## 📐 Regras carregadas (inferidas por território)\n\n");
+        Map<String, List<String>> rules = auditRules(touched);
+        if (rules.isEmpty()) {
+            md.append("Nenhum arquivo tocado casa com o `paths` de alguma regra.\n\n");
+        } else {
+            md.append("| Regra | Glob | Arquivos |\n|---|---|---|\n");
+            for (Map.Entry<String, List<String>> e : rules.entrySet()) {
+                String[] parts = e.getKey().split(" ", 2);
+                md.append("| `").append(parts[0]).append("` | `").append(parts[1])
+                  .append("` | ").append(e.getValue().size()).append(" |\n");
+            }
+            md.append("\n> Inferência, não observação: nenhum evento de hook expõe qual regra")
+              .append(" entrou em contexto. Isto é \"as regras que **deveriam** ter carregado\".\n\n");
+        }
+
+        md.append("## 📁 Arquivos tocados\n\n");
+        if (touched.isEmpty()) {
+            md.append("Nenhum.\n\n");
+        } else {
+            md.append(ops.entrySet().stream().map(e -> e.getValue() + "× " + e.getKey())
+                    .collect(Collectors.joining(" · ")))
+              .append(" — ").append(touched.size())
+              .append(touched.size() == 1 ? " arquivo distinto" : " arquivos distintos")
+              .append("\n\n```text\n")
+              .append(String.join("\n", touched)).append("\n```\n\n");
+        }
+
+        md.append("## 🔁 Retrabalho\n\n");
+        if (fails.isEmpty()) {
+            md.append("Nenhuma ferramenta falhou. 🎉\n\n");
+        } else {
+            md.append("| Ferramenta | Falhas |\n|---|---|\n");
+            for (Map.Entry<String, Integer> e : fails.entrySet()) {
+                md.append("| `").append(e.getKey()).append("` | ").append(e.getValue()).append(" |\n");
+            }
+            md.append("\n> Falha repetida na mesma ferramenta é sinal de spec ruim, não de azar.\n\n");
+        }
+
+        if (compacts > 0) {
+            md.append("## ⚠️ Incidentes\n\n🗜️ Contexto compactado ").append(compacts)
+              .append("× durante a execução — qualidade da saída cai depois de cada compactação.\n\n");
+        }
+
+        if (headStart != null && headEnd != null && !headStart.equals(headEnd)) {
+            md.append("## 🌿 Commits da execução\n\n```text\n")
+              .append(String.join("\n", gitLog(headStart, headEnd))).append("\n```\n\n");
+        }
+
+        md.append("---\n\n*Gerado por `ArchHook.java audit` · `")
+          .append(AUDIT_DIR).append("/`*\n");
+
+        String stamp = orEmpty(startIso).replace(':', '-');
+        int dot = stamp.indexOf('.');
+        if (dot > 0) stamp = stamp.substring(0, dot);
+        Path report = dir.resolve(stamp + "--" + skill + ".md");
+        Files.writeString(report, md.toString(), StandardCharsets.UTF_8);
+
+        if (closing) {
+            Files.writeString(dir.resolve("history.jsonl"),
+                    ev("run", "skill", skill, "start", startIso,
+                       "duration_ms", String.valueOf(total),
+                       "status", status,
+                       "tokens_billable", String.valueOf(tk.billable()),
+                       "cost", cost,
+                       "files", String.valueOf(touched.size()),
+                       "failures", String.valueOf(fails.values().stream().mapToInt(Integer::intValue).sum()),
+                       "report", relative(report)) + "\n",
+                    StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            Files.deleteIfExists(log);
+        }
+    }
+
+    /** From this node's start to the next node at the same depth or shallower. */
+    static long dur(Node n, List<Node> all, long endMs) {
+        for (Node o : all) {
+            if (o.start() > n.start() && o.depth() <= n.depth()) return Math.max(0, o.start() - n.start());
+        }
+        return Math.max(0, endMs - n.start());
+    }
+
+    /**
+     * Token totals from the session transcript — the only place the runtime writes real
+     * `usage`. Timestamps are ISO-8601 in UTC, so a lexicographic comparison against the
+     * run's start is enough and avoids parsing dates.
+     */
+    static Tokens auditTokens(String transcript, String sinceIso) {
+        long i = 0, o = 0, cr = 0, cw = 0;
+        String model = null;
+        if (transcript == null) return new Tokens(0, 0, 0, 0, null);
+        Path p = Paths.get(transcript);
+        if (!Files.isRegularFile(p)) return new Tokens(0, 0, 0, 0, null);
+        try (BufferedReader r = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                Object e = Json.parse(line);
+                String ts = asStr(get(e, "timestamp"));
+                if (ts != null && sinceIso != null && ts.compareTo(sinceIso) < 0) continue;
+                Map<String, Object> u = asMap(get(e, "message", "usage"));
+                if (u == null) continue;
+                i  += num(u.get("input_tokens"));
+                o  += num(u.get("output_tokens"));
+                cr += num(u.get("cache_read_input_tokens"));
+                cw += num(u.get("cache_creation_input_tokens"));
+                String m = asStr(get(e, "message", "model"));
+                if (m != null) model = m;
+            }
+        } catch (IOException ignored) { }
+        return new Tokens(i, o, cr, cw, model);
+    }
+
+    /**
+     * Prices are data, never memory — the same discipline invariant 8 imposes on Java
+     * and Spring versions. pricing.json ships with null values on purpose: an unfilled
+     * price prints as "não configurado", never as a confident US$ 0.00.
+     */
+    static String auditCost(Tokens t) {
+        Map<String, Object> pr = asMap(Json.parse(readOrNull(ROOT.resolve(AUDIT_DIR + "/pricing.json"))));
+        if (pr == null || t.model() == null) return null;
+        Map<String, Object> m = asMap(get(pr, "models", t.model()));
+        if (m == null) return null;
+        Double in = dbl(m.get("input")), out = dbl(m.get("output")),
+               cr = dbl(m.get("cache_read")), cw = dbl(m.get("cache_write"));
+        if (in == null || out == null || cr == null || cw == null) return null;
+        Double per = dbl(pr.get("per"));
+        double unit = per == null || per == 0 ? 1_000_000d : per;
+        double usd = (t.in() * in + t.out() * out + t.cacheRead() * cr + t.cacheWrite() * cw) / unit;
+        String cur = asStr(pr.get("currency"));
+        return String.format(PT, "%s %.2f", cur == null ? "USD" : cur, usd);
+    }
+
+    /** Rules whose `paths` capture at least one file touched during the run. */
+    static Map<String, List<String>> auditRules(Set<String> touched) throws IOException {
+        Map<String, List<String>> hit = new LinkedHashMap<>();
+        Path rules = ROOT.resolve(".claude/rules");
+        if (!Files.isDirectory(rules) || touched.isEmpty()) return hit;
+        try (Stream<Path> s = Files.list(rules)) {
+            List<Path> files = s.filter(f -> f.toString().endsWith(".md")).sorted()
+                    .collect(Collectors.toList());
+            for (Path f : files) {
+                for (String g : ruleGlobs(f)) {
+                    Pattern re = glob(g);
+                    List<String> matched = touched.stream()
+                            .filter(t -> re.matcher(t).matches()).sorted()
+                            .collect(Collectors.toList());
+                    if (!matched.isEmpty()) {
+                        hit.put(f.getFileName() + " " + g, matched);
+                    }
+                }
+            }
+        }
+        return hit;
+    }
+
+    /**
+     * The `paths` of a rule. `frontmatter()` reads unindented scalars only, and this
+     * repo writes `paths` as an indented block list — so the block is read here.
+     */
+    static List<String> ruleGlobs(Path file) {
+        String c = readOrNull(file);
+        if (c == null) return List.of();
+        List<String> out = new ArrayList<>();
+        boolean inside = false;
+        for (String raw : c.lines().collect(Collectors.toList())) {
+            String l = raw.strip();
+            if (raw.startsWith("paths:")) { inside = true; continue; }
+            if (!inside) continue;
+            if (l.startsWith("#")) continue;
+            if (!l.startsWith("- ")) break;
+            out.add(l.substring(2).strip().replaceAll("^[\"']|[\"']$", ""));
+        }
+        return out;
+    }
+
+    static List<String> gitLog(String from, String to) {
+        try {
+            Proc p = run(gitCmd(), "log", "--oneline", from + ".." + to);
+            return p.exit == 0 && !p.out.isEmpty() ? p.out : List.of("—");
+        } catch (Exception e) { return List.of("—"); }
+    }
+
+    static String bar(double fraction) {
+        int width = 20;
+        int full = (int) Math.round(Math.max(0, Math.min(1, fraction)) * width);
+        return "█".repeat(full) + "░".repeat(width - full);
+    }
+
+    static String hms(long ms) {
+        long s = ms / 1000;
+        return s >= 3600 ? String.format(Locale.ROOT, "%dh%02dm%02ds", s / 3600, (s % 3600) / 60, s % 60)
+             : s >= 60   ? String.format(Locale.ROOT, "%dm%02ds", s / 60, s % 60)
+                         : s + "s";
+    }
+
+    static String pct(long part, long whole) {
+        return whole <= 0 ? "0%" : Math.round(100.0 * part / whole) + "%";
+    }
+
+    static String n(long v) { return String.format(PT, "%,d", v); }
+
+    static String pad(String s, int width) {
+        return s.length() >= width ? s.substring(0, width - 1) + " "
+                                   : s + " ".repeat(width - s.length());
+    }
+
+    static long num(Object o) { return o instanceof Number x ? x.longValue() : 0L; }
+
+    static Double dbl(Object o) { return o instanceof Number x ? x.doubleValue() : null; }
+
+    static String orDash(String s) { return s == null || s.isBlank() ? "—" : s; }
+
+    static String orEmpty(String s) { return s == null ? "" : s; }
 
     // ── utilities ────────────────────────────────────────────────────────────
 

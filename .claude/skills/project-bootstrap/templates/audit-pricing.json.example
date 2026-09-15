@@ -1,0 +1,25 @@
+{
+  "$comment": "Prices for the cost estimate in .claude/audit-usage/*.md. Values are null on purpose: ArchHook.java audit prints 'não configurado' while any of them is null, and never a confident US$ 0.00 built from a price nobody checked. Fill each field from the official pricing page, per `per` tokens, and keep the model key exactly as it appears in the transcript (the `message.model` field). Same discipline as @CLAUDE.md invariant 8: a number that changes outside this repository is never written from memory.",
+  "currency": "USD",
+  "per": 1000000,
+  "models": {
+    "claude-opus-5": {
+      "input": null,
+      "output": null,
+      "cache_read": null,
+      "cache_write": null
+    },
+    "claude-sonnet-5": {
+      "input": null,
+      "output": null,
+      "cache_read": null,
+      "cache_write": null
+    },
+    "claude-haiku-4-5-20251001": {
+      "input": null,
+      "output": null,
+      "cache_read": null,
+      "cache_write": null
+    }
+  }
+}
