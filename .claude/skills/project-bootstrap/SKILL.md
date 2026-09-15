@@ -579,6 +579,7 @@ and stays out of the generated project.
 | `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example` |
 | `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the two Java exemplars (producer adapter, consumer adapter), and `application-kafka.yml.example` |
 | `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
+| `audit-usage` | ✅ | Reads the trail `ArchHook.java audit` writes into `.claude/audit-usage/` (step 7.4) and consolidates spend, duration, and failures across runs. Only makes sense where the trail exists — the generated project, never this meta-repo, which creates no `audit-usage/`. Carries no `templates/` or `references/`, and cites neither `blueprints/` nor `decisions/`: it copies with none of the three corrections below |
 | `project-bootstrap` | ❌ | Builds the project. Inside it there's nothing left for it to do, and it invites the model to re-generate on top of live code |
 | `init-project` | ❌ | Same reason: it's the creation ritual, not the maintenance one |
 | `claude-code-architect-designer` | ❌ | Designs **this** repository's own extensions — skills, agents, rules. Whoever clones an already-generated project has no extensions to design, and the invariants it applies are this repo's |
@@ -599,7 +600,7 @@ Three corrections during the copy, because the generated project has neither
 
    ```bash
    grep -rl "active blueprint's \`packages.map\`" \
-     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,messaging-architect}/
+     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,messaging-architect,audit-usage}/
    ```
 
    Every file this returns needs the same correction, whether or not it's named above.
@@ -619,7 +620,7 @@ Three corrections during the copy, because the generated project has neither
 
    ```bash
    grep -rl "decisions/" \
-     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect}/
+     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,audit-usage}/
    ```
 
 The rest of the content — including `disable-model-invocation` and `allowed-tools` —
@@ -891,7 +892,7 @@ other skill touches these files:
 - `CLAUDE.md` and `*/CLAUDE.md`
 - `.claude/forbidden-imports.txt`
 - `.claude/rules/*.md` — full copy of this repo's rules, see step 6.6
-- `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,git-publish}/**` — see step 6.7
+- `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,git-publish,audit-usage}/**` — see step 6.7
 - `Dockerfile` and `docker-compose.yml` — base pair, step 4.10, plus (via
   `docker-architect`'s own templates and merge procedure, called from the same step)
   one service per blueprint feature that's already active and needs a container

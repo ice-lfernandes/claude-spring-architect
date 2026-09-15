@@ -19,7 +19,7 @@ Spring Boot · Java {{javaVersion}} · Build: {{buildTool}} · Architecture: **{
 | Tests | `{{testCmd}}` |
 | Run locally | `{{runCmd}}` |
 | Format | `{{formatCmd}}` |
-| Read the audit trail of the last `/command` run | `ls .claude/audit-usage/` |
+| Read the audit trail — what the `/command` runs cost and changed | `/audit-usage` |
 
 ## Invariants (non-negotiable)
 
@@ -48,7 +48,7 @@ Today four are copied; the remaining rows stay out until the skills exist:
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
 | Diagnosing hooks and enforcement | `/arch-doctor` |
-| What a `/command` run cost, which skills it chained, what it changed | `.claude/audit-usage/<timestamp>--<skill>.md` — written by the `audit` hook at every `Stop`, never by hand. `history.jsonl` next to it is one line per run. Delete the directory to switch the trail off |
+| What a `/command` run cost, which skills it chained, what it changed | skill `audit-usage` — consolidates spend and failures across runs and points at the report to open. The reports themselves are `.claude/audit-usage/<timestamp>--<skill>.md`, written by the `audit` hook at every `Stop`, never by hand; `history.jsonl` next to them is one line per run. Delete the directory to switch the trail off |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |
 | Creating a git repo, committing, or pushing this project | skill `git-publish` — chained automatically after `java-spring-boot-developer` succeeds; behind two confirmations |
 
