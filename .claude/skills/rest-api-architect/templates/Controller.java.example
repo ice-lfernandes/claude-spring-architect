@@ -1,15 +1,15 @@
 /*
- * EXEMPLAR — controller annotated end to end, in the shape
- * `.claude/rules/api-rest.md` requires. Shows the four points every new endpoint
- * tends to get wrong: explicit version prefix, @ApiResponse for EVERY status the
- * endpoint returns, Location on 201, and zero business logic.
+ * EXEMPLAR — controller implementation, in the shape `.claude/rules/api-rest.md`
+ * requires. Shows the four points every new endpoint tends to get wrong: explicit
+ * version prefix, `@ApiResponse` for EVERY status the endpoint returns (on the
+ * contract, see below), `Location` on 201, and zero business logic.
  * Compilable as-is — not pseudo-code.
  *
- * OpenAPI documentation (`@Operation`, `@ApiResponse`, `@Parameter`, request body
- * example) doesn't live inline here — it's extracted per operation into a composed
- * `...OpenApiDocs` annotation, `OpenApiDocs.java.example`. The method only carries
- * Spring's mapping and binding annotations plus the one doc annotation; annotating the
- * same fact in both places would diverge silently.
+ * Implements `UserApi` (`Api.java.example`) instead of carrying its own
+ * `@GetMapping`/`@PostMapping`, `@Tag`, or `...OpenApiDocs` annotations: Spring
+ * resolves those from the implemented interface's method, so repeating them here
+ * would duplicate the same fact in two places. Only `@RestController` and the class's
+ * base `@RequestMapping` stay on the class — nothing to inherit them from.
  *
  * What's deliberately NOT here:
  *   - try/catch. The domain exception bubbles up and ApiExceptionHandler translates it.
@@ -21,33 +21,19 @@ package com.exemplo.minhaapi.adapter.in.rest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.PageResponse;
 import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
-import com.exemplo.minhaapi.adapter.in.rest.openapi.CreateUserOpenApiDocs;
-import com.exemplo.minhaapi.adapter.in.rest.openapi.GetUserOpenApiDocs;
-import com.exemplo.minhaapi.adapter.in.rest.openapi.ListUsersOpenApiDocs;
 import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
 import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import java.net.URI;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // Explicit version in the path. Never `server.servlet.context-path`: it hides the version
 // and prevents /v1 and /v2 from coexisting (decision P5(g)).
 @RestController
 @RequestMapping(path = "/api/v1/users", produces = MediaType.APPLICATION_JSON_VALUE)
-@Tag(name = "Users", description = "User management")
-public class UserController {
+public class UserController implements UserApi {
 
     private final CreateUserUseCase createUser;
     private final ListUsersQuery listUsers;
@@ -57,35 +43,23 @@ public class UserController {
         this.listUsers = listUsers;
     }
 
-    @CreateUserOpenApiDocs
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserResponse> create(
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @Valid @RequestBody CreateUserRequest request) {
-
+    @Override
+    public ResponseEntity<UserResponse> create(String idempotencyKey, CreateUserRequest request) {
         var user = createUser.handle(UserMapper.toCommand(request, idempotencyKey));
         var body = UserMapper.toResponse(user);
         // 201 carries Location + the created representation. Only one of the two is half a contract.
         return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
     }
 
-    @ListUsersOpenApiDocs
-    @GetMapping
-    public PageResponse<UserResponse> list(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-            // Stable ordering: the unique-key tiebreak is added in the application,
-            // not requested from the client. Without it page 2 repeats and skips records.
-            @RequestParam(defaultValue = "createdAt,desc") String sort) {
-
+    @Override
+    public PageResponse<UserResponse> list(int page, int size, String sort) {
         var result = listUsers.handle(page, size, sort);
         return PageResponse.of(result.content().stream().map(UserMapper::toResponse).toList(),
                 page, size, result.totalElements());
     }
 
-    @GetUserOpenApiDocs
-    @GetMapping("/{userId}")
-    public UserResponse get(@PathVariable String userId) {
+    @Override
+    public UserResponse get(String userId) {
         return UserMapper.toResponse(listUsers.byId(userId));
     }
 }

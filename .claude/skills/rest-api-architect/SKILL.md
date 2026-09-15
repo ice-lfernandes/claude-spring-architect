@@ -122,9 +122,11 @@ chain, this isn't the right skill.
    endpoint with no inbound port behind it doesn't get written — it's a guessed
    contract. OpenAPI documentation for each operation (`@Operation`, every
    `@ApiResponse`, `@Parameter` with examples, request body example) is extracted into
-   its own composed annotation, suffix `OpenApiDocs` — one per operation, applied on the
-   method next to `@PostMapping`/`@GetMapping`/etc — shape in
-   `templates/OpenApiDocs.java.example`.
+   its own composed annotation, suffix `OpenApiDocs` — one per operation — shape in
+   `templates/OpenApiDocs.java.example`. Both `@Tag` and the composed annotations, plus
+   the Spring mapping/binding annotations, go on a `<Resource>Api` contract interface
+   (`templates/Api.java.example`); the controller implements it and stays annotation-free
+   beyond `@RestController` and the base `@RequestMapping`.
 
 5. **Fix the DTOs.** Input and output, field by field. DTO validation is **shape**
    only; business rule stays in the aggregate and comes out as 422. No domain type in
@@ -166,8 +168,8 @@ question nobody asked.
 
 | Block | Fixes | Shape exemplar |
 |---|---|---|
-| Endpoints | Method, path, `operationId`, port, success status | `Controller.java.example` |
-| OpenAPI docs | `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, applied on the endpoint | `OpenApiDocs.java.example` |
+| Endpoints | Method, path, `operationId`, port, success status | `Controller.java.example` implementing `Api.java.example` |
+| OpenAPI docs | `@Tag` + `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, all declared on the contract interface | `Api.java.example` · `OpenApiDocs.java.example` |
 | DTOs | Input and output, fields, shape validation, translation | `Dtos.java.example` · `RestMapper.java.example` |
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
 | Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `IdempotencyKeyInterceptor.java.example` |

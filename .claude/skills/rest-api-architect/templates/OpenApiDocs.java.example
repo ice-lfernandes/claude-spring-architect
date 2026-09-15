@@ -15,9 +15,12 @@
  *   - when there's a request body: @Operation(requestBody = ...) with a concrete JSON
  *     @ExampleObject, never just a @Schema reference
  *
- * The controller method keeps only Spring's mapping, binding and bean-validation
- * annotations (`Controller.java.example`) — annotating both there and here duplicates
- * the same fact in two places, which `@CLAUDE.md` invariant 2 forbids even for code.
+ * These composed annotations go on the contract interface's method, next to
+ * `@PostMapping`/`@GetMapping`/etc and the binding annotations (`Api.java.example`) —
+ * the implementing controller (`Controller.java.example`) carries none of it. Spring
+ * resolves mapping, binding and OpenAPI annotations from an implemented interface's
+ * method, so repeating them on the implementation would duplicate the same fact in two
+ * places, which `@CLAUDE.md` invariant 2 forbids even for code.
  *
  * Requires springdoc-openapi to resolve swagger-core annotations as meta-annotations
  * (annotation-on-annotation) — supported since springdoc-openapi 1.6 / swagger-core 2.2.

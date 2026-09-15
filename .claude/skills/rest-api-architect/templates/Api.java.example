@@ -1,0 +1,65 @@
+/*
+ * EXEMPLAR — controller contract as an interface. Every OpenAPI annotation lives
+ * here: `@Tag` at type level, and each operation's composed `...OpenApiDocs`
+ * annotation (`OpenApiDocs.java.example`) plus the Spring mapping and binding
+ * annotations at method level. `Controller.java.example` implements this interface
+ * and carries none of it — Spring resolves `@RequestMapping`/`@GetMapping`/
+ * `@PostMapping`, `@PathVariable`, `@RequestParam`, `@RequestHeader`, `@RequestBody`
+ * and bean-validation annotations declared on an implemented interface's method, so
+ * the implementation doesn't repeat them (Spring Framework reference — Web MVC,
+ * "Annotated Controllers": annotations on an interface are inherited by the class
+ * that implements it).
+ *
+ * Why split it out at all: `.claude/rules/api-rest.md` § OpenAPI requires every
+ * operation fully documented, and that's a lot of annotation weight. Separating the
+ * contract (this file) from the implementation (`Controller.java.example`) keeps the
+ * business method body free of documentation noise, and gives the contract a single
+ * file reviewers check against `10-dominio.md`'s ports without wading through
+ * `createUser.handle(...)` logic.
+ *
+ * One interface per resource, matching its controller 1:1 — not one interface for the
+ * whole API. A `UserApi` with no controller behind it, or a `UserController` that
+ * doesn't implement `UserApi`, is a divergence: the interface is the contract, the
+ * class is the one implementation.
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
+import com.exemplo.minhaapi.adapter.in.rest.dto.PageResponse;
+import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
+import com.exemplo.minhaapi.adapter.in.rest.openapi.CreateUserOpenApiDocs;
+import com.exemplo.minhaapi.adapter.in.rest.openapi.GetUserOpenApiDocs;
+import com.exemplo.minhaapi.adapter.in.rest.openapi.ListUsersOpenApiDocs;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
+
+@Tag(name = "Users", description = "User management")
+public interface UserApi {
+
+    @CreateUserOpenApiDocs
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<UserResponse> create(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreateUserRequest request);
+
+    @ListUsersOpenApiDocs
+    @GetMapping
+    PageResponse<UserResponse> list(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort);
+
+    @GetUserOpenApiDocs
+    @GetMapping("/{userId}")
+    UserResponse get(@PathVariable String userId);
+}
