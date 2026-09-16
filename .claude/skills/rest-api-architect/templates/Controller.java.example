@@ -78,8 +78,11 @@ public class UserController implements UserApi {
         IdempotentOutcome<User> outcome = idempotent.execute(
                 idempotencyRequest(idempotencyKey, request),
                 () -> createUser.handle(UserMapper.toCommand(request)),
+                // "{}": this endpoint rebuilds Location by hand below instead of storing
+                // it — see IdempotencyAspect.java.example for the generic case that
+                // needs the real header map.
                 user -> new StoredResponse(HttpStatus.CREATED.value(),
-                        objectMapper.writeValueAsString(UserMapper.toResponse(user))));
+                        objectMapper.writeValueAsString(UserMapper.toResponse(user)), "{}"));
         var body = switch (outcome) {
             case IdempotentOutcome.Executed<User>(User user) -> UserMapper.toResponse(user);
             case IdempotentOutcome.Replayed<User>(StoredResponse stored) ->

@@ -97,3 +97,27 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
  *     }
  * }
  */
+
+/*
+ * ANNOTATION-BASED VARIANT — only `requiresKey` and its supporting field change;
+ * `preHandle`, `isUuid`, and the `WebMvcConfig` registration above stay as written.
+ *
+ * Switch to this once `IdempotencyAspect.java.example` is the project's chosen strategy
+ * (rest-api-architect's SKILL.md § "Fix pagination and idempotency": second
+ * `Idempotency-Key` endpoint onward). A hardcoded path set has one advantage this loses:
+ * it still works for a project using the by-hand `IdempotentExecution` call without ever
+ * introducing `@Idempotent`. Don't make this switch for a single-endpoint project.
+ *
+ * import org.springframework.web.method.HandlerMethod;
+ *
+ * private boolean requiresKey(HttpServletRequest request, Object handler) {
+ *     // The annotation is the single source of truth both this interceptor
+ *     // (structural check) and IdempotencyAspect (transactional check) read — a second
+ *     // annotated endpoint needs no change here.
+ *     return handler instanceof HandlerMethod handlerMethod
+ *             && handlerMethod.hasMethodAnnotation(Idempotent.class);
+ * }
+ *
+ * // preHandle's signature already receives `handler` — pass it to requiresKey instead
+ * // of PROTECTED_POST_PATHS/HttpMethod.POST.matches(request.getMethod()).
+ */

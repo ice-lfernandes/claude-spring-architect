@@ -105,6 +105,28 @@
                 value="java.lang.Exception, java.lang.RuntimeException, java.lang.Throwable"/>
     </module>
 
+    <!-- rest-api-architect's IdempotencyAspect.java.example (2nd+ `@Idempotent`
+         endpoint): `aroundIdempotent` declares `throws Throwable` because
+         `org.aspectj.lang.ProceedingJoinPoint#proceed()` does — that's the AspectJ API's
+         own contract, not a choice made in this file. Scoped to that one class only, so
+         a `throws Throwable` anywhere else in the project still fails the build. -->
+    <module name="SuppressionXpathSingleFilter">
+      <property name="checks" value="IllegalThrows"/>
+      <property name="files" value="IdempotencyAspect\.java"/>
+      <property name="query" value="//LITERAL_THROWS//IDENT[@text='Throwable']"/>
+    </module>
+
+    <!-- Same file, same reason in reverse: `proceedUnchecked` catches `Throwable` for
+         exactly as long as it takes to cross the `Supplier<R>` boundary in
+         `IdempotentExecution.execute`, then rethrows the original cause unwrapped
+         (`IdempotencyAspect.java.example`'s header comment). Scoped to that one method's
+         catch, not a blanket per-file disable. -->
+    <module name="SuppressionXpathSingleFilter">
+      <property name="checks" value="IllegalCatch"/>
+      <property name="files" value="IdempotencyAspect\.java"/>
+      <property name="query" value="//METHOD_DEF[IDENT[@text='proceedUnchecked']]//LITERAL_CATCH//IDENT[@text='Throwable']"/>
+    </module>
+
     <!-- code-quality.md: comments — no commented-out code left nearby -->
     <module name="TodoComment">
       <property name="format" value="TODO(?!\s*\(#\d+\))"/>

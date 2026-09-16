@@ -1,0 +1,295 @@
+/*
+ * EXEMPLAR — annotation-driven idempotency for the SECOND (or third, or Nth)
+ * `Idempotency-Key` endpoint in the project. Replaces the by-hand claim/replay/complete
+ * call `Controller.java.example` writes with one declaration: `@Idempotent` on the
+ * endpoint method. Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/api-rest.md` (§ Idempotency) ·
+ *        `.claude/rules/architecture-ddd.md` (§ Application — the transaction opens and
+ *        closes in `IdempotentExecution`, never here, never in this adapter) ·
+ *        `.claude/rules/code-quality.md` (≤ 3 parameters, no generic `catch`/`throws`
+ *        outside the two narrow, documented exemptions below)
+ *
+ * WHY THIS REUSES `IdempotentExecution`/`IdempotencyKeyPort` INSTEAD OF A SECOND PORT.
+ * An earlier attempt at this generalization introduced a parallel port
+ * (`begin`/`complete`/`release` + its own outcome/completion types) to sidestep a real
+ * friction: `ProceedingJoinPoint#proceed()` declares `throws Throwable`, and
+ * `IdempotentExecution.execute`'s effect parameter is a plain `Supplier<R>`, which
+ * cannot. Two ports for one capability is worse than the friction — a second reader
+ * finds `begin` next to `claim` in the same codebase and has no way to know which one is
+ * canonical (`.claude/decisions/0040-idempotency-aop-generalization.md`). This file
+ * resolves the friction instead of avoiding it: `proceedUnchecked` below catches the
+ * checked `Throwable` and wraps it in an unchecked carrier just long enough to cross the
+ * `Supplier<R>` boundary; `aroundIdempotent` unwraps it immediately after and rethrows
+ * the original — a caller never sees the wrapper.
+ *
+ * COST OF THE ANNOTATION, ONLY REFLECTION BUYS THESE:
+ *   1. REPLAY BODY TYPE — the aspect doesn't know the annotated method's return type
+ *      statically. It reads `ResponseEntity<T>`'s `T` off the join point's own generic
+ *      return type (`ParameterizedType` + Jackson `TypeFactory`) — compiles, but a
+ *      reader loses the compile-time guarantee the explicit `IdempotentExecution` call
+ *      gives for free.
+ *   2. REQUEST BODY TO HASH — `@Idempotent(bodyArgIndex = ...)` names it explicitly
+ *      rather than scanning the method's parameters for `@RequestBody`
+ *      (`code-quality.md`'s "no hidden side effect": a reader sees which argument
+ *      matters without reflection).
+ *
+ * WHY HEADERS ARE PART OF THE STORED RESPONSE: a generic aspect can't hand-reconstruct
+ * an endpoint-specific header the way a hand-written controller can (e.g. rebuilding
+ * `Location` from the replayed body's `id`, as `Controller.java.example` does). This is
+ * why `StoredResponse` carries `headers` — see that record's own comment.
+ *
+ * TWO CHECKSTYLE EXEMPTIONS THIS FILE NEEDS, both already in
+ * `@.claude/skills/project-bootstrap/templates/checkstyle.xml.example`, scoped to this
+ * class name only (`IllegalThrows`/`IllegalCatch` on every other file still fail the
+ * build normally):
+ *   - `IllegalThrows` on `aroundIdempotent` — `proceed()`'s own contract, not a choice
+ *     made here.
+ *   - `IllegalCatch` on `proceedUnchecked` — catches `Throwable` for exactly as long as
+ *     it takes to cross the `Supplier<R>` boundary, then rethrows the original.
+ *
+ * Dependency: `spring-boot-starter-aspectj` — Spring Boot 4 renamed it from the
+ * pre-Boot-4 `spring-boot-starter-aop`; that name isn't in the Boot 4 BOM at all.
+ *
+ * Each `// --- <File>.java` block is its own file. Package per the active blueprint's
+ * `packages.map` — shown here as `adapter.in.rest`/`application.port.out` to match this
+ * folder's sibling exemplars.
+ */
+
+// --- Idempotent.java
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+// Single source of truth both IdempotencyKeyInterceptor (structural check) and
+// IdempotencyAspect (transactional check) read.
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Idempotent {
+
+    // Index, among the annotated method's parameters, of the request body to hash.
+    int bodyArgIndex() default 0;
+}
+
+// --- IdempotencyRequestHasher.java
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+
+// Canonical JSON serialization of the whole request DTO, not one hand-picked field —
+// generalizes across any request shape instead of one endpoint's chosen field.
+@Component
+class IdempotencyRequestHasher {
+
+    private static final String SHA_256 = "SHA-256";
+
+    private final ObjectMapper objectMapper;
+
+    IdempotencyRequestHasher(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    String hash(Object requestBody) {
+        byte[] json = objectMapper.writeValueAsBytes(requestBody);
+        try {
+            byte[] digest = MessageDigest.getInstance(SHA_256).digest(json);
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            // Every JDK must ship SHA-256 (Java Cryptography Architecture spec).
+            throw new AssertionError(SHA_256 + " unavailable", e);
+        }
+    }
+}
+
+// --- IdempotencyResponseCodec.java
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.application.port.out.StoredResponse;
+import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.ObjectMapper;
+
+// Turns a ResponseEntity into a StoredResponse for the recorder, and back into a
+// ResponseEntity on replay — body and headers, Location included.
+@Component
+class IdempotencyResponseCodec {
+
+    private final ObjectMapper objectMapper;
+
+    IdempotencyResponseCodec(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    StoredResponse encode(ResponseEntity<?> response) {
+        return new StoredResponse(
+                response.getStatusCode().value(),
+                objectMapper.writeValueAsString(response.getBody()),
+                encodeHeaders(response.getHeaders()));
+    }
+
+    // bodyType comes from the join point's own generic return type — see
+    // IdempotencyAspect#responseBodyType below.
+    ResponseEntity<Object> decode(StoredResponse stored, Type bodyType) {
+        JavaType javaType = objectMapper.getTypeFactory().constructType(bodyType);
+        Object body = objectMapper.readValue(stored.body(), javaType);
+        return ResponseEntity.status(stored.status())
+                .headers(decodeHeaders(stored.headers()))
+                .body(body);
+    }
+
+    private String encodeHeaders(HttpHeaders headers) {
+        // HttpHeaders isn't accepted by a Map copy constructor in Spring's current
+        // version — build the plain map via forEach, not `new LinkedHashMap<>(headers)`.
+        Map<String, List<String>> plain = new LinkedHashMap<>();
+        headers.forEach(plain::put);
+        return objectMapper.writeValueAsString(plain);
+    }
+
+    private HttpHeaders decodeHeaders(String json) {
+        JavaType listOfString = objectMapper.getTypeFactory().constructCollectionType(List.class, String.class);
+        JavaType mapType = objectMapper
+                .getTypeFactory()
+                .constructMapType(
+                        LinkedHashMap.class, objectMapper.getTypeFactory().constructType(String.class), listOfString);
+        Map<String, List<String>> raw = objectMapper.readValue(json, mapType);
+        HttpHeaders headers = new HttpHeaders();
+        raw.forEach(headers::addAll);
+        return headers;
+    }
+}
+
+// --- AspectInvocationException.java
+package com.exemplo.minhaapi.adapter.in.rest;
+
+// Unchecked carrier for whatever `ProceedingJoinPoint#proceed()` threw, alive only
+// between `proceedUnchecked` and `aroundIdempotent` — never seen outside this file, and
+// never seen by ApiExceptionHandler: `aroundIdempotent` unwraps it and rethrows the
+// original cause before returning.
+class AspectInvocationException extends RuntimeException {
+    AspectInvocationException(Throwable cause) {
+        super(cause);
+    }
+}
+
+// --- IdempotencyAspect.java
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.application.port.out.IdempotencyRequest;
+import com.exemplo.minhaapi.application.port.out.StoredResponse;
+import com.exemplo.minhaapi.application.service.IdempotentExecution;
+import com.exemplo.minhaapi.application.service.IdempotentOutcome;
+import jakarta.servlet.http.HttpServletRequest;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.time.Clock;
+import java.util.UUID;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+// Delegates the whole transaction shape to IdempotentExecution — this class only
+// adapts a join point to the (IdempotencyRequest, Supplier<R>, Function<R, StoredResponse>)
+// shape that component already takes. It never opens a transaction itself
+// (architecture-ddd.md § Application).
+@Aspect
+@Component
+class IdempotencyAspect {
+
+    // No auth designed yet — placeholder until one exists, same as Controller.java.example.
+    private static final String CALLER_PLACEHOLDER = "anonymous";
+
+    private final IdempotentExecution idempotentExecution;
+    private final IdempotencyRequestHasher requestHasher;
+    private final IdempotencyResponseCodec responseCodec;
+    private final Clock clock;
+
+    IdempotencyAspect(
+            IdempotentExecution idempotentExecution,
+            IdempotencyRequestHasher requestHasher,
+            IdempotencyResponseCodec responseCodec,
+            Clock clock) {
+        this.idempotentExecution = idempotentExecution;
+        this.requestHasher = requestHasher;
+        this.responseCodec = responseCodec;
+        this.clock = clock;
+    }
+
+    @Around("@annotation(idempotent)")
+    Object aroundIdempotent(ProceedingJoinPoint joinPoint, Idempotent idempotent) throws Throwable {
+        HttpServletRequest httpRequest = currentHttpRequest();
+        UUID key = UUID.fromString(httpRequest.getHeader(IdempotencyKeyInterceptor.HEADER));
+        Object requestBody = joinPoint.getArgs()[idempotent.bodyArgIndex()];
+        String route = httpRequest.getMethod() + " " + httpRequest.getRequestURI();
+        IdempotencyRequest request = new IdempotencyRequest(
+                key, route, CALLER_PLACEHOLDER, requestHasher.hash(requestBody), clock.instant());
+
+        try {
+            IdempotentOutcome<ResponseEntity<Object>> outcome = idempotentExecution.execute(
+                    request,
+                    () -> proceedUnchecked(joinPoint),
+                    responseCodec::encode);
+            return switch (outcome) {
+                case IdempotentOutcome.Executed<ResponseEntity<Object>>(ResponseEntity<Object> response) -> response;
+                case IdempotentOutcome.Replayed<ResponseEntity<Object>>(StoredResponse stored) ->
+                        responseCodec.decode(stored, responseBodyType(joinPoint));
+            };
+        } catch (AspectInvocationException wrapped) {
+            throw wrapped.getCause();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private ResponseEntity<Object> proceedUnchecked(ProceedingJoinPoint joinPoint) {
+        try {
+            return (ResponseEntity<Object>) joinPoint.proceed();
+        } catch (RuntimeException alreadyUnchecked) {
+            throw alreadyUnchecked;
+        } catch (Throwable checkedOrError) {
+            throw new AspectInvocationException(checkedOrError);
+        }
+    }
+
+    private HttpServletRequest currentHttpRequest() {
+        return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+    }
+
+    private static Type responseBodyType(ProceedingJoinPoint joinPoint) {
+        Type genericReturnType =
+                ((MethodSignature) joinPoint.getSignature()).getMethod().getGenericReturnType();
+        if (genericReturnType instanceof ParameterizedType parameterized) {
+            return parameterized.getActualTypeArguments()[0];
+        }
+        return Object.class;
+    }
+}
+
+/*
+ * Controller side. Everything Controller.java.example writes by hand — building
+ * IdempotencyRequest, calling idempotent.execute(...), switching on the outcome —
+ * collapses to one annotation:
+ *
+ * @Override
+ * @Idempotent(bodyArgIndex = 1)
+ * public ResponseEntity<UserResponse> create(String idempotencyKey, CreateUserRequest request) {
+ *     User user = createUser.handle(UserMapper.toCommand(request));
+ *     UserResponse body = UserMapper.toResponse(user);
+ *     return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
+ * }
+ */

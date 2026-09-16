@@ -25,6 +25,7 @@ CREATE TABLE idempotency_keys (
     status           varchar(20)   NOT NULL,   -- IN_PROGRESS | COMPLETED
     response_status  smallint      NULL,        -- filled once status = COMPLETED
     response_body    text          NULL,        -- filled once status = COMPLETED
+    response_headers text          NULL,        -- filled once status = COMPLETED; JSON-encoded Map<String, List<String>>
     claimed_at       timestamptz   NOT NULL,    -- start of the IN_PROGRESS lease; moves on reclaim
     created_at       timestamptz   NOT NULL,
     expires_at       timestamptz   NOT NULL,    -- created_at + TTL, >= 24 h (`api-rest.md` § Idempotency)
