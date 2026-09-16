@@ -4,7 +4,7 @@ description: Implements Java code from a consolidated spec.md — domain, persis
 model: sonnet
 tools: Read, Write, Edit, Bash
 skills: java-patterns
-effort: max
+effort: high
 ---
 
 # `java-spring-boot-developer` — Pipeline executor
