@@ -671,8 +671,11 @@ Three parts, and the first one is easy to forget:
    the hook and forgetting the schema delivers enforcement that looks on and isn't.
 3. Merge `templates/settings.json.example` into `<project>/.claude/settings.json`,
    preserving what's already there. The template already brings the `schema` mode's
-   three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`) and the ten
-   `audit` triggers of part 4.
+   three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`), the thirteen
+   `audit` triggers of part 4, the six `guard` triggers (`UserPromptSubmit`,
+   `PreToolUse`/Skill|Task|Agent, and four `PreToolUse`/Write|Edit entries filtered by
+   `if`), and the permissions: the pipeline skills in `allow`, `Bash(git push:*)` in
+   `ask`. Preserving what's already there never means widening `git push` to an allow.
 4. Create `<project>/.claude/audit-usage/` and copy
    `templates/audit-pricing.json.example` into it as `pricing.json`. **The directory is
    the on/off switch**: `ArchHook.java audit` returns immediately when it doesn't
@@ -701,6 +704,15 @@ a hook and not a skill because the record has to exist even when the model forge
 session dies, or the user interrupts — `@CLAUDE.md` invariant 6. Design:
 `.claude/decisions/0035-auditoria-execucao-hook.md` (this repo only; the record doesn't
 travel, invariant 9).
+
+**What the guard enforces, and why it's a hook.** Two boundaries of the `/new-feature`
+pipeline that its skills state in prose and a real run broke anyway: while a design
+skill runs, nothing is written under `src/` except from inside the executor agent; and
+the files of a use case whose `UC-NNN-spec.md` is `approved` or `implemented` are frozen,
+except the executor's single `approved → implemented` status edit. The lists — design
+skills, executor agents, forbidden paths, frozen statuses — are data in the `guard`
+block of the `extensions.json` part 2 copies. No `guard` block, no guard. Design:
+`.claude/decisions/0037-lessons-learned-005-remediation.md` (this repo only).
 
 ### 7.5 · Copy designed MCP servers, if any exist
 
