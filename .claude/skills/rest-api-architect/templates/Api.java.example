@@ -32,8 +32,10 @@ import com.exemplo.minhaapi.adapter.in.rest.openapi.GetUserOpenApiDocs;
 import com.exemplo.minhaapi.adapter.in.rest.openapi.ListUsersOpenApiDocs;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,7 +43,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestParam;
 
 @Tag(name = "Users", description = "User management")
 public interface UserApi {
@@ -54,10 +55,16 @@ public interface UserApi {
 
     @ListUsersOpenApiDocs
     @GetMapping
+    // `Pageable` instead of three `@RequestParam` primitives (`.claude/rules/api-rest.md`
+    // § Pagination) — Spring Data Web binds `page`/`size`/`sort` from the query string on
+    // its own, same names ListUsersOpenApiDocs already documents. `@ParameterObject`
+    // stops springdoc from treating it as a request body. `size` above
+    // `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
+    // silent truncation — Spring Data doesn't enforce that cap by itself.
     PageResponse<UserResponse> list(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort);
+            @ParameterObject
+                    @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable);
 
     @GetUserOpenApiDocs
     @GetMapping("/{userId}")
