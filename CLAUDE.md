@@ -98,8 +98,8 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
-| Auditing what a `/command` run in a **generated project** cost and which skills it chained | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, step 7 parts 4-5 |
-| Reading that trail back — spend per skill across runs, which report to open | skill `audit-usage` — runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
+| Auditing what any skill or agent run in a **generated project** cost and what it chained — invoked by `/command` or by the model | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, step 7 parts 4-5 |
+| Reading that trail back — spend per skill and agent across runs, which report to open | skill `audit-usage` — aggregation by `ArchHook.java audit summary`, the skill renders; runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |

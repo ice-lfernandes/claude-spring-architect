@@ -19,7 +19,7 @@ Spring Boot · Java {{javaVersion}} · Build: {{buildTool}} · Architecture: **{
 | Tests | `{{testCmd}}` |
 | Run locally | `{{runCmd}}` |
 | Format | `{{formatCmd}}` |
-| Read the audit trail — what the `/command` runs cost and changed | `/audit-usage` |
+| Read the audit trail — what each skill and agent run cost and changed | `/audit-usage` |
 
 ## Invariants (non-negotiable)
 
@@ -51,7 +51,7 @@ copy step isn't updated alongside it.
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Diagnosing hooks and enforcement | `/arch-doctor` |
-| What a `/command` run cost, which skills it chained, what it changed | skill `audit-usage` — consolidates spend and failures across runs and points at the report to open. The reports themselves are `.claude/audit-usage/<timestamp>--<skill>.md`, written by the `audit` hook at every `Stop`, never by hand; `history.jsonl` next to them is one line per run. Delete the directory to switch the trail off |
+| What a skill or agent run cost, what it chained, what it changed — invoked by `/command` or by the model | skill `audit-usage` — consolidates spend per skill and agent and failures across runs, and points at the report to open. The reports themselves are `.claude/audit-usage/<timestamp>--<piece>.md`, written by the `audit` hook at every `Stop`, never by hand; `history.jsonl` next to them is one line per top-level run, `nodes.jsonl` one line per piece it chained. Delete the directory to switch the trail off |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |
 | Creating a git repo, committing, or pushing this project | skill `git-publish` — chained automatically after `java-spring-boot-developer` succeeds; behind two confirmations |
 

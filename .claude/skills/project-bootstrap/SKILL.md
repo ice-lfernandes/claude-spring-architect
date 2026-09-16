@@ -580,7 +580,7 @@ and stays out of the generated project.
 | `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example` |
 | `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the two Java exemplars (producer adapter, consumer adapter), and `application-kafka.yml.example` |
 | `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
-| `audit-usage` | ✅ | Reads the trail `ArchHook.java audit` writes into `.claude/audit-usage/` (step 7.4) and consolidates spend, duration, and failures across runs. Only makes sense where the trail exists — the generated project, never this meta-repo, which creates no `audit-usage/`. Carries no `templates/` or `references/`, and cites neither `blueprints/` nor `decisions/`: it copies with none of the three corrections below |
+| `audit-usage` | ✅ | Reads the trail `ArchHook.java audit` writes into `.claude/audit-usage/` (step 7.4) through `ArchHook.java audit summary`, and consolidates spend per skill and agent, duration, and failures across runs. Only makes sense where the trail exists — the generated project, never this meta-repo, which creates no `audit-usage/`. Carries no `templates/` or `references/`, and cites neither `blueprints/` nor `decisions/`: it copies with none of the three corrections below |
 | `project-bootstrap` | ❌ | Builds the project. Inside it there's nothing left for it to do, and it invites the model to re-generate on top of live code |
 | `init-project` | ❌ | Same reason: it's the creation ritual, not the maintenance one |
 | `claude-code-architect-designer` | ❌ | Designs **this** repository's own extensions — skills, agents, rules. Whoever clones an already-generated project has no extensions to design, and the invariants it applies are this repo's |
@@ -688,22 +688,29 @@ Three parts, and the first one is easy to forget:
 5. Append `.claude/audit-usage/.state/` to the project's `.gitignore` (the one the
    Initializr delivered in step 6.5). That subdirectory is the append-only event log of
    a run **in progress**; the reports and `history.jsonl` next to it are versioned on
-   purpose, the live state is not. Without this line, every `Stop` leaves a dirty
+   purpose, the live state is not. `nodes.jsonl` is versioned too — one line per chained
+   piece, kept apart so `history.jsonl` stays one line per run. Without this line, every `Stop` leaves a dirty
    working tree.
 
 There's no `chmod`: the hooks run in **exec form** (`command: java` + `args`), without
 a shell and without an execute bit — that's what makes them identical on Linux, macOS,
 and Windows.
 
-**What the trail records, and why it's a hook.** Every skill in the project carrying
-`disable-model-invocation: true` gets one Markdown report per execution in
-`.claude/audit-usage/`: the initial prompt (redacted), the chain of skills and agents
-with duration bars, aggregate token use and estimated cost, permissions granted
+**What the trail records, and why it's a hook.** Every skill under `.claude/skills/` and
+every agent under `.claude/agents/` is recorded, whoever invoked it. A top-level
+invocation — `/<skill>` typed by the user, or a `Skill`/`Agent` call the model makes on
+its own with no run open — gets one Markdown report in `.claude/audit-usage/`; pieces
+it chains become sections of that report and one line each in `nodes.jsonl`. Plugin
+skills and runtime agents (`Explore`, `general-purpose`) have no file in the project and
+are not recorded. The report carries the initial prompt (redacted), the chain of skills
+and agents with duration bars, token use and estimated cost per piece and aggregated
+(a subagent's usage read from its own transcript), permissions granted
 mid-run, rules inferred from the files touched, rework, and the commits produced. It is
 a hook and not a skill because the record has to exist even when the model forgets, the
 session dies, or the user interrupts — `@CLAUDE.md` invariant 6. Design:
-`.claude/decisions/0035-auditoria-execucao-hook.md` (this repo only; the record doesn't
-travel, invariant 9).
+`.claude/decisions/0035-auditoria-execucao-hook.md` and
+`.claude/decisions/0038-audit-trail-every-skill-and-agent.md` (this repo only; the records
+don't travel, invariant 9).
 
 **What the guard enforces, and why it's a hook.** Two boundaries of the `/new-feature`
 pipeline that its skills state in prose and a real run broke anyway: while a design
@@ -900,7 +907,7 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
-Audit trail: .claude/audit-usage/ active — one report per `/command` execution from now on. GENESIS.md records this run itself. Fill pricing.json to see cost
+Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
