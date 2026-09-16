@@ -1,0 +1,102 @@
+---
+status: draft
+path: short
+---
+
+# UC-004 — Get customer by id
+
+Consolidated spec, **short path**. Recipient: `java-spring-boot-developer`.
+
+No partials `10-` through `40-`: every decision below is either reused from an approved
+spec or fixed by a rule. Nothing here was decided by judgment.
+
+| Short-path criterion | Evidence |
+|---|---|
+| Aggregate reused from an approved spec | `Customer` — `UC-001-create-customer`, `status: implemented` |
+| No new table, column, or migration | reads `customers` by PK |
+| No new exception | not found → the existing `NotFoundException` family, `errorCode` `CUSTOMER_NOT_FOUND` already in `UC-001` |
+| No question asked to the user | `00-caso-de-uso.md` answered from the request and the approved specs |
+
+---
+
+## 1. Use case
+
+Detail: `00-caso-de-uso.md`. Read-only, no side effect, no transaction beyond read.
+
+## 2. Domain model
+
+| Decision | Source |
+|---|---|
+| New output port method `Optional<Customer> byId(CustomerId id)` on `CustomerRepository` | this case — Impact row below |
+| Use case `GetCustomerUseCase` in the blueprint vocabulary | `naming.md` § Architecture vocabulary |
+
+## 3. Persistence
+
+| Decision | Source |
+|---|---|
+| `SELECT` by PK on `customers`, served by `customers_pkey` | `UC-001` `20-persistencia.md` § 1 |
+| Migration | none |
+
+## 3.5 Messaging
+
+none
+
+## 4. REST API
+
+| Decision | Source |
+|---|---|
+| `GET /api/v1/customers/{id}` → `200` | `api-rest.md` § Resources and URIs, § Success status |
+| Not found → `404` Problem Details | `api-rest.md` § Errors |
+| Pagination, idempotency | none — single resource, safe verb |
+
+## 5. Tests
+
+| Decision | Source |
+|---|---|
+| Unit: use case returns and propagates not found | `testing.md` § Levels |
+| Slice: `200` and `404` | `testing.md` § Slices |
+| Integration: adapter `byId` against a real database | `testing.md` § Database engine |
+
+---
+
+## Impact on approved use cases
+
+| Approved case | Change | Decided in |
+|---|---|---|
+| `UC-001-create-customer` | `CustomerRepository` gains `byId` | § 2 |
+
+---
+
+## Implementation order (checklist)
+
+[ ] 1. Domain exceptions — n/a, reused
+[ ] 2. Value objects — n/a, reused
+[ ] 3. Aggregate — n/a, reused
+[ ] 4. Events — n/a, none
+[ ] 5. Use case command — n/a, id only
+[ ] 6. Use case
+[ ] 7. Output port method `byId`
+[ ] 8. Migration — n/a, none
+[ ] 9. Persistence entity — n/a, reused
+[ ] 10. Spring Data interface — n/a, `findById` inherited
+[ ] 11. Repository adapter `byId`
+[ ] 12. Persistence properties — n/a
+[ ] 13. Response DTO — reused
+[ ] 14. Controller method + contract interface
+[ ] 15. REST properties — n/a
+[ ] 16. Test fixtures — reused
+[ ] 17. Unit tests
+[ ] 18. Integration + contract tests
+[ ] 19. `./mvnw verify` — green build, coverage gate
+
+## Resolved divergences
+
+none — a single author.
+
+<!--
+HOW TO USE THIS:
+- Written by /new-feature when `00-caso-de-uso.md` meets all four short-path criteria.
+  One unmet criterion → the full path, with partials.
+- Every row names its source: an approved spec or a rule. A row that needs judgment to
+  fill means the case isn't trivial — stop and take the full path.
+-->

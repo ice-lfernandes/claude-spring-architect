@@ -14,7 +14,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`ls -1d docs/use-cases/UC-*/ 2>/dev/null || echo "(none — run /use-case-design first)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+
+Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Target
 
@@ -95,7 +98,7 @@ chain, this isn't the right skill.
    intuition.
 
    ```bash
-   grep -rln "@RestController" --include=*.java src/ 2>/dev/null
+   grep -rln "@RestController" --include='*.java' src/ 2>/dev/null
    ```
 
    The inbound adapter's package isn't the same across every blueprint (`adapter/in/rest`
@@ -152,8 +155,10 @@ chain, this isn't the right skill.
    idempotency key table, first of all — or "none". `persistence-architect` runs after
    this skill and reads that list in its first pass; a requirement left in prose here is a
    second persistence pass later.
-8. **Fix the dependencies.** springdoc, tracing bridge, and validation. springdoc's
-   version **isn't managed by the Spring Boot BOM**: resolve it at runtime and confirm
+8. **Fix the dependencies.** springdoc, tracing bridge, and validation. **Read `pom.xml`
+   first**: a dependency already declared there keeps its version, and nothing is
+   resolved. Never a web search for a version. springdoc's
+   version **isn't managed by the Spring Boot BOM**: when it's absent, resolve it at runtime and confirm
    compatibility with the project's Boot major —
    `references/best-practices-links.md` § Resolving the springdoc version. No network,
    ask. Never from memory (`@CLAUDE.md`, invariant 8). You don't edit `pom.xml`: you

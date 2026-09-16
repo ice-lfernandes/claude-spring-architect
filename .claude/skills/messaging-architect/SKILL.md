@@ -14,7 +14,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`ls -1d docs/use-cases/UC-*/ 2>/dev/null || echo "(none — run /use-case-design first)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+
+Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Target
 
@@ -102,9 +105,9 @@ still transport.
    duplicated.
 
    ```bash
-   grep -rln "@KafkaListener\|KafkaTemplate" --include=*.java src/ 2>/dev/null
+   grep -rln "@KafkaListener\|KafkaTemplate" --include='*.java' src/ 2>/dev/null
    grep -rn "group-id\|bootstrap-servers" src/main/resources/ 2>/dev/null
-   grep -rl "processed_events\|ProcessedEventStore" --include=*.java src/ 2>/dev/null
+   grep -rl "processed_events\|ProcessedEventStore" --include='*.java' src/ 2>/dev/null
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions per

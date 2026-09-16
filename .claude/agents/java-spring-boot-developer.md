@@ -31,7 +31,10 @@ All three reasons from invariant 6 apply.
 - Validation: spec.md exists, `status: approved`, has § 1-5, checklist 19/19 (or aborts)
 
 **Reads (only):**
-- `UC-NNN-spec.md` — single source of truth
+- `UC-NNN-spec.md` — source of truth for every decision; where it and a partial disagree, the spec wins
+- The partials each block cites (`10-dominio.md`, `20-persistencia.md`, …) — for detail only.
+  The spec is consolidated by reference: it holds the decisions, the partial holds the tables
+  and the migration SQL
 - `pom.xml` — module structure
 - `.claude/rules/**` — conventions, invariants
 - `.claude/skills/*/templates/*.example` — shape exemplars (domain, persistence, REST, test)
@@ -80,7 +83,10 @@ Before writing code:
 3. **Spec is complete** — has § 1 (use case), § 2 (domain), § 3 (persistence), § 4 (REST), § 5 (tests)
 4. **Valid project** — `pom.xml` (parseable), `.claude/forbidden-imports.txt`, and a
    domain package **discovered, never assumed**
-5. **Checklist** — spec.md has a 19-item checklist (or aborts, it's not an executable spec)
+5. **Checklist** — spec.md has the 19-item checklist, each item either open or marked `n/a`
+   with a reason (or aborts, it's not an executable spec). An `n/a` step is skipped, not
+   improvised. A spec with `path: short` has no partials: every row already names its
+   source, an approved spec or a rule
 
 ### Discovering the layout — the first command of the run
 
@@ -191,7 +197,7 @@ stop and report — don't move to the next block with the previous one red.
 
 ### Block 1: Domain (steps 1-7)
 
-Read § 2 of spec.md. Generates:
+Read § 2 of spec.md, then the partial it cites for the step at hand. Generates:
 - `[Aggregate].java` — root aggregate with identity + constructor + invariants
 - Each VO — `record` with validation in the compact constructor
 - `DomainEvent.java` — abstract base
@@ -217,7 +223,7 @@ Next: Persistence (steps 8-12)
 
 ### Block 2: Persistence (steps 8-12)
 
-Read § 3 of spec.md. Generates:
+Read § 3 of spec.md, then the partial it cites for the step at hand. Generates:
 - `[Entity]JpaEntity.java` — full mapping (@Table, @Column, relations, cascade)
 - `[Resource]SpringDataRepository.java` — Spring Data interface
 - `[Resource]RepositoryAdapter.java` — implements the output port, converts domain ↔ JPA
@@ -248,7 +254,7 @@ Next: REST (steps 13-15)
 
 ### Block 3: REST (steps 13-15)
 
-Read § 4 of spec.md. Generates:
+Read § 4 of spec.md, then the partial it cites for the step at hand. Generates:
 - `[Resource]Controller.java` — `@RestController`, `@PostMapping`, `@GetMapping`, `@PatchMapping`
 - Request DTOs — `record` with `@Valid` + `@NotBlank` etc
 - Response DTO — `record`
@@ -285,7 +291,7 @@ Next: Tests (steps 16-19)
 
 ### Block 4: Tests (steps 16-19)
 
-Read § 5 of spec.md. Generates:
+Read § 5 of spec.md, then the partial it cites for the step at hand. Generates:
 - Test fixtures — builders, test data, `@TestData`
 - `[Aggregate]Test.java` — unit (isolated domain)
   - Invariants verified

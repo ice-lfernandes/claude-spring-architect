@@ -190,6 +190,15 @@ Without ✅ validation, anti-pattern 9 (invoking against an invalid project).
 
 ## Procedure — 6 steps + consolidation
 
+**Execution discipline** — the run's cost is turns × context size, not file size:
+
+- **No progress messages** between steps or tools ("moving to step 3", "domain ok"). Each
+  one is a turn that re-reads the whole conversation. The only report is § Final report.
+- **Independent writes in one turn** — parallel tool calls, not one file per turn.
+- **Dependency versions come from the build file.** Read `pom.xml` before resolving any
+  version; no web search for a version the project already declares.
+- A step's "Output" below is a check the run makes, not a message it prints.
+
 ### Step 1: Use case (new case only)
 
 **Invoke** `use-case-design` via the Skill tool, with the user's description as is.
@@ -201,6 +210,23 @@ created — never with the others.
 
 **Output:** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` — its folder name is the
 `UC-NNN-<slug>` every later step uses.
+
+### Short path — checked right after step 1
+
+A trivial case doesn't need five partials. Check all four against `00-caso-de-uso.md`
+and the approved specs:
+
+| Criterion | Unmet when |
+|---|---|
+| Aggregate reused from an approved spec | the component table has a NEW aggregate or value object |
+| No new table, column, or migration | the component table has a NEW or CHANGE migration or entity |
+| No new exception | an error situation has no exception already named in an approved spec |
+| No question asked to the user | `use-case-design` needed `AskUserQuestion` |
+
+All four met → skip steps 2–6 and write `UC-NNN-spec.md` from
+`templates/feature-spec-short.md.example`: every row names its source, an approved spec or
+a rule. A row that needs judgment to fill means the case isn't trivial — discard the
+short spec and take steps 2–6. One criterion unmet → steps 2–6.
 
 ### Step 2: Domain (depends on 1)
 
@@ -275,7 +301,10 @@ If all specs that apply exist and validate (messaging only when step 5 wasn't sk
    business-rule contradiction — **stops the pipeline** and asks. Don't invent it or
    stack it.
 
-2. Consolidate into a single file: `UC-NNN-spec.md`, with `status: draft`
+2. Consolidate into a single file: `UC-NNN-spec.md`, with `status: draft`, **by reference**
+   - Each block holds only the final decisions — one value per fact — and the path of the
+     partial that details it. Never copy a partial's tables, SQL, or code: a copied
+     consolidation doubled the output of a real run and added nothing the partial lacked
    - Structure: 5 blocks (use case, domain, persistence, REST, tests), plus a 6th
      (messaging) only when step 5 wasn't skipped
    - `## Impact on approved use cases`: every row from the same section of each partial —
@@ -293,7 +322,7 @@ If all specs that apply exist and validate (messaging only when step 5 wasn't sk
    pipeline was watching for it.
 
    ```bash
-   grep -rl "ArchRule\|ArchTest" --include=*.java src/test/ 2>/dev/null | head -1
+   grep -rl "ArchRule\|ArchTest" --include='*.java' src/test/ 2>/dev/null | head -1
    find src/main/java -name '*.java' ! -name 'package-info.java' | head -1
    ```
 
@@ -345,7 +374,8 @@ measurable per case.
 
 ## Template: UC-NNN-spec.md
 
-Lives at `.claude/skills/new-feature/templates/feature-spec.md.example`.
+Lives at `.claude/skills/new-feature/templates/feature-spec.md.example`; the short path
+uses `templates/feature-spec-short.md.example`.
 
 Structure (5 blocks, implementation order — 6 when messaging applies):
 - Frontmatter: `status:`

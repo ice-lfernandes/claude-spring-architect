@@ -61,6 +61,17 @@ The detailed rules live in `.claude/rules/` — index at `.claude/rules/00-index
 Read the rule **when** you need it. Don't load them all: each one is the single source
 of truth for its topic and is cited, never copied.
 
+## Known pitfalls
+
+- **`AskUserQuestion` with one option fails** with `InputValidationError`. A question with
+  one option isn't a question: decide, and record the decision.
+- **The shell may be zsh.** Quote every glob passed to a command (`--include='*.java'`);
+  unquoted, zsh aborts with `no matches found` before the command runs. To list
+  `docs/use-cases/UC-*`, use `find docs/use-cases -maxdepth 1 -name 'UC-*'`, not `ls`.
+- **Git goes through `git-publish` only**, behind its two confirmations. Never approve a
+  broad `git *` permission mid-task.
+- **`/clear` between two `/new-feature` runs.** One use case per run, in a clean context.
+
 ## Module structure
 
 {{#each modules}}
