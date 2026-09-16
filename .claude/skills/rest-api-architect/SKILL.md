@@ -153,6 +153,15 @@ chain, this isn't the right skill.
    reopen it per use case: the controller calls `IdempotentExecution`, the command
    carries no key, and `10-dominio.md`'s use case signature doesn't change for it.
 
+   **First `Idempotency-Key` endpoint in the project → the controller calls
+   `IdempotentExecution` by hand** (`Controller.java.example`). **Second one → switch to
+   `@Idempotent` + `IdempotencyAspect`** (`templates/IdempotencyAspect.java.example`,
+   `templates/IdempotencyKeyInterceptor.java.example`'s annotation-based variant): it
+   reuses the same `IdempotentExecution`/`IdempotencyKeyPort` — no second port, no second
+   vocabulary — and needs zero code in the new controller beyond the annotation. Don't
+   introduce the aspect for a single endpoint: it costs a reflection-based response-type
+   lookup and a request-body-index argument that the explicit call doesn't need.
+
    **Write the schema requirements down.** Block 4 closes with a `Schema requirements`
    list: every table or column this transport needs that the domain didn't model — the
    idempotency key table, first of all — or "none". `persistence-architect` runs after
@@ -185,7 +194,7 @@ question nobody asked.
 | OpenAPI docs | `@Tag` + `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, all declared on the contract interface | `Api.java.example` · `OpenApiDocs.java.example` |
 | DTOs | Input and output, fields, shape validation, translation | `Dtos.java.example` · `RestMapper.java.example` |
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
-| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `IdempotencyKeyInterceptor.java.example` |
+| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (second `@Idempotent` endpoint onward) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the
