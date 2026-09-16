@@ -7,12 +7,13 @@
  *
  *   1. STRUCTURAL — here. Missing or non-UUID header on a route that requires it: 400, and
  *      the request never reaches the controller.
- *   2. TRANSACTIONAL — NOT here. `.claude/rules/api-rest.md` requires that recording the key
- *      and the business effect happen in the SAME transaction. This runs outside the
- *      application's transaction, so it can't store the key: there would be a window where
- *      the effect happens and the key doesn't get stored, and a retry duplicates it. That
- *      half lives in the application layer, where the transaction opens
- *      (`.claude/rules/architecture-ddd.md` § Application).
+ *   2. TRANSACTIONAL — NOT here. `.claude/rules/api-rest.md` § Idempotency fixes two
+ *      transactions: the claim commits on its own, then the business effect and the
+ *      stored response commit together. This runs before the body is even parsed, so it
+ *      has neither the body hash nor the effect. That half lives in the application
+ *      layer, where transactions open (`.claude/rules/architecture-ddd.md` § Application):
+ *      `@.claude/skills/persistence-architect/templates/IdempotentExecution.java.example`,
+ *      called from the controller (`Controller.java.example`).
  *
  * WHY IT'S AN INTERCEPTOR AND NOT A FILTER. A `Filter` runs before the `DispatcherServlet`,
  * and an exception thrown there does NOT go through `@RestControllerAdvice` — the response
@@ -25,7 +26,7 @@
  * (TTL >= 24 h) belongs to `20-persistencia.md`. The `30-rest.md` partial declares it's
  * needed and names it; it doesn't model it. Shape reference for the other half:
  * `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
- * `.../IdempotencyKeyStore.java.example`.
+ * `.../IdempotencyKeyStore.java.example`, and `.../IdempotentExecution.java.example`.
  */
 package com.exemplo.minhaapi.adapter.in.rest;
 
@@ -42,8 +43,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 
     public static final String HEADER = "Idempotency-Key";
-    // Attribute read by the controller and passed to the command. Keeps the controller from
-    // re-reading the header and validating it again.
+    // Attribute available to the controller, already validated as a UUID. The key goes to
+    // `IdempotentExecution`, never into the use case's command.
     public static final String ATTRIBUTE = "idempotencyKey";
 
     // Routes that require the key: POST that creates a resource, moves money, or touches an

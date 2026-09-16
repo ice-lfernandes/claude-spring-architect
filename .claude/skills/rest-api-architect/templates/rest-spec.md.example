@@ -76,8 +76,8 @@ justify it.
 | Half | Where it lives | In this partial |
 |---|---|---|
 | Header presence and format | `IdempotencyKeyInterceptor` in the adapter | yes — 400 above |
-| Recording the key + the effect, in the same transaction | application layer | no — only declared as needed |
-| `idempotency_keys` table (route, caller, body hash, status, body, TTL >= 24 h) | `20-persistencia.md` | no — **handed off to `persistence-architect`** |
+| Claim (own transaction), then effect + stored response (one transaction) | `IdempotentExecution`, application layer, called by the controller; the command carries no key | no — only declared as needed |
+| `idempotency_keys` table (route, caller, body hash, status, body, lease, TTL >= 24 h) | `20-persistencia.md` | no — **handed off to `persistence-architect`** |
 
 **Schema requirements** — read by `persistence-architect` in its first pass, which runs
 after this partial:

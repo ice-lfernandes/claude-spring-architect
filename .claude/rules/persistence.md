@@ -61,6 +61,13 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
 - Instant in `Instant` or `OffsetDateTime`, stored in UTC, column with a timezone
   (`timestamptz` on Postgres). `LocalDateTime` only for a date-time that's naturally
   timezone-free
+- A column whose type isn't Hibernate's default inference for the field's Java type
+  carries `@JdbcTypeCode`: `String` infers `varchar` (so `char(n)` needs
+  `SqlTypes.CHAR`), `Integer` infers `integer` (so `smallint` needs
+  `SqlTypes.SMALLINT`). `ddl-auto: validate` compares type names and refuses to start
+  on the mismatch
+- `@Lob` never maps a Postgres `text` column: on a `String` it maps to `oid` (large
+  object). A bare `String` field already maps to `text`
 - `equals` and `hashCode` never over a database-generated id: while the entity is
   transient the id is `null` and the contract breaks in a `Set`
 - Allowed Lombok annotations: `@.claude/rules/lombok.md`
@@ -83,6 +90,13 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
 - The id is generated where the aggregate is born — the application layer —, not by the
   database and not by the adapter. The aggregate never exists in a half-created state
   waiting for an id
+- **An entity whose `@Id` is assigned (no `@GeneratedValue`) implements
+  `Persistable<T>`**, with a `@Transient boolean isNew = true` flipped to `false` by
+  `@PostLoad` and `@PostPersist`. It holds whether or not the entity has `@Version`: a
+  primitive version counts as absent. Without it Spring Data sees a non-null id, calls
+  `merge()` instead of `persist()`, pays a `SELECT` before every `INSERT`, and never
+  raises the primary-key collision — code that relies on that collision for concurrency
+  control is silently broken, with no compiler or test signal until the race happens
 - Every foreign key has an index. The engine doesn't create one on its own on the
   referencing side, in Postgres or MySQL
 
@@ -139,6 +153,11 @@ grep -rn "jakarta.persistence" --include=*.java . | grep -v "/persistence/"
 
 # ddl-auto must be validate and open-in-view must be false, in every profile.
 grep -rn "ddl-auto\|open-in-view" src/main/resources/
+
+# On Postgres, @Lob on a String field is a `text` mapping bug. Review every hit.
+grep -rn "@Lob" --include=*.java src/main/java
+
+# Assigned ids without Persistable, and @Lob on String, are also architecture-test rules.
 
 # The rest — boundaries and N+1 — is the architecture test and the integration tests.
 ./mvnw -q test

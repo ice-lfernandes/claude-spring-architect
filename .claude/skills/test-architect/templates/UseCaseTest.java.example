@@ -69,6 +69,6 @@ class CreateUserServiceTest {
 
     private CreateUserCommand command(String email) {
         return new CreateUserCommand(
-                Email.of(email), "Ana Silva", DepartmentId.unassigned(), "idempotency-key");
+                Email.of(email), "Ana Silva", DepartmentId.unassigned());
     }
 }

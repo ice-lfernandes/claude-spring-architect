@@ -124,15 +124,19 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    object becomes a column or `@Embeddable`, never its own table — if it needs its own
    table and its own identity, it wasn't a value object
    (`@.claude/rules/value-objects.md`). Fix in writing, column by column: name, type,
-   nullability, default, `UNIQUE`, foreign key.
+   nullability, default, `UNIQUE`, foreign key. A type that isn't Hibernate's default
+   inference for the field (`char(n)`, `smallint`) names its `@JdbcTypeCode` in the
+   same row, and an assigned id names `Persistable` — both per
+   `@.claude/rules/persistence.md` § Mapping and § Identity and keys.
 
    **4a. Idempotency, when `30-rest.md` requires it and step 2 found no
    `idempotency_keys` table yet.** Not per-aggregate: one table, shared by every
    endpoint that needs `Idempotency-Key`, modeled once and reused afterward. Shape in
    `templates/IdempotencyKeyTable.sql.example` (schema) and
    `templates/IdempotencyKeyStore.java.example` (entity, Spring Data repository, and the
-   adapter implementing the port) — the persistence-side half of the mechanism whose
-   structural half is `rest-api-architect`'s `IdempotencyKeyInterceptor.java.example`.
+   adapter implementing the port), plus `templates/IdempotentExecution.java.example` (the
+   application component that owns the two-transaction shape) — the transactional half
+   of the mechanism whose structural half is `rest-api-architect`'s `IdempotencyKeyInterceptor.java.example`.
    Column set and TTL floor come from `@.claude/rules/api-rest.md` § Idempotency; don't
    redecide them here.
 
@@ -175,11 +179,11 @@ asked.
 | Block | Fixes | Form exemplar |
 |---|---|---|
 | Schema | Tables, columns, types, nullability, `UNIQUE`, foreign keys, indexes | `V1__create_table.sql.example` |
-| Mapping | Aggregate → persistence entity, field by field; what's `@Embeddable`; value object translation | `JpaEntity.java.example` |
+| Mapping | Aggregate → persistence entity, field by field; what's `@Embeddable`; value object translation; `@JdbcTypeCode` and `Persistable` where they apply | `JpaEntity.java.example` |
 | Adapter and ports | Each port from `10-dominio.md`, the query serving it, the fetch strategy | `RepositoryAdapter.java.example` · `SpringDataRepository.java.example` |
 | Migrations | New files, order, and the expand/contract pair when the table already exists | `V1__create_table.sql.example` |
 | Configuration | Datasource and JPA properties, with the decided value and why | `application-persistence.yml.example` |
-| Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, and adapter — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` |
+| Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, adapter, and application component — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` · `IdempotentExecution.java.example` |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.

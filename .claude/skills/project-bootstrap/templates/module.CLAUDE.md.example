@@ -18,6 +18,7 @@ None. This is the core — it knows no other module.
 - `jakarta.persistence..`
 - `jakarta.validation..`
 - `com.fasterxml.jackson..`
+- `tools.jackson..`
 
 The `ArchHook.java check` hook blocks these imports post-edit, based on
 `.claude/forbidden-imports.txt`. If you need one of these, the responsibility is in the

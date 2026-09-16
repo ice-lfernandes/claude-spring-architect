@@ -14,7 +14,7 @@ Used in step 3 to build the `-d dependencies=` parameter.
 | `actuator` | `actuator` | |
 | `archunit` | — | Not a bootstrap dependency. The `test-architect` skill adds `com.tngtech.archunit:archunit-junit5` (test scope), only in the module with `contains_main: true`, once there are classes to check |
 | `validation` | `validation` | **Mandatory whenever `rest` is active.** `api-rest.md` § Errors requires bean validation on the DTO, and without this dependency `@NotBlank`/`@Email`/`@Size` don't compile and the controller's `@Valid` has no processor. Not optional: it's a direct consequence of a rule the same blueprint installs |
-| `observability` | — | Doesn't exist in the Initializr; add `io.micrometer:micrometer-tracing-bridge-otel` and `io.opentelemetry:opentelemetry-exporter-otlp`. Without this feature there's no `Tracer` bean, and an error handler that injects it prevents the context from starting — `.claude/rules/observability.md` § Correlation then requires generating the identifier locally and saying so in a comment |
+| `observability` | — | Doesn't exist in the Initializr; add `io.micrometer:micrometer-tracing-bridge-otel`, `io.opentelemetry:opentelemetry-exporter-otlp`, **and** the Boot glue that registers the `Tracer` bean — on Spring Boot 4, `org.springframework.boot:spring-boot-starter-opentelemetry` (verified on `4.1.1`; version managed by the parent). The bridge and the exporter alone register no bean. On Boot 3 the bean came from `actuator`'s auto-configuration; for any other line, confirm the artifactId against the resolved BOM, never from memory. Without this feature there's no `Tracer` bean, and an error handler that injects it prevents the context from starting — `.claude/rules/observability.md` § Correlation then requires generating the identifier locally and saying so in a comment |
 | `uuid-v7` | — | Doesn't exist in the Initializr; add `com.fasterxml.uuid:java-uuid-generator`. Required whenever `persistence-jpa` is active and the primary key is `UUID`: `persistence.md` § Identity and keys requires v7, and JDK 21's `java.util.UUID.randomUUID()` generates v4. See the JDK 25 note below |
 | `spring-modulith` | `modulith` | `modular-monolith` blueprint only. Adds `spring-modulith-starter-core` (compile). Also add by hand, same BOM: `spring-modulith-starter-test` (test scope, not in the Initializr catalog) — needed for `ApplicationModules`/`@ApplicationModuleTest`. Import `spring-modulith-bom` in `<dependencyManagement>` with `<scope>import</scope>`, version from `boms.spring-modulith.version` in the same `curl` response, never from memory — it moves independently of Spring Boot's own version |
 
@@ -30,6 +30,10 @@ The Initializr `id` above **doesn't change** between Boot versions, but the
 - `springdoc-openapi-starter-webmvc-ui` on the `2.8.x` line is for Boot 3; for Boot 4
   use the `3.x` line (verified: `3.1.0`) — `2.8.x` references classes that no longer
   exist
+- Tracing: the bridge no longer gets its `Tracer` bean from `actuator`; the starter
+  `spring-boot-starter-opentelemetry` registers it (row `observability` above)
+- Jackson 3 is the default: core under `tools.jackson.*` (`tools.jackson.databind.ObjectMapper`,
+  unchecked `JacksonException`); annotations stay under `com.fasterxml.jackson.annotation`
 - `bootVersion` **doesn't accept** the `.RELEASE` suffix (`4.1.1.RELEASE` gives a 404
   on Maven Central); if you pin the version, pass just `4.1.1`. Preferable: don't pin
   and let the Initializr choose the current GA.

@@ -34,10 +34,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
 import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.application.service.IdempotentExecution;
+import com.exemplo.minhaapi.application.service.IdempotentOutcome;
 import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
 import com.exemplo.minhaapi.domain.exception.NotFoundException;
 import com.exemplo.minhaapi.test.TestFixtures;
 import io.micrometer.tracing.Tracer;
+import java.time.Clock;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +66,17 @@ class UserControllerTest {
     // ApiExceptionHandler injects Tracer. Without this double the slice doesn't start, and
     // the failure shows up as a context error, not a red test — hard to read.
     @MockitoBean private Tracer tracer;
+    // Idempotency is the application layer's (`.claude/rules/api-rest.md` § Idempotency) and
+    // has its own tests there. Here the double just runs the effect, so the slice tests the
+    // HTTP contract and nothing else.
+    @MockitoBean private IdempotentExecution idempotent;
+    @MockitoBean private Clock clock;
+
+    @BeforeEach
+    void runEffectDirectly() {
+        given(idempotent.execute(any(), any(), any())).willAnswer(invocation ->
+                new IdempotentOutcome.Executed<>(invocation.<Supplier<?>>getArgument(1).get()));
+    }
 
     @Test
     @DisplayName("creates and returns 201 with Location and the representation")

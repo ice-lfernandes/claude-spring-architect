@@ -7,6 +7,11 @@
 -- (`rest-api-architect` step 7 names it; this skill models it). Create it the first
 -- time a use case needs `Idempotency-Key`; every use case after that reuses it —
 -- never recreate it, never give it a foreign key to a specific aggregate.
+--
+-- COLUMN TYPES AND THE ENTITY: `char(64)` and `smallint` aren't Hibernate's default
+-- inference for `String` and `Integer`, and `text` must not get `@Lob` — the entity in
+-- `templates/IdempotencyKeyStore.java.example` carries the matching `@JdbcTypeCode`
+-- (`.claude/rules/persistence.md` § Mapping). `ddl-auto: validate` refuses to start otherwise.
 
 -- ---------------------------------------------------------------------------
 -- V2__create_idempotency_keys.sql — new table
@@ -20,15 +25,18 @@ CREATE TABLE idempotency_keys (
     status           varchar(20)   NOT NULL,   -- IN_PROGRESS | COMPLETED
     response_status  smallint      NULL,        -- filled once status = COMPLETED
     response_body    text          NULL,        -- filled once status = COMPLETED
+    claimed_at       timestamptz   NOT NULL,    -- start of the IN_PROGRESS lease; moves on reclaim
     created_at       timestamptz   NOT NULL,
     expires_at       timestamptz   NOT NULL,    -- created_at + TTL, >= 24 h (`api-rest.md` § Idempotency)
+    version          bigint        NOT NULL,    -- optimistic lock: two reclaims of one stale claim, one wins
     CONSTRAINT pk_idempotency_keys PRIMARY KEY (idempotency_key)
 );
 
 -- The primary key on `idempotency_key` alone IS the concurrency control: two requests
 -- racing with the same key collide on INSERT, and the loser reads back the winner's row
--- to decide replay, 409 in-progress, or 409 reused (`templates/IdempotencyKeyStore.java.example`).
--- No separate UNIQUE constraint needed — the PK already is one.
+-- to decide replay, 409 in-progress, 409 reused, or reclaim of a stale lease
+-- (`templates/IdempotencyKeyStore.java.example`). No separate UNIQUE constraint needed —
+-- the PK already is one.
 
 -- Read at request time only by primary key. This index serves the cleanup job, not
 -- request traffic.
@@ -37,9 +45,9 @@ CREATE INDEX ix_idempotency_keys_expires_at ON idempotency_keys (expires_at);
 -- ---------------------------------------------------------------------------
 -- Cleanup — its own scheduled job, not modeled by this migration
 -- ---------------------------------------------------------------------------
--- Rows past `expires_at` are safe to delete regardless of `status`: a request still
--- IN_PROGRESS past its own TTL means the caller already gave up and retried with a new
--- key, or the process handling it died. Either way nothing reads the row again.
+-- Rows past `expires_at` are safe to delete regardless of `status`: nothing reads a row
+-- again after its TTL. An IN_PROGRESS row left by a crashed process doesn't wait for this
+-- job — the next request with the same key reclaims it once the lease expires.
 -- Batched, off-peak — a single unbounded DELETE on a hot table locks it.
 
 -- DELETE FROM idempotency_keys WHERE expires_at < now();
