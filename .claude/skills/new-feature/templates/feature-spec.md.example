@@ -341,8 +341,8 @@ management:
 
 none
 
-One row per change this case needs in code an approved case produced — carried from
-`00-caso-de-uso.md`. The approved specs themselves are never edited.
+One row per change this case needs in code an approved case produced — collected from
+the same section of every partial. The approved specs themselves are never edited.
 
 | Approved case | Change | Why |
 |---|---|---|

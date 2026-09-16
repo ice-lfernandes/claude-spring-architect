@@ -344,8 +344,8 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      │
      ▼  skill: new-feature — closed input table; anything else is an error
      │
-     use-case-design → domain-modeling → persistence-architect
-        → messaging-architect (conditional) → rest-api-architect → test-architect
+     use-case-design → domain-modeling → rest-api-architect → persistence-architect
+        → messaging-architect (conditional) → test-architect
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
      │  design skills write only under docs/ — never src/, never git
      │

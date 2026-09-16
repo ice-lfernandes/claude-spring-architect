@@ -73,7 +73,7 @@ The division is by **moment and artifact**, not technology:
 | `use-case-design` | Before the domain exists | `00-caso-de-uso.md` — boundary and canonical names |
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports |
 | **this skill** | After the domain partial | `20-persistencia.md`, migration SQL inside it |
-| `rest-api-architect` | In parallel with this one | `30-rest.md` — transport, no schema |
+| `rest-api-architect` | Before this one | `30-rest.md` — transport, plus the schema requirements it creates |
 | `test-architect` | After all of them | `40-testes.md` |
 
 If the aggregate has no written invariants yet, it isn't this skill. If the problem is a
@@ -85,8 +85,11 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 1. **Read the specs.** `00-caso-de-uso.md` and `10-dominio.md` from the folder in
    `$ARGUMENTS`. Without the second, stop. Extract: aggregate root, fields and types,
    value objects, declared output ports, and the component table with NEW/CHANGE/REUSE
-   state. Also check for `30-rest.md`: if it exists and requires `Idempotency-Key`, this
-   pass also owns the shared idempotency table — see step 4a.
+   state. Also read `30-rest.md` when the use case has an HTTP trigger — in `/new-feature` it
+   always exists by now, because REST runs first. Its block 4 `Schema requirements` list
+   is input to this pass: the shared idempotency table (step 4a) and anything else there
+   gets designed now, not in a second pass. An HTTP-triggered case whose `30-rest.md`
+   doesn't exist yet → stop and tell the caller to run `/rest-api-architect` first.
 
 2. **Survey what already exists.** Look for entities, repositories, and migrations in
    the project. A table that already exists gets altered; it isn't recreated. The
@@ -101,7 +104,8 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions
-   per call. Don't re-ask what `00-caso-de-uso.md` or `10-dominio.md` already answered.
+   per call. Don't re-ask what `00-caso-de-uso.md`, `10-dominio.md`, or `30-rest.md` already answered —
+   the collection's growth, above all.
 
    | Axis | Decides |
    |---|---|
@@ -185,8 +189,8 @@ executor agent that reads them when generating code.
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
 `@.claude/rules/lombok.md`, `@.claude/rules/value-objects.md`,
 `@.claude/rules/api-rest.md` § Idempotency (only when step 4a applies), and the active
-blueprint's `packages.map`. Also reads `30-rest.md` when it exists, to check whether
-`Idempotency-Key` is required.
+blueprint's `packages.map`. Also reads `30-rest.md` for an HTTP-triggered case —
+mandatory then, its schema requirements are this pass's input.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`. Nothing else — the
 migration SQL lives inside it.

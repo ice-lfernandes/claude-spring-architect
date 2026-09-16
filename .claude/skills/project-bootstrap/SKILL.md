@@ -460,7 +460,7 @@ Copy into `<project>/.claude/rules/` **all** files from this repo's `.claude/rul
 
 | File | How to copy |
 |---|---|
-| `naming.md` | verbatim — the `**/*.java` glob doesn't depend on the blueprint |
+| `naming.md` | `paths` verbatim — the `**/*.java` glob doesn't depend on the blueprint. **Body not verbatim:** the active blueprint's naming-convention comment block is written, as a bulleted list, under `## Architecture vocabulary`, replacing the HTML comment there. Without it the generated project has no use case vocabulary at all — the blueprint doesn't travel |
 | `error-handling.md` | verbatim — same |
 | `code-quality.md` | verbatim — same |
 | `lombok.md` | verbatim — same |

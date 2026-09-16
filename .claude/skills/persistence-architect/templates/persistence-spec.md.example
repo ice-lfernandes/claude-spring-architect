@@ -123,6 +123,14 @@ re-discussed here — `@.claude/rules/persistence.md` § Configuration.
 
 Full shape in `templates/application-persistence.yml.example`.
 
+## Impact on approved use cases
+
+none
+
+Changes this partial decides in code an approved use case produced — one row each:
+`| Approved case | Change | Why |`. Approved specs and partials are never edited;
+consolidation collects this section into `UC-NNN-spec.md`.
+
 ## Implementation order
 
 1. `V3__create_users.sql`

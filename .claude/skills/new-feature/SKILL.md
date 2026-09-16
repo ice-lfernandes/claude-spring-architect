@@ -56,12 +56,17 @@ below. No end of this flow is left without an explicit git instruction.
 **Integrates with (sequence ordered by depends-on):**
 1. `use-case-design` — invoked for a new case; skipped on resume when `00-caso-de-uso.md` exists
 2. `domain-modeling` — invoked if `10-dominio.md` is missing (depends on 1)
-3. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2)
-4. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
+3. `rest-api-architect` — invoked if `30-rest.md` is missing (depends on 2)
+4. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3)
+5. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
    (Kafka) delivery and `25-mensageria.md` is missing (depends on 2). Skipped entirely
    when the event, if any, stays in-process — not every use case needs it
-5. `rest-api-architect` — invoked if `30-rest.md` is missing (depends on 2)
 6. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,4,5)
+
+**Why REST runs before persistence.** The order follows who generates requirements for
+whom. REST generates schema requirements — `Idempotency-Key` on a creation `POST` needs
+the shared key table — and persistence generates none for REST. With persistence first,
+the table was discovered after the partial was written, and persistence ran twice.
 7. `java-spring-boot-developer` — offered, only for an `approved` spec
 8. `git-publish` — invoked at the end, per § End of flow
 
@@ -204,14 +209,22 @@ If it exists: read, validate (four blocks: aggregate, VOs, invariants, ports).
 
 **Output:** "✅ Domain ready" or a list of gaps.
 
-### Step 3: Persistence (depends on 1,2)
+### Step 3: REST (depends on 1,2)
 
-If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`.
+If `30-rest.md` is missing: **invoke** `/rest-api-architect UC-NNN`.
+If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, idempotency).
+
+**Output:** "✅ REST ready" or gaps.
+
+### Step 4: Persistence (depends on 1,2,3)
+
+If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
+`30-rest.md`'s schema requirements — the idempotency table among them — in the same pass.
 If it exists: read, validate (three blocks: mapping, migrations, transactions).
 
 **Output:** "✅ Persistence ready" or gaps.
 
-### Step 4: Messaging (depends on 2, conditional)
+### Step 5: Messaging (depends on 2, conditional)
 
 Read `10-dominio.md`'s Events block. If it names external (Kafka) delivery for the
 event and `25-mensageria.md` is missing: **invoke** `/messaging-architect UC-NNN`. If
@@ -221,13 +234,6 @@ retry/DLQ).
 
 **Output:** "✅ Messaging ready", "— skipped (no external delivery)", or gaps.
 
-### Step 5: REST (depends on 1,2)
-
-If `30-rest.md` is missing: **invoke** `/rest-api-architect UC-NNN`.
-If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, idempotency).
-
-**Output:** "✅ REST ready" or gaps.
-
 ### Step 6: Tests (depends on 1,2,3,4,5)
 
 If `40-testes.md` is missing: **invoke** `/test-architect UC-NNN` (design mode).
@@ -235,9 +241,9 @@ If it exists: read, validate (four blocks: pyramid, fixtures, coverage, cases).
 
 **Output:** "✅ Tests ready" or gaps.
 
-### Consolidation (after 1,2,3,5,6 ✅ — step 4 conditional)
+### Consolidation (after 1,2,3,4,6 ✅ — step 5 conditional)
 
-If all specs that apply exist and validate (messaging only when step 4 wasn't skipped):
+If all specs that apply exist and validate (messaging only when step 5 wasn't skipped):
 
 1. **Resolve divergences before consolidating.** The partials are written by different
    skills, and downstream corrects upstream: `30-rest.md` fixes the path and status
@@ -255,7 +261,8 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    | Table, column, key, index, migration | `20-persistencia.md` |
    | Topic, delivery guarantee, retry/DLQ | `25-mensageria.md` |
    | Aggregate name, value object, port, event | `10-dominio.md` |
-   | Use case boundary, invariants, business errors | `00-caso-de-uso.md` |
+   | Exception class and `errorCode` | `10-dominio.md` |
+| Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
    | Name and level of each test | `40-testes.md` |
 
    `UC-NNN-spec.md` carries **a single value per fact** — the winner — across all
@@ -270,8 +277,9 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
 
 2. Consolidate into a single file: `UC-NNN-spec.md`, with `status: draft`
    - Structure: 5 blocks (use case, domain, persistence, REST, tests), plus a 6th
-     (messaging) only when step 4 wasn't skipped
-   - `## Impact on approved use cases`: carried from `00-caso-de-uso.md` — "none" when empty
+     (messaging) only when step 5 wasn't skipped
+   - `## Impact on approved use cases`: every row from the same section of each partial —
+     "none" when all are empty
    - Order: implementation order (depends-on)
    - Recipient: `java-spring-boot-developer` agent — **known gap:** the executor's fixed
      19-step checklist doesn't yet implement a messaging block (no Kafka producer/consumer
@@ -358,7 +366,8 @@ See `templates/feature-spec.md.example` for the full shape.
 
 ## References
 
-- **D14** — ordered pipeline: use-case → domain → persistence → REST → tests → executor.
+- **D14** — ordered pipeline: use-case → domain → persistence → REST → tests → executor. Order
+  of REST and persistence swapped by `0037`.
 - **D17** — pipeline skills without `disable-model-invocation` (so `/new-feature` can call them).
 - **D20** — `/new-feature` deferred; `java-spring-boot-developer` executor; scope: both.
 - **D22** — `/new-feature` design (this record).

@@ -66,6 +66,8 @@ record, with all four options and the notes, is in
 | Writing classes, tests, or migrations | The spec describes what to create; creating is a different phase | The layer skills and, eventually, the executor agent |
 | Per-layer detail (annotations, columns, exact HTTP status) | Each layer has its own rule and owner | The partial specs — see § Structure |
 | **Path, verb, and HTTP status** | Fixing them here creates divergence: `api-rest.md` has URI and status rules this skill doesn't apply, and `30-rest.md` ends up correcting the parent spec's prose. Write the situation (`created`, `conflict with existing state`), not the number | `rest-api-architect`, in `30-rest.md` |
+| **Idempotency mechanism** (`Idempotency-Key`, key table) | `api-rest.md` requires it on creation `POST`s; deciding "no" here was overwritten downstream and cost a second persistence pass. Record the business fact — "does repeating the request create a duplicate?" — and mark the technical decision as delegated | `rest-api-architect`, in `30-rest.md` |
+| **Exception name and class** | A name fixed here gets demoted by `domain-modeling` (a subclass needs ≥ 2 call sites) and promoted back by a later case. Describe the situation (`email already in use`) and its kind (validation, not found, conflict, business rule) | `domain-modeling`, in `10-dominio.md` |
 
 If the user asks for one of these, say which piece owns it and stop. Don't improvise
 the decision.
@@ -96,11 +98,32 @@ the decision.
    |---|---|
    | Trigger, payload, response | Who initiates, what data comes in, what goes out and in what shape |
    | Side effects | Writes, external calls, publications — the boundary already counted in step 2, now confirmed |
-   | Invariants and errors | Rules the domain guarantees, and the `@.claude/rules/error-handling.md` exception born from each violation |
-   | Idempotency, transaction, concurrency | Safe to re-run? Where does the transaction open and close? What key could collide? |
+   | Invariants and errors | Rules the domain guarantees, and the situation each violation produces — described, never named as an exception |
+   | Repetition, transaction, concurrency | Does repeating the request create a duplicate (business fact)? Where does the transaction open and close? What business key could collide? |
 
    Don't move on with a block unanswered. A missing answer becomes a silent assumption
    in the spec.
+
+   **Checklist before every `AskUserQuestion`.** Read each question and each option:
+
+   | Does it mention… | Then |
+   |---|---|
+   | an HTTP status code, a verb, or a path | don't ask — `rest-api-architect` decides |
+   | idempotency, `Idempotency-Key`, a key table | don't ask — ask the business fact instead |
+   | an exception class name | don't ask — `domain-modeling` decides |
+   | only one option | don't ask — decide and record it in the spec |
+
+   A question whose answer another skill overwrites is worse than no question: it costs
+   the user's time and produces a divergence.
+
+   **Negative example** — never ask this:
+
+   > What does the endpoint return after creating? · `201 with body` · `201 without body` · `200 with id`
+
+   The user answered "201 without body"; `rest-api-architect` overwrote it by rule.
+   Ask this instead:
+
+   > After creating, does the caller need the created data back, or only a reference to it?
 4. **Read the code before proposing.** `Glob`/`Grep` to know what already exists:
    aggregate, ports, repository, controller. Every spec component carries a **NEW**,
    **CHANGE**, or **REUSE** state. Proposing to create what already exists is this
@@ -115,10 +138,13 @@ the decision.
 5. **Derive the real paths** from the active blueprint's `packages.map` — in the
    generated project, from the packages documented in the root `CLAUDE.md` and the
    module `CLAUDE.md` files. Never write a generic path when the real one is knowable.
-6. **Fix the canonical names** per `@.claude/rules/naming.md`: inbound port
-   `<Verb><Noun>UseCase`, implementation `<Verb><Noun>Service`, aggregate as a noun,
-   exceptions from the `@.claude/rules/error-handling.md` family. These names are the
-   inherited contract — the partial specs detail them, never reinvent them.
+6. **Fix the canonical names** per `@.claude/rules/naming.md`: the use case and its
+   ports in the active blueprint's vocabulary (§ Architecture vocabulary — in this
+   repository, the naming comment in the blueprint's YAML), aggregate as a noun. Never
+   `<Verb><Noun>Service` by default: in a clean-architecture blueprint the use case is a
+   concrete `<Verb><Noun>UseCase` with no interface. No exception names — see § Out of
+   scope. These names are the inherited contract — the partial specs detail them, never
+   reinvent them.
 7. **Fix the number and the slug.** This skill is their only owner — no caller passes
    them in. `NNN` is the highest existing `UC-NNN` plus one, read from the injection at
    the top (`UC-001` when there's none); the slug is kebab-case, from the trigger's verb
@@ -164,7 +190,7 @@ next, with the spec's path as the argument.
 
 **Reads** `@.claude/rules/architecture-ddd.md` (Application section — where the
 transaction opens, what doesn't go in the signatures), `@.claude/rules/naming.md`,
-`@.claude/rules/error-handling.md`, the active blueprint's `packages.map`, and this
+`@.claude/rules/error-handling.md` (the four kinds only — names belong to `domain-modeling`), the active blueprint's `packages.map` and naming convention, and this
 skill's `references/scope-boundary.md` before counting effects.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and appends to

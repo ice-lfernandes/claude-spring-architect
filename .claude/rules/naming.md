@@ -22,7 +22,6 @@ change.
 | Role | Convention | Example |
 |---|---|---|
 | Entity, aggregate, value object | Noun | `Order`, `Money` |
-| Use case implementation | `<Verb><Noun>Service` | `ConfirmOrderService` |
 | REST controller | `<Resource>Controller` | `OrderController` |
 | Inbound REST DTO | `<Verb><Resource>Request` | `ConfirmOrderRequest` |
 | Outbound REST DTO | `<Resource>Response` | `OrderResponse` |
@@ -33,6 +32,17 @@ change.
 | Messaging consumer / producer | `<Event>Listener` / `<Event>Publisher` | `OrderConfirmedListener` |
 | Global exception handler | `<Area>ExceptionHandler` | `ApiExceptionHandler` |
 | Spring configuration | `<Area>Config` | `SecurityConfig` |
+
+## Architecture vocabulary
+
+The names of the use case, its ports, and their implementations change with the
+architecture — a concrete `<Verb><Noun>UseCase` in one, a `<Verb><Noun>UseCase` port
+implemented by `<Verb><Noun>Service` in another, a `<Verb><Noun>Handler` in a third. They
+belong to the active blueprint's naming convention, not to this file. Where that
+convention and the table above disagree, the convention wins.
+
+<!-- Written at generation time: the active blueprint's naming convention, verbatim.
+     Empty in any copy that isn't a generated project. -->
 
 ## Methods
 

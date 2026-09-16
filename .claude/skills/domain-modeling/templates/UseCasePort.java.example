@@ -5,7 +5,9 @@
  * Rules: `.claude/rules/architecture-ddd.md` (one input abstraction per use case,
  *          the transaction opens and closes in the application layer, no HTTP/JPA
  *          types in signatures)
- *        `.claude/rules/naming.md` (`<Verb><Noun>UseCase` / `…Service`, no Impl)
+ *        `.claude/rules/naming.md` (§ Architecture vocabulary — this exemplar is hexagonal:
+ *          `<Verb><Noun>UseCase` port + `…Service`; clean architecture has a concrete
+ *          `<Verb><Noun>UseCase` and no port; never an Impl suffix)
  *        `.claude/rules/code-quality.md` (constructor injection, private final fields)
  *
  * WHAT THIS EXEMPLAR SHOWS:
