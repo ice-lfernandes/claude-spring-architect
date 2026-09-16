@@ -116,6 +116,16 @@ Written down so nobody merges it back in by accident:
 - Updating and deleting a user → their own use cases, their own triggers.
 - Authentication and token issuance → outside this use case's domain.
 
+## Impact on approved use cases
+
+none — UC-001 is the first case.
+
+Approved specs (`status: approved` or `implemented`) are read-only. When this case needs
+a change in one — a new column, a promoted exception — it's written here instead, one
+row per change, and the executor applies it in code. The old spec is never edited:
+
+`| Approved case | Change | Why |` — e.g. `| UC-001-create-user | EmailAlreadyUsedException promoted from ConflictException, second call site here | error-handling.md, ≥ 2 call sites |`
+
 ## Implementation order
 
 Derived from the Components table, in compile order.

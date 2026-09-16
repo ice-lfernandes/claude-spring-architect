@@ -92,7 +92,7 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Table, JPA mapping, migration, index, slow query, datasource properties | skill `persistence-architect` |
 | REST adapter, controller, DTO, status, OpenAPI | skill `rest-api-architect` |
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
-| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
+| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level | skill `docker-architect` |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |

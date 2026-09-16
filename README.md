@@ -340,19 +340,23 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
 ### `/new-feature` — end-to-end feature
 
 ```
-/new-feature UC-NNN-<slug>
+/new-feature <feature description>     (or UC-NNN-slug to resume a draft, or empty to list)
      │
-     ▼  skill: new-feature (orchestrates, no agent involved in this part)
+     ▼  skill: new-feature — closed input table; anything else is an error
      │
      use-case-design → domain-modeling → persistence-architect
         → messaging-architect (conditional) → rest-api-architect → test-architect
+     │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
+     │  design skills write only under docs/ — never src/, never git
      │
-     ▼  consolidates into UC-NNN-spec.md
+     ▼  consolidates into UC-NNN-spec.md (status: draft)
      │
-     ▼  agent: java-spring-boot-developer (executor, invoked manually at the end)
+     ▼  asks approval → status: approved (immutable from here)
      │
-     ▼  if the executor reports success: OFFERS git-publish (Skill tool) — commit +
-        push, behind the same two confirmations
+     ├─ implement now → agent: java-spring-boot-developer → status: implemented
+     │                   → git-publish (feature commit)
+     └─ not now       → git-publish (docs of the approved spec only)
+                         both behind git-publish's two confirmations
 ```
 
 Each step receives the structured output of the previous one. Free-prose handoff

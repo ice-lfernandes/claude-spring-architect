@@ -306,7 +306,7 @@ a rule — cite it by path, invariant 2.
 |---|---|
 | `actuator` | Merges `templates/features/actuator/application-actuator.yml.example` into the `application.yml` of the module with `contains_main: true` (the same file from step 6, not a new one) |
 | `observability` | Merges `templates/features/observability/application-observability.yml.example` into the same `application.yml` — the tracing bridge's export destination. Owned exemplar, same mechanism as `actuator`'s; the container it points at is provisioned in step 4.10, not here — this step only writes config |
-| `flyway` | Creates `src/main/resources/db/migration/` in the module with the `infrastructure.persistence` role, **empty**. No `.gitkeep` and no `V1__`: `spring.flyway.fail-on-missing-locations` defaults to `false` (verified in `spring-boot-flyway`'s metadata), so a missing or empty location doesn't break startup. The first migration comes from `persistence-architect`, with a real schema |
+| `flyway` | Creates `src/main/resources/db/migration/` in the module with the `infrastructure.persistence` role, **empty**. No `.gitkeep` and no `V1__`: `spring.flyway.fail-on-missing-locations` defaults to `false` (verified in `spring-boot-flyway`'s metadata), so a missing or empty location doesn't break startup. The first migration comes from `java-spring-boot-developer`, materialized from the SQL `persistence-architect` fixed in the partial |
 | `persistence-jpa`, `rest`, `openapi`, `testcontainers`, `archunit` | Nothing here. They're dependencies (step 3) and POM configuration (step 4). The code that uses them comes from the first feature |
 | `spring-modulith` | Writes `<main-module>/src/test/java/**/ModularityTests.java`, from `templates/features/spring-modulith/ModularityTests.java.example`, adjusting only the package and the `@SpringBootApplication` class reference. Safe to write now, unlike ArchUnit — `ApplicationModules.of(...).verify()` passes meaningfully over zero modules; it isn't gated behind business code existing |
 
@@ -570,7 +570,7 @@ and stays out of the generated project.
 | Skill | Goes to the project? | Why |
 |---|---|---|
 | `arch-doctor` | ✅ | Diagnoses **the project's** hooks and enforcement; the only place where running it makes sense. Prefixed name so it doesn't collide with Claude Code's native `/doctor` |
-| `use-case-design` | ✅ | Designs the use case before implementing it. Only makes sense once the project exists; carries `templates/use-case-spec.md.example` and `references/scope-boundary.md` |
+| `use-case-design` | ✅ | Designs the use case before implementing it. Only makes sense once the project exists; carries `templates/use-case-spec.md.example`, `templates/backlog.md.example`, and `references/scope-boundary.md` |
 | `domain-modeling` | ✅ | Details domain and application for an already-designed use case. Carries `templates/domain-spec.md.example` and the twelve Java shape exemplars: seven model ones (VO, VO catalog, shared guards, aggregate, event, ports, command) and the five from the exception family, which moved here when the bootstrap stopped emitting code |
 | `java-patterns` | ✅ | Design patterns during development |
 | `persistence-architect` | ✅ | Designs the schema, mapping, and migrations for an already-modeled use case. Carries `templates/persistence-spec.md.example`, the three Java exemplars (entity, adapter with mapper, Spring Data interface), `V1__create_table.sql.example`, `application-persistence.yml.example`, and the two `references/` (SQL diagnosis and external links) |

@@ -49,7 +49,7 @@ copy step isn't updated alongside it.
 | Endpoint, controller, DTO, OpenAPI | skill `rest-api-architect` |
 | Design pattern, growing `if`/`switch` chain, class with too many responsibilities | skill `java-patterns` |
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
-| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` |
+| Orchestrating a full feature (use case → domain → persistence → REST → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Diagnosing hooks and enforcement | `/arch-doctor` |
 | What a `/command` run cost, which skills it chained, what it changed | skill `audit-usage` — consolidates spend and failures across runs and points at the report to open. The reports themselves are `.claude/audit-usage/<timestamp>--<skill>.md`, written by the `audit` hook at every `Stop`, never by hand; `history.jsonl` next to them is one line per run. Delete the directory to switch the trail off |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |

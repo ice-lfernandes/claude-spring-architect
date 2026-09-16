@@ -1,3 +1,7 @@
+---
+status: draft
+---
+
 # UC-NNN — <feature-name>
 
 Complete feature specification. Consolidation of the 5 partials into an implementation plan. Recipient: `java-spring-boot-developer` agent.
@@ -72,7 +76,7 @@ public class [Entity]JpaEntity {
 **Migrations:**
 
 ```sql
--- V001__create_table_name.sql
+-- target: src/main/resources/db/migration/V<N>__create_table_name.sql
 CREATE TABLE table_name (
   id [TYPE] PRIMARY KEY,
   field [TYPE] NOT NULL UNIQUE,
@@ -311,7 +315,7 @@ management:
 
 ## Implementation order (checklist)
 
-[ ] 1. Create migration V001__create_table_name.sql
+[ ] 1. Materialize migration V<N>__create_table_name.sql from § 3
 [ ] 2. Create JpaEntity + @Table + @Column
 [ ] 3. Create Repository interface (Spring Data)
 [ ] 4. Create domain aggregate + constructor + invariants
@@ -330,6 +334,18 @@ management:
 [ ] 17. Create `ControllerTest` — contract (REST slice + Idempotency-Key)
 [ ] 18. Verify coverage ≥ 80/70 (JaCoCo report)
 [ ] 19. Run `./mvnw verify` — green build + passing CI
+
+---
+
+## Impact on approved use cases
+
+none
+
+One row per change this case needs in code an approved case produced — carried from
+`00-caso-de-uso.md`. The approved specs themselves are never edited.
+
+| Approved case | Change | Why |
+|---|---|---|
 
 ---
 

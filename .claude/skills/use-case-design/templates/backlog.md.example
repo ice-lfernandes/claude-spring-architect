@@ -1,0 +1,19 @@
+# Use case backlog
+
+Use cases a split left for later, in dependency order. **No number reserved** — a number
+is given when the case is designed. Remove the line when its `/new-feature` starts.
+
+| Depends on | Description for `/new-feature` | Split from |
+|---|---|---|
+| `UC-001-create-customer` | REST endpoint that reads one customer by id from the `customers` table. Not found is a business error | `UC-001-create-customer` |
+| `UC-001-create-customer` | REST endpoint that renames a customer in the `customers` table. Name must stay unique | `UC-001-create-customer` |
+| `UC-001-create-customer` | REST endpoint that deletes a customer by id from the `customers` table | `UC-001-create-customer` |
+
+<!--
+HOW TO USE THIS:
+- Appended by the `use-case-design` skill (step 2) into docs/use-cases/BACKLOG.md.
+  Create the file from this header when it doesn't exist; append rows otherwise.
+- "Description" is passed as is to `/new-feature <description>` — write it in the
+  technical vocabulary that skill accepts: trigger and destination named.
+- No number, no slug. Both are fixed only when the case is designed.
+-->
