@@ -208,6 +208,22 @@ public class ArchHook {
             boolean priced = Files.isRegularFile(auditDir.resolve("pricing.json"));
             report("Audit", true, runs + " execution(s) recorded"
                     + (priced ? "" : " — pricing.json missing, no cost estimate"), "");
+
+            // A synthetic touched file that matches a real rule's `paths` — the exact
+            // shape that once threw `ArrayIndexOutOfBoundsException` inside rule
+            // inference and froze every report from that point on, silently (the
+            // top-level catch in `main` exits 0). Cheap enough to run every `doctor`.
+            boolean auditRulesOk;
+            try {
+                auditRules(Set.of("src/main/java/example/domain/model/Sample.java"));
+                auditRulesOk = true;
+            } catch (Exception ex) {
+                auditRulesOk = false;
+            }
+            report("Audit rule inference", auditRulesOk,
+                    "renders without error on a touched .java file",
+                    "auditRules() throws — every report freezes once a run touches"
+                            + " src/**. See ArchHook.java's auditRules()");
         } else {
             err("  Audit ............. ⚪ no " + AUDIT_DIR + " — execution trail OFF (optional)");
         }
@@ -720,6 +736,17 @@ public class ArchHook {
     static void auditPrompt(Path dir, Path log, Object in) throws Exception {
         String prompt = asStr(get(in, "prompt"));
         if (prompt == null) return;
+
+        // A background agent's result comes back as a synthetic `<task-notification>`
+        // prompt, injected while the run that launched it is still open — not user
+        // intent to end anything. Closing on it is what froze `/test-architect setup`'s
+        // and `/new-feature`'s reports mid-flight: the very next turn (still inside the
+        // agent's own work) reported "success" over a run the agent hadn't finished.
+        // Neither close, nor open, nor overwrite the observer prompt file — let the run
+        // keep absorbing the agent's remaining `file`/`agent_end` events.
+        // .claude/decisions/0041-audit-background-subagent-tracking.md
+        if (TASK_NOTIFICATION.matcher(prompt).find()) return;
+
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)(.*)$", Pattern.DOTALL)
                 .matcher(prompt);
         String name = m.find() ? m.group(1) : null;
@@ -792,6 +819,9 @@ public class ArchHook {
      * and falls out by construction — no list of exclusions to keep in sync.
      */
     static final Pattern PIECE_NAME = Pattern.compile("[a-z0-9][a-z0-9-]*");
+
+    /** The harness's own synthetic prompt delivering a background agent's result. */
+    static final Pattern TASK_NOTIFICATION = Pattern.compile("^\\s*<task-notification>");
 
     static boolean isAuditedSkill(String name) {
         return name != null && PIECE_NAME.matcher(name).matches()
@@ -1008,6 +1038,18 @@ public class ArchHook {
         String rootLabel = "agent".equals(kind) ? "🤖 " + skill
                 : "model".equals(origin) ? "Skill(" + skill + ")" : "/" + skill;
 
+        // An agent's own transcript is what proves it exists — build the lookup before
+        // the event loop, not after, so `agent_end` can be matched to the node it
+        // actually closes instead of decrementing a bare counter. `SubagentStop` fires
+        // for internal/ephemeral agents that never went through `Skill`/`Task`/`Agent`
+        // PreToolUse too (no transcript of ours, `agent_id` unknown here), interleaved
+        // with the real one when the real agent runs in background — a plain depth--
+        // per `agent_end` closed the wrong node on the first of those.
+        String transcript = asStr(get(in, "transcript_path"));
+        Map<String, Path> subs = subagentTranscripts(transcript);
+        Map<String, String> toolUseIdOfAgentId = new HashMap<>();
+        subs.forEach((toolUseId, file) -> toolUseIdOfAgentId.put(agentIdOf(file), toolUseId));
+
         List<Node> nodes = new ArrayList<>();
         Set<String> touched = new LinkedHashSet<>();
         Map<String, Integer> fails = new LinkedHashMap<>();
@@ -1018,7 +1060,11 @@ public class ArchHook {
         List<long[]> waits = new ArrayList<>();
         long askAt = 0;
         boolean errored = false;
-        int depth = 1;
+        // Stack of tool_use_ids of agents opened and not yet closed — depth is its size
+        // plus one. `agent_end` pops the entry whose `agent_id` resolves back to it
+        // through `toolUseIdOfAgentId`; an `agent_id` that resolves to nothing (an
+        // internal agent, not one this run opened) closes none of ours.
+        Deque<String> openAgents = new ArrayDeque<>();
 
         for (Map<String, Object> e : events) {
             String evKind = asStr(e.get("e"));
@@ -1027,15 +1073,19 @@ public class ArchHook {
             if (!"run_start".equals(evKind) && !"compact".equals(evKind)) ticks.add(t);
             switch (evKind) {
                 case "skill" -> nodes.add(new Node("skill", orDash(asStr(e.get("name"))),
-                        asStr(e.get("args")), t, depth,
+                        asStr(e.get("args")), t, openAgents.size() + 1,
                         asStr(e.get("tool_use_id")), asStr(e.get("in_agent"))));
                 case "agent" -> {
+                    String toolUseId = asStr(e.get("tool_use_id"));
                     nodes.add(new Node("agent", orDash(asStr(e.get("name"))),
-                            asStr(e.get("model")), t, depth,
-                            asStr(e.get("tool_use_id")), asStr(e.get("in_agent"))));
-                    depth++;
+                            asStr(e.get("model")), t, openAgents.size() + 1,
+                            toolUseId, asStr(e.get("in_agent"))));
+                    openAgents.push(toolUseId);
                 }
-                case "agent_end" -> depth = Math.max(1, depth - 1);
+                case "agent_end" -> {
+                    String toolUseId = toolUseIdOfAgentId.get(asStr(e.get("agent_id")));
+                    if (toolUseId != null) openAgents.remove(toolUseId);
+                }
                 case "file" -> {
                     String path = asStr(e.get("path"));
                     if (path != null) touched.add(path);
@@ -1076,10 +1126,7 @@ public class ArchHook {
         // started before it, when that piece is a skill; after an agent call, or before
         // any piece, it is the root's orchestration. A skill called from inside a
         // subagent has no transcript of its own — its tokens are its agent's.
-        String transcript = asStr(get(in, "transcript_path"));
-        Map<String, Path> subs = subagentTranscripts(transcript);
-        Map<String, String> toolOfAgent = new HashMap<>();
-        subs.forEach((toolUseId, file) -> toolOfAgent.put(agentIdOf(file), toolUseId));
+        // `subs` and `toolUseIdOfAgentId` are already built above, ahead of the event loop.
 
         long turnT = lnum(s0.get("turn_t"));
         long tokensFrom = turnT > 0 && turnT < startMs ? turnT : startMs;
@@ -1118,7 +1165,8 @@ public class ArchHook {
         String headStart = asStr(s0.get("head"));
         String headEnd   = gitShort();
 
-        String status = !closing ? "⏳ em andamento"
+        String status = !closing
+                ? (!openAgents.isEmpty() ? "⏳ aguardando subagent em background" : "⏳ em andamento")
                 : errored ? "❌ erro"
                 : fails.isEmpty() ? "✅ sucesso"
                 : "⚠️ sucesso com falhas recuperadas";
@@ -1253,15 +1301,14 @@ public class ArchHook {
         }
 
         md.append("## 📐 Regras carregadas (inferidas por território)\n\n");
-        Map<String, List<String>> rules = auditRules(touched);
+        List<RuleHit> rules = auditRules(touched);
         if (rules.isEmpty()) {
             md.append("Nenhum arquivo tocado casa com o `paths` de alguma regra.\n\n");
         } else {
             md.append("| Regra | Glob | Arquivos |\n|---|---|---|\n");
-            for (Map.Entry<String, List<String>> e : rules.entrySet()) {
-                String[] parts = e.getKey().split(" ", 2);
-                md.append("| `").append(parts[0]).append("` | `").append(parts[1])
-                  .append("` | ").append(e.getValue().size()).append(" |\n");
+            for (RuleHit r : rules) {
+                md.append("| `").append(r.rule()).append("` | `").append(r.glob())
+                  .append("` | ").append(r.files().size()).append(" |\n");
             }
             md.append("\n> Inferência, não observação: nenhum evento de hook expõe qual regra")
               .append(" entrou em contexto. Isto é \"as regras que **deveriam** ter carregado\".\n\n");
@@ -1340,7 +1387,7 @@ public class ArchHook {
                 if (!isAudited(nd.kind(), nd.name())) continue;
                 String parent = skill;
                 if (nd.inAgent() != null) {
-                    String tu = toolOfAgent.get(nd.inAgent());
+                    String tu = toolUseIdOfAgentId.get(nd.inAgent());
                     for (Node o : nodes) if (tu != null && tu.equals(o.toolUseId())) parent = o.name();
                 }
                 rows.append(nodeRow(run, parent, nd.kind(), nd.name(), "nested", selfOf.get(i), dir,
@@ -1729,11 +1776,23 @@ public class ArchHook {
         return "█".repeat(full) + "░".repeat(width - full);
     }
 
-    /** Rules whose `paths` capture at least one file touched during the run. */
-    static Map<String, List<String>> auditRules(Set<String> touched) throws IOException {
-        Map<String, List<String>> hit = new LinkedHashMap<>();
+    /** One rule whose `paths` captured at least one file touched during the run. */
+    record RuleHit(String rule, String glob, List<String> files) {}
+
+    /**
+     * Rules whose `paths` capture at least one file touched during the run. A record
+     * keyed by nothing beats a string key split back apart at render time: the previous
+     * "file glob" key joined the two with a literal NUL byte as separator, invisible in
+     * an editor, and any `split(" ", 2)` on a rule or glob containing a real space threw
+     * `ArrayIndexOutOfBoundsException` the moment a touched file actually matched one --
+     * silently, since the hook's own top-level catch swallows it and exits 0. That froze
+     * every report the instant a run touched `src/**` for good, `flush` and `close`
+     * included: see `.claude/decisions/0041-audit-background-subagent-tracking.md`.
+     */
+    static List<RuleHit> auditRules(Set<String> touched) throws IOException {
+        List<RuleHit> hits = new ArrayList<>();
         Path rules = ROOT.resolve(".claude/rules");
-        if (!Files.isDirectory(rules) || touched.isEmpty()) return hit;
+        if (!Files.isDirectory(rules) || touched.isEmpty()) return hits;
         try (Stream<Path> s = Files.list(rules)) {
             List<Path> files = s.filter(f -> f.toString().endsWith(".md")).sorted()
                     .collect(Collectors.toList());
@@ -1744,12 +1803,12 @@ public class ArchHook {
                             .filter(t -> re.matcher(t).matches()).sorted()
                             .collect(Collectors.toList());
                     if (!matched.isEmpty()) {
-                        hit.put(f.getFileName() + " " + g, matched);
+                        hits.add(new RuleHit(f.getFileName().toString(), g, matched));
                     }
                 }
             }
         }
-        return hit;
+        return hits;
     }
 
     /**
