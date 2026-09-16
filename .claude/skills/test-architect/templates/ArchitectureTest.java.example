@@ -16,7 +16,10 @@ import static com.tngtech.archunit.library.GeneralCodingRules.NO_CLASSES_SHOULD_
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noFields;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -60,7 +63,7 @@ class ArchitectureTest {
     static final ArchRule domain_has_no_framework = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("org.springframework..", "jakarta..", "com.fasterxml.jackson..");
+            .resideInAnyPackage("org.springframework..", "jakarta..", "com.fasterxml.jackson..", "tools.jackson..");
 
     @ArchTest
     static final ArchRule domain_has_no_system_clock = noClasses()
@@ -117,6 +120,33 @@ class ArchitectureTest {
             .and().haveSimpleNameNotEndingWith("package-info")
             .should().haveSimpleNameEndingWith("Entity")
             .andShould().resideInAPackage("..adapter.out.persistence..");
+
+    // --- Persistence mapping (@.claude/rules/persistence.md) -------------------------
+    // Both bugs pass compilation and most tests: the first degrades `save()` to `merge()`
+    // and swallows primary-key collisions, the second only fails at context startup.
+
+    private static final DescribedPredicate<JavaClass> HAVE_ASSIGNED_ID = DescribedPredicate.describe(
+            "have an @Id without @GeneratedValue",
+            javaClass -> javaClass.getAllFields().stream().anyMatch(field ->
+                    field.isAnnotatedWith("jakarta.persistence.Id")
+                            && !field.isAnnotatedWith("jakarta.persistence.GeneratedValue")));
+
+    @ArchTest
+    static final ArchRule assigned_ids_implement_persistable = classes()
+            .that().areAnnotatedWith("jakarta.persistence.Entity")
+            .and(HAVE_ASSIGNED_ID)
+            .should().implement("org.springframework.data.domain.Persistable")
+            .because("without isNew, Spring Data merges instead of persisting (§ Identity and keys)")
+            .allowEmptyShould(true);   // a project whose ids are all generated has nothing to check
+
+    // Postgres only: `@Lob String` maps to `oid`, not `text`. Drop this rule when the
+    // blueprint's database is another engine.
+    @ArchTest
+    static final ArchRule no_lob_on_string = noFields()
+            .that().areAnnotatedWith("jakarta.persistence.Lob")
+            .should().haveRawType(String.class)
+            .because("a bare String already maps to text (§ Mapping)")
+            .allowEmptyShould(true);   // the expected state: no @Lob field at all
 
     // --- Code quality (@.claude/rules/code-quality.md) ------------------------------
 

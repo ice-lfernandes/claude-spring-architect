@@ -40,6 +40,7 @@ modules:
       - "jakarta.persistence.."
       - "jakarta.validation.."
       - "com.fasterxml.jackson.."
+      - "tools.jackson.."  # Jackson 3 (Spring Boot 4) core; annotations stay under com.fasterxml.jackson
   - id: application
     path: application
     depends_on: [domain]

@@ -129,7 +129,7 @@ Fixed at 19 steps, the executor's checkpoints. A step this case doesn't need is 
 [ ] 12. Persistence properties
 [ ] 13. DTOs + manual mapper
 [ ] 14. Controller + contract interface + `ApiExceptionHandler`
-[ ] 15. Idempotency interceptor + REST properties
+[ ] 15. Idempotency interceptor + `IdempotentExecution` wiring (first time: store + component) + REST properties
 [ ] 16. Test fixtures
 [ ] 17. Unit tests
 [ ] 18. Integration + contract tests

@@ -16,7 +16,10 @@ case, service) is the active blueprint's decision, see `packages.map`.
 
 ## Domain
 
-- Zero framework: no `org.springframework`, `jakarta.*`, `com.fasterxml.jackson`
+- Zero framework: no `org.springframework`, `jakarta.*`, `com.fasterxml.jackson`,
+  `tools.jackson`. Both Jackson roots: Jackson 3 (Spring Boot 4) moved the core to
+  `tools.jackson` and kept the annotations in `com.fasterxml.jackson.annotation`. A guard
+  that lists only one root lets the other through
 - Zero I/O: no network, files, database
 - `Clock` injected, never `LocalDateTime.now()`
 - Immutable value objects; validation in the constructor

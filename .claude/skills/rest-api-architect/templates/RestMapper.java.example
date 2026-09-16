@@ -23,7 +23,7 @@ public final class UserMapper {
 
     private UserMapper() {}
 
-    public static CreateUserCommand toCommand(CreateUserRequest request, String idempotencyKey) {
+    public static CreateUserCommand toCommand(CreateUserRequest request) {
         return new CreateUserCommand(
                 Email.of(request.email()),
                 request.name(),
@@ -31,8 +31,7 @@ public final class UserMapper {
                 // crossing the boundary (`.claude/rules/code-quality.md`).
                 request.departmentId() == null
                         ? DepartmentId.unassigned()
-                        : DepartmentId.of(request.departmentId()),
-                idempotencyKey);
+                        : DepartmentId.of(request.departmentId()));
     }
 
     public static UserResponse toResponse(User user) {

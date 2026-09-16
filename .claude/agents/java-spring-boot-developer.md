@@ -236,7 +236,10 @@ Read § 3 of spec.md, then the partial it cites for the step at hand. Generates:
 Validation: identity maps, relations have cascade, no N+1, migration is idempotent, and the
 adapter uses `saveAndFlush` wherever it translates a constraint violation — with `save` the
 INSERT only reaches the database on commit, outside the `try`, and the violation escapes
-translation (`.claude/rules/persistence.md` § Boundary).
+translation (`.claude/rules/persistence.md` § Boundary). Every entity whose `@Id` has no
+`@GeneratedValue` implements `Persistable` (§ Identity and keys); every column whose SQL
+type isn't Hibernate's default inference carries `@JdbcTypeCode`, and no `@Lob` maps a
+`text` column (§ Mapping) — `ddl-auto: validate` only reports these at context startup.
 
 Compilation: `./mvnw -q -pl <persistence-module> test-compile` in multi-module, `./mvnw -q test-compile` in single-module ✅
 
@@ -260,13 +263,21 @@ Read § 4 of spec.md, then the partial it cites for the step at hand. Generates:
 - Response DTO — `record`
 - `[Resource]RestMapper.java` — manual (no `@Mapping`), domain ↔ DTO
 - `ApiExceptionHandler.java` — `@RestControllerAdvice`, 5 error shapes (422, 404, 409, 400, 500 with `traceId`)
-- `IdempotencyKeyInterceptor.java` (if needed)
+- `IdempotencyKeyInterceptor.java` (if needed) — and, the first time, the transactional half the
+  partial cites: `IdempotencyKeyStore`, `IdempotentExecution`. The controller calls
+  `IdempotentExecution`; the command never carries the key (`.claude/rules/api-rest.md`
+  § Idempotency — the transaction shape is decided, not yours to redesign)
 - YAML additions (springdoc, default pagination, tracing)
+
+Jackson on Spring Boot 4 is Jackson 3: `tools.jackson.databind.ObjectMapper`, unchecked
+`JacksonException`. Only the annotations stay in `com.fasterxml.jackson.annotation`. Check the
+`pom.xml` parent version before importing from memory.
 
 Validation: correct statuses, `ProblemDetail`, mapper with no business logic, immutable DTOs, and the
 right variant of `ApiExceptionHandler` — the one that injects `Tracer` only if the bridge is on
-the classpath. Confirm with `./mvnw dependency:tree | grep micrometer-tracing` before
-choosing; without the bean the context doesn't start and the failure appears far from the cause
+the classpath **and** something registers the bean. Confirm with
+`./mvnw dependency:tree | grep -E 'micrometer-tracing|starter-opentelemetry'` before choosing: on
+Spring Boot 4 the bridge alone registers no `Tracer`; without the bean the context doesn't start and the failure appears far from the cause
 (`.claude/rules/observability.md` § Correlation).
 
 **A missing dependency isn't resolved here.** If a `@NotBlank` doesn't compile or a bean doesn't

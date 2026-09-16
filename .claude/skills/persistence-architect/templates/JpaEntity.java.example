@@ -9,6 +9,13 @@
  * reflection. That's why this class exists separate from the aggregate, which is
  * immutable. Two classes, two owners, one explicit translation between them.
  *
+ * WHY `Persistable`: the id is assigned by the application, never `@GeneratedValue`.
+ * Spring Data decides persist-vs-merge by a null id or a null wrapper `@Version`; a
+ * primitive `long` version counts as absent. Here the id is never null, so without
+ * `isNew` every `save()` of a new user becomes `merge()`: a wasted `SELECT` before the
+ * `INSERT`, and no primary-key collision ever raised
+ * (`.claude/rules/persistence.md` § Identity and keys).
+ *
  * WHY `equals` AND `hashCode` ARE NOT HERE: the rule forbids basing them on a
  * database-generated id — while the entity is transient the id is null and the contract
  * breaks inside a `Set`. If they're really needed, base them on the business key
@@ -25,7 +32,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
@@ -33,6 +43,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "users")
@@ -42,7 +53,12 @@ import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDe
 // (`.claude/rules/lombok.md` § @FieldDefaults). No `makeFinal`: Hibernate writes the
 // fields by reflection and needs them mutable — the exception the rule allows for.
 @FieldDefaults(level = AccessLevel.PRIVATE)
-class UserEntity {
+class UserEntity implements Persistable<UUID> {
+
+    // Not a column. True only for an instance built by the constructor; loaded or
+    // already-persisted instances flip it, so an update still goes through `merge()`.
+    @Transient
+    boolean isNew = true;
 
     // Id assigned by the application: the aggregate is already born with a `UserId`, so
     // there's no "half-created" state waiting for a database id. Where the id comes
@@ -96,6 +112,22 @@ class UserEntity {
 
     void applyDepartment(UUID newDepartmentId) {
         this.departmentId = newDepartmentId;
+    }
+
+    @Override
+    public UUID getId() {
+        return id;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        isNew = false;
     }
 }
 

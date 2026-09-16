@@ -1,0 +1,88 @@
+/*
+ * EXEMPLAR — application side of `Idempotency-Key`: the one place that owns the
+ * transaction shape. Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/api-rest.md` (§ Idempotency) · `.claude/rules/architecture-ddd.md`
+ *        (§ Application — the transaction opens and closes here) ·
+ *        `.claude/rules/code-quality.md` (≤ 3 parameters, no generic `catch`)
+ *
+ * WHY A SHARED COMPONENT AND NOT THE USE CASE: the replay must return the stored
+ * response verbatim, and only the inbound adapter knows how to serialize one. The use
+ * case port stays transport-agnostic and unchanged — its command carries no key. The
+ * adapter hands in the effect (a call to the use case) and a recorder (result → stored
+ * response); this class decides when each runs and inside which transaction.
+ *
+ * WHY NOT `@Transactional` ON `execute`: `claim` has to commit before the effect starts
+ * (`templates/IdempotencyKeyStore.java.example`, header). A method-level annotation would
+ * wrap the claim in the business transaction. `TransactionOperations` (Boot registers a
+ * `TransactionTemplate` bean) opens the second transaction explicitly, and the use case's
+ * own `@Transactional` joins it.
+ *
+ * WHO CALLS IT: the inbound adapter, once per protected route. Sketch in
+ * `rest-api-architect`'s `Controller.java.example`.
+ *
+ * Package per the active blueprint's `packages.map` (application layer).
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- IdempotentOutcome.java
+package com.example.demo.application.service;
+
+import com.example.demo.application.port.out.StoredResponse;
+
+// Executed: the effect ran now, the adapter builds a fresh response from the result.
+// Replayed: a prior request already finished, the adapter returns its response verbatim.
+public sealed interface IdempotentOutcome<R> {
+    record Executed<R>(R result) implements IdempotentOutcome<R> {}
+    record Replayed<R>(StoredResponse response) implements IdempotentOutcome<R> {}
+}
+
+// --- IdempotentExecution.java
+package com.example.demo.application.service;
+
+import com.example.demo.application.port.out.IdempotencyClaim;
+import com.example.demo.application.port.out.IdempotencyKeyPort;
+import com.example.demo.application.port.out.IdempotencyRequest;
+import com.example.demo.application.port.out.StoredResponse;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionOperations;
+
+@Service
+public class IdempotentExecution {
+
+    private final IdempotencyKeyPort idempotencyKeys;
+    private final TransactionOperations transactions;
+
+    public IdempotentExecution(IdempotencyKeyPort idempotencyKeys, TransactionOperations transactions) {
+        this.idempotencyKeys = idempotencyKeys;
+        this.transactions = transactions;
+    }
+
+    public <R> IdempotentOutcome<R> execute(
+            IdempotencyRequest request, Supplier<R> effect, Function<R, StoredResponse> recorder) {
+        // Transaction 1 — commits on its own. A concurrent request with the same key
+        // collides here, before any effect.
+        if (idempotencyKeys.claim(request) instanceof IdempotencyClaim.Replay replay) {
+            return new IdempotentOutcome.Replayed<>(replay.response());
+        }
+        boolean committed = false;
+        try {
+            // Transaction 2 — the effect and the stored response commit together.
+            R result = transactions.execute(status -> {
+                R produced = effect.get();
+                idempotencyKeys.complete(request.key(), recorder.apply(produced));
+                return produced;
+            });
+            committed = true;
+            return new IdempotentOutcome.Executed<>(result);
+        } finally {
+            // Rolled back (business rule, conflict, anything): free the key so the retry
+            // runs again instead of waiting out the IN_PROGRESS lease. `finally` with a
+            // flag, not `catch (RuntimeException)` — the exception propagates untouched.
+            if (!committed) {
+                idempotencyKeys.release(request.key());
+            }
+        }
+    }
+}

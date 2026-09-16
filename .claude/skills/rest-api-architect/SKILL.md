@@ -147,8 +147,11 @@ chain, this isn't the right skill.
    (`templates/IdempotencyKeyInterceptor.java.example`), and the key's table **is
    handed off to `persistence-architect`** — name it in the partial, don't model it
    here. Shape reference for that other half:
-   `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
-   `.../IdempotencyKeyStore.java.example`.
+   `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example`,
+   `.../IdempotencyKeyStore.java.example`, and `.../IdempotentExecution.java.example`.
+   The transaction shape is fixed by `@.claude/rules/api-rest.md` § Idempotency — don't
+   reopen it per use case: the controller calls `IdempotentExecution`, the command
+   carries no key, and `10-dominio.md`'s use case signature doesn't change for it.
 
    **Write the schema requirements down.** Block 4 closes with a `Schema requirements`
    list: every table or column this transport needs that the domain didn't model — the

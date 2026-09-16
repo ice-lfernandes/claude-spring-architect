@@ -52,8 +52,8 @@ Check that the exemplars the procedure cites are there —
 `pom.parent.xml.example` and `pom.module.xml.example` (step 4),
 `checkstyle.xml.example` (4.6), `lombok.config.example` (4.8), `Application.java.example`
 and `application.yml.example` (step 3), `features/actuator/application-actuator.yml.example`
-and `features/observability/application-observability.yml.example`
-(4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
+and `features/observability/application-observability.yml.example` and
+`features/observability/ApplicationTests-tracer.java.example` (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
 `settings.json.example` and `audit-pricing.json.example` (step 7), `ci.yml.example`
 (step 8), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
@@ -290,8 +290,8 @@ what that layer may import, derived from the module's `depends_on` and
 /**
  * Domain. Aggregates, value objects, and invariants.
  *
- * <p>No framework: no {@code org.springframework}, {@code jakarta.*}, or
- * {@code com.fasterxml.jackson}. See {@code .claude/rules/architecture-ddd.md}.
+ * <p>No framework: no {@code org.springframework}, {@code jakarta.*},
+ * {@code com.fasterxml.jackson}, or {@code tools.jackson}. See {@code .claude/rules/architecture-ddd.md}.
  */
 package com.example.demoapp.domain;
 ```
@@ -305,7 +305,7 @@ a rule — cite it by path, invariant 2.
 | Feature | What this step does |
 |---|---|
 | `actuator` | Merges `templates/features/actuator/application-actuator.yml.example` into the `application.yml` of the module with `contains_main: true` (the same file from step 6, not a new one) |
-| `observability` | Merges `templates/features/observability/application-observability.yml.example` into the same `application.yml` — the tracing bridge's export destination. Owned exemplar, same mechanism as `actuator`'s; the container it points at is provisioned in step 4.10, not here — this step only writes config |
+| `observability` | Merges `templates/features/observability/application-observability.yml.example` into the same `application.yml` — the tracing bridge's export destination. Owned exemplar, same mechanism as `actuator`'s; the container it points at is provisioned in step 4.10, not here. Also adds the method in `templates/features/observability/ApplicationTests-tracer.java.example` to the generated `*ApplicationTests`: a context that starts without a `Tracer` bean is a generation gap, and nothing else catches it before the first use case |
 | `flyway` | Creates `src/main/resources/db/migration/` in the module with the `infrastructure.persistence` role, **empty**. No `.gitkeep` and no `V1__`: `spring.flyway.fail-on-missing-locations` defaults to `false` (verified in `spring-boot-flyway`'s metadata), so a missing or empty location doesn't break startup. The first migration comes from `java-spring-boot-developer`, materialized from the SQL `persistence-architect` fixed in the partial |
 | `persistence-jpa`, `rest`, `openapi`, `testcontainers`, `archunit` | Nothing here. They're dependencies (step 3) and POM configuration (step 4). The code that uses them comes from the first feature |
 | `spring-modulith` | Writes `<main-module>/src/test/java/**/ModularityTests.java`, from `templates/features/spring-modulith/ModularityTests.java.example`, adjusting only the package and the `@SpringBootApplication` class reference. Safe to write now, unlike ArchUnit — `ApplicationModules.of(...).verify()` passes meaningfully over zero modules; it isn't gated behind business code existing |
@@ -573,7 +573,7 @@ and stays out of the generated project.
 | `use-case-design` | ✅ | Designs the use case before implementing it. Only makes sense once the project exists; carries `templates/use-case-spec.md.example`, `templates/backlog.md.example`, and `references/scope-boundary.md` |
 | `domain-modeling` | ✅ | Details domain and application for an already-designed use case. Carries `templates/domain-spec.md.example` and the twelve Java shape exemplars: seven model ones (VO, VO catalog, shared guards, aggregate, event, ports, command) and the five from the exception family, which moved here when the bootstrap stopped emitting code |
 | `java-patterns` | ✅ | Design patterns during development |
-| `persistence-architect` | ✅ | Designs the schema, mapping, and migrations for an already-modeled use case. Carries `templates/persistence-spec.md.example`, the three Java exemplars (entity, adapter with mapper, Spring Data interface), `V1__create_table.sql.example`, `application-persistence.yml.example`, and the two `references/` (SQL diagnosis and external links) |
+| `persistence-architect` | ✅ | Designs the schema, mapping, and migrations for an already-modeled use case. Carries `templates/persistence-spec.md.example`, the three Java exemplars (entity, adapter with mapper, Spring Data interface), the idempotency trio (`IdempotencyKeyTable.sql.example`, `IdempotencyKeyStore.java.example`, `IdempotentExecution.java.example`), `V1__create_table.sql.example`, `application-persistence.yml.example`, and the two `references/` (SQL diagnosis and external links) |
 | `rest-api-architect` | ✅ | Designs the endpoints, DTOs, error map, and OpenAPI contract for an already-modeled use case. Carries `templates/rest-spec.md.example`, the six Java shape exemplars (annotated controller, DTOs, mapper, `PageResponse`, `Idempotency-Key` interceptor, `ApiExceptionHandler`), the two JSON fixtures (`error-responses`, `page-response`), and `references/best-practices-links.md`. The contract test exemplar lives in `test-architect` |
 | `test-architect` | ✅ | Two modes: design (the `40-testes.md` partial, per use case, inline) and setup (installs ArchUnit, once per project, delegated to the `archunit-installer` agent — see 6.8). Carries `templates/{test-spec.md,ArchitectureTest.java,TestFixtures.java,DomainTest.java,UseCaseTest.java,ControllerTest.java,PersistenceIT.java}.example` and `references/best-practices-links.md`. It's the sole owner of test-code shape — no other skill carries a test exemplar |
 | `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example` and `templates/feature-spec-short.md.example`. Its own `## Entry into generated projects` section already documents it travels here |
@@ -768,6 +768,15 @@ POM: without it, the first `*IT` that `test-architect` designs compiles and neve
 
 ```bash
 grep -c maven-failsafe-plugin pom.xml    # must be ≥ 1
+```
+
+With `features.observability` active, confirm the piece that registers the `Tracer` bean
+made it in — the bridge and the exporter alone don't, and the gap otherwise surfaces only
+at the first use case that injects it:
+
+```bash
+./mvnw -q dependency:tree | grep -E 'micrometer-tracing-bridge|opentelemetry-exporter-otlp|spring-boot-starter-opentelemetry'
+# all three lines present on Spring Boot 4 — see references/dependency-catalog.md
 ```
 
 Boundary test, mandatory before reporting success: temporarily write

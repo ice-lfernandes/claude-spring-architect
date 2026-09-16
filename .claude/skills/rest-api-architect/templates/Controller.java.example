@@ -15,6 +15,9 @@
  *   - try/catch. The domain exception bubbles up and ApiExceptionHandler translates it.
  *   - rule validation. The aggregate validates; the DTO only validates shape.
  *   - domain type in the public signature. DTO in, DTO out.
+ *   - the idempotency transaction. `IdempotentExecution` (application layer) owns it; this
+ *     class only supplies the effect and serializes the response a replay returns
+ *     (`.claude/rules/api-rest.md` § Idempotency). The command carries no key.
  */
 package com.exemplo.minhaapi.adapter.in.rest;
 
@@ -23,11 +26,26 @@ import com.exemplo.minhaapi.adapter.in.rest.dto.PageResponse;
 import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
 import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
 import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.application.port.out.IdempotencyRequest;
+import com.exemplo.minhaapi.application.port.out.StoredResponse;
+import com.exemplo.minhaapi.application.service.IdempotentExecution;
+import com.exemplo.minhaapi.application.service.IdempotentOutcome;
+import com.exemplo.minhaapi.domain.model.user.User;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.util.HexFormat;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+// Jackson 3 (Spring Boot 4): `tools.jackson.*`, unchecked `JacksonException`. Only the
+// annotations stayed in `com.fasterxml.jackson.annotation`.
+import tools.jackson.databind.ObjectMapper;
 
 // Explicit version in the path. Never `server.servlet.context-path`: it hides the version
 // and prevents /v1 and /v2 from coexisting (decision P5(g)).
@@ -35,20 +53,57 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(path = "/api/v1/users", produces = MediaType.APPLICATION_JSON_VALUE)
 public class UserController implements UserApi {
 
+    private static final String CREATE_ROUTE = "POST /api/v1/users";
+    // Until authentication exists, every caller shares one identity. Replace with the
+    // authenticated principal the day there is one.
+    private static final String ANONYMOUS_CALLER = "anonymous";
+
     private final CreateUserUseCase createUser;
     private final ListUsersQuery listUsers;
+    private final IdempotentExecution idempotent;
+    private final ObjectMapper objectMapper;
+    private final Clock clock;
 
-    public UserController(CreateUserUseCase createUser, ListUsersQuery listUsers) {
+    public UserController(CreateUserUseCase createUser, ListUsersQuery listUsers,
+                          IdempotentExecution idempotent, ObjectMapper objectMapper, Clock clock) {
         this.createUser = createUser;
         this.listUsers = listUsers;
+        this.idempotent = idempotent;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Override
     public ResponseEntity<UserResponse> create(String idempotencyKey, CreateUserRequest request) {
-        var user = createUser.handle(UserMapper.toCommand(request, idempotencyKey));
-        var body = UserMapper.toResponse(user);
-        // 201 carries Location + the created representation. Only one of the two is half a contract.
+        IdempotentOutcome<User> outcome = idempotent.execute(
+                idempotencyRequest(idempotencyKey, request),
+                () -> createUser.handle(UserMapper.toCommand(request)),
+                user -> new StoredResponse(HttpStatus.CREATED.value(),
+                        objectMapper.writeValueAsString(UserMapper.toResponse(user))));
+        var body = switch (outcome) {
+            case IdempotentOutcome.Executed<User>(User user) -> UserMapper.toResponse(user);
+            case IdempotentOutcome.Replayed<User>(StoredResponse stored) ->
+                    objectMapper.readValue(stored.body(), UserResponse.class);
+        };
+        // 201 carries Location + the created representation. Only one of the two is half a
+        // contract. A replay answers the same 201 with the stored body.
         return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
+    }
+
+    private IdempotencyRequest idempotencyRequest(String key, CreateUserRequest request) {
+        // The interceptor already rejected a missing or malformed key with 400.
+        return new IdempotencyRequest(UUID.fromString(key), CREATE_ROUTE, ANONYMOUS_CALLER,
+                sha256(objectMapper.writeValueAsString(request)), clock.instant());
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            // Every JDK must ship SHA-256 (Java Security Standard Algorithm Names).
+            throw new IllegalStateException(impossible);
+        }
     }
 
     @Override

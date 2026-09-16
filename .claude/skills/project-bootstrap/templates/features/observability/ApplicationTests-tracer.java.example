@@ -1,0 +1,31 @@
+/*
+ * EXEMPLAR — not a standalone file: a method to add to the Initializr-generated
+ * `*ApplicationTests` in the module with `contains_main: true`, when
+ * `features.observability` is active. Keep that class's existing annotations and its
+ * Docker guard; reuse its Spring context instead of starting a second one.
+ *
+ * WHY: a bare `contextLoads()` stays green even when nothing registers the `Tracer` bean,
+ * because on a freshly generated project no class injects it yet. The first class that
+ * does (the error handler of the first REST use case) then fails context startup, far
+ * from the cause — `.claude/rules/observability.md` § Correlation. The tracing bridge
+ * and the OTLP exporter on the classpath don't register the bean on their own; the Boot
+ * glue starter does. This assertion makes a missing starter fail at bootstrap.
+ *
+ * Runs where the Docker guard lets the context start (CI). Step 8's `dependency:tree`
+ * check is the half that runs on every machine.
+ */
+
+// --- imports to add
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+
+// --- method to add
+    @Test
+    void registersTracerBean(@Autowired ApplicationContext context) {
+        assertThat(context.getBeanProvider(Tracer.class).getIfAvailable())
+                .as("features.observability is on, but nothing registers a Tracer bean")
+                .isNotNull();
+    }
