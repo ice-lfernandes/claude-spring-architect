@@ -132,13 +132,13 @@ under Invariant 5. Each agent documents its own reason in the `## Why this is an
 | Command | What it does | Details |
 |---|---|---|
 | `/init-project` | Interview → picks a blueprint → generates the complete Spring Boot project structure, with no business code | [02-init-project.md](02-init-project.md) |
-| `/new-feature UC-NNN-slug` | Orchestrates 5 design skills (use case → domain → persistence → REST → tests) into a single spec, and optionally triggers the executor | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature <description>` | Designs one use case per run (use case → domain → REST → persistence → tests) into a single spec, asks approval, and offers the executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnoses active hooks, loaded boundaries, Maven wrapper, `java` on PATH | [04-arch-doctor.md](04-arch-doctor.md) |
 
 `git-publish` isn't a fourth top-level command — it's a Form 1 skill (no
 `disable-model-invocation`) chained automatically by `project-initializer` (end of
-`/init-project`, if the build passed) and by `/new-feature` (end of the executor, if it
-reports success), and also directly invocable by the user. Two `AskUserQuestion` gates
+`/init-project`, if the build passed) and by `/new-feature` (every end of the flow with an approved spec —
+after the executor succeeds, or docs-only when the user declines implementing), and also directly invocable by the user. Two `AskUserQuestion` gates
 in the skill's body replace the flag as the guard — the same D17 pattern
 (`@.claude/decisions/0007-pipeline-skills-invocation.md`), documented in
 `@.claude/decisions/0034-git-publish-skill.md`.

@@ -13,7 +13,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`ls -1d docs/use-cases/UC-*/ 2>/dev/null || echo "(none — run /use-case-design first)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+
+Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Target
 
@@ -87,8 +90,9 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
 
    Don't ask what the mother spec already answered. Repeating an already-answered
    question is the sign you didn't read step 1.
-4. **Fix the signatures.** Names from `@.claude/rules/naming.md` — they already come from
-   the mother spec, don't change them. Zero framework types in signatures
+4. **Fix the signatures.** Names from `@.claude/rules/naming.md` § Architecture vocabulary
+   — they already come from the mother spec, don't change them. Exception names are
+   this skill's: the mother spec only describes the situation and its kind. Zero framework types in signatures
    (`@.claude/rules/architecture-ddd.md`). Zero `null` crossing a boundary; `Optional`
    only on query return (`@.claude/rules/code-quality.md`). Every primitive field goes
    through the `@.claude/rules/value-objects.md` criterion before staying a primitive —
@@ -118,6 +122,10 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    caller needs to `catch` it specifically rather than branch on `errorCode()`. A first
    occurrence never gets its own class — the same discipline `java-patterns` applies to
    when a symptom earns a design pattern.
+
+   **A second call site found in a later use case** promotes the exception here, in this
+   case's `10-dominio.md`, under `## Impact on approved use cases` — never by editing the
+   earlier case's partial or spec, which are approved and immutable.
 6. **Generate** from `templates/domain-spec.md.example` to
    `docs/use-cases/UC-NNN-<slug>/10-dominio.md`.
 7. **Report and stop.** File path, divergences found against the mother spec, and what's

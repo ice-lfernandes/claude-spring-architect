@@ -16,8 +16,8 @@ is not a Java application"). Step 6.7 of `project-bootstrap` does not copy this
 2. `cp -r .claude/skills/use-case-design/examples/UC-1NN-<slug> <project>/docs/use-cases/`
 3. Renumber the folder and the `Identifier` field if the target project's own `UC-NNN`
    sequence collides (`ls -1d docs/use-cases/UC-* | tail -5`).
-4. Run `/new-feature UC-<NNN>-<slug>` in that project. `use-case-design` re-validates
-   the pasted spec (§ Procedure step 7 becomes an update, not a create) and the
+4. Run `/new-feature UC-<NNN>-<slug>` in that project. The folder has no consolidated
+   spec yet, so it counts as a draft to resume: `use-case-design` is skipped and the
    pipeline continues from `domain-modeling`.
 5. Once the executor (`java-spring-boot-developer`) implements it, check whether the
    pattern in the right-hand column actually appeared. If it didn't, either the

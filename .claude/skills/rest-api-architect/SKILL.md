@@ -14,7 +14,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`ls -1d docs/use-cases/UC-*/ 2>/dev/null || echo "(none — run /use-case-design first)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+
+Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Target
 
@@ -71,8 +74,8 @@ The split is by **moment and by artifact**:
 |---|---|---|
 | `use-case-design` | Before the domain exists | `00-caso-de-uso.md` — boundary and canonical names |
 | `domain-modeling` | After the parent spec | `10-dominio.md` — aggregate, invariants, ports |
-| `persistence-architect` | In parallel with this one | `20-persistencia.md` — schema, no transport |
-| **this skill** | After the domain partial | `30-rest.md` |
+| **this skill** | After the domain partial | `30-rest.md` — including the schema requirements transport creates |
+| `persistence-architect` | After this one | `20-persistencia.md` — schema, reading this partial's schema requirements |
 | `test-architect` | After all of them | `40-testes.md` — pyramid, slices, data |
 
 Doesn't collide with `test-architect`: this skill fixes the HTTP contract's **cases**
@@ -95,7 +98,7 @@ chain, this isn't the right skill.
    intuition.
 
    ```bash
-   grep -rln "@RestController" --include=*.java src/ 2>/dev/null
+   grep -rln "@RestController" --include='*.java' src/ 2>/dev/null
    ```
 
    The inbound adapter's package isn't the same across every blueprint (`adapter/in/rest`
@@ -147,8 +150,15 @@ chain, this isn't the right skill.
    `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
    `.../IdempotencyKeyStore.java.example`.
 
-8. **Fix the dependencies.** springdoc, tracing bridge, and validation. springdoc's
-   version **isn't managed by the Spring Boot BOM**: resolve it at runtime and confirm
+   **Write the schema requirements down.** Block 4 closes with a `Schema requirements`
+   list: every table or column this transport needs that the domain didn't model — the
+   idempotency key table, first of all — or "none". `persistence-architect` runs after
+   this skill and reads that list in its first pass; a requirement left in prose here is a
+   second persistence pass later.
+8. **Fix the dependencies.** springdoc, tracing bridge, and validation. **Read `pom.xml`
+   first**: a dependency already declared there keeps its version, and nothing is
+   resolved. Never a web search for a version. springdoc's
+   version **isn't managed by the Spring Boot BOM**: when it's absent, resolve it at runtime and confirm
    compatibility with the project's Boot major —
    `references/best-practices-links.md` § Resolving the springdoc version. No network,
    ask. Never from memory (`@CLAUDE.md`, invariant 8). You don't edit `pom.xml`: you
@@ -190,8 +200,10 @@ verifies them is at
 `@.claude/rules/architecture-ddd.md` (Adapters and Composition sections),
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
 `@.claude/rules/code-quality.md`, and the active blueprint's `packages.map`. Also reads
-`20-persistencia.md` when it exists — the table's expected volume decides offset or
-cursor.
+`20-persistencia.md` when it exists (a resumed or hand-run case) — the table's expected
+volume decides offset or cursor. In `/new-feature` this skill runs first, so the volume
+comes from its own interview ("does the collection grow without bound") and is written in
+block 4, where `persistence-architect` reads it instead of asking again.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/30-rest.md`. Only that file.
 

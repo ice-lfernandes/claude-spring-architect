@@ -13,6 +13,7 @@
 //   tests   Stop        — tests of the changed modules                (blocks)
 //   schema  Pre/PostToolUse + Stop — frontmatter of extension files   (blocks)
 //   audit   lifecycle   — execution trail of the orchestrator skills  (never blocks)
+//   guard   PreToolUse  — design never writes src/, approved specs frozen (blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
 //
 // Dependencies: JDK. Nothing else.
@@ -47,6 +48,7 @@ public class ArchHook {
                 case "tests"  -> tests(stdin);
                 case "schema" -> schema(stdin);
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
+                case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
                 case "doctor" -> doctor();
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
@@ -197,13 +199,13 @@ public class ArchHook {
                 "all extension files pass",
                 badSchema < 0 ? "no " + SCHEMA_FILE + " — validation OFF"
                               : badSchema + " files with invalid frontmatter");
-        Path auditDir = ROOT.resolve(AUDIT_DIR);
+        Path auditDir = auditDir();
         if (Files.isDirectory(auditDir)) {
             long runs = 0;
             try (Stream<Path> s = Files.list(auditDir)) {
                 runs = s.filter(f -> f.toString().endsWith(".md")).count();
             } catch (IOException ignored) { }
-            boolean priced = auditCost(new Tokens(1, 0, 0, 0, "probe")) != null
+            boolean priced = auditCost(auditDir, new Tokens(1, 0, 0, 0, "probe")) != null
                     || Files.isRegularFile(auditDir.resolve("pricing.json"));
             report("Audit", true, runs + " execution(s) recorded"
                     + (priced ? "" : " — pricing.json missing, no cost estimate"), "");
@@ -627,29 +629,58 @@ public class ArchHook {
     //
     // Phases (args[1]), one per hook event:
     //   prompt    UserPromptSubmit               opens a run when the prompt is `/<orchestrator>`
-    //   call      PreToolUse Skill|Task          one node of the chain
+    //   call      PreToolUse Skill|Task|Agent    one node of the chain
+    //   ask       PreToolUse AskUserQuestion     the run starts waiting for the user
+    //   answer    PostToolUse AskUserQuestion    the wait ends — measured apart from work
     //   file      PostToolUse Write|Edit         file touched — feeds rule inference by glob
     //   fail      PostToolUseFailure             rework counter
     //   stopfail  StopFailure                    the turn ended in error
     //   perm      PermissionRequest|Denied       permission asked for mid-run
     //   agent     SubagentStop                   closes the current agent node
-    //   compact   PreCompact                     the context overflowed
-    //   flush     Stop                           rewrites the report
+    //   compact   PreCompact                     manual `/compact` or automatic overflow
+    //   flush     Stop                           marks the turn's end, rewrites the report
     //   close     SessionEnd                     stamps the final status and closes the run
     //
     // Every phase appends one line to .claude/audit-usage/.state/<session>.ndjson, and
     // the report is DERIVED from that log at flush time. Append-only survives a kill -9;
     // a read-modify-write of a structured file does not.
     //
+    // A run closes at the first user prompt after it opened. Answers to AskUserQuestion
+    // arrive as tool results, never as prompts, so any prompt is work outside the run —
+    // counting it stretched a 12-second step to ten minutes in a real report.
+    //
+    // Inside a git worktree the trail is written to the MAIN checkout's
+    // .claude/audit-usage/, so reports, history.jsonl and pricing.json never diverge
+    // between checkouts.
+    //
     // Switched off by the absence of .claude/audit-usage/: every phase returns
     // immediately. That is why this meta-repository, which does not create the
     // directory, pays nothing for a mode wired only into the generated project.
 
     static final String AUDIT_DIR = ".claude/audit-usage";
+
+    /**
+     * The trail's directory. In a git worktree `.git` is a file, and the trail belongs to
+     * the main checkout — one history.jsonl, one pricing.json, whichever checkout ran.
+     * Everywhere else, and whenever git can't answer, it's this project's own.
+     */
+    static Path auditDir() {
+        if (!Files.isRegularFile(ROOT.resolve(".git"))) return ROOT.resolve(AUDIT_DIR);
+        try {
+            Proc p = run(gitCmd(), "rev-parse", "--git-common-dir");
+            if (p.exit == 0 && !p.out.isEmpty()) {
+                Path common = ROOT.resolve(p.out.get(0).strip()).normalize();
+                if (common.getFileName() != null && ".git".equals(common.getFileName().toString())) {
+                    return common.getParent().resolve(AUDIT_DIR);
+                }
+            }
+        } catch (Exception ignored) { }
+        return ROOT.resolve(AUDIT_DIR);
+    }
     static final Locale PT = Locale.forLanguageTag("pt-BR");
 
     static void audit(String phase, String stdin) throws Exception {
-        Path dir = ROOT.resolve(AUDIT_DIR);
+        Path dir = auditDir();
         if (!Files.isDirectory(dir)) return;
 
         Object in = Json.parse(stdin);
@@ -661,14 +692,16 @@ public class ArchHook {
             case "prompt"   -> auditPrompt(dir, log, in);
             case "call"     -> auditCall(log, in);
             case "file"     -> auditFile(log, in);
+            case "ask"      -> append(log, ev("ask"));
+            case "answer"   -> append(log, ev("answer"));
             case "fail"     -> append(log, ev("fail", "tool", asStr(get(in, "tool_name"))));
             case "stopfail" -> append(log, ev("stop_fail"));
             case "perm"     -> append(log, ev("perm",
                                        "tool", asStr(get(in, "tool_name")),
                                        "event", asStr(get(in, "hook_event_name"))));
             case "agent"    -> append(log, ev("agent_end"));
-            case "compact"  -> append(log, ev("compact"));
-            case "flush"    -> auditRender(dir, log, in, false);
+            case "compact"  -> append(log, ev("compact", "trigger", asStr(get(in, "trigger"))));
+            case "flush"    -> { append(log, ev("stop")); auditRender(dir, log, in, false); }
             case "close"    -> auditRender(dir, log, in, true);
             default         -> { }
         }
@@ -685,8 +718,7 @@ public class ArchHook {
         if (prompt == null) return;
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)(.*)$", Pattern.DOTALL)
                 .matcher(prompt);
-        if (!m.find()) return;
-        String name = m.group(1);
+        String name = m.find() ? m.group(1) : null;
 
         // An observer closes the run in progress and starts none of its own. Closing
         // already happened anyway (any second `/command` closes), so what this drops is
@@ -694,15 +726,14 @@ public class ArchHook {
         // feedback loop of a report about reading reports. The close is the useful half:
         // within one session a report is stuck at "em andamento" until something ends
         // the run, so asking for it is what finalizes it.
-        if (isAuditExcluded(name)) {
+        if (name != null && isAuditExcluded(name)) {
             auditRender(dir, log, in, true);
             return;
         }
-        if (!isOrchestrator(name)) return;
-
-        // A second `/command` in the same session ends the run in progress: the report
-        // of what already ran is worth more than a run left open forever.
+        // Any prompt ends the run in progress — a second `/command`, or plain text. An
+        // AskUserQuestion answer is a tool result, not a prompt, so it never gets here.
         if (Files.isRegularFile(log)) auditRender(dir, log, in, true);
+        if (name == null || !isOrchestrator(name)) return;
 
         Files.createDirectories(log.getParent());
         Files.writeString(log, "", StandardCharsets.UTF_8);
@@ -886,19 +917,25 @@ public class ArchHook {
         long   startMs  = num(s0.get("t"));
         long   lastMs   = num(events.get(events.size() - 1).get("t"));
         final long endMs = lastMs > startMs ? lastMs : System.currentTimeMillis();
-        long   total    = Math.max(1, endMs - startMs);
+        long   elapsed  = Math.max(1, endMs - startMs);
 
         List<Node> nodes = new ArrayList<>();
         Set<String> touched = new LinkedHashSet<>();
         Map<String, Integer> fails = new LinkedHashMap<>();
         Map<String, Integer> ops = new LinkedHashMap<>();
         List<String> perms = new ArrayList<>();
-        int compacts = 0;
+        int compacts = 0, manualCompacts = 0;
+        List<Long> ticks = new ArrayList<>();
+        List<long[]> waits = new ArrayList<>();
+        long askAt = 0;
         boolean errored = false;
         int depth = 1;
 
         for (Map<String, Object> e : events) {
             String kind = asStr(e.get("e"));
+            long t = num(e.get("t"));
+            // A compaction is the runtime's, not the node's: it doesn't extend whoever ran before it.
+            if (!"run_start".equals(kind) && !"compact".equals(kind)) ticks.add(t);
             switch (kind) {
                 case "skill" -> nodes.add(new Node("skill", orDash(asStr(e.get("name"))),
                         asStr(e.get("args")), num(e.get("t")), depth));
@@ -913,13 +950,34 @@ public class ArchHook {
                     if (path != null) touched.add(path);
                     ops.merge(orDash(asStr(e.get("op"))), 1, Integer::sum);
                 }
-                case "fail" -> fails.merge(orDash(asStr(e.get("tool"))), 1, Integer::sum);
+                case "ask" -> askAt = t;
+                case "answer" -> {
+                    if (askAt > 0) waits.add(new long[] {askAt, t});
+                    askAt = 0;
+                }
+                case "fail" -> {
+                    String tool = orDash(asStr(e.get("tool")));
+                    // A rejected AskUserQuestion never gets an answer event: its failure ends the wait.
+                    if ("AskUserQuestion".equals(tool) && askAt > 0) {
+                        waits.add(new long[] {askAt, t});
+                        askAt = 0;
+                    }
+                    fails.merge(tool, 1, Integer::sum);
+                }
                 case "stop_fail" -> errored = true;
-                case "compact" -> compacts++;
+                case "compact" -> {
+                    if ("manual".equals(asStr(e.get("trigger")))) manualCompacts++;
+                    else compacts++;
+                }
                 case "perm" -> perms.add(orDash(asStr(e.get("tool"))));
                 default -> { }
             }
         }
+
+        // A question still open when the run is rendered waits until the end.
+        if (askAt > 0) waits.add(new long[] {askAt, endMs});
+        long wait  = waited(startMs, endMs, waits);
+        long total = Math.max(1, elapsed - wait);
 
         Tokens tk = auditTokens(asStr(get(in, "transcript_path")), startIso);
         List<String> added = new ArrayList<>(localPermissions());
@@ -940,7 +998,9 @@ public class ArchHook {
           .append("| 🎯 Skill | `/").append(skill).append("` |\n")
           .append("| 🕐 Início | ").append(startIso).append(" |\n")
           .append("| 🏁 Fim | ").append(Instant.ofEpochMilli(endMs)).append(" |\n")
-          .append("| ⏱️ Duração | ").append(hms(total)).append(" |\n")
+          .append("| ⏱️ Duração | ").append(hms(elapsed)).append(" |\n")
+          .append("| ⏸️ Espera pelo usuário | ").append(hms(wait)).append(" |\n")
+          .append("| ⚙️ Duração ativa | ").append(hms(total)).append(" |\n")
           .append("| ").append(status.substring(0, status.indexOf(' ')))
           .append(" Status | ").append(status.substring(status.indexOf(' ') + 1)).append(" |\n")
           .append("| 🤖 Modelo | ").append(orDash(tk.model())).append(" |\n")
@@ -954,12 +1014,12 @@ public class ArchHook {
           .append("true".equals(asStr(s0.get("redacted"))) ? "**sim**" : "não").append("\n\n");
 
         List<Node> ranked = new ArrayList<>(nodes);
-        ranked.sort((a, b) -> Long.compare(dur(b, nodes, endMs), dur(a, nodes, endMs)));
+        ranked.sort((a, b) -> Long.compare(dur(b, nodes, endMs, ticks, waits), dur(a, nodes, endMs, ticks, waits)));
         if (!ranked.isEmpty()) {
             md.append("## 🏆 Etapas mais caras\n\n| # | Etapa | Duração | % |\n|---|---|---|---|\n");
             for (int i = 0; i < Math.min(3, ranked.size()); i++) {
                 Node n = ranked.get(i);
-                long d = dur(n, nodes, endMs);
+                long d = dur(n, nodes, endMs, ticks, waits);
                 md.append("| ").append(i + 1).append(" | `").append(n.name()).append("` | ")
                   .append(hms(d)).append(" | ").append(pct(d, total)).append(" |\n");
             }
@@ -971,7 +1031,7 @@ public class ArchHook {
           .append(pad(hms(total), 9)).append("100%\n");
         for (int i = 0; i < nodes.size(); i++) {
             Node n = nodes.get(i);
-            long d = dur(n, nodes, endMs);
+            long d = dur(n, nodes, endMs, ticks, waits);
             boolean last = i == nodes.size() - 1;
             String label = "  ".repeat(Math.max(0, n.depth() - 1)) + (last ? "└─ " : "├─ ")
                     + ("agent".equals(n.kind()) ? "🤖 " : "📘 ") + n.name()
@@ -980,8 +1040,9 @@ public class ArchHook {
               .append(pad(hms(d), 9)).append(pct(d, total)).append('\n');
         }
         md.append("```\n\n")
-          .append("> Duração de um nó = do seu início até o próximo nó de mesma profundidade")
-          .append(" ou menor. É atribuição por janela, não medição isolada.\n\n");
+          .append("> Duração de um nó = do seu início até o **último evento dele**, dentro da janela")
+          .append(" que termina no próximo nó de mesma profundidade ou menor. Espera por")
+          .append(" `AskUserQuestion` descontada. Percentuais sobre a duração ativa.\n\n");
 
         md.append("## 📊 Tokens (agregado)\n\n")
           .append("| Métrica | Valor |\n|---|---|\n")
@@ -990,7 +1051,7 @@ public class ArchHook {
           .append("| ♻️ cache read | ").append(n(tk.cacheRead())).append(" |\n")
           .append("| 💾 cache write | ").append(n(tk.cacheWrite())).append(" |\n")
           .append("| 🧮 faturável (input + output + cache write) | **").append(n(tk.billable())).append("** |\n");
-        String cost = auditCost(tk);
+        String cost = auditCost(dir, tk);
         md.append("| 💰 custo estimado | ")
           .append(cost == null ? "— (preencha `" + AUDIT_DIR + "/pricing.json`)" : "**" + cost + "**")
           .append(" |\n\n");
@@ -1051,8 +1112,12 @@ public class ArchHook {
         }
 
         if (compacts > 0) {
-            md.append("## ⚠️ Incidentes\n\n🗜️ Contexto compactado ").append(compacts)
+            md.append("## ⚠️ Incidentes\n\n🗜️ Contexto compactado automaticamente ").append(compacts)
               .append("× durante a execução — qualidade da saída cai depois de cada compactação.\n\n");
+        }
+        if (manualCompacts > 0) {
+            md.append("ℹ️ `/compact` manual: ").append(manualCompacts)
+              .append("× — decisão do usuário, não incidente.\n\n");
         }
 
         if (headStart != null && headEnd != null && !headStart.equals(headEnd)) {
@@ -1073,6 +1138,7 @@ public class ArchHook {
             Files.writeString(dir.resolve("history.jsonl"),
                     ev("run", "skill", skill, "start", startIso,
                        "duration_ms", String.valueOf(total),
+                       "wait_ms", String.valueOf(wait),
                        "status", status,
                        "tokens_billable", String.valueOf(tk.billable()),
                        "cost", cost,
@@ -1084,12 +1150,32 @@ public class ArchHook {
         }
     }
 
-    /** From this node's start to the next node at the same depth or shallower. */
-    static long dur(Node n, List<Node> all, long endMs) {
+    /**
+     * From this node's start to its own last event, not to the next node's start. The
+     * window closes at the next node at the same depth or shallower; events inside it
+     * belong to this node, and the gap after the last of them does not. A node with no
+     * event of its own falls back to the whole window. AskUserQuestion waits inside the
+     * span are subtracted.
+     */
+    static long dur(Node n, List<Node> all, long endMs, List<Long> ticks, List<long[]> waits) {
+        long boundary = endMs;
         for (Node o : all) {
-            if (o.start() > n.start() && o.depth() <= n.depth()) return Math.max(0, o.start() - n.start());
+            if (o.start() > n.start() && o.depth() <= n.depth()) { boundary = o.start(); break; }
         }
-        return Math.max(0, endMs - n.start());
+        long last = n.start();
+        for (long t : ticks) {
+            boolean inside = t > n.start() && (t < boundary || boundary == endMs && t <= endMs);
+            if (inside) last = Math.max(last, t);
+        }
+        long end = last > n.start() ? last : boundary;
+        return Math.max(0, end - n.start() - waited(n.start(), end, waits));
+    }
+
+    /** Milliseconds of [from, to] covered by the wait intervals. */
+    static long waited(long from, long to, List<long[]> waits) {
+        long sum = 0;
+        for (long[] w : waits) sum += Math.max(0, Math.min(to, w[1]) - Math.max(from, w[0]));
+        return sum;
     }
 
     /**
@@ -1127,8 +1213,8 @@ public class ArchHook {
      * and Spring versions. pricing.json ships with null values on purpose: an unfilled
      * price prints as "não configurado", never as a confident US$ 0.00.
      */
-    static String auditCost(Tokens t) {
-        Map<String, Object> pr = asMap(Json.parse(readOrNull(ROOT.resolve(AUDIT_DIR + "/pricing.json"))));
+    static String auditCost(Path dir, Tokens t) {
+        Map<String, Object> pr = asMap(Json.parse(readOrNull(dir.resolve("pricing.json"))));
         if (pr == null || t.model() == null) return null;
         Map<String, Object> m = asMap(get(pr, "models", t.model()));
         if (m == null) return null;
@@ -1223,6 +1309,123 @@ public class ArchHook {
     static String orDash(String s) { return s == null || s.isBlank() ? "—" : s; }
 
     static String orEmpty(String s) { return s == null ? "" : s; }
+
+    // ── guard ────────────────────────────────────────────────────────────────
+    //
+    // Two boundaries the design pipeline broke in a real run, while its skills said the
+    // opposite in prose:
+    //   1. a design skill wrote a migration under src/ — src/ belongs to the executor;
+    //   2. a later use case edited the specs of an earlier, already-decided one.
+    //
+    // Phases (args[1]):
+    //   prompt   UserPromptSubmit         a prompt ends any design phase; `/<design skill>` opens one
+    //   call     PreToolUse Skill|Agent   a design skill opens the phase; an executor agent closes it
+    //   write    PreToolUse Write|Edit    blocks (exit 2) what the two boundaries forbid
+    //
+    // The phase is one file per session in the OS temp dir — never in the project, so it
+    // can't be committed. Which skills design, which agents execute, and which paths
+    // design can't write are data in extensions.json's `guard` block (invariants 7, 10).
+    // No `guard` block, no guard: this meta-repository has none to protect.
+    //
+    // Known gap, accepted: a design skill that asks in plain text instead of
+    // AskUserQuestion gets its answer as a prompt, and that prompt ends the phase.
+
+    static void guard(String phase, String stdin) throws Exception {
+        Map<String, Object> cfg = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "guard"));
+        if (cfg == null) return;
+        Object in = Json.parse(stdin);
+        Path state = guardState(asStr(get(in, "session_id")));
+        switch (phase) {
+            case "prompt" -> guardPrompt(cfg, state, in);
+            case "call"   -> guardCall(cfg, state, in);
+            case "write"  -> guardWrite(cfg, state, in);
+            default       -> { }
+        }
+    }
+
+    static Path guardState(String session) {
+        String s = session == null || session.isBlank() ? "unknown"
+                : session.replaceAll("[^A-Za-z0-9_-]", "_");
+        return Paths.get(System.getProperty("java.io.tmpdir"), "archhook-guard", s);
+    }
+
+    static void guardPrompt(Map<String, Object> cfg, Path state, Object in) throws IOException {
+        Files.deleteIfExists(state);
+        Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)").matcher(orEmpty(asStr(get(in, "prompt"))));
+        if (m.find() && asStrList(cfg.get("design_skills")).contains(m.group(1))) {
+            guardOpen(state, m.group(1));
+        }
+    }
+
+    static void guardCall(Map<String, Object> cfg, Path state, Object in) throws IOException {
+        String tool = asStr(get(in, "tool_name"));
+        if ("Skill".equals(tool)) {
+            String skill = asStr(get(in, "tool_input", "skill"));
+            if (asStrList(cfg.get("design_skills")).contains(skill)) guardOpen(state, skill);
+        } else if ("Agent".equals(tool) || "Task".equals(tool)) {
+            String agent = asStr(get(in, "tool_input", "subagent_type"));
+            if (asStrList(cfg.get("executor_agents")).contains(agent)) Files.deleteIfExists(state);
+        }
+    }
+
+    static void guardOpen(Path state, String skill) throws IOException {
+        Files.createDirectories(state.getParent());
+        Files.writeString(state, skill, StandardCharsets.UTF_8);
+    }
+
+    static void guardWrite(Map<String, Object> cfg, Path state, Object in) throws IOException {
+        String file = asStr(get(in, "tool_input", "file_path"));
+        if (file == null) return;
+        String rel = relative(Paths.get(file));
+
+        // 1. Design phase open, a write under src/, not from inside an executor agent.
+        //    `agent_type` is only present when the call comes from a subagent.
+        String agent = asStr(get(in, "agent_type"));
+        boolean executor = agent != null && asStrList(cfg.get("executor_agents")).contains(agent);
+        if (Files.isRegularFile(state) && !executor
+                && matchesAny(asStrList(cfg.get("design_forbidden_paths")), rel)) {
+            err("❌ Design phase open (" + orDash(readOrNull(state)) + ") — " + rel + " is not a design output.");
+            err("Design writes only under docs/. Put the SQL or code in the partial as a code block;");
+            err("the executor agent materializes every file under src/.");
+            System.exit(2);
+        }
+
+        // 2. A folder whose consolidated spec is approved or implemented is frozen.
+        Matcher m = Pattern.compile("^" + Pattern.quote(orEmpty(asStr(cfg.get("use_cases_dir")))) + "/(UC-[^/]+)/")
+                .matcher(rel);
+        if (!m.find()) return;
+        Path folder = ROOT.resolve(asStr(cfg.get("use_cases_dir"))).resolve(m.group(1));
+        String status = specStatus(folder);
+        if (status == null || !asStrList(cfg.get("frozen_statuses")).contains(status)) return;
+        if (isStatusClose(in, rel, status)) return;
+        err("❌ " + m.group(1) + " is " + status + " — its specs are immutable.");
+        err("Record the change in the new use case's \"Impact on approved use cases\" section.");
+        err("To reopen a spec that was never implemented, set `status: draft` by hand.");
+        System.exit(2);
+    }
+
+    /** `status:` of the folder's UC-*-spec.md, or null when there's no consolidated spec. */
+    static String specStatus(Path folder) throws IOException {
+        if (!Files.isDirectory(folder)) return null;
+        try (Stream<Path> s = Files.list(folder)) {
+            for (Path p : s.filter(f -> f.getFileName().toString().matches("UC-.*-spec\\.md"))
+                           .collect(Collectors.toList())) {
+                Map<String, String> fm = frontmatter(orEmpty(readOrNull(p)));
+                if (fm != null && fm.get("status") != null) return fm.get("status");
+            }
+        }
+        return null;
+    }
+
+    /** The one edit an approved spec admits: its status line, approved → implemented. */
+    static boolean isStatusClose(Object in, String rel, String status) {
+        if (!"approved".equals(status) || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+        if (!"Edit".equals(asStr(get(in, "tool_name")))) return false;
+        String oldS = asStr(get(in, "tool_input", "old_string"));
+        String newS = asStr(get(in, "tool_input", "new_string"));
+        return oldS != null && newS != null && oldS.contains("status: approved")
+                && newS.equals(oldS.replace("status: approved", "status: implemented"));
+    }
 
     // ── utilities ────────────────────────────────────────────────────────────
 

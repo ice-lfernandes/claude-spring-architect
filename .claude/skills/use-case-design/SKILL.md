@@ -13,7 +13,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Already-designed use cases
 
-!`ls -1d docs/use-cases/UC-* 2>/dev/null | tail -5 || echo "(none — this will be UC-001)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort | tail -5`
+
+Empty above → none yet, this will be `UC-001`. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Request
 
@@ -66,6 +69,8 @@ record, with all four options and the notes, is in
 | Writing classes, tests, or migrations | The spec describes what to create; creating is a different phase | The layer skills and, eventually, the executor agent |
 | Per-layer detail (annotations, columns, exact HTTP status) | Each layer has its own rule and owner | The partial specs — see § Structure |
 | **Path, verb, and HTTP status** | Fixing them here creates divergence: `api-rest.md` has URI and status rules this skill doesn't apply, and `30-rest.md` ends up correcting the parent spec's prose. Write the situation (`created`, `conflict with existing state`), not the number | `rest-api-architect`, in `30-rest.md` |
+| **Idempotency mechanism** (`Idempotency-Key`, key table) | `api-rest.md` requires it on creation `POST`s; deciding "no" here was overwritten downstream and cost a second persistence pass. Record the business fact — "does repeating the request create a duplicate?" — and mark the technical decision as delegated | `rest-api-architect`, in `30-rest.md` |
+| **Exception name and class** | A name fixed here gets demoted by `domain-modeling` (a subclass needs ≥ 2 call sites) and promoted back by a later case. Describe the situation (`email already in use`) and its kind (validation, not found, conflict, business rule) | `domain-modeling`, in `10-dominio.md` |
 
 If the user asks for one of these, say which piece owns it and stop. Don't improvise
 the decision.
@@ -76,9 +81,19 @@ the decision.
    destination in the request, stop and ask for a rewrite, with the examples from
    `references/scope-boundary.md`. Don't proceed by guessing.
 2. **Count the side effects** using the boundary test. Two or more with no shared
-   transaction → present the proposed split (which UC stays synchronous, which reacts
-   to which event) and **wait for the user's choice**. Nothing is saved before the
-   answer.
+   transaction — or a request naming several operations (create, read, update, delete)
+   — is several use cases. **A split becomes backlog, not work:**
+
+   1. Present the list in dependency order (which UC stays synchronous, which reacts to
+      which event, which needs the aggregate another one creates) in **one**
+      `AskUserQuestion`, asking which one to design now.
+   2. Design only the chosen one.
+   3. Append the others to `docs/use-cases/BACKLOG.md`, from
+      `templates/backlog.md.example`: one line each, with the description ready to pass
+      to the next `/new-feature`. **Don't reserve a number** — a number is given when the
+      case is designed, so skipping or dropping an entry leaves no gap.
+
+   Nothing is saved before the answer.
 3. **Interview** with `AskUserQuestion`, four blocks, one per call when earlier
    answers change the next questions:
 
@@ -86,29 +101,63 @@ the decision.
    |---|---|
    | Trigger, payload, response | Who initiates, what data comes in, what goes out and in what shape |
    | Side effects | Writes, external calls, publications — the boundary already counted in step 2, now confirmed |
-   | Invariants and errors | Rules the domain guarantees, and the `@.claude/rules/error-handling.md` exception born from each violation |
-   | Idempotency, transaction, concurrency | Safe to re-run? Where does the transaction open and close? What key could collide? |
+   | Invariants and errors | Rules the domain guarantees, and the situation each violation produces — described, never named as an exception |
+   | Repetition, transaction, concurrency | Does repeating the request create a duplicate (business fact)? Where does the transaction open and close? What business key could collide? |
 
    Don't move on with a block unanswered. A missing answer becomes a silent assumption
    in the spec.
+
+   **Checklist before every `AskUserQuestion`.** Read each question and each option:
+
+   | Does it mention… | Then |
+   |---|---|
+   | an HTTP status code, a verb, or a path | don't ask — `rest-api-architect` decides |
+   | idempotency, `Idempotency-Key`, a key table | don't ask — ask the business fact instead |
+   | an exception class name | don't ask — `domain-modeling` decides |
+   | only one option | don't ask — decide and record it in the spec |
+
+   A question whose answer another skill overwrites is worse than no question: it costs
+   the user's time and produces a divergence.
+
+   **Negative example** — never ask this:
+
+   > What does the endpoint return after creating? · `201 with body` · `201 without body` · `200 with id`
+
+   The user answered "201 without body"; `rest-api-architect` overwrote it by rule.
+   Ask this instead:
+
+   > After creating, does the caller need the created data back, or only a reference to it?
 4. **Read the code before proposing.** `Glob`/`Grep` to know what already exists:
    aggregate, ports, repository, controller. Every spec component carries a **NEW**,
    **CHANGE**, or **REUSE** state. Proposing to create what already exists is this
    skill's most expensive failure mode.
+
+   Read the approved specs too — every `UC-NNN-spec.md` whose `status:` is `approved`
+   or `implemented`. They are a **read-only contract**: reuse the aggregate they already
+   modeled, and never edit their files. A change this case needs in an approved case
+   goes into this spec's `## Impact on approved use cases` section — which case, what
+   changes, why. Decide what this case needs; don't defer or anticipate a decision for a
+   future case.
 5. **Derive the real paths** from the active blueprint's `packages.map` — in the
    generated project, from the packages documented in the root `CLAUDE.md` and the
    module `CLAUDE.md` files. Never write a generic path when the real one is knowable.
-6. **Fix the canonical names** per `@.claude/rules/naming.md`: inbound port
-   `<Verb><Noun>UseCase`, implementation `<Verb><Noun>Service`, aggregate as a noun,
-   exceptions from the `@.claude/rules/error-handling.md` family. These names are the
-   inherited contract — the partial specs detail them, never reinvent them.
-7. **Generate** from `templates/use-case-spec.md.example` into
-   `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md`. `NNNN` is the highest existing one
-   plus one, read from the injection at the top. Create the folder; don't create the
+6. **Fix the canonical names** per `@.claude/rules/naming.md`: the use case and its
+   ports in the active blueprint's vocabulary (§ Architecture vocabulary — in this
+   repository, the naming comment in the blueprint's YAML), aggregate as a noun. Never
+   `<Verb><Noun>Service` by default: in a clean-architecture blueprint the use case is a
+   concrete `<Verb><Noun>UseCase` with no interface. No exception names — see § Out of
+   scope. These names are the inherited contract — the partial specs detail them, never
+   reinvent them.
+7. **Fix the number and the slug.** This skill is their only owner — no caller passes
+   them in. `NNN` is the highest existing `UC-NNN` plus one, read from the injection at
+   the top (`UC-001` when there's none); the slug is kebab-case, from the trigger's verb
+   and noun.
+8. **Generate** from `templates/use-case-spec.md.example` into
+   `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md`. Create the folder; don't create the
    empty partials.
-8. **Report and stop.** File path, the boundary applied, the sibling use cases the
-   split produced (if any), and the table of who details each partial. **Don't invoke
-   any skill** — see § Handoff.
+9. **Report and stop.** File path, the boundary applied, the backlog entries the split
+   produced (if any), and the table of who details each partial. **Don't invoke any
+   skill** — see § Handoff.
 
 ## Spec structure
 
@@ -121,8 +170,10 @@ docs/use-cases/UC-001-create-user/
 ├── 20-persistencia.md   ← persistence-architect
 ├── 30-rest.md           ← rest-api-architect
 ├── 40-testes.md         ← test-architect
-└── README.md            ← /new-feature, once it exists: index + consolidated checklist
+└── UC-001-spec.md        ← /new-feature: consolidated spec, carries `status:`
 ```
+
+`docs/use-cases/BACKLOG.md` sits beside the folders: the use cases a split left for later.
 
 While the partials don't exist yet, `00-caso-de-uso.md` stands on its own: the
 component table already names every file to create and who details it. It's an
@@ -142,14 +193,20 @@ next, with the spec's path as the argument.
 
 **Reads** `@.claude/rules/architecture-ddd.md` (Application section — where the
 transaction opens, what doesn't go in the signatures), `@.claude/rules/naming.md`,
-`@.claude/rules/error-handling.md`, the active blueprint's `packages.map`, and this
+`@.claude/rules/error-handling.md` (the four kinds only — names belong to `domain-modeling`), the active blueprint's `packages.map` and naming convention, and this
 skill's `references/scope-boundary.md` before counting effects.
 
-**Writes** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md`. Only that file. The `10-`
-through `40-` partials belong to the layer skills; the consolidated `README.md`
-belongs to the `/new-feature` orchestrator once it exists.
+**Writes** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and appends to
+`docs/use-cases/BACKLOG.md`. Only those. The `10-` through `40-` partials belong to the
+layer skills; the consolidated `UC-NNN-spec.md` belongs to the `/new-feature`
+orchestrator.
 
-**Does not** write code, tests, migrations, or OpenAPI. Doesn't touch the inbound REST
+**Owns** the use case number and slug. No other piece assigns them.
+
+**Does not** edit an approved spec (`status: approved` or `implemented`) — reads it as a
+contract, and records the needed change in its own impact section.
+
+**Does not** write code, tests, migrations, or OpenAPI, and never writes under `src/`. Doesn't touch the inbound REST
 adapter — the package the blueprint's `packages.map` gives that role
 (`rest-api-architect`) —, the domain or application (`java-patterns`,
 `domain-modeling`), nor `.claude/rules/**`. Doesn't decide technology.

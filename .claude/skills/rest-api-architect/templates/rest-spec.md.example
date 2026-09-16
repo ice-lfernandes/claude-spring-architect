@@ -68,7 +68,8 @@ Bean validation never carries `errorCode`: it's structural, not from the domain.
 **Pagination** — `GET /api/v1/users` is offset: `page` (0-based), `size` defaulting to 20
 and capped at 100, `sort` defaulting to `createdAt,desc`. Tiebreak by `id` is mandatory,
 added in the application and not requested from the client. Cursor isn't used here: the
-expected volume (200,000 rows, from `20-persistencia.md`) doesn't justify it.
+expected volume (~200,000 rows in 12 months, answered in this skill's interview) doesn't
+justify it.
 
 **Idempotency** — two halves, and only the first belongs to this partial:
 
@@ -77,6 +78,14 @@ expected volume (200,000 rows, from `20-persistencia.md`) doesn't justify it.
 | Header presence and format | `IdempotencyKeyInterceptor` in the adapter | yes — 400 above |
 | Recording the key + the effect, in the same transaction | application layer | no — only declared as needed |
 | `idempotency_keys` table (route, caller, body hash, status, body, TTL >= 24 h) | `20-persistencia.md` | no — **handed off to `persistence-architect`** |
+
+**Schema requirements** — read by `persistence-architect` in its first pass, which runs
+after this partial:
+
+| Requirement | Why |
+|---|---|
+| `idempotency_keys` table, shared — reuse if it already exists | `POST /api/v1/users` requires `Idempotency-Key` (`api-rest.md` § Idempotency) |
+| `users` expected volume: ~200,000 rows in 12 months | decides offset pagination here; sizes indexes there |
 
 **Dependencies to add** — the executor applies them to `pom.xml`; this skill only
 declares them.
@@ -106,3 +115,12 @@ Asserting only the status number isn't enough: a wrong `errorCode` would slip th
 
 Body-shape fixtures: `templates/error-responses.json.example` and
 `templates/page-response.json.example`.
+
+## Impact on approved use cases
+
+none
+
+Changes this partial decides in code an approved use case produced — one row each:
+`| Approved case | Change | Why |`. Approved specs and partials are never edited;
+consolidation collects this section into `UC-NNN-spec.md`.
+

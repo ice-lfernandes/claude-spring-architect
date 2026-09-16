@@ -79,3 +79,12 @@ protects nothing.
 
 One open gap: the table's last invariant has no named test. Close it before
 implementing — an invariant with no test is an invariant nobody guarantees.
+
+## Impact on approved use cases
+
+none
+
+Changes this partial decides in code an approved use case produced — one row each:
+`| Approved case | Change | Why |`. Approved specs and partials are never edited;
+consolidation collects this section into `UC-NNN-spec.md`.
+

@@ -87,6 +87,18 @@
     }
   },
 
+  "guard": {
+    "$comment": "Read by ArchHook.java `guard` mode, wired only into project-bootstrap/templates/settings.json.example. While a design skill runs (opened by `/<skill>` or a Skill call to one of `design_skills`, closed by the next prompt or by an `executor_agents` Agent call), Write/Edit on `design_forbidden_paths` is blocked unless the call comes from inside an executor agent. Independently, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Why: a design skill once wrote migrations under src/, and a later use case rewrote the specs of an earlier one — both while the skills forbade it in prose.",
+    "design_skills": [
+      "new-feature", "use-case-design", "domain-modeling", "rest-api-architect",
+      "persistence-architect", "messaging-architect", "test-architect"
+    ],
+    "executor_agents": ["java-spring-boot-developer", "archunit-installer"],
+    "design_forbidden_paths": ["src/**", "**/src/**"],
+    "use_cases_dir": "docs/use-cases",
+    "frozen_statuses": ["approved", "implemented"]
+  },
+
   "mcp": {
     "$comment": "Validated by ArchHook.java schema, same as `types` above. Design: .claude/decisions/0033-mcp-in-architect-designer.md",
     "match": [

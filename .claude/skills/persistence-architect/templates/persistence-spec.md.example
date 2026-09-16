@@ -79,6 +79,29 @@ the second one fail; the adapter translates the failure into the conflict except
 |---|---|---|
 | `V3__create_users.sql` | expand | Creates `users`, the `UNIQUE`, and the FK index |
 
+The SQL lives here, not in a file. This skill never writes under `src/`; the executor
+creates the file at the path below from this block, verbatim — re-checking `<N>` against
+the migrations on disk at implementation time.
+
+**`src/main/resources/db/migration/V3__create_users.sql`**
+
+```sql
+CREATE TABLE users (
+    id            uuid         NOT NULL,
+    email         varchar(254) NOT NULL,
+    name          varchar(120) NOT NULL,
+    department_id uuid         NULL,
+    created_at    timestamptz  NOT NULL,
+    version       bigint       NOT NULL DEFAULT 0,
+    CONSTRAINT pk_users PRIMARY KEY (id),
+    CONSTRAINT uq_users_email UNIQUE (email),
+    CONSTRAINT fk_users_department FOREIGN KEY (department_id)
+        REFERENCES departments (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_users_department_id ON users (department_id);
+```
+
 New table, so there's no expand/contract pair to schedule. If `users` already existed in
 production, the `version` column would enter as `NULL`-allowed in one migration, be
 backfilled in another, and only a third release would set it `NOT NULL`.
@@ -99,6 +122,14 @@ re-discussed here — `@.claude/rules/persistence.md` § Configuration.
 | `spring.jpa.open-in-view` | `false` | Rule. Repeated here only because Spring Boot's default is the opposite |
 
 Full shape in `templates/application-persistence.yml.example`.
+
+## Impact on approved use cases
+
+none
+
+Changes this partial decides in code an approved use case produced — one row each:
+`| Approved case | Change | Why |`. Approved specs and partials are never edited;
+consolidation collects this section into `UC-NNN-spec.md`.
 
 ## Implementation order
 

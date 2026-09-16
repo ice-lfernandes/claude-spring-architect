@@ -101,6 +101,10 @@ All three meet the vocabulary and pass the boundary test with one effect.
 > them, and saves the order to `orders` and `order_items`. Returns 201 with the
 > order's id and the `Location` header. Insufficient stock returns 422.
 
+The request may carry statuses and a path — accept them as the user's input, pass them on
+for `rest-api-architect`, and don't ask about them. The spec still records situations
+(`created`, `insufficient stock`), not the numbers.
+
 One effect (transactional `INSERT` into two tables of the same aggregate). The
 `SELECT` on `products` doesn't count.
 
@@ -134,19 +138,18 @@ Zero technical triggers, zero destinations, and it mixes two things ("notify" an
 
 ## 4. Canonical names the parent spec fixes
 
-Come from `@.claude/rules/naming.md`. Here only the way to derive them from the
-trigger, so the partial specs don't reinvent them:
+Come from `@.claude/rules/naming.md` and the active blueprint's vocabulary. Here only the
+way to derive them from the trigger, so the partial specs don't reinvent them:
 
 | Element | Rule | Example (UC-001, create user) |
 |---|---|---|
 | Identifier | `UC-NNN-<slug-kebab>` | `UC-001-create-user` |
-| Inbound port | `<Verb><Noun>UseCase` | `CreateUserUseCase` |
-| Implementation | `<Verb><Noun>Service` | `CreateUserService` |
+| Use case class(es) | Active blueprint's vocabulary — `naming.md` § Architecture vocabulary | hexagonal: port `CreateUserUseCase` + `CreateUserService` · clean architecture: concrete `CreateUserUseCase`, no interface |
 | Input command | `<Verb><Noun>Command` | `CreateUserCommand` |
 | Aggregate | Noun | `User` |
 | Outbound port | `<Resource>Repository` | `UserRepository` |
 | Emitted event | Past participle | `UserCreated` |
-| Exception | Family from `@.claude/rules/error-handling.md` | `EmailAlreadyUsedException` (Conflict) |
+| Error situation | Described, with its kind — never an exception name (`domain-modeling` names it) | `email already in use` (conflict) |
 
 The use case's verb is the trigger's, never a generic one: `confirm`, `expire`,
 `import` — never `process`, `handle`, or `execute`.

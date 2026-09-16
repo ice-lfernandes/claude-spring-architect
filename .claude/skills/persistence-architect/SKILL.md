@@ -14,7 +14,10 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`ls -1d docs/use-cases/UC-*/ 2>/dev/null || echo "(none — run /use-case-design first)"`
+!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+
+Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
+aborts the command before any fallback runs.)
 
 ## Target
 
@@ -35,9 +38,10 @@ contract. Without the domain partial, it stops and tells you to run `/domain-mod
 designing tables before the aggregate has a boundary produces a schema that describes the
 form, not the business.
 
-**Exit rule: it doesn't write code.** It emits `20-persistencia.md` and, when the schema
-is new, the migration `.sql` file. The Java classes come from the executor agent, which
-reads the partial and the `templates/` exemplars. Inherits D15 —
+**Exit rule: it writes only under `docs/`.** It emits `20-persistencia.md`, and the
+migration SQL goes **inside it** as a code block with its target file name and path —
+never as a file under `src/`. The migration file and the Java classes come from the
+executor agent, which reads the partial and the `templates/` exemplars. Inherits D15 —
 `@.claude/decisions/0003-skill-domain-modeling.md`.
 
 **Rule rule: the rules don't live here.** Lazy fetch, `ddl-auto: validate`, migration
@@ -71,8 +75,8 @@ The division is by **moment and artifact**, not technology:
 |---|---|---|
 | `use-case-design` | Before the domain exists | `00-caso-de-uso.md` — boundary and canonical names |
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports |
-| **this skill** | After the domain partial | `20-persistencia.md` + migration |
-| `rest-api-architect` | In parallel with this one | `30-rest.md` — transport, no schema |
+| **this skill** | After the domain partial | `20-persistencia.md`, migration SQL inside it |
+| `rest-api-architect` | Before this one | `30-rest.md` — transport, plus the schema requirements it creates |
 | `test-architect` | After all of them | `40-testes.md` |
 
 If the aggregate has no written invariants yet, it isn't this skill. If the problem is a
@@ -84,8 +88,11 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 1. **Read the specs.** `00-caso-de-uso.md` and `10-dominio.md` from the folder in
    `$ARGUMENTS`. Without the second, stop. Extract: aggregate root, fields and types,
    value objects, declared output ports, and the component table with NEW/CHANGE/REUSE
-   state. Also check for `30-rest.md`: if it exists and requires `Idempotency-Key`, this
-   pass also owns the shared idempotency table — see step 4a.
+   state. Also read `30-rest.md` when the use case has an HTTP trigger — in `/new-feature` it
+   always exists by now, because REST runs first. Its block 4 `Schema requirements` list
+   is input to this pass: the shared idempotency table (step 4a) and anything else there
+   gets designed now, not in a second pass. An HTTP-triggered case whose `30-rest.md`
+   doesn't exist yet → stop and tell the caller to run `/rest-api-architect` first.
 
 2. **Survey what already exists.** Look for entities, repositories, and migrations in
    the project. A table that already exists gets altered; it isn't recreated. The
@@ -95,12 +102,13 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 
    ```bash
    ls db/migration/ src/main/resources/db/migration/ 2>/dev/null
-   grep -rln "@Entity" --include=*.java src/ 2>/dev/null
+   grep -rln "@Entity" --include='*.java' src/ 2>/dev/null
    grep -rl "idempotency_keys" db/migration/ src/main/resources/db/migration/ 2>/dev/null
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions
-   per call. Don't re-ask what `00-caso-de-uso.md` or `10-dominio.md` already answered.
+   per call. Don't re-ask what `00-caso-de-uso.md`, `10-dominio.md`, or `30-rest.md` already answered —
+   the collection's growth, above all.
 
    | Axis | Decides |
    |---|---|
@@ -128,10 +136,13 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    Column set and TTL floor come from `@.claude/rules/api-rest.md` § Idempotency; don't
    redecide them here.
 
-5. **Write the migration.** `db/migration/V<N>__<verb>_<object>.sql`, with `<N>`
-   following the highest one found in step 2. Shape in
+5. **Fix the migration in the partial.** Name per `@.claude/rules/persistence.md`
+   § Migrations, with `<N>` following the highest one found in step 2, and the target
+   path under the module the blueprint gives the persistence role. The SQL goes as a
+   fenced `sql` code block in block 4 of `20-persistencia.md`, headed by that path. Shape in
    `templates/V1__create_table.sql.example`. One migration per logical change; never
-   edit one already applied.
+   edit one already applied. **Don't create the `.sql` file** — anything under `src/`
+   belongs to the executor, which materializes it from this block.
 
 6. **Fix the queries and access plan.** For each output port in `10-dominio.md`: the
    query, the fetch strategy, the index that serves it, and whether it's paginated.
@@ -152,7 +163,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    schema just designed. Don't edit `docker-compose.yml` here — that skill is its
    single owner.
 
-10. **Report and stop.** Path of the files written, divergences from `10-dominio.md`,
+10. **Report and stop.** Path of the partial written, divergences from `10-dominio.md`,
     whether `docker-architect` ran, and what's missing for the folder to be complete
     (`30-rest.md`, `40-testes.md`). Don't invoke anyone else.
 
@@ -181,11 +192,14 @@ executor agent that reads them when generating code.
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
 `@.claude/rules/lombok.md`, `@.claude/rules/value-objects.md`,
 `@.claude/rules/api-rest.md` § Idempotency (only when step 4a applies), and the active
-blueprint's `packages.map`. Also reads `30-rest.md` when it exists, to check whether
-`Idempotency-Key` is required.
+blueprint's `packages.map`. Also reads `30-rest.md` for an HTTP-triggered case —
+mandatory then, its schema requirements are this pass's input.
 
-**Writes** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md` and the migration `.sql`
-files. Nothing else.
+**Writes** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`. Nothing else — the
+migration SQL lives inside it.
+
+**Never writes under `src/`.** Not a migration, not a class, not a property file. The
+executor materializes every file there from this partial.
 
 **Does not write Java code.** The entities, adapters, and repositories come from the
 executor agent.
