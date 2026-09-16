@@ -115,6 +115,11 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
 
 ## Queries
 
+- The repository takes Spring Data's `Pageable` and returns `Page<Entity>` — internal to
+  the adapter, same as any other Spring Data interface (§ Boundary). The adapter maps
+  the port's own pagination type into `PageRequest`/`Sort` going in, and `Page<Entity>`
+  into the port's own page result going out; neither `Pageable` nor `Page` crosses into
+  the application port (`@.claude/rules/architecture-ddd.md` § Application)
 - N+1 is a bug, not tuning. A collection loaded inside a loop is fixed with
   `JOIN FETCH`, `@EntityGraph`, `@BatchSize`, or a dedicated query
 - At most one collection per `JOIN FETCH`. Two multiply rows into a cartesian product

@@ -38,6 +38,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -109,11 +110,15 @@ public class UserController implements UserApi {
         }
     }
 
+    // Spring Data Web already resolved `pageable` from the query string
+    // (`Api.java.example`'s `@ParameterObject`). `toCriteria` is the one spot that
+    // converts it to `PageCriteria` — the port never sees `Pageable`
+    // (`.claude/rules/architecture-ddd.md` § Application).
     @Override
-    public PageResponse<UserResponse> list(int page, int size, String sort) {
-        var result = listUsers.handle(page, size, sort);
+    public PageResponse<UserResponse> list(Pageable pageable) {
+        var result = listUsers.handle(UserMapper.toCriteria(pageable));
         return PageResponse.of(result.content().stream().map(UserMapper::toResponse).toList(),
-                page, size, result.totalElements());
+                pageable.getPageNumber(), pageable.getPageSize(), result.totalElements());
     }
 
     @Override

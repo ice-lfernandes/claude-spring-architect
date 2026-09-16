@@ -150,6 +150,16 @@ Bean validation is structural, it doesn't come from the domain — so it carries
   "Today it's ten records" is not an argument.
 - Offset: `page` (0-based), `size`, `sort=field,asc`. `size` defaults to 20, max 100.
   Above the max is 400 — silently truncating makes the client believe it saw everything.
+- The controller binds the query string with Spring Data's `Pageable` instead of three
+  separate primitives — REST and persistence sit in the same outer ring
+  (`@.claude/rules/persistence.md` § Queries), so depending on Spring Data here isn't a
+  boundary violation. `@PageableDefault` fixes the default size and sort;
+  `spring.data.web.pageable.max-page-size` enforces the 400-above-max contract above —
+  Spring Data doesn't reject an oversized `size` on its own. springdoc needs
+  `@ParameterObject` on the parameter or it documents `Pageable` as a request body
+  instead of query params. The application port on the other side of the controller
+  never sees `Pageable`: convert to the port's own pagination type before the call
+  (`@.claude/rules/architecture-ddd.md` § Application).
 - Own envelope: `content` with the elements and `page` with `number`, `size`,
   `totalElements`, and `totalPages`. Nothing else at the root. Never Spring Data's `Page`
   serialized directly — the format changes between versions and exposes repository

@@ -23,6 +23,13 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  # feature: pagination — Spring Data doesn't reject an oversized `size` on its own;
+  # without this, api-rest.md's "above the max is 400" contract is unenforced.
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+
 # feature: actuator
 management:
   endpoints:

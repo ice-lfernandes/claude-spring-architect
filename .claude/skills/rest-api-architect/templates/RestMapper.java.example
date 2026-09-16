@@ -13,15 +13,33 @@ package com.exemplo.minhaapi.adapter.in.rest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
 import com.exemplo.minhaapi.application.port.in.CreateUserCommand;
+import com.exemplo.minhaapi.application.port.in.PageCriteria;
+import com.exemplo.minhaapi.application.port.in.PageCriteria.SortCriterion;
 import com.exemplo.minhaapi.domain.model.user.DepartmentId;
 import com.exemplo.minhaapi.domain.model.user.Email;
 import com.exemplo.minhaapi.domain.model.user.User;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 // Utility class: final, private constructor. No state, no Spring bean —
 // there's no dependency to inject.
 public final class UserMapper {
 
     private UserMapper() {}
+
+    // The only place `org.springframework.data.domain.Pageable` and this adapter's
+    // package meet. PageCriteria.java.example carries zero Spring Data import —
+    // `architecture-ddd.md` § Application forbids it past this point.
+    public static PageCriteria toCriteria(Pageable pageable) {
+        var sort = pageable.getSort().stream()
+                .map(order -> new SortCriterion(
+                        order.getProperty(),
+                        order.getDirection() == Sort.Direction.ASC
+                                ? SortCriterion.Direction.ASC
+                                : SortCriterion.Direction.DESC))
+                .toList();
+        return new PageCriteria(pageable.getPageNumber(), pageable.getPageSize(), sort);
+    }
 
     public static CreateUserCommand toCommand(CreateUserRequest request) {
         return new CreateUserCommand(

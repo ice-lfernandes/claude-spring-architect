@@ -194,7 +194,7 @@ question nobody asked.
 | OpenAPI docs | `@Tag` + `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, all declared on the contract interface | `Api.java.example` · `OpenApiDocs.java.example` |
 | DTOs | Input and output, fields, shape validation, translation | `Dtos.java.example` · `RestMapper.java.example` |
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
-| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (second `@Idempotent` endpoint onward) |
+| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (second `@Idempotent` endpoint onward) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the

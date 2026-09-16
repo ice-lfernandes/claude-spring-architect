@@ -33,6 +33,10 @@ case, service) is the active blueprint's decision, see `packages.map`.
 - One inbound abstraction per use case; fat interfaces are a smell
 - The transaction opens and closes here. Never in the adapter, never in the domain
 - No HTTP, JPA, or messaging types in signatures
+- Spring Data's `Pageable`, `Page`, and `Sort` are framework types too, same as
+  `org.springframework.data.*`: an inbound or outbound port that paginates takes and
+  returns a type the application layer owns, never these. Adapters may depend on them
+  directly; the conversion happens at each adapter's own boundary, never inside the port
 
 ## Adapters
 

@@ -1,0 +1,37 @@
+/*
+ * EXEMPLAR — the application-owned pagination/sort type that crosses the port boundary,
+ * per `.claude/rules/architecture-ddd.md` § Application: "an inbound or outbound port
+ * that paginates takes and returns a type the application layer owns, never
+ * `Pageable`/`Page`/`Sort`". Form reference for the executor agent; not a file to copy
+ * verbatim.
+ * Rules: `.claude/rules/architecture-ddd.md` (§ Application — zero Spring Data in the
+ *          port signature) · `.claude/rules/api-rest.md` (§ Pagination — the controller
+ *          binds `Pageable`, then converts to this type; see `RestMapper.java.example`'s
+ *          `toCriteria`) · `.claude/rules/persistence.md` (§ Queries — the persistence
+ *          adapter converts this type back into `PageRequest`/`Sort`)
+ *
+ * Zero `org.springframework.data.*` import here — that's the whole point. Owned by the
+ * package a `ListUsersQuery`-shaped port lives in (`application.port.in`); this file
+ * lives in `rest-api-architect`'s templates because the REST boundary is what's being
+ * documented in this pass, the same way `persistence-architect`'s
+ * `IdempotencyKeyStore.java.example` owns `IdempotencyRequest`/`StoredResponse` even
+ * though `rest-api-architect`'s `Controller.java.example` is what constructs them.
+ *
+ * `SortCriterion` over a raw `"field,asc"` string: a port signature that types the
+ * direction as an enum can't receive `"field,sideways"` — the REST adapter is where a
+ * malformed `sort` param becomes 400, not the port.
+ */
+package com.exemplo.minhaapi.application.port.in;
+
+import java.util.List;
+
+public record PageCriteria(int page, int size, List<SortCriterion> sort) {
+
+    public record SortCriterion(String property, Direction direction) {
+
+        public enum Direction {
+            ASC,
+            DESC
+        }
+    }
+}

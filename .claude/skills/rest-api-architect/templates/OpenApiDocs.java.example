@@ -98,7 +98,13 @@ import org.springframework.http.ProblemDetail;
         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
 public @interface CreateUserOpenApiDocs {}
 
-/** Goes on `UserController#list`, next to `@GetMapping`. */
+/**
+ * Goes on `UserController#list`, next to `@GetMapping`. The method's parameter is
+ * `@ParameterObject Pageable pageable` (`Api.java.example`), not three primitives —
+ * springdoc still needs these three `@Parameter`s by name to attach a description and
+ * example; it merges them with what it infers from `Pageable` instead of documenting an
+ * opaque object.
+ */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Operation(
