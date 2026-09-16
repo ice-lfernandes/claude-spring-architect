@@ -281,15 +281,6 @@ class IdempotencyAspect {
 }
 
 /*
- * Controller side. Everything Controller.java.example writes by hand — building
- * IdempotencyRequest, calling idempotent.execute(...), switching on the outcome —
- * collapses to one annotation:
- *
- * @Override
- * @Idempotent(bodyArgIndex = 1)
- * public ResponseEntity<UserResponse> create(String idempotencyKey, CreateUserRequest request) {
- *     User user = createUser.handle(UserMapper.toCommand(request));
- *     UserResponse body = UserMapper.toResponse(user);
- *     return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
- * }
+ * Controller side: see `Controller.java.example`'s `create` method — one
+ * `@Idempotent(bodyArgIndex = ...)` annotation, no by-hand claim/replay call.
  */
