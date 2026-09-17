@@ -23,6 +23,10 @@ All three reasons from invariant 6 apply.
 
 ## Contract
 
+**Executor:** yes — writes under `src/` while a design phase may still be open; must be
+listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
+`ArchHook.java schema`.
+
 **Ownership:** owns `src/**` and `src/test/**` — generated code.
 
 **Input (required):**

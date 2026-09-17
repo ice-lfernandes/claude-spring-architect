@@ -32,6 +32,11 @@ The Initializr `id` above **doesn't change** between Boot versions, but the
 `artifactId` recorded in `pom.xml` does. Confirmed in Boot 4 for this template:
 
 - `spring-boot-starter-web` → **`spring-boot-starter-webmvc`**
+- `spring-boot-starter-aop` → **`spring-boot-starter-aspectj`** — the old artifactId
+  isn't in the Boot 4 BOM at all; resolving it fails the POM with `'dependencies.dependency.version'
+  ... is missing`, not a 404. Applies to any AOP consumer added after bootstrap, both
+  `commons-logging-installer` (its aspects) and `rest-api-architect`'s
+  `IdempotencyAspect`
 - `spring-boot-starter-test` is no longer a single artifact: each production starter
   has its own `-test` (`spring-boot-starter-webmvc-test`,
   `spring-boot-starter-actuator-test`, …)

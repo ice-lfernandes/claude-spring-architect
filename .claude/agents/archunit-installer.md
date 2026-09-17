@@ -27,6 +27,10 @@ in this repo (`java-spring-boot-developer`).
 
 ## Contract
 
+**Executor:** yes — writes under `src/` while a design phase may still be open; must be
+listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
+`ArchHook.java schema`.
+
 **Input (required):** project root. Precondition — business classes already exist — is
 the caller's (`test-architect`'s) to check before invoking; this agent doesn't re-verify
 it.
@@ -79,10 +83,25 @@ back to the caller.
 3. Write `<main-module>/src/test/java/<packageBase>/ArchitectureTest.java` with the
    shape of `templates/ArchitectureTest.java.example`.
 
-4. **Translate the packages to the project's own.** The exemplar uses `hexagonal`'s
-   names; another architecture puts the ports elsewhere. The real packages are in the
-   root `CLAUDE.md` and the module `CLAUDE.md` files. A rule that names a package that
-   doesn't exist gets deleted, not forced into fitting.
+4. **Translate the packages to the project's own — and the naming-convention rules with
+   them, not just the package strings.** The exemplar uses `hexagonal`'s names and its
+   one-class-per-role-per-package shape (`outbound_ports_are_interfaces`,
+   `use_case_implementations`'s `Service` suffix); another architecture puts things
+   differently. The real packages **and vocabulary** are in the active blueprint's own
+   `packages.map` and its naming-convention comment (`.claude/blueprints/<id>/<id>.yaml`)
+   — read the comment, not just the map, before writing a suffix rule. A rule that names
+   a package that doesn't exist gets deleted, not forced into fitting.
+
+   **A package that co-locates two roles needs an explicit exception, not a
+   single-suffix rule.** `clean-architecture-single-module`/`-multi-module`'s
+   `application.usecase` holds both `<Verb><Noun>UseCase` and its `<Verb><Noun>Command`
+   in the same package (the blueprint's own comment says so) — a rule requiring every
+   class there to end in `UseCase` blocks every command the moment real code lands
+   (lessons-learned-006 § 5). Translate `.and().haveSimpleNameNotEndingWith("package-info")`
+   into `.and().haveSimpleNameNotEndingWith("package-info").and().haveSimpleNameNotEndingWith("Command")`
+   (or the exception the vocabulary comment names) whenever the blueprint documents a
+   second role sharing that package — don't carry the exemplar's single-suffix
+   assumption into a blueprint whose own comment says otherwise.
 
 5. One direction rule per boundary the project declares — the same ones in
    `.claude/forbidden-imports.txt` and in the POMs' `depends_on`. Don't invent

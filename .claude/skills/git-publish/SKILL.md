@@ -66,7 +66,17 @@ git rev-parse --is-inside-work-tree 2>/dev/null && echo TRACKED || echo UNTRACKE
 git status --porcelain 2>/dev/null
 git remote -v 2>/dev/null
 git log -1 --oneline 2>/dev/null
+git check-ignore -q . && echo ROOT_IGNORED_BY_PARENT
 ```
+
+**`ROOT_IGNORED_BY_PARENT`** — this project's own root is gitignored by an outer repo
+(e.g. a demo under this meta-repo's own `examples/`). `git status --porcelain` reflects
+the *outer* repo's tracked files, which have no relation to the feature this run just
+implemented — `src/`, `docs/use-cases/`, all of it invisible to that status.
+Before gate 1's question, show the diff-file list and ask explicitly whether it actually
+matches the feature just built; don't let the caller's commit-message context imply it
+does. If the caller (`/new-feature`'s guardrail step 2) already flagged this, skip
+re-discovering it — just carry the warning into gate 1's question.
 
 Three states, three different phrasings for gate 1:
 

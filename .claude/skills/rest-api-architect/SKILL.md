@@ -136,10 +136,28 @@ chain, this isn't the right skill.
    the public signature, no aggregate serialized. Manual, static mapper
    (`templates/RestMapper.java.example`).
 
+   **Apply masking to the fields `10-dominio.md` flagged sensitive.** Any DTO field
+   that mirrors a field `domain-modeling` listed as a masking candidate gets
+   `@MaskSensitiveData(maskedType = MaskedType.<X>)` (`@.claude/rules/logging.md` §
+   Masking mechanism), and the DTO class implements `LogMask`. This isn't optional
+   because it "looks fine without it": `GlobalHttpMethodLogAspect` logs every request
+   and response DTO by default (opt-out, not opt-in) — a DTO that doesn't implement
+   `LogMask` logs the field raw the moment the endpoint runs.
+
 6. **Fix the error map.** Each exception from `10-dominio.md` to its status and its
    `errorCode`, plus the structural errors that don't come from the domain (bean
    validation, unreadable body), and the 500 with `traceId`. This table is the source
    of block 5 — an exception that doesn't appear here won't have a test.
+
+   **Cross-check shape validation against domain invariants before listing both.** For
+   each row that comes from a domain invariant (not idempotency, not a structural
+   error), check whether step 5 already put a bean-validation annotation on the same
+   DTO field. If it did, the bean-validation 400 fires first and the domain's
+   `errorCode` is unreachable through this endpoint — mark the row accordingly (e.g.
+   "unreachable via this endpoint: intercepted by `@NotBlank` on `<field>`") instead of
+   listing it as if it were a scenario a contract test can actually hit. Don't write the
+   two as parallel, equally-reachable cases — a test written against the domain row
+   alone will assert a 422 that never happens.
 
 7. **Fix pagination and idempotency.** Offset by default; cursor only when volume or
    mutation of the set demands it. If the `POST` requires `Idempotency-Key`, declare
@@ -153,14 +171,19 @@ chain, this isn't the right skill.
    reopen it per use case: the controller calls `IdempotentExecution`, the command
    carries no key, and `10-dominio.md`'s use case signature doesn't change for it.
 
-   **First `Idempotency-Key` endpoint in the project → the controller calls
-   `IdempotentExecution` by hand** (`Controller.java.example`). **Second one → switch to
+   **Every `Idempotency-Key` endpoint, including the first one in the project, uses
    `@Idempotent` + `IdempotencyAspect`** (`templates/IdempotencyAspect.java.example`,
-   `templates/IdempotencyKeyInterceptor.java.example`'s annotation-based variant): it
-   reuses the same `IdempotentExecution`/`IdempotencyKeyPort` — no second port, no second
-   vocabulary — and needs zero code in the new controller beyond the annotation. Don't
-   introduce the aspect for a single endpoint: it costs a reflection-based response-type
-   lookup and a request-body-index argument that the explicit call doesn't need.
+   `templates/IdempotencyKeyInterceptor.java.example`'s annotation-based variant,
+   `Controller.java.example`): it reuses the same `IdempotentExecution`/`IdempotencyKeyPort`
+   — no second port, no second vocabulary — and needs zero code in the controller beyond
+   the annotation. When `idempotency_keys` is **NEW** in the project (first time this
+   folder decided it's needed), this same pass names `IdempotencyAspect` in the
+   dependencies list alongside the table — there is no separate manual path to fall back
+   to for a lone first endpoint. (Decision `.claude/decisions/0044-idempotent-first-endpoint.md`:
+   the by-hand call this replaced cost ~30 lines of controller-side response
+   (de)serialization per endpoint, code the aspect already generalizes, for a cost —
+   reflection-based response-type lookup and a body-index argument — that's paid once
+   per project regardless of endpoint count.)
 
    **Write the schema requirements down.** Block 4 closes with a `Schema requirements`
    list: every table or column this transport needs that the domain didn't model — the
@@ -192,9 +215,9 @@ question nobody asked.
 |---|---|---|
 | Endpoints | Method, path, `operationId`, port, success status | `Controller.java.example` implementing `Api.java.example` |
 | OpenAPI docs | `@Tag` + `@Operation`, `@ApiResponse` per status, `@Parameter` with examples, request body example — one composed `...OpenApiDocs` annotation per operation, all declared on the contract interface | `Api.java.example` · `OpenApiDocs.java.example` |
-| DTOs | Input and output, fields, shape validation, translation | `Dtos.java.example` · `RestMapper.java.example` |
+| DTOs | Input and output, fields, shape validation, translation, `@MaskSensitiveData` on sensitive fields | `Dtos.java.example` · `RestMapper.java.example` |
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
-| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (second `@Idempotent` endpoint onward) |
+| Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (every `@Idempotent` endpoint, first one included) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the
@@ -211,7 +234,9 @@ verifies them is at
 (mandatory — stops without the second), `@.claude/rules/api-rest.md`,
 `@.claude/rules/architecture-ddd.md` (Adapters and Composition sections),
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
-`@.claude/rules/code-quality.md`, and the active blueprint's `packages.map`. Also reads
+`@.claude/rules/code-quality.md`, `@.claude/rules/logging.md` (masking mechanism for
+DTO fields `10-dominio.md` flagged sensitive), and the active blueprint's
+`packages.map`. Also reads
 `20-persistencia.md` when it exists (a resumed or hand-run case) — the table's expected
 volume decides offset or cursor. In `/new-feature` this skill runs first, so the volume
 comes from its own interview ("does the collection grow without bound") and is written in

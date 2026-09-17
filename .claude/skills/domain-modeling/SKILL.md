@@ -98,6 +98,14 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    through the `@.claude/rules/value-objects.md` criterion before staying a primitive —
    a field with a formation rule that stays `String` is a decision to justify in the
    partial, not a default.
+
+   **Flag which fields are sensitive.** The same pass that decides a field's value
+   object (document, phone, email — `@.claude/rules/value-objects.md`'s catalog) is the
+   natural signal for `@.claude/rules/logging.md`'s masking rule: a field with a
+   formation rule that identifies a person (CPF/CNPJ, phone, email, a document number)
+   is a candidate for `@MaskSensitiveData`. List these fields in the aggregate block —
+   `rest-api-architect` reads this to decide which DTO fields implement `LogMask`; it
+   doesn't re-derive sensitivity from field names on its own.
 5. **Map each invariant to its exception.** Typed family from
    `@.claude/rules/error-handling.md` and `errorCode` in `UPPER_SNAKE_CASE`. An invariant
    without a named exception is an invariant nobody will implement.
@@ -139,7 +147,7 @@ question nobody asked.
 
 | Block | Details | Form exemplar |
 |---|---|---|
-| Aggregate and value objects | Root, fields, types, which VOs exist and why | `Aggregate.java.example` · `ValueObject.java.example` · `ValueObjectCatalog.java.example` |
+| Aggregate and value objects | Root, fields, types, which VOs exist and why, which fields are sensitive (masking candidates) | `Aggregate.java.example` · `ValueObject.java.example` · `ValueObjectCatalog.java.example` |
 | Invariants | Each rule, where it's enforced, which exception it raises; and the state of the exception family (NEW or REUSE) | `DomainGuards.java.example` · `DomainException.java.example` and the four typed ones · `@.claude/rules/error-handling.md` |
 | Ports | Input (`<Verb><Noun>UseCase`), command, output — complete signatures | `UseCasePort.java.example` · `Command.java.example` |
 | Events | Which event, which payload, which UC consumes it | `DomainEvent.java.example` |
@@ -160,7 +168,8 @@ Record: `@.claude/decisions/0011-bootstrap-without-business-code.md`.
 it), `@.claude/rules/architecture-ddd.md` (Domain and Application sections),
 `@.claude/rules/value-objects.md` (criterion for which field becomes a value object),
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
-`@.claude/rules/code-quality.md`, and the active blueprint's `packages.map`.
+`@.claude/rules/code-quality.md`, `@.claude/rules/logging.md` (which fields to flag as
+masking candidates), and the active blueprint's `packages.map`.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/10-dominio.md`. Only that file.
 

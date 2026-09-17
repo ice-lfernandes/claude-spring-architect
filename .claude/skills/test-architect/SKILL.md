@@ -137,6 +137,13 @@ what's left to cover outside of transport.
    (`@.claude/rules/persistence.md` § Boundary). Exemplar:
    `templates/PersistenceIT.java.example`.
 
+   **A DTO field `30-rest.md` marked `@MaskSensitiveData` requires its own masking
+   test.** `@.claude/rules/logging.md`'s "zero raw sensitive data in the log" has no
+   mechanical check anywhere else in the pipeline — a unit test that calls the DTO's
+   masked `toString()` (or serializes it the way `GlobalHttpMethodLogAspect` would) and
+   asserts the raw value is absent is the only place this gets verified other than
+   review. Name it alongside the DTO's own test class, not as a separate file.
+
 5. **Name each test.** Class and method per the rule's naming conventions, with the
    `IT` suffix on integration ones — without it failsafe doesn't run them and `verify`
    exits 0 without executing them.
@@ -207,8 +214,9 @@ reads it and writes the real file, once per project.
 (mandatory in design mode — stops without the second), `20-persistencia.md` and
 `30-rest.md` when they exist, `@.claude/rules/testing.md`,
 `@.claude/rules/error-handling.md`, `@.claude/rules/naming.md`,
-`@.claude/rules/code-quality.md`, `@.claude/rules/architecture-ddd.md`, and the active
-blueprint's `packages.map`.
+`@.claude/rules/code-quality.md`, `@.claude/rules/architecture-ddd.md`,
+`@.claude/rules/logging.md` (masking test requirement for fields `30-rest.md` marked
+sensitive), and the active blueprint's `packages.map`.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/40-testes.md` in design mode, directly. Setup
 mode writes nothing itself — it delegates to `archunit-installer`, which writes
