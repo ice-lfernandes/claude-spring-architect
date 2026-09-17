@@ -47,7 +47,11 @@ use case number or slug — `use-case-design` does.
   including its `status:` line (`draft` → `approved`)
 
 **Never writes under `src/`.** Neither does any skill it chains. Every file under `src/`
-— migrations included — belongs to `java-spring-boot-developer`.
+— migrations included — belongs to `java-spring-boot-developer`. The one exception: the
+executor-offer pre-flight (§ End of flow) may trigger `archunit-installer` (via
+`test-architect`'s setup mode) and `commons-logging-installer` (directly) before
+delegating. Those writes are the installers' own, one-time, gated by their own
+`AskUserQuestion` — not this orchestrator writing business code.
 
 **Never runs `git add`, `git commit`, or `git push`.** Neither does any skill it chains.
 Git happens only through `git-publish`, behind its two confirmations, at the end steps
@@ -67,7 +71,8 @@ below. No end of this flow is left without an explicit git instruction.
 whom. REST generates schema requirements — `Idempotency-Key` on a creation `POST` needs
 the shared key table — and persistence generates none for REST. With persistence first,
 the table was discovered after the partial was written, and persistence ran twice.
-7. `java-spring-boot-developer` — offered, only for an `approved` spec
+7. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
+   one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
 8. `git-publish` — invoked at the end, per § End of flow
 
 `java-patterns` is not a pipeline step: it carries no spec and this orchestrator never
@@ -350,7 +355,33 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
 
 `AskUserQuestion`: **Implement now** (`java-spring-boot-developer`) / **Not now**.
 
-- **Implement now** → delegate to `java-spring-boot-developer`, sending the spec path.
+- **Implement now** →
+  - **One-time setup pre-flight, before delegating.** The executor is about to write the
+    first `.java` under `src/` for this project run — the only point in the pipeline
+    where "is the one-time infrastructure installed yet" actually matters. Detect what's
+    missing, don't assume:
+
+    ```bash
+    grep -rl "ArchRule\|ArchTest" --include='*.java' src/test/ 2>/dev/null | head -1
+    find . -type d -iname commons -o -type d -path '*shared/logging' 2>/dev/null
+    ```
+
+    First command empty → ArchUnit not installed yet (same gap step 3 already flagged,
+    if this use case is the first one). Second command empty, or the directory it finds
+    has nothing but `package-info.java` → commons-logging classes not installed yet.
+    Either gap found → `AskUserQuestion`, one option per gap found: **Install now** /
+    **Skip for this run**.
+    - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with empty
+      `$ARGUMENTS` (setup mode) — same route step 3 already names, never invoke
+      `archunit-installer` directly, it stays `test-architect`'s alone.
+    - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
+      the `Agent` tool. No owning per-feature skill to route through: this orchestrator
+      is the trigger, same as it owns `git-publish`'s invocation.
+    - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
+      `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
+      compile; skipping isn't a gate failure, it's the user's call.
+    - Neither gap found → skip this pre-flight silently, no question asked.
+  - Delegate to `java-spring-boot-developer`, sending the spec path.
   - **Success** (final summary reports the checklist complete, the build green, and the
     spec at `status: implemented`) → **invoke** `git-publish` via the `Skill` tool, with
     `feat(UC-NNN-<slug>): <one-line summary>` as context.
@@ -402,6 +433,9 @@ See `templates/feature-spec.md.example` for the full shape.
 - **D22** — `/new-feature` design (this record).
 - **`@.claude/decisions/0032-messaging-architect-skill.md`** — `messaging-architect`
   chained as a conditional step, same pattern as `persistence-architect`/`rest-api-architect`.
+- **`@.claude/agents/commons-logging-installer.md`** — one-time logging/masking setup,
+  triggered directly from the executor-offer pre-flight, same "installed once, not at
+  bootstrap" shape as `archunit-installer`.
 - **`@.claude/decisions/0037-lessons-learned-005-remediation.md`** — closed input table,
   one use case per run, spec lifecycle, no `src/` and no git outside `git-publish`.
 - **Invariant 2** (`@CLAUDE.md`) — single owner. The orchestrator owns `UC-NNN-spec.md`;

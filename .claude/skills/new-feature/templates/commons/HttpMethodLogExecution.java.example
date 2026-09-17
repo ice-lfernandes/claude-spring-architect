@@ -1,0 +1,20 @@
+/*
+ * EXEMPLAR — per-endpoint override of `GlobalHttpMethodLogAspect`'s default. Apply on a
+ * `@RestController` method that needs a different `logReturn`/`logParameters` than the
+ * global default. Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.commons.logging;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface HttpMethodLogExecution {
+
+    boolean logReturn() default true;
+
+    boolean logParameters() default true;
+}

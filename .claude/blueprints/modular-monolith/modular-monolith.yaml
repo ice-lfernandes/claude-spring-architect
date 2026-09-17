@@ -79,6 +79,16 @@ packages:
     adapter.rest: "shared.internal.adapter.rest"
     adapter.persistence: "shared.internal.adapter.persistence"
     bootstrap.config: "config"
+    # Cross-cutting logging/masking annotations + AOP aspects (rules/logging.md) — not
+    # a new bounded-context module. Placed under `shared` itself, one level OUT of
+    # `internal` (like `<module>Api`/published events for a real module — see the
+    # naming-convention comment below): unmarked modules default to Spring Modulith's
+    # own `internal`-only encapsulation, and every module needs to freely import these
+    # annotations, the same reason `shared` is `@ApplicationModule(type = OPEN)` in the
+    # first place. A brand-new top-level `commons` package would just become one more
+    # ENCAPSULATED module needing the same OPEN marker for no benefit over reusing this
+    # one. Installed once, later, by `commons-logging-installer`, not at bootstrap.
+    commons.logging: "shared.logging"
 
 # project-bootstrap step 6.6 derives api-rest.md/persistence.md/value-objects.md/
 # observability.md's `paths` from the map above by default — which would only cover

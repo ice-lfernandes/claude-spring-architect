@@ -1,0 +1,28 @@
+/*
+ * EXEMPLAR — predefined masking regexes for `@MaskSensitiveData`. `@Getter` on `regex`
+ * is allowed under `.claude/rules/lombok.md`: `String` is immutable.
+ * Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.commons.logging;
+
+import lombok.Getter;
+
+@Getter
+public enum MaskedType {
+
+    ALL("\\S"),
+    EMAIL(".(?=.{4})(?=[^@])(?=[^@]{4})."),
+    DOCUMENT(".(?=.{3})"),
+    NAME(".(?=[^ ])(?=[^ ]{2})."),
+    DATE(".(?=[^ \\\\/.-].{3})."),
+    ADDRESS(".(?=.{3})[^, ]"),
+    ZIP_CODE(".(?=.{3})[^-]"),
+    NUMBER("\\d"),
+    TELEPHONE(".(?=.{2})[^-]");
+
+    private final String regex;
+
+    MaskedType(String regex) {
+        this.regex = regex;
+    }
+}

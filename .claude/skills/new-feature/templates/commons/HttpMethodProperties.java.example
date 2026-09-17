@@ -1,0 +1,7 @@
+/*
+ * EXEMPLAR — compilable as-is, not pseudo-code.
+ */
+package com.exemplo.minhaapi.commons.logging;
+
+public record HttpMethodProperties(Boolean enabled) {
+}

@@ -300,6 +300,23 @@ One sentence for the role, and the boundary line only when the module declares
 `forbidden_imports`. Don't write more: `package-info.java` isn't the place to reproduce
 a rule — cite it by path, invariant 2.
 
+**`commons` (or the blueprint's equivalent, e.g. `modular-monolith`'s `shared.logging`)
+is the one role that stays empty on purpose.** Its `package-info.java` still gets
+written here, same as every other role — but the logging/masking annotations and AOP
+aspects that belong in it are `.java` beyond `package-info.java`, which this skill never
+writes (see the contract above). They're installed later, once, by the
+`commons-logging-installer` agent, triggered from `/new-feature`'s pre-flight check —
+not from here. Don't write them, and don't skip the empty `package-info.java` either:
+without the package existing on disk, the installer has nowhere to write into.
+
+```java
+/**
+ * Cross-cutting logging and masking infrastructure (annotations + AOP aspects). See
+ * {@code .claude/rules/logging.md}. Empty until `commons-logging-installer` runs.
+ */
+package com.example.demoapp.commons.logging;
+```
+
 **b) Configuration for active features.**
 
 | Feature | What this step does |
@@ -576,7 +593,7 @@ and stays out of the generated project.
 | `persistence-architect` | ✅ | Designs the schema, mapping, and migrations for an already-modeled use case. Carries `templates/persistence-spec.md.example`, the three Java exemplars (entity, adapter with mapper, Spring Data interface), the idempotency trio (`IdempotencyKeyTable.sql.example`, `IdempotencyKeyStore.java.example`, `IdempotentExecution.java.example`), `V1__create_table.sql.example`, `application-persistence.yml.example`, and the two `references/` (SQL diagnosis and external links) |
 | `rest-api-architect` | ✅ | Designs the endpoints, DTOs, error map, and OpenAPI contract for an already-modeled use case. Carries `templates/rest-spec.md.example`, the six Java shape exemplars (annotated controller, DTOs, mapper, `PageResponse`, `Idempotency-Key` interceptor, `ApiExceptionHandler`), the two JSON fixtures (`error-responses`, `page-response`), and `references/best-practices-links.md`. The contract test exemplar lives in `test-architect` |
 | `test-architect` | ✅ | Two modes: design (the `40-testes.md` partial, per use case, inline) and setup (installs ArchUnit, once per project, delegated to the `archunit-installer` agent — see 6.8). Carries `templates/{test-spec.md,ArchitectureTest.java,TestFixtures.java,DomainTest.java,UseCaseTest.java,ControllerTest.java,PersistenceIT.java}.example` and `references/best-practices-links.md`. It's the sole owner of test-code shape — no other skill carries a test exemplar |
-| `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example` and `templates/feature-spec-short.md.example`. Its own `## Entry into generated projects` section already documents it travels here |
+| `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example`, `templates/feature-spec-short.md.example`, and `templates/commons/*.example` (the thirteen logging/masking exemplars `commons-logging-installer` translates and writes — owned here because `new-feature`'s pre-flight check is what triggers that agent, same as `test-architect` owns `ArchitectureTest.java.example` for `archunit-installer`). Its own `## Entry into generated projects` section already documents it travels here |
 | `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example` |
 | `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the two Java exemplars (producer adapter, consumer adapter), and `application-kafka.yml.example` |
 | `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
@@ -641,6 +658,7 @@ Copy the **entire file** of each development agent — `<name>.md` — into
 |---|---|---|
 | `java-spring-boot-developer` | ✅ | Reads `UC-NNN-spec.md` specs generated in the project and implements code. Only makes sense once the project exists and has designed use cases. Name recorded in D20 |
 | `archunit-installer` | ✅ | Invoked by `test-architect`'s setup mode, in the project, the same as in this repository. Without the copy, setup mode in the generated project delegates to an agent that doesn't exist. Name recorded in D30 |
+| `commons-logging-installer` | ✅ | Invoked by `new-feature`'s pre-flight check, in the project, the same as in this repository. Without the copy, that check delegates to an agent that doesn't exist. Reads `new-feature/templates/commons/*.example`, copied alongside it in step 6.7 |
 | `project-initializer` | ❌ | Creation ritual; nothing for it to do inside an already-generated project. Whoever clones the project doesn't create new projects from it — it's used as a base, not as a template generator |
 
 Verbatim — full frontmatter and content, no rewrites. Agents don't depend on

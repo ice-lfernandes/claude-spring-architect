@@ -39,7 +39,7 @@ Declare `paths` whenever the rule has an identifiable file territory.
 | `persistence.md` | Adapter boundary, JPA mapping, identity and keys, versioned and immutable migrations, N+1 and pagination, datasource configuration | `grep` from § How to verify + integration tests |
 | `testing.md` | Pyramid and levels, slices and context, doubles, names and shape, test data, database engine in integration tests, coverage gate (80% lines / 70% branches), architecture tests | `./mvnw verify` (failsafe + JaCoCo) + ArchUnit |
 | `observability.md` | Vendor integration for tracing (correlation identifier origin) and metrics (cardinality, health endpoint, vendor annotations) | Contract tests + context startup |
-| `logging.md` | `logback.xml` default pattern, log format and level semantics, sensitive data out of logs, per-class-type log content | Review |
+| `logging.md` | `logback.xml` default pattern, log format and level semantics, sensitive data masked or kept out of logs, per-class-type log content | Review |
 | `messaging.md` | Kafka producer/consumer boundary, delivery semantics (at-least-once, idempotent consumer), topic naming and serialization, retry/DLQ, consumer configuration | `grep` from § How to verify + integration tests |
 
 `architecture-ddd.md` is the only one without its own `paths`, by design: the globs come

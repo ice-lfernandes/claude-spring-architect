@@ -1,0 +1,11 @@
+/*
+ * EXEMPLAR — `app.logging.*`, not `spring.*`: Spring reserves that prefix for its own
+ * properties. Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.commons.logging;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "app.logging")
+public record GlobalProperties(HttpMethodProperties httpMethod) {
+}

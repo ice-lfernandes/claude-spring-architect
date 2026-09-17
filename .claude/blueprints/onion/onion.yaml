@@ -41,6 +41,7 @@ architecture_paths:
   - "persistence/**/*.java"
   - "presentation/**/*.java"
   - "app/**/*.java"
+  - "commons/**/*.java"
 
 modules:
   - id: domain
@@ -52,13 +53,21 @@ modules:
       - "jakarta.validation.."
       - "com.fasterxml.jackson.."
       - "tools.jackson.."  # Jackson 3 (Spring Boot 4) core; annotations stay under com.fasterxml.jackson
+  # Cross-cutting infra (logging/masking annotations + AOP aspects, see rules/logging.md)
+  # — not business code. A leaf, same as `domain`, but on the other side of the
+  # zero-framework line: everything else depends on it, `domain` never does. Bootstrap
+  # only creates the empty package-info; the real classes are installed once, later, by
+  # the `commons-logging-installer` agent.
+  - id: commons
+    path: commons
+    depends_on: []
   - id: persistence
     path: persistence
-    depends_on: [domain]
+    depends_on: [domain, commons]
     feature: persistence-jpa
   - id: presentation
     path: presentation
-    depends_on: [domain]
+    depends_on: [domain, commons]
     feature: rest
   - id: app
     path: app
@@ -75,6 +84,7 @@ packages:
     domain.gateway: "domain.gateway"
     persistence.persistence: "persistence"
     presentation.rest: "presentation"
+    commons.logging: "commons.logging"
 
 # Naming convention for this blueprint (specific to onion, not universal — see
 # .claude/rules/architecture-ddd.md for what IS universal, DDD, and
@@ -109,8 +119,8 @@ dependency_rules:
   direction: inward
   forbidden:
     - from: domain
-      to: [persistence, presentation, app]
-      reason: "The domain does not know about infrastructure or presentation — Palermo's tenet 2: inner layers define interfaces, outer layers implement them"
+      to: [persistence, presentation, app, commons]
+      reason: "The domain does not know about infrastructure or presentation — Palermo's tenet 2: inner layers define interfaces, outer layers implement them. commons included: it carries Spring AOP/AspectJ/Lombok framework code, and domain stays framework-free"
     - from: persistence
       to: [presentation]
       reason: "Two outer rings don't talk to each other sideways — neither is more central than the other, so there's no dependency-toward-center argument for this edge"
