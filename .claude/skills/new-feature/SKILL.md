@@ -310,11 +310,10 @@ If all specs that apply exist and validate (messaging only when step 5 wasn't sk
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
    - Order: implementation order (depends-on)
-   - Recipient: `java-spring-boot-developer` agent — **known gap:** the executor's fixed
-     19-step checklist doesn't yet implement a messaging block (no Kafka producer/consumer
-     code generation step). Until it's written, a consolidated spec with a messaging
-     block still needs manual implementation of that part. Declared, not silently
-     dropped — same pattern as D23's "passo 6.8 falta"
+   - Recipient: `java-spring-boot-developer` agent — a spec with § 6 runs the executor's
+     conditional Block M (steps M1-M4, between REST and Tests), which generates the Kafka
+     producer/consumer adapters from `25-mensageria.md`. Doesn't touch the fixed 19-item
+     checklist either way
 
 3. **Check whether the architecture tests can now be turned on.** The bootstrap doesn't
    install ArchUnit or the coverage gate by design: a `check` over an empty set proves
