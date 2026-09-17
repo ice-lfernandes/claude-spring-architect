@@ -169,6 +169,22 @@ checkout. If the work should be isolated in a worktree and isn't yet, that is de
 **now**, before any question or write. Never enter or leave a worktree mid-flow — edits
 get refused outside it and orphan folders appear in the main checkout.
 
+**Third case: the project root itself is gitignored by a parent repository.**
+
+```bash
+git check-ignore -q . && echo IGNORED
+```
+
+Happens when this project lives inside another repo's ignored path (e.g. a demo under
+this meta-repo's own `examples/`, which is 100% gitignored). The pipeline runs normally
+— nothing above depends on the root being tracked — but flag it here, once, so the
+run's own state carries the fact forward instead of `git-publish` discovering a `git
+status` that doesn't match the feature just implemented (lessons-learned-006 § 8:
+`src/`, `docs/use-cases/` all ignored, only an unrelated dirty file showed up in
+`status`). `IGNORED` → note it in the run's context and pass it to `git-publish`'s
+invocation at § End of flow so its own state check (`@.claude/skills/git-publish/SKILL.md`
+step 1) knows to warn instead of assuming the diff matches the feature.
+
 ### 3 · Project
 
 Checks `pom.xml` (exists + parseable), `.claude/forbidden-imports.txt`, and that a domain
@@ -377,6 +393,15 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
       the `Agent` tool. No owning per-feature skill to route through: this orchestrator
       is the trigger, same as it owns `git-publish`'s invocation.
+    - **Both gaps found and both answered "Install now" → never fire the `Skill` call
+      and the `Agent` call in the same turn.** `Skill(test-architect)` opens a design
+      phase (`ArchHook.java`'s guard) and `Agent(commons-logging-installer)` closes one —
+      two independent `PreToolUse` hooks with no ordering guarantee between them when
+      dispatched together, and the loser blocks every write the other agent makes under
+      `src/` for the rest of the run. Run them one at a time, in separate turns: the
+      `Skill` call first, wait for it to finish, then the `Agent` call.
+      `.claude/hooks/ArchHook.java` § guard documents the same rule; lessons-learned-006
+      § 1 is the run that hit it (138k tokens, zero files written, had to relaunch alone).
     - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
       `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
       compile; skipping isn't a gate failure, it's the user's call.

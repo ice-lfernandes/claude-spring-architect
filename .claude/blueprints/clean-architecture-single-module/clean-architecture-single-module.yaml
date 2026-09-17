@@ -52,6 +52,13 @@ packages:
     domain.exception: "domain.exception"
     application.usecase: "application.usecase"
     application.port: "application.port"
+    # Cross-cutting application-layer infrastructure that belongs to no single
+    # aggregate/use case — e.g. `IdempotentExecution`, the shared component
+    # `rest-api-architect`'s Idempotency-Key exemplars assume. Without this entry the
+    # executor invents an ad hoc package the first time it needs one (lessons-learned-006
+    # § 4) instead of following architecture data. Still an "application" package for
+    # `dependency_rules.forbidden` below (prefix match on the group name).
+    application.shared: "application.shared"
     infrastructure.rest: "infrastructure.rest"
     infrastructure.persistence: "infrastructure.persistence"
     infrastructure.messaging: "infrastructure.messaging"
@@ -61,6 +68,12 @@ packages:
 # Same naming convention as `clean-architecture-multi-module` — splitting into a
 # module or a package doesn't change the class vocabulary:
 #   Use case (concrete, no interface): <Verb><Noun>UseCase  — e.g. CreateUserUseCase
+#   Command (record, co-located in the SAME package as its UseCase, one per use case):
+#                            <Verb><Noun>Command             — e.g. CreateUserCommand.
+#                            The one class in `application.usecase` that doesn't end in
+#                            `UseCase` — an ArchUnit naming rule for this package must
+#                            name `Command` as an explicit exception, not assume the
+#                            package is single-suffix (lessons-learned-006 § 5)
 #   Output port (interface, lives in application, implemented by infra):
 #                            <Capability>                    — e.g. SendNotification, RegisterEvent, DataProvider
 #   Port implementation (lives in infrastructure): <Capability><Technology>Adapter

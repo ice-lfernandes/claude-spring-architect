@@ -297,6 +297,10 @@ public class ArchHook {
             checkOne(sch, rel, content, errors);
         }
 
+        if (file == null) {
+            checkExecutorAgents(sch, errors);
+        }
+
         if (!errors.isEmpty()) {
             err("❌ Invalid frontmatter — " + errors.size()
                     + (errors.size() == 1 ? " problem" : " problems"));
@@ -306,6 +310,50 @@ public class ArchHook {
             err("What each field is for: .claude/skills/claude-code-architect-designer"
                     + "/references/frontmatter-fields.md");
             System.exit(2);
+        }
+    }
+
+    /**
+     * Cross-checks `guard.executor_agents` against every `.claude/agents/*.md` file's own
+     * "**Executor:** yes" marker — both directions. A name in the list with no matching
+     * agent file (or whose file never claims the role) means the guard trusts an
+     * `agent_type` that can never actually arrive; an agent file that claims the role but
+     * is missing from the list means the guard blocks its writes during a design phase.
+     * lessons-learned-006 § 2: commons-logging-installer shipped without either side
+     * agreeing for one full session before the gap was noticed by hand.
+     */
+    static void checkExecutorAgents(Map<String, Object> sch, List<String> errors) throws IOException {
+        List<String> listed = asStrList(get(sch, "guard", "executor_agents"));
+        if (listed.isEmpty()) return;   // no `guard` block: nothing to cross-check
+
+        Path agentsDir = ROOT.resolve(".claude/agents");
+        Set<String> claimed = new HashSet<>();
+        if (Files.isDirectory(agentsDir)) {
+            try (Stream<Path> walk = Files.list(agentsDir)) {
+                for (Path f : walk.filter(p -> p.toString().endsWith(".md")).collect(Collectors.toList())) {
+                    String content = readOrNull(f);
+                    if (content != null && content.contains("**Executor:** yes")) {
+                        String name = f.getFileName().toString().replaceFirst("\\.md$", "");
+                        claimed.add(name);
+                    }
+                }
+            }
+        }
+
+        for (String name : listed) {
+            if (!Files.isRegularFile(agentsDir.resolve(name + ".md"))) {
+                errors.add("  guard.executor_agents lists `" + name
+                        + "` — no `.claude/agents/" + name + ".md` file exists");
+            } else if (!claimed.contains(name)) {
+                errors.add("  guard.executor_agents lists `" + name
+                        + "` — its agent file has no `**Executor:** yes` marker in ## Contract");
+            }
+        }
+        for (String name : claimed) {
+            if (!listed.contains(name)) {
+                errors.add("  .claude/agents/" + name
+                        + ".md claims `**Executor:** yes` — missing from guard.executor_agents");
+            }
         }
     }
 
@@ -1889,6 +1937,19 @@ public class ArchHook {
     //
     // Known gap, accepted: a design skill that asks in plain text instead of
     // AskUserQuestion gets its answer as a prompt, and that prompt ends the phase.
+    //
+    // Known gap, accepted: a `Skill`(design) call and an `Agent`(executor) call fired in
+    // the SAME turn race — two independent PreToolUse invocations, no ordering guarantee
+    // between them. If the Skill's open lands after the Agent's close, the phase ends up
+    // open and blocks the executor's own writes even though `agent_type` would have let
+    // them through (guardWrite checks `agent_type` first, unconditionally — see below;
+    // that's the real fix whenever it applies, this is only the residual race around it).
+    // lessons-learned-006 § 1. No file-level fix: nothing here can order two separate
+    // hook processes. The workaround is procedural — orchestrators MUST NOT fire
+    // `Skill(<design_skills>)` and `Agent(<executor_agents>)` in the same message; do the
+    // Skill call, wait for its turn to end, then the Agent call in a separate turn.
+    // `new-feature/SKILL.md`'s executor-offer pre-flight is the one place in this repo
+    // that can trigger both in one branch — it documents the same rule inline.
 
     static void guard(String phase, String stdin) throws Exception {
         Map<String, Object> cfg = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "guard"));
@@ -1957,7 +2018,7 @@ public class ArchHook {
         Path folder = ROOT.resolve(asStr(cfg.get("use_cases_dir"))).resolve(m.group(1));
         String status = specStatus(folder);
         if (status == null || !asStrList(cfg.get("frozen_statuses")).contains(status)) return;
-        if (isStatusClose(in, rel, status)) return;
+        if (isStatusClose(in, rel, status) || isChecklistToggle(in, rel, status)) return;
         err("❌ " + m.group(1) + " is " + status + " — its specs are immutable.");
         err("Record the change in the new use case's \"Impact on approved use cases\" section.");
         err("To reopen a spec that was never implemented, set `status: draft` by hand.");
@@ -1985,6 +2046,24 @@ public class ArchHook {
         String newS = asStr(get(in, "tool_input", "new_string"));
         return oldS != null && newS != null && oldS.contains("status: approved")
                 && newS.equals(oldS.replace("status: approved", "status: implemented"));
+    }
+
+    /**
+     * The other edit an `approved` spec admits: toggling `- [ ]` to `- [x]` in its
+     * implementation checklist, incremental progress that resuming the executor across
+     * sessions depends on (lessons-learned-006 § 7). `[ ]` and `[x]` are the same length,
+     * so normalizing both to `[ ]` and comparing catches any number of toggles in one
+     * `Edit` while still rejecting a change to anything else in the snippet.
+     */
+    static boolean isChecklistToggle(Object in, String rel, String status) {
+        if (!"approved".equals(status) || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+        if (!"Edit".equals(asStr(get(in, "tool_name")))) return false;
+        String oldS = asStr(get(in, "tool_input", "old_string"));
+        String newS = asStr(get(in, "tool_input", "new_string"));
+        if (oldS == null || newS == null || oldS.length() != newS.length()) return false;
+        String oldNorm = oldS.replace("[x]", "[ ]");
+        String newNorm = newS.replace("[x]", "[ ]");
+        return oldNorm.equals(newNorm) && !oldS.equals(newS);
     }
 
     // ── utilities ────────────────────────────────────────────────────────────

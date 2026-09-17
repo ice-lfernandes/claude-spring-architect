@@ -22,6 +22,10 @@ requires only one of the three reasons; this is the one that applies.
 
 ## Contract
 
+**Executor:** yes — writes under `src/` while a design phase may still be open; must be
+listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
+`ArchHook.java schema`.
+
 **Input (required):** project root. Precondition — the `commons` package/module already
 exists, empty, with its `package-info.java` (written by `project-bootstrap` step 4.7,
 per the active blueprint's `packages.map` entry `commons.logging`) — is the caller's
@@ -39,7 +43,8 @@ real `commons.logging` package, under the module/package `project-bootstrap` alr
 created; `src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 (new file, or a merge if `test-architect`/another feature already wrote one — append,
 never overwrite existing lines) in the module with `contains_main: true`; the
-`spring-boot-starter-aop` and `spring-boot-configuration-processor` (`optional`, same
+`spring-boot-starter-aspectj` (`spring-boot-starter-aop` pre-Boot-4 — see
+`dependency-catalog.md`) and `spring-boot-configuration-processor` (`optional`, same
 scope Lombok already uses) dependency declarations — no `<version>`, `spring-boot-starter-parent`
 manages both, same rule `project-bootstrap` step 4.8 applies to Lombok — in whichever
 module's POM `commons` corresponds to (multi-module) or the root POM (single-module).
@@ -92,11 +97,16 @@ or fix the blueprint by hand.
    autoconfiguration scan resolves from. If the file already exists (unlikely this early,
    but don't assume), append the three lines rather than overwriting whatever is there.
 
-5. **Add the two dependencies**, no `<version>`:
+5. **Add the two dependencies**, no `<version>`. The AOP starter's `artifactId` changed
+   in Boot 4 — `.claude/skills/project-bootstrap/references/dependency-catalog.md` §
+   Warning — Spring Boot 4 renamed starters is the single owner of that fact; confirm
+   against the project's resolved Boot major before writing either name, never from
+   memory:
    ```xml
    <dependency>
        <groupId>org.springframework.boot</groupId>
-       <artifactId>spring-boot-starter-aop</artifactId>
+       <artifactId>spring-boot-starter-aspectj</artifactId>
+       <!-- pre-Boot-4: spring-boot-starter-aop instead — see dependency-catalog.md -->
    </dependency>
    <dependency>
        <groupId>org.springframework.boot</groupId>
@@ -143,7 +153,7 @@ No rollback. The caller decides whether to retry after a fix.
 ✅ commons-logging-installer complete
 - Package: com.example.demoapp.commons.logging (12 classes translated)
 - AutoConfiguration.imports: 3 aspects registered
-- Dependencies: spring-boot-starter-aop, spring-boot-configuration-processor (no <version> — parent-managed)
+- Dependencies: spring-boot-starter-aspectj (or -aop, pre-Boot-4), spring-boot-configuration-processor (no <version> — parent-managed)
 - <module> test-compile: green
 ```
 
