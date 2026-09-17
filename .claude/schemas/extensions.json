@@ -93,7 +93,7 @@
       "new-feature", "use-case-design", "domain-modeling", "rest-api-architect",
       "persistence-architect", "messaging-architect", "test-architect"
     ],
-    "executor_agents": ["java-spring-boot-developer", "archunit-installer"],
+    "executor_agents": ["java-spring-boot-developer", "archunit-installer", "commons-logging-installer"],
     "design_forbidden_paths": ["src/**", "**/src/**"],
     "use_cases_dir": "docs/use-cases",
     "frozen_statuses": ["approved", "implemented"]
