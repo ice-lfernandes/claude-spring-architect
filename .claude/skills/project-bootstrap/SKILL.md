@@ -433,6 +433,16 @@ domain|jakarta.persistence.
 application|jakarta.persistence.
 ```
 
+**`layout: single-module` has no `forbidden_imports` field to iterate** — it's declared
+per package there, not per module (see the blueprint's own comment above its `modules:`
+block). In that case derive the lines instead: for each `dependency_rules.forbidden`
+entry, take `from` as the line's prefix — resolved through `packages.map` to its real
+package path — and pair it with the framework roots `architecture-ddd.md` § Domain bans
+(`org.springframework.`, `jakarta.`, `com.fasterxml.jackson.`, `tools.jackson.`) for a
+`from: domain` entry, or with the concrete `to` layers' package paths for any other
+entry. The file format doesn't care whether the left side is a module path or a package
+prefix — `ArchHook.java check` matches with `rel.startsWith(prefix + "/")` either way.
+
 Don't write the literal string `blueprints/` into this header, or into any file this
 step generates — step 8's autonomy test greps for exactly that string across the whole
 project, and a header written that way fails the generator's own verification.
@@ -661,8 +671,11 @@ Copy the **entire file** of each development agent — `<name>.md` — into
 | `commons-logging-installer` | ✅ | Invoked by `new-feature`'s pre-flight check, in the project, the same as in this repository. Without the copy, that check delegates to an agent that doesn't exist. Reads `new-feature/templates/commons/*.example`, copied alongside it in step 6.7 |
 | `project-initializer` | ❌ | Creation ritual; nothing for it to do inside an already-generated project. Whoever clones the project doesn't create new projects from it — it's used as a base, not as a template generator |
 
-Verbatim — full frontmatter and content, no rewrites. Agents don't depend on
-`blueprints/` (unlike some skills), so there are no citations to rewrite.
+Verbatim — full frontmatter and content, no rewrites, with one exception: cut any
+`@.claude/decisions/NNNN-....md` citation the same way § 6.6/6.7 do for rules and
+skills — `decisions/` has no counterpart in the project. `archunit-installer.md` carries
+three; check every agent being copied, not just that one. Agents don't depend on
+`blueprints/` (unlike some skills), so that part needs no rewrite.
 
 The rest of the content — `model`, `tools`, `disallowedTools`, `effort` — copies as-is.
 Agents the root `CLAUDE.md` might delegate to that don't exist yet stay **out** of the
@@ -826,7 +839,7 @@ exists in `claude-spring-architect`.
 ```bash
 ls .claude/rules/ .claude/skills/ .claude/agents/ .claude/hooks/ArchHook.java .claude/schemas/extensions.json
 grep -rn "blueprints/" .claude/ CLAUDE.md */CLAUDE.md   # must return nothing
-grep -rn "decisions/" .claude/ CLAUDE.md */CLAUDE.md    # must return nothing — § 6.6/6.7/7 cut these
+grep -rn "decisions/" .claude/ CLAUDE.md */CLAUDE.md    # must return nothing — § 6.6/6.7/6.8/7 cut these
 java .claude/hooks/ArchHook.java schema </dev/null      # must exit 0, and without warning
 ```
 
