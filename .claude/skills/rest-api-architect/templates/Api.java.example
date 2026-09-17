@@ -61,6 +61,18 @@ public interface UserApi {
     // stops springdoc from treating it as a request body. `size` above
     // `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
     // silent truncation — Spring Data doesn't enforce that cap by itself.
+    //
+    // A collection with one extra filter (a name/status/date-range search) takes it as a
+    // second parameter next to `Pageable` — `list(Pageable pageable, String status)` —
+    // and stays inside `code-quality.md`'s ParameterNumber ≤ 3. Only when a third
+    // independent filter shows up does the pair stop fitting; that's the point to
+    // introduce a small criteria object instead of a fourth primitive.
+    //
+    // `Pageable`'s own resolver clamps an out-of-range `page` (negative, or past the
+    // last one) to the first page instead of rejecting it — there's no way to tell
+    // "explicitly invalid" from "omitted" once Spring has already bound the parameter.
+    // A hard 400 on `page` needs a custom `HandlerMethodArgumentResolver` in front of
+    // it; accepting the clamp is the default unless the spec says otherwise.
     PageResponse<UserResponse> list(
             @ParameterObject
                     @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)

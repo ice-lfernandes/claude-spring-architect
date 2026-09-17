@@ -63,8 +63,10 @@ public class UserController implements UserApi {
     }
 
     // Spring Data Web already resolved `pageable` from the query string
-    // (`Api.java.example`'s `@ParameterObject`). `toCriteria` is the one spot that
-    // converts it to `PageCriteria` — the port never sees `Pageable`
+    // (`Api.java.example`'s `@ParameterObject` — that file's comment also covers adding
+    // one extra filter parameter alongside `Pageable`, and why an out-of-range `page`
+    // is clamped rather than rejected). `toCriteria` is the one spot that converts it to
+    // `PageCriteria` — the port never sees `Pageable`
     // (`.claude/rules/architecture-ddd.md` § Application).
     @Override
     public PageResponse<UserResponse> list(Pageable pageable) {
