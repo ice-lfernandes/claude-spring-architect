@@ -50,11 +50,33 @@ line in the same change, not silently diverging from it.
 - The exception enters the log as an exception, with the stack, not as concatenated
   text — except where `@.claude/rules/error-handling.md` says otherwise for a typed
   business exception (no stack, `errorCode` as its own field).
-- **Zero sensitive data in the log**: credentials, tokens, cards, personal documents.
-  Where the value identifies the record, log the technical key, not the data.
+- **Zero *raw* sensitive data in the log**: credentials, tokens, cards, personal
+  documents. Two ways to comply, not one — pick per field: log the technical key instead
+  of the value (an id, not the document it identifies), or mask the value before it's
+  interpolated into the line, never the value itself unmasked. A masked field still
+  counts as compliant; an unmasked one never does, regardless of how it got there.
 - Logging inside the domain is a smell. The domain throws and returns; the adapter or
   application service is the one that logs, because it's the one that knows what the
   event means to the outside.
+
+## Masking mechanism
+
+The concrete tool for the "mask it" half of the rule above, same discipline
+`@.claude/rules/lombok.md` already uses for naming a concrete annotation instead of
+staying abstract: a field-level `@MaskSensitiveData` annotation (predefined patterns —
+email, document, name, date, address, zip code, number, telephone — or a custom regex,
+declared once per field) plus a small interface a record or DTO implements to get a
+masked `toString()` for free. Lives in the project's cross-cutting `commons` package
+(named per this project's own `CLAUDE.md`), alongside two logging annotations —
+`@LogExecution` for a method, `@HttpMethodLogExecution` for a REST endpoint — and a
+global aspect that logs every REST endpoint's parameters and response **by default**,
+opt-out via configuration, not opt-in.
+
+That default matters here specifically: a response DTO reaching a controller without
+implementing the masking interface gets logged raw the moment the endpoint runs, whether
+or not anyone remembered to think about it. A DTO with a PII field masks it before it
+ever reaches a controller — this is the point in the pipeline where the "zero raw
+sensitive data" line above stops being a promise and starts being what actually happens.
 
 ## Per class type
 

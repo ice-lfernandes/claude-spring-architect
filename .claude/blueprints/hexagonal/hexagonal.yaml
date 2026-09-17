@@ -25,6 +25,7 @@ architecture_paths:
   - "application/**/*.java"
   - "adapters/**/*.java"
   - "bootstrap/**/*.java"
+  - "commons/**/*.java"
 
 modules:
   - id: domain
@@ -36,27 +37,35 @@ modules:
       - "jakarta.validation.."
       - "com.fasterxml.jackson.."
       - "tools.jackson.."  # Jackson 3 (Spring Boot 4) core; annotations stay under com.fasterxml.jackson
+  # Cross-cutting infra (logging/masking annotations + AOP aspects, see rules/logging.md)
+  # — not business code. A leaf, same as `domain`, but on the other side of the
+  # zero-framework line: everything else depends on it, `domain` never does. Bootstrap
+  # only creates the empty package-info; the real classes are installed once, later, by
+  # the `commons-logging-installer` agent — @.claude/decisions (this repo only).
+  - id: commons
+    path: commons
+    depends_on: []
   - id: application
     path: application
-    depends_on: [domain]
+    depends_on: [domain, commons]
     forbidden_imports:
       - "jakarta.persistence.."
       - "org.springframework.web.."
   - id: adapter-in-rest
     path: adapters/adapter-in-rest
-    depends_on: [application, domain]
+    depends_on: [application, domain, commons]
     feature: rest
   - id: adapter-out-persistence
     path: adapters/adapter-out-persistence
-    depends_on: [application, domain]
+    depends_on: [application, domain, commons]
     feature: persistence-jpa
   - id: adapter-in-messaging
     path: adapters/adapter-in-messaging
-    depends_on: [application, domain]
+    depends_on: [application, domain, commons]
     feature: messaging-kafka
   - id: adapter-out-messaging
     path: adapters/adapter-out-messaging
-    depends_on: [application, domain]
+    depends_on: [application, domain, commons]
     feature: messaging-kafka
   - id: bootstrap
     path: bootstrap
@@ -76,6 +85,7 @@ packages:
     adapter.out.persistence: "adapter.out.persistence"
     adapter.in.messaging: "adapter.in.messaging"
     adapter.out.messaging: "adapter.out.messaging"
+    commons.logging: "commons.logging"
 
 # Naming convention for this blueprint (specific to hexagonal, not universal —
 # see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
@@ -88,8 +98,8 @@ dependency_rules:
   direction: inward
   forbidden:
     - from: domain
-      to: [application, "adapters/*", bootstrap]
-      reason: "The domain does not know who uses it"
+      to: [application, "adapters/*", bootstrap, commons]
+      reason: "The domain does not know who uses it — commons included: it carries Spring AOP/AspectJ/Lombok framework code, and domain stays framework-free (architecture-ddd.md)"
     - from: application
       to: ["adapters/*", bootstrap]
       reason: "The application depends on ports, not on implementations"

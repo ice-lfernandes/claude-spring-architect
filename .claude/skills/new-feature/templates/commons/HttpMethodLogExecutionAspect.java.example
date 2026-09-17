@@ -1,0 +1,27 @@
+/*
+ * EXEMPLAR — advice for `@HttpMethodLogExecution`, the per-endpoint override of
+ * `GlobalHttpMethodLogAspect`'s default. Compilable as-is — not pseudo-code.
+ */
+package com.exemplo.minhaapi.commons.logging;
+
+import java.util.Objects;
+import lombok.SneakyThrows;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class HttpMethodLogExecutionAspect {
+
+    @Around("@annotation(com.exemplo.minhaapi.commons.logging.HttpMethodLogExecution)")
+    @SneakyThrows
+    public Object logExecutionHttpMethod(ProceedingJoinPoint joinPoint) {
+        var signature = (MethodSignature) joinPoint.getSignature();
+        var annotation = Objects.requireNonNull(signature.getMethod().getAnnotation(HttpMethodLogExecution.class));
+        var options = new LoggingOptions(annotation.logReturn(), annotation.logParameters());
+        return LoggingCommonsMethods.logInterceptJoinPoint(joinPoint, options);
+    }
+}

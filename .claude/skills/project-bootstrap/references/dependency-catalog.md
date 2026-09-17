@@ -18,6 +18,14 @@ Used in step 3 to build the `-d dependencies=` parameter.
 | `uuid-v7` | — | Doesn't exist in the Initializr; add `com.fasterxml.uuid:java-uuid-generator`. Required whenever `persistence-jpa` is active and the primary key is `UUID`: `persistence.md` § Identity and keys requires v7, and JDK 21's `java.util.UUID.randomUUID()` generates v4. See the JDK 25 note below |
 | `spring-modulith` | `modulith` | `modular-monolith` blueprint only. Adds `spring-modulith-starter-core` (compile). Also add by hand, same BOM: `spring-modulith-starter-test` (test scope, not in the Initializr catalog) — needed for `ApplicationModules`/`@ApplicationModuleTest`. Import `spring-modulith-bom` in `<dependencyManagement>` with `<scope>import</scope>`, version from `boms.spring-modulith.version` in the same `curl` response, never from memory — it moves independently of Spring Boot's own version |
 
+**`commons` logging/masking isn't a `features:` key** — every blueprint carries the
+empty package unconditionally (step 4.7), same as `domain`. Its dependencies
+(`spring-boot-starter-aop`, `spring-boot-configuration-processor`) aren't in this table
+because this skill never adds them: like `archunit`, they're added later, by the
+`commons-logging-installer` agent, once there are classes to compile — see
+`project-bootstrap/SKILL.md` step 4.7 and `.claude/agents/commons-logging-installer.md`.
+No `<version>` on either: `spring-boot-starter-parent` manages both.
+
 ## Warning — Spring Boot 4 renamed starters
 
 The Initializr `id` above **doesn't change** between Boot versions, but the
