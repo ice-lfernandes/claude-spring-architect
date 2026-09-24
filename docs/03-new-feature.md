@@ -58,6 +58,7 @@ sequenceDiagram
     participant PER as skill: persistence-architect
     participant MSG as skill: messaging-architect
     participant TST as skill: test-architect
+    participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
@@ -84,6 +85,10 @@ sequenceDiagram
     else aprovar (status: approved)
         NF-->>U: Implementar agora?
         alt implementar agora
+            opt pre-flight — uma vez por projeto, cada gap atrás de uma pergunta
+                NF->>TST: Skill, sem argumento (modo setup → archunit-installer)
+                NF->>LOG: Agent commons-logging-installer, em turno separado
+            end
             NF->>DEV: caminho do spec
             DEV-->>NF: build verde, status: implemented
             NF->>GIT: feat(UC-NNN-slug) — dois portões
@@ -115,6 +120,22 @@ persistência escrito, e persistência rodava duas vezes.
 
 `docker-architect` é encadeada sob demanda por `persistence-architect`, `test-architect`
 ou `messaging-architect`. `java-patterns` viaja pré-carregado dentro do executor.
+
+## Pre-flight — infraestrutura instalada uma vez, no primeiro "implementar agora"
+
+Antes de delegar ao executor, `new-feature` detecta (por comando, não por suposição)
+dois gaps que só importam quando o primeiro `.java` vai ser escrito em `src/`:
+
+| Gap | Como detecta | Instala via |
+|---|---|---|
+| ArchUnit ausente | `grep -rl "ArchRule\|ArchTest" src/test/` vazio | `Skill(test-architect)` sem argumento — modo setup, que delega a `archunit-installer` (ArchUnit + portão JaCoCo) |
+| Classes de logging/máscara ausentes | pasta `commons` inexistente ou só com `package-info.java` | `Agent(commons-logging-installer)` — treze exemplares de `new-feature/templates/commons/` traduzidos para o package real, mais `AutoConfiguration.imports` e as dependências AOP |
+
+Cada gap encontrado vira um `AskUserQuestion` (**Install now** / **Skip for this run**);
+nenhum gap, nenhuma pergunta. Os dois nunca disparam no mesmo turno: `Skill(test-architect)`
+abre uma fase de design no hook `guard` e `Agent(commons-logging-installer)` fecha uma —
+sem ordem garantida entre os dois `PreToolUse`, o perdedor bloquearia toda escrita em
+`src/` do outro agent (aconteceu: 138k tokens, zero arquivos escritos).
 
 ## Ciclo de vida do spec
 
@@ -168,3 +189,8 @@ background, `new-feature/SKILL.md` manda oferecer manter a máquina acordada
 `project-bootstrap`), junto com o hook `guard` (passo 7). Com `pedidos-api` existindo,
 `/new-feature <descrição>` roda **dentro** dele, sem `claude-spring-architect` na
 máquina.
+
+Toda execução deixa um relatório em `.claude/audit-usage/` — duração ativa, espera pelo
+usuário, tokens por skill encadeada e pelo executor, arquivos tocados, falhas. É assim
+que a disciplina de custo acima deixa de ser estimativa: `/audit-usage` mostra qual
+peça está comendo o orçamento. Ver [08-audit-usage.md](08-audit-usage.md).

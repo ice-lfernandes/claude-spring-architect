@@ -3,7 +3,10 @@
 English version: [`docs/en/`](en/README.md).
 
 Esta pasta documenta como as peças do `.claude/` deste repositório colaboram para
-executar os três comandos principais: `/init-project`, `/new-feature` e `/arch-doctor`.
+executar os comandos principais — `/init-project`, `/new-feature`, `/arch-doctor` e
+`/audit-usage` — e o que este projeto faz que os repositórios semelhantes não fazem.
+Quem chega pela primeira vez deve começar por
+[09-diferenciais.md](09-diferenciais.md).
 
 `claude-spring-architect` não é uma aplicação Java — é um meta-repositório. O que ele produz são
 **arquivos de instrução** (skills, rules, agents, hooks) que, juntos, geram projetos
@@ -23,6 +26,8 @@ os outros.
 | [05-blueprints.md](05-blueprints.md) | Contrato `_schema.md`, o que cada blueprint declara, como criar um blueprint customizado |
 | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) | Workflow de `/claude-code-architect-designer`: as 5 fases, matriz de decisão, campos de frontmatter, exemplo completo |
 | [07-ci-validate.md](07-ci-validate.md) | `validate.yml`: por que existe, o que cada job/passo verifica, o que ainda falta cobrir |
+| [08-audit-usage.md](08-audit-usage.md) | Trilha de auditoria: hook `audit` (relatório por execução, tokens e custo por peça), hook `guard` (design não escreve `src/`, spec aprovado congelado), skill `/audit-usage` |
+| [09-diferenciais.md](09-diferenciais.md) | O que este repositório faz que templates, pacotes de skills e bundles de agents no GitHub não fazem — tabela comparativa, fontes, e o que não é diferencial |
 
 ## Como este repositório está organizado (referência rápida)
 

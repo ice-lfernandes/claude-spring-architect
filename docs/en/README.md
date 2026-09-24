@@ -3,7 +3,9 @@
 Versão em português: [`docs/`](../README.md).
 
 This folder documents how the pieces of this repository's `.claude/` collaborate to
-run the three main commands: `/init-project`, `/new-feature`, and `/arch-doctor`.
+run the main commands — `/init-project`, `/new-feature`, `/arch-doctor`, and
+`/audit-usage` — and what this project does that similar repositories don't. A
+first-time reader should start at [09-differentiators.md](09-differentiators.md).
 
 `claude-spring-architect` is not an application — it's a meta-repository. What it produces are
 **instruction files** (skills, rules, agents, hooks) that, together, generate Spring
@@ -23,6 +25,8 @@ the others.
 | [05-blueprints.md](05-blueprints.md) | `_schema.md` contract, what each blueprint declares, how to create a custom blueprint |
 | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) | `/claude-code-architect-designer` workflow: the 5 phases, decision matrix, frontmatter fields, full example |
 | [07-ci-validate.md](07-ci-validate.md) | `validate.yml`: why it exists, what each job/step verifies, what's still missing |
+| [08-audit-usage.md](08-audit-usage.md) | Audit trail: the `audit` hook (one report per run, tokens and cost per piece), the `guard` hook (design never writes `src/`, approved specs frozen), the `/audit-usage` skill |
+| [09-differentiators.md](09-differentiators.md) | What this repository does that templates, skills packs, and agent bundles on GitHub don't — comparison table, sources, and what is not a differentiator |
 
 ## How this repository is organized (quick reference)
 

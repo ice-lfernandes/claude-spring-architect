@@ -130,7 +130,7 @@ um agent só se justifica por um dos três motivos — preservar contexto (saíd
 que não deveria poluir a conversa principal), restringir tools, ou trocar de model. Se
 nenhum se aplica, a peça é uma skill.
 
-Os três agents deste repositório documentam explicitamente qual motivo aplica, na
+Os quatro agents deste repositório documentam explicitamente qual motivo aplica, na
 própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 
 | Agent | Contexto | Tools | Model |
@@ -138,6 +138,11 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 | `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restrito. `Skill` está na lista só para invocar `git-publish` depois de um build verde; não abre acesso a nenhuma outra skill do repositório | `opus` — validar grafo de dependências e reestruturar módulos falha caro |
 | `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: max` — gerar ~19 passos de código compilável |
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
+| `commons-logging-installer` | Mesma forma do `archunit-installer`: traduz treze exemplares de logging/máscara para o package real, edita um POM, compila até ficar verde — onze escritas e um log de build que não precisam voltar ao contexto do `/new-feature` que o disparou | `Read, Write, Edit, Bash` — só dentro de `commons.logging` e do POM correspondente | `sonnet`, `effort: medium` |
+
+Os três últimos são **executores** para o hook `guard`: listados em
+`extensions.json` → `guard.executor_agents`, são os únicos que podem escrever em `src/`
+enquanto uma fase de design está aberta (ver [08-audit-usage.md](08-audit-usage.md)).
 
 **Quando entra em contexto:** só quando invocado — nunca automaticamente por
 `paths` (agents não têm esse campo). **Não vê** o histórico da conversa principal, nem
@@ -224,15 +229,22 @@ modelo **não pode** optar por pular.
 
 **Propósito:** tudo que precisa valer sempre, sem depender de o modelo lembrar —
 `CLAUDE.md` § Invariant 6: *"se uma regra precisa valer sempre, é um hook ou
-`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem cinco modos:
+`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem oito modos:
 
-| Modo | Evento | Bloqueia? | O que faz |
-|---|---|---|---|
-| `check` | `PostToolUse` (Write\|Edit) | Sim (exit 2) | Imports proibidos (via `.claude/forbidden-imports.txt`) + compilação incremental do módulo tocado |
-| `format` | `PostToolUse` (Write\|Edit) | Nunca | `spotless:apply` no módulo tocado |
-| `tests` | `Stop` | Sim (exit 2) | Roda testes dos módulos alterados desde `HEAD` |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules contra `.claude/schemas/extensions.json` |
-| `doctor` | Manual (`/arch-doctor`) | Nunca | Diagnóstico do setup na máquina |
+| Modo | Evento | Bloqueia? | O que faz | Ligado aqui? |
+|---|---|---|---|---|
+| `check` | `PostToolUse` (Write\|Edit) | Sim (exit 2) | Imports proibidos (via `.claude/forbidden-imports.txt`) + compilação incremental do módulo tocado | Sim |
+| `format` | `PostToolUse` (Write\|Edit) | Nunca | `spotless:apply` no módulo tocado | Sim |
+| `tests` | `Stop` | Sim (exit 2) | Roda testes dos módulos alterados desde `HEAD` | Sim |
+| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules e os campos de `.mcp.json` contra `.claude/schemas/extensions.json`, com scan de segredos em `headers`/`env` | Sim |
+| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Sim (exit 2) | Skill de design aberta não escreve em `src/`; pasta de spec `approved`/`implemented` é imutável | Só no projeto gerado |
+| `audit` | 10 eventos do ciclo de vida | Nunca | Trilha de execução de toda skill e agent: relatório Markdown por invocação + ledgers | Só no projeto gerado — liga pela existência de `.claude/audit-usage/` |
+| `compose` | Manual; dobrado em `doctor` | Nunca | Todo serviço do compose está `running`; nenhum container alheio publica uma porta que este projeto declara | Sim |
+| `doctor` | Manual (`/arch-doctor`) | Nunca | Diagnóstico do setup na máquina | Sim |
+
+Os modos `guard` e `audit` estão detalhados em [08-audit-usage.md](08-audit-usage.md).
+Toda lista que o hook lê — campos reconhecidos, skills excluídas da auditoria, padrões
+de redação, caminhos guardados — é dado em `extensions.json`, nunca constante no Java.
 
 **Quando entra em contexto:** hooks não "entram em contexto" como texto — rodam como
 **processo externo** (aqui, `java ArchHook.java <modo>`), e o que volta para o modelo é

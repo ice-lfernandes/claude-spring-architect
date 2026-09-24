@@ -85,10 +85,13 @@ sequenceDiagram
 | 6 | Generates root `CLAUDE.md` + per-module ones | `CLAUDE.md`, `*/CLAUDE.md` |
 | 6.5 | Generates CI | `.github/workflows/build.yml` |
 | 6.6 | Copies the rules | `.claude/rules/*.md` |
-| 6.7 | Copies the development skills | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,java-patterns,git-publish}/**` |
-| 6.8 | Copies the development agents | `.claude/agents/{java-spring-boot-developer,archunit-installer}.md` |
-| 7 | Installs the hooks | `ArchHook.java`, `extensions.json`, merges `settings.json` |
+| 6.7 | Copies the development skills | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,java-patterns,git-publish,audit-usage}/**` |
+| 6.8 | Copies the development agents | `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md` |
+| 7 | Installs the hooks | `ArchHook.java`, `extensions.json`, merges `settings.json` (with `guard` and `audit` wired), creates `.claude/audit-usage/` + `pricing.json` |
+| 7.5 | Copies designed MCP servers, if any | `.mcp.json`, `MCP-SETUP.md` |
 | 8 | Verifies | `./mvnw clean verify`, boundary test, `lombok.config` test, autonomy test |
+| 8.5 | Generates the project README | `README.md` (English) + `README.pt-br.md` |
+| 8.6 | Writes the trail's genesis record | `.claude/audit-usage/GENESIS.md` |
 
 Step 8 is the only quality gate: if the build fails, **fix it before reporting** — a
 bootstrap that delivers a red build isn't finished.
@@ -126,9 +129,13 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, v
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 11 rules + 11 skills + 2 agents + ArchHook.java + extensions.json copied — no dead paths ✓
-Docker: base Dockerfile + docker-compose.yml (app service only) — extend with `docker-architect` when a feature needs one
+Self-contained: 12 rules + 12 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
+Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
+Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus
+MCP: none — no server designed for this project yet
 Build: PASSED
+Docs: README.md (English, default) + README.pt-br.md — origin, blueprint, stack, skills/agents, this report
 
 Next steps:
   1. /use-case-design <first-use-case-name>
@@ -154,9 +161,15 @@ Nothing gets committed or pushed without `git-publish`'s two confirmation gates 
 The generated project is **self-contained** (`CLAUDE.md` § Invariant 9): whoever
 clones `pedidos-api` doesn't have `claude-spring-architect` on their machine. Everything the
 project's `CLAUDE.md` cites has already been copied inside it — rules, development
-skills, the executor agent, `ArchHook.java`, `extensions.json`. The creation skills
-(`project-bootstrap`, `init-project`) and `blueprints/` are left out on purpose: they
-only make sense before the project exists.
+skills, the three executor agents, `ArchHook.java`, `extensions.json`. The creation
+skills (`project-bootstrap`, `init-project`, `claude-code-architect-designer`), the
+`project-initializer` agent, and `blueprints/` are left out on purpose: they only make
+sense before the project exists.
+
+From the first session opened inside the project, the `audit` hook writes one report
+per skill or agent invocation into `.claude/audit-usage/` — the `GENESIS.md` from step
+8.6 is the only record that doesn't come from the hook, and its header says so. See
+[08-audit-usage.md](08-audit-usage.md).
 
 From here, the natural next step is `/new-feature` — see
 [03-new-feature.md](03-new-feature.md).

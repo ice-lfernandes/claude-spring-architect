@@ -17,13 +17,16 @@ metáfora — é a regra real de quem pode citar quem (`CLAUDE.md` § Invariants
 flowchart TB
     subgraph L0["Enforcement — determinístico"]
         SETTINGS["settings.json"]:::hook
-        HOOK["ArchHook.java\n(check · format · tests · schema · doctor)"]:::hook
+        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor)"]:::hook
     end
 
     subgraph L1["Procedimento — skills"]
         CLAUDEMD["CLAUDE.md\n(raiz — índice e roteamento)"]:::claudemd
         SK_INIT["skill: init-project"]:::skill
         SK_BOOT["skill: project-bootstrap"]:::skill
+        SK_DESIGNER["skill: claude-code-architect-designer\n(desenha este .claude/ — fica aqui)"]:::skill
+        SK_AUDIT["skill: audit-usage"]:::skill
+        SK_PAT["skill: java-patterns"]:::skill
         SK_NF["skill: new-feature"]:::skill
         SK_UC["skill: use-case-design"]:::skill
         SK_DOM["skill: domain-modeling"]:::skill
@@ -40,6 +43,7 @@ flowchart TB
         AG_INITZR["agent: project-initializer\n(model: opus)"]:::agent
         AG_DEV["agent: java-spring-boot-developer\n(model: sonnet, effort: max)"]:::agent
         AG_ARCH["agent: archunit-installer\n(model: sonnet, effort: medium)"]:::agent
+        AG_LOG["agent: commons-logging-installer\n(model: sonnet, effort: medium)"]:::agent
     end
 
     subgraph L3["Normas e dados — folhas"]
@@ -50,15 +54,22 @@ flowchart TB
     CLAUDEMD -->|roteia por tabela| SK_INIT
     CLAUDEMD -->|roteia por tabela| SK_NF
     CLAUDEMD -->|roteia por tabela| SK_DOCTOR
+    CLAUDEMD -->|roteia por tabela| SK_DESIGNER
+    CLAUDEMD -->|roteia por tabela| SK_AUDIT
 
     SK_INIT -->|Agent tool: contexto + tools restritos + model opus| AG_INITZR
     AG_INITZR -->|segue o procedimento de| SK_BOOT
     SK_BOOT -->|lê e valida| BLUEPRINTS
     SK_BOOT -->|lê e copia para o projeto gerado| RULES
-    SK_BOOT -->|instala| SETTINGS
+    SK_BOOT -->|instala, com guard + audit ligados| SETTINGS
     SK_BOOT -->|copia verbatim| HOOK
-    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT
-    SK_BOOT -->|copia| AG_DEV & AG_ARCH
+    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT
+    SK_BOOT -->|copia| AG_DEV & AG_ARCH & AG_LOG
+    SK_DESIGNER -.->|propõe e escreve, após aprovação| SK_UC & AG_DEV & RULES
+    AG_DEV -.->|skills: pré-carregada| SK_PAT
+    SK_NF -->|Agent tool, pre-flight, se commons vazio| AG_LOG
+    AG_LOG -->|escreve| LOGOUT["commons.logging/** + AutoConfiguration.imports"]:::out
+    SK_AUDIT -->|Bash, audit summary, sem model| HOOK
 
     SK_NF -->|Skill tool, em sequência| SK_UC
     SK_UC --> SK_DOM
@@ -82,8 +93,9 @@ flowchart TB
 
     SK_DOCTOR -->|Bash, sem model| HOOK
 
-    SETTINGS -->|PreToolUse Write / PostToolUse Write,Edit / Stop| HOOK
+    SETTINGS -->|UserPromptSubmit / PreToolUse / PostToolUse / Stop / SubagentStop / SessionEnd …| HOOK
     HOOK -->|bloqueia ou avisa sobre| SRC
+    HOOK -->|audit: escreve, no projeto gerado| TRAIL[".claude/audit-usage/*.md + history.jsonl + nodes.jsonl"]:::out
 
     RULES -.->|citadas por path, nunca copiadas| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_MSG
     BLUEPRINTS -.->|citado por path| SK_BOOT
@@ -121,19 +133,28 @@ saem de quem as lê, nunca o contrário.
 Da mesma forma, um agent só existe por um dos três motivos válidos (`CLAUDE.md` §
 Invariant 5): preservar contexto, restringir tools, ou trocar de modelo. `project-initializer`
 e `java-spring-boot-developer` atendem aos três motivos simultaneamente;
-`archunit-installer` atende só ao primeiro (preservar contexto — o modo setup da
-`test-architect` não tem entrevista, e isolar o `curl`/`./mvnw` que ele roda evita que
-esse ruído fique permanente na conversa principal). Um motivo já basta pelo Invariant 5.
-Cada agent documenta o próprio motivo na seção `## Why this is an agent` (ou `## Why
-this is Form 3`).
+`archunit-installer` e `commons-logging-installer` atendem só ao primeiro (preservar
+contexto — nenhum dos dois tem entrevista, e isolar o `curl`/`./mvnw` que rodam evita
+que esse ruído fique permanente na conversa principal). Um motivo já basta pelo
+Invariant 5. Cada agent documenta o próprio motivo na seção `## Why this is an agent`
+(ou `## Why this is Form 3`).
 
-## Os três comandos, em uma frase cada
+O hook é a única peça fora desse grafo de citações: `settings.json` o dispara em
+eventos do ciclo de vida, e o que ele lê (`forbidden-imports.txt`, `extensions.json`)
+é dado, não prosa. No projeto gerado ele ganha dois modos que aqui ficam inertes —
+`guard`, que bloqueia uma skill de design de escrever em `src/` e congela specs
+aprovados, e `audit`, que grava a trilha de execução de toda skill e agent. Ver
+[08-audit-usage.md](08-audit-usage.md).
+
+## Os comandos, em uma frase cada
 
 | Comando | O que faz | Detalhes |
 |---|---|---|
 | `/init-project` | Interview → escolhe blueprint → gera estrutura completa do projeto Spring Boot, sem código de negócio | [02-init-project.md](02-init-project.md) |
 | `/new-feature <descrição>` | Desenha um caso de uso por execução (caso de uso → domínio → REST → persistência → testes) num spec único, pede aprovação e oferece o executor | [03-new-feature.md](03-new-feature.md) |
-| `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH | [04-arch-doctor.md](04-arch-doctor.md) |
+| `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema, trilha de auditoria, serviços do compose | [04-arch-doctor.md](04-arch-doctor.md) |
+| `/audit-usage` | Lê a trilha de auditoria do projeto gerado: gasto por skill e agent entre execuções, taxa de falha, qual relatório abrir. Aqui reporta que a trilha está desligada | [08-audit-usage.md](08-audit-usage.md) |
+| `/claude-code-architect-designer` | Decide qual forma (skill, agent, rule, seção do `CLAUDE.md`, MCP — ou nada) resolve um cenário, e escreve o arquivo após aprovação. Só neste meta-repo | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
 
 `git-publish` não é um quarto comando de topo — é uma skill Forma 1 (sem
 `disable-model-invocation`) encadeada automaticamente por `project-initializer` (fim do

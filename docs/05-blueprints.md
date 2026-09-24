@@ -13,20 +13,20 @@ nunca chama ninguém; diferente de uma rule, é lido programaticamente por
 `project-bootstrap`, não carregado como instrução em prosa.
 
 Cada arquitetura mora em `.claude/blueprints/<id>/<id>.yaml`. Uma pasta sem `.yaml`
-(hoje: `vertical-slice/`) é uma arquitetura **ainda não escrita** — só tem um
-`README.md` apontando para o contrato; a skill ignora essas pastas até que alguém
-adicione o YAML.
+seria uma arquitetura **ainda não escrita**, e a skill a ignoraria na listagem da
+entrevista — hoje todas as sete têm YAML. Os prós, contras e "quando escolher" de cada
+uma estão em `.claude/blueprints/README.md` (e `README.pt-br.md`).
 
-| Blueprint | Tem `.yaml`? |
-|---|---|
-| `hexagonal` | ✅ |
-| `clean-architecture-single-module` | ✅ |
-| `clean-architecture-multi-module` | ✅ |
-| `layered` | ✅ — controller/service/repository, single-module, vocabulário clássico de tutorial Spring Boot em vez do port/adapter do hexagonal |
-| `modular-monolith` | ✅ — vários bounded contexts (Spring Modulith), cada um com camadas domain/application/adapter completas dentro do próprio `internal`; isolamento entre módulos verificado por `ApplicationModules.verify()`, não por ArchUnit |
-| `onion` | ✅ — Application Core (Palermo): domain model + domain services num único módulo `domain`, `persistence`/`presentation` como anéis externos independentes entre si |
-| `custom-template` | ✅ — ponto de partida para criar o seu, não um blueprint usável diretamente |
-| `vertical-slice` | ❌ — só `README.md` |
+| Blueprint | Layout | Resumo |
+|---|---|---|
+| `hexagonal` | multi-module | Ports como interfaces, adapters de entrada e saída em módulos próprios |
+| `clean-architecture-single-module` | single-module | domain/application/infrastructure como packages; boundary só por ArchUnit |
+| `clean-architecture-multi-module` | multi-module | Mesmas camadas como módulos Maven; o compilador impõe a direção |
+| `layered` | single-module | controller/service/repository, vocabulário clássico de tutorial Spring Boot em vez do port/adapter do hexagonal |
+| `modular-monolith` | single-module | Vários bounded contexts (Spring Modulith), cada um com camadas domain/application/adapter completas dentro do próprio `internal`; isolamento entre módulos verificado por `ApplicationModules.verify()`, não por ArchUnit |
+| `onion` | multi-module | Application Core (Palermo): domain model + domain services num único módulo `domain`, `persistence`/`presentation` como anéis externos independentes entre si |
+| `vertical-slice` | single-module | Um package autocontido por caso de uso (`features.<feature>.<usecase>`, padrão REPR); só o agregado atravessa a fronteira, num kernel `domain` compartilhado |
+| `custom-template` | — | Ponto de partida para criar o seu, não um blueprint usável diretamente |
 
 ## Quem lê o YAML e quando
 

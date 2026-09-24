@@ -81,7 +81,7 @@ cp .claude/blueprints/custom-template/custom.template.yaml .claude/blueprints/my
 $EDITOR .claude/blueprints/my-style/my-style.yaml
 ```
 
-Validation is the 5-rule checklist above, run by the agent in step 2 of
+Validation is the 6-rule checklist above, run by the agent in step 2 of
 `project-bootstrap`. **There is no external validator and nothing to install** — this
 template targets Java developers and assumes only JDK, Maven, git, curl and bash.
 

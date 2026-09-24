@@ -59,6 +59,7 @@ sequenceDiagram
     participant PER as skill: persistence-architect
     participant MSG as skill: messaging-architect
     participant TST as skill: test-architect
+    participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
@@ -85,6 +86,10 @@ sequenceDiagram
     else approve (status: approved)
         NF-->>U: Implement now?
         alt implement now
+            opt pre-flight — once per project, each gap behind a question
+                NF->>TST: Skill, no argument (setup mode → archunit-installer)
+                NF->>LOG: Agent commons-logging-installer, in a separate turn
+            end
             NF->>DEV: spec path
             DEV-->>NF: green build, status: implemented
             NF->>GIT: feat(UC-NNN-slug) — two gates
@@ -116,6 +121,24 @@ twice.
 
 `docker-architect` is chained on demand by `persistence-architect`, `test-architect`, or
 `messaging-architect`. `java-patterns` travels preloaded inside the executor.
+
+## Pre-flight — infrastructure installed once, on the first "implement now"
+
+Before delegating to the executor, `new-feature` detects (by command, never by
+assumption) two gaps that only matter when the first `.java` is about to be written
+under `src/`:
+
+| Gap | How it's detected | Installed via |
+|---|---|---|
+| ArchUnit missing | `grep -rl "ArchRule\|ArchTest" src/test/` is empty | `Skill(test-architect)` with no argument — setup mode, which delegates to `archunit-installer` (ArchUnit + JaCoCo gate) |
+| Logging/masking classes missing | no `commons` folder, or only `package-info.java` in it | `Agent(commons-logging-installer)` — thirteen exemplars from `new-feature/templates/commons/` translated into the real package, plus `AutoConfiguration.imports` and the AOP dependencies |
+
+Each gap found becomes an `AskUserQuestion` (**Install now** / **Skip for this run**);
+no gap, no question. The two never fire in the same turn: `Skill(test-architect)`
+opens a design phase in the `guard` hook and `Agent(commons-logging-installer)` closes
+one — with no ordering guarantee between the two `PreToolUse` hooks, the loser would
+block every write under `src/` by the other agent (it happened: 138k tokens, zero
+files written).
 
 ## Spec lifecycle
 
@@ -168,3 +191,8 @@ awake (`caffeinate -i` on macOS) or running on the main thread, which is resumab
 (`project-bootstrap` step 6.7), with the `guard` hook (step 7). Once `pedidos-api`
 exists, `/new-feature <description>` runs **inside** it, without
 `claude-spring-architect` on the machine.
+
+Every run leaves a report under `.claude/audit-usage/` — active duration, time waiting
+on the user, tokens per chained skill and for the executor, files touched, failures.
+That's how the cost discipline above stops being an estimate: `/audit-usage` shows
+which piece is eating the budget. See [08-audit-usage.md](08-audit-usage.md).

@@ -132,7 +132,7 @@ criterion: an agent is only justified for one of three reasons — preserving co
 (verbose output that shouldn't pollute the main conversation), restricting tools, or
 switching model. If none applies, the piece is a skill.
 
-This repository's three agents each document explicitly, in their own `## Why this is
+This repository's four agents each document explicitly, in their own `## Why this is
 an agent` (or `## Why this is Form 3`) section, which reason applies:
 
 | Agent | Context | Tools | Model |
@@ -140,6 +140,11 @@ an agent` (or `## Why this is Form 3`) section, which reason applies:
 | `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restricted. `Skill` is on the list only to invoke `git-publish` after a green build; it doesn't open access to any other skill in the repository | `opus` — validating a dependency graph and restructuring modules fails expensively |
 | `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: max` — generating ~19 steps of compilable code |
 | `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
+| `commons-logging-installer` | Same shape as `archunit-installer`: translates thirteen logging/masking exemplars into the real package, edits a POM, compiles until green — eleven writes and a build log that don't need to land in the context of the `/new-feature` run that triggered it | `Read, Write, Edit, Bash` — inside `commons.logging` and the matching POM only | `sonnet`, `effort: medium` |
+
+The last three are **executors** for the `guard` hook: listed in
+`extensions.json` → `guard.executor_agents`, they are the only ones allowed to write
+under `src/` while a design phase is open (see [08-audit-usage.md](08-audit-usage.md)).
 
 **When it enters context:** only when invoked — never automatically via `paths`
 (agents don't have that field). It **doesn't see** the main conversation's history,
@@ -229,15 +234,22 @@ system the model **cannot** opt to skip.
 
 **Purpose:** everything that must always hold, without depending on the model
 remembering — `CLAUDE.md` § Invariant 6: *"if a rule must always hold, it's a hook or
-`permissions.deny` — not prose in markdown."* `ArchHook.java` has five modes:
+`permissions.deny` — not prose in markdown."* `ArchHook.java` has eight modes:
 
-| Mode | Event | Blocks? | What it does |
-|---|---|---|---|
-| `check` | `PostToolUse` (Write\|Edit) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module |
-| `format` | `PostToolUse` (Write\|Edit) | Never | `spotless:apply` on the touched module |
-| `tests` | `Stop` | Yes (exit 2) | Runs tests of the modules changed since `HEAD` |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter against `.claude/schemas/extensions.json` |
-| `doctor` | Manual (`/arch-doctor`) | Never | Diagnoses the setup on this machine |
+| Mode | Event | Blocks? | What it does | Wired here? |
+|---|---|---|---|---|
+| `check` | `PostToolUse` (Write\|Edit) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module | Yes |
+| `format` | `PostToolUse` (Write\|Edit) | Never | `spotless:apply` on the touched module | Yes |
+| `tests` | `Stop` | Yes (exit 2) | Runs tests of the modules changed since `HEAD` | Yes |
+| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter and `.mcp.json` fields against `.claude/schemas/extensions.json`, with a secret scan over `headers`/`env` | Yes |
+| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Yes (exit 2) | An open design skill never writes under `src/`; a spec folder that is `approved`/`implemented` is immutable | Generated project only |
+| `audit` | 10 lifecycle events | Never | Execution trail of every skill and agent: one Markdown report per invocation + ledgers | Generated project only — switched on by the existence of `.claude/audit-usage/` |
+| `compose` | Manual; folded into `doctor` | Never | Every compose service is `running`; no foreign container publishes a port this project declares | Yes |
+| `doctor` | Manual (`/arch-doctor`) | Never | Diagnoses the setup on this machine | Yes |
+
+The `guard` and `audit` modes are detailed in [08-audit-usage.md](08-audit-usage.md).
+Every list the hook reads — recognized fields, skills excluded from auditing, redaction
+patterns, guarded paths — is data in `extensions.json`, never a constant in the Java.
 
 **When it enters context:** hooks don't "enter context" as text — they run as an
 **external process** (here, `java ArchHook.java <mode>`), and what returns to the model

@@ -12,9 +12,17 @@
 [![GitHub issues](https://img.shields.io/github/issues/ice-lfernandes/claude-spring-architect.svg)](https://github.com/ice-lfernandes/claude-spring-architect/issues)
 [![Last commit](https://img.shields.io/github/last-commit/ice-lfernandes/claude-spring-architect.svg)](https://github.com/ice-lfernandes/claude-spring-architect/commits)
 
-**A template for bootstrapping Spring Boot projects already prepared for AI-assisted
-development — with a selectable architecture, boundaries verified by the build, and
-zero instruction duplication.**
+**A generator of Spring Boot projects already prepared for AI-assisted development —
+with a selectable architecture declared as data, boundaries enforced by hooks and by
+the build, a spec-first feature pipeline, and a deterministic audit trail of what every
+skill and agent run cost.**
+
+Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/`](docs/README.md)
+(português). What sets this repository apart from similar ones, with the comparison:
+[`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
+
+Not affiliated with Anthropic. "Claude" in the name follows the ecosystem's naming
+practice; this is not an official product.
 
 ---
 
@@ -45,6 +53,8 @@ that:
 - Prevents architecture violations at the moment they happen, through hooks, without
   relying on the model remembering the rule.
 - Allows adding a new architecture **without editing a single prompt**.
+- Records what every skill and agent run cost, chained, touched, and failed — as a
+  hook, so the record exists even when the session dies halfway.
 
 ## Purpose
 
@@ -57,6 +67,8 @@ that:
 | Architecture respected | Hooks block forbidden imports derived from the blueprint |
 | Replicable | Self-contained in `.claude/` — nothing depends on global skills in `~/.claude` |
 | Extensible | Architectures are data (YAML), not prompts |
+| Measurable | Every skill/agent invocation in a generated project leaves a report: tokens and cost per piece, chain, files touched, failures |
+| Honest about itself | Eleven invariants of the `.claude/` design are gated in CI, not just written down |
 
 ---
 
@@ -108,22 +120,68 @@ Seven derived rules:
 
 ---
 
+## What makes it different
+
+The closest projects on GitHub come in three shapes: a **static template** you clone
+(one fixed architecture, a pinned Spring version, a `.claude/` inside — e.g.
+`piomin/claude-ai-spring-boot`, `ryu-qqq/claude-spring-standards`), a **skills pack**
+you copy into `.claude/skills/` (knowledge, no generation, no verification — e.g.
+`rrezartprebreza/spring-boot-skills`), or an **agents + hooks bundle** (agents per role,
+hooks that format or block dangerous commands — e.g.
+`altmemy/claude-code-templates`). In all three the architecture is prose the model has
+to remember, and nothing measures what a run cost.
+
+This repository is a **generator with enforcement**:
+
+| Capability | Here | Static template | Skills pack | Agents + hooks |
+|---|---|---|---|---|
+| Project generated via Spring Initializr, versions resolved live | ✅ | ❌ clone, pinned | ❌ | ❌ |
+| Architecture selectable as data — 7 blueprints + custom, no prompt edited | ✅ | ❌ one, fixed | ❌ | ❌ |
+| Boundary derived from the blueprint and blocked by a hook at write time | ✅ | ❌ | ❌ | ❌ generic hooks |
+| Hook as one Java file, exec form, tested on Linux/macOS/Windows in CI | ✅ | ❌ | — | ❌ bash |
+| Deterministic audit trail: cost per skill/agent, chain, files, failures | ✅ | ❌ | ❌ | ❌ |
+| Spec-first pipeline; design can't write `src/`, approved specs frozen by hook | ✅ | ❌ | ❌ | partial |
+| The `.claude/`'s own design invariants gated in CI | ✅ | ❌ | ❌ | ❌ |
+| Frontmatter schema that fails on a field the runtime would ignore silently | ✅ | ❌ | ❌ | ❌ |
+| Code exemplars compiled against a real Initializr classpath in CI | ✅ | ❌ | ❌ | ❌ |
+| Generated project self-contained, generator not needed afterwards | ✅ | ✅ | — | ✅ |
+
+Full analysis, sources, and what is deliberately *not* a differentiator:
+[`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
+
 ## Features
 
-- **Architecture blueprints** — 7 out of the box, extensible via YAML file.
-- **Three levels of instruction** — global constitution, per-module context, detailed
-  on-demand norms.
-- **Hook-based enforcement** — formatting, incremental compilation, and forbidden
-  imports on post-edit; tests of affected modules on stop.
-- **Boundaries derived from the blueprint** — each module's `CLAUDE.md` is
-  *generated*, not hand-written, so it never diverges from what the build enforces.
-- **Versions resolved at runtime** — no Spring Boot version hardcoded in the template.
-- **Skills by capability** — domain, use cases, REST, persistence, messaging, tests;
-  each triggers by description, without explicit invocation.
-- **Packaged pipeline** — `/new-feature` runs the full chain end-to-end.
+- **Architecture blueprints** — 7 out of the box (`hexagonal`, `clean-architecture-multi-module`,
+  `clean-architecture-single-module`, `layered`, `onion`, `vertical-slice`,
+  `modular-monolith`), extensible via a YAML file. Adding one never touches a prompt;
+  CI proves it.
+- **Generator, not template** — base from `start.spring.io` at run time, restructured
+  per blueprint, zero business code, `README` + `GENESIS.md` written into the project.
+- **Three levels of instruction** — global constitution (`CLAUDE.md` under 200 lines),
+  per-module context, detailed norms loaded on demand via `paths` rewritten from the
+  blueprint's `packages.map`.
+- **Hook-based enforcement, one Java file, eight modes** — forbidden imports and
+  incremental compile on post-edit, tests of changed modules on stop, frontmatter and
+  `.mcp.json` schema with secret scan, design/`src/` guard, audit trail, compose health,
+  doctor.
+- **Boundaries derived from the blueprint** — one `forbidden_imports` declaration feeds
+  the module's `CLAUDE.md`, `.claude/forbidden-imports.txt`, and the POM graph; ArchUnit
+  and a JaCoCo gate (80% lines / 70% branches) are installed by an agent when code
+  exists.
+- **Versions resolved at runtime** — no Spring Boot or Java version hardcoded; CI fails
+  if one is written as a fact.
+- **Spec-first pipeline** — `/new-feature` designs one use case per run across six
+  owner skills, consolidates a `UC-NNN-spec.md` (`draft → approved → implemented`),
+  asks approval, then hands the spec to a restricted executor agent.
+- **Execution audit trail** — every skill/agent invocation in the generated project
+  leaves a Markdown report and two ledgers; `/audit-usage` consolidates spend across
+  runs. Prompts are redacted before landing in git.
+- **Cross-cutting concerns solved once** — `Idempotency-Key` via AOP, logging with
+  sensitive-data masking, OTLP collector with Jaeger or Grafana + Tempo + Prometheus,
+  Kafka producer/consumer with retry/DLQ, compose port-collision diagnosis.
 - **Git offer, behind two confirmations** — after a green bootstrap build or a
   successful feature implementation, `git-publish` offers to `git init`/commit and
-  `gh repo create`+push. Nothing runs unattended.
+  `gh repo create`+push. `git push` is always `ask`, `--force` is denied.
 
 ---
 
@@ -132,73 +190,78 @@ Seven derived rules:
 ```
 claude-spring-architect/
 ├── CLAUDE.md                      # facts about this meta-repo (not the generated project's)
-├── CONTEXT.md                     # continuity log: what's done, what's left, what can't break
+├── claude-help.md                 # how each piece of Claude Code works — the runtime reference the docs cite
+├── roadmap.md                     # phases and feature checklist
+├── docs/  ·  docs/en/             # how the pieces collaborate: pt-BR and English mirrors
+├── .github/workflows/validate.yml # CI: OS matrix for the hook + design invariants + exemplar imports
 └── .claude/
     ├── settings.json              # hooks + permissions (versioned)
     ├── settings.local.json        # (gitignored) personal overrides
+    ├── schemas/extensions.json    # single owner of recognized frontmatter, .mcp.json fields, audit/guard config
     ├── rules/                     # norms, on-demand (leaves of the graph)
     │   ├── 00-index.md            #   map of norm → file → paths → who verifies
-    │   ├── architecture-ddd.md    #   master content: copied into the generated project
-    │   ├── naming.md
-    │   ├── code-quality.md
-    │   ├── error-handling.md
-    │   ├── api-rest.md
-    │   ├── lombok.md
-    │   ├── value-objects.md
-    │   ├── persistence.md
-    │   ├── testing.md
-    │   ├── observability.md
-    │   └── logging.md
+    │   ├── architecture-ddd.md    #   paths come from the blueprint at generation time
+    │   ├── naming.md · code-quality.md · error-handling.md · api-rest.md
+    │   ├── lombok.md · value-objects.md · persistence.md · testing.md
+    │   └── observability.md · logging.md · messaging.md
     ├── blueprints/                # architectures as data
     │   ├── _schema.md             #   contract every blueprint fulfills
+    │   ├── README.md              #   pros, cons, when to choose each
     │   ├── hexagonal/hexagonal.yaml
     │   ├── clean-architecture-multi-module/clean-architecture-multi-module.yaml
     │   ├── clean-architecture-single-module/clean-architecture-single-module.yaml
     │   ├── layered/layered.yaml
     │   ├── modular-monolith/modular-monolith.yaml
     │   ├── onion/onion.yaml
-    │   ├── custom-template/custom.template.yaml
-    │   └── vertical-slice/vertical-slice.yaml
+    │   ├── vertical-slice/vertical-slice.yaml
+    │   └── custom-template/custom.template.yaml
     ├── skills/                    # procedure + exemplars
     │   ├── init-project/SKILL.md              #   /init-project — stays in this repo
-    │   ├── arch-doctor/SKILL.md                #   /arch-doctor  — copied into the generated project
-    │   ├── claude-code-architect-designer/     #   designs this .claude/ itself — stays in this repo
     │   ├── project-bootstrap/                  #   stays in this repo: builds, doesn't maintain
     │   │   ├── SKILL.md
-    │   │   ├── references/        #   reading material for the model
-    │   │   └── templates/         #   real, compilable exemplars (*.example)
-    │   ├── use-case-design/       #   pipeline 1/5 — copied into the generated project
-    │   ├── domain-modeling/       #   pipeline 2/5 — copied
-    │   ├── persistence-architect/ #   pipeline 3/5 — copied
-    │   ├── rest-api-architect/    #   pipeline 4/5 — copied
-    │   ├── test-architect/        #   pipeline 5/5 — copied; owns the ArchUnit exemplar
-    │   ├── new-feature/           #   orchestrates the 5 above — copied
+    │   │   ├── references/        #   blueprint selection, dependency catalog
+    │   │   └── templates/         #   real, compilable exemplars (*.example): POMs, CLAUDE.md, settings.json, CI, Docker…
+    │   ├── claude-code-architect-designer/     #   decides skill vs agent vs rule vs MCP — stays in this repo
+    │   ├── arch-doctor/           #   /arch-doctor — copied into the generated project
+    │   ├── use-case-design/       #   pipeline 1 — copied
+    │   ├── domain-modeling/       #   pipeline 2 — copied
+    │   ├── rest-api-architect/    #   pipeline 3 — copied
+    │   ├── persistence-architect/ #   pipeline 4 — copied
+    │   ├── messaging-architect/   #   pipeline 4b, conditional — Kafka producer/consumer — copied
+    │   ├── test-architect/        #   pipeline 5 — copied; owns the ArchUnit exemplar
+    │   ├── new-feature/           #   /new-feature — orchestrates the six above — copied
     │   ├── java-patterns/         #   preloaded into the executor agent — copied
-    │   ├── docker-architect/      #   extends docker-compose/Dockerfile after bootstrap — copied
-    │   ├── messaging-architect/   #   optional pipeline step — Kafka producer/consumer — copied
-    │   └── git-publish/           #   offers git init/commit + gh create/push, two confirmation gates — copied
+    │   ├── docker-architect/      #   services, OTLP collector, Jaeger / Grafana stack — copied
+    │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
+    │   └── audit-usage/           #   /audit-usage — reads the execution trail — copied
     ├── agents/                    # isolated context
-    │   ├── project-initializer.md         #   drives /init-project
+    │   ├── project-initializer.md         #   drives /init-project — stays in this repo
     │   ├── java-spring-boot-developer.md  #   /new-feature's executor — copied
-    │   └── archunit-installer.md          #   test-architect's setup mode — copied
-    ├── decisions/                 # history of why each piece is shaped as it is (not a norm, not copied)
-    └── hooks/
-        └── ArchHook.java          # enforcement, one file, four modes
+    │   ├── archunit-installer.md          #   test-architect's setup mode — copied
+    │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
+    ├── hooks/
+    │   └── ArchHook.java          # enforcement, one file, eight modes
+    └── .ci/BoundaryTest.java      # CI: injects a forbidden import, requires exit 2
 ```
 
 There is no `commands/`: slash commands live as skills with
 `disable-model-invocation: true`. `forbidden-imports.txt` is not here — it is
-generated inside the project during `/init-project`.
+generated inside the project during `/init-project`. The maintainer's decision records
+(`.claude/decisions/`) and the lessons learned from real runs
+(`.claude/lessons-learned/`) are kept out of the public repository on purpose: they are
+history, not norms, and `CLAUDE.md` cites them only as the "why" behind a piece.
 
 **The generated project is self-contained.** Whoever clones it does not need this
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
-skills (`arch-doctor`, `use-case-design`, `domain-modeling`, `persistence-architect`,
-`rest-api-architect`, `java-patterns`, `test-architect`, `new-feature`,
-`docker-architect`, `messaging-architect`, `git-publish`), the executor agents
-(`java-spring-boot-developer.md`, `archunit-installer.md`), and `ArchHook.java`. Only
-`project-bootstrap`, `init-project`, `claude-code-architect-designer`, `blueprints/`,
-and `decisions/` are left out — they serve before the project exists, or record
-decisions about this meta-repo, not the generated one.
+skills (`arch-doctor`, `use-case-design`, `domain-modeling`, `rest-api-architect`,
+`persistence-architect`, `messaging-architect`, `test-architect`, `new-feature`,
+`java-patterns`, `docker-architect`, `git-publish`, `audit-usage`), the executor
+agents (`java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`),
+`ArchHook.java`, and `schemas/extensions.json`. Only `project-bootstrap`,
+`init-project`, `claude-code-architect-designer`, `project-initializer`, and
+`blueprints/` are left out — they serve before the project exists. The project also
+gets its own `README.md`, `README.pt-br.md`, and `.claude/audit-usage/GENESIS.md`
+recording the run that created it.
 
 ### Where to write what
 
@@ -229,8 +292,8 @@ git init
 git commit --allow-empty -m "chore: initial repository"
 
 # 2. install .claude/ BEFORE starting the session
-unzip -q ~/Downloads/claude-spring-architect-scaffold.zip -d /tmp/ais
-cp -r /tmp/ais/claude-spring-architect/.claude .
+git clone --depth 1 https://github.com/ice-lfernandes/claude-spring-architect /tmp/csa
+cp -r /tmp/csa/.claude .
 
 # 3. confirm the tools (nothing to install)
 java --version && git --version && curl --version | head -1
@@ -329,10 +392,12 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ├─ 2. VALIDATES blueprint — 5-rule checklist            [fails fast]
      ├─ 3. BASE via Spring Initializr (curl)                 [GA versions, nothing hardcoded]
      ├─ 4. RESTRUCTURES into modules per the blueprint       [exemplars give the shape]
-     ├─ 5. GENERATES forbidden-imports.txt + <module>/CLAUDE.md
-     ├─ 6. INSTALLS hooks
-     ├─ 7. VERIFIES build + smoke + tested boundary block
-     ├─ 8. REPORT in the fixed output contract
+     ├─ 5. GENERATES forbidden-imports.txt + root and <module>/CLAUDE.md, CI, Checkstyle,
+     │      lombok.config, logback, Dockerfile + docker-compose
+     ├─ 6. COPIES rules, development skills, executor agents — the project is self-contained
+     ├─ 7. INSTALLS hooks (ArchHook.java + extensions.json + settings.json), opens the audit trail
+     ├─ 8. VERIFIES build + smoke + tested boundary block; writes README + GENESIS.md
+     ├─ 9. REPORT in the fixed output contract
      └─ if the build is green: OFFERS git-publish (Skill tool) — two independent
         confirmations, never runs unattended
 ```
@@ -351,10 +416,13 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      │
      ▼  consolidates into UC-NNN-spec.md (status: draft)
      │
-     ▼  asks approval → status: approved (immutable from here)
+     ▼  asks approval → status: approved (immutable from here — the guard hook freezes the folder)
      │
-     ├─ implement now → agent: java-spring-boot-developer → status: implemented
-     │                   → git-publish (feature commit)
+     ├─ implement now → pre-flight, once per project: ArchUnit (test-architect setup mode)
+     │                   and logging/masking aspects (commons-logging-installer), each
+     │                   behind a question, in separate turns
+     │                → agent: java-spring-boot-developer → status: implemented
+     │                → git-publish (feature commit)
      └─ not now       → git-publish (docs of the approved spec only)
                          both behind git-publish's two confirmations
 ```
@@ -363,19 +431,59 @@ Each step receives the structured output of the previous one. Free-prose handoff
 degrades by the third hop; that's why one step's `output-contract` is literally the
 next one's `input-contract`.
 
-### Edit cycle (what happens on every `Write`/`Edit`)
+### Edit cycle (what happens on every `Write`/`Edit` in a generated project)
 
 ```
-Write/Edit on *.java
+Write/Edit
      │
-     ├─ ArchHook format   spotless on the touched module        (never blocks)
-     └─ ArchHook check    forbidden imports + compilation        (blocks: exit 2)
-                          └─ reads .claude/forbidden-imports.txt
+     ├─ ArchHook guard    design skill open + path under src/ → blocked      (PreToolUse, exit 2)
+     │                    spec folder approved/implemented → blocked
+     ├─ ArchHook schema   frontmatter of .claude/**/*.md, .mcp.json           (PreToolUse, exit 2)
+     ├─ ArchHook format   spotless on the touched module                      (never blocks)
+     ├─ ArchHook check    forbidden imports + incremental compilation         (blocks: exit 2)
+     │                    └─ reads .claude/forbidden-imports.txt
+     └─ ArchHook audit    file touched → appended to the run's log            (never blocks)
 
 end of task (Stop)
-     └─ ArchHook tests    tests of the changed modules            (blocks: exit 2)
+     ├─ ArchHook audit flush   renders the run's report + ledger line         (never blocks)
+     ├─ ArchHook schema
+     └─ ArchHook tests    tests of the changed modules                        (blocks: exit 2)
                           └─ respects stop_hook_active, doesn't loop
 ```
+
+In this meta-repo only `schema`, `format`, `check`, and `tests` are wired: there is no
+`src/` to guard and no `.claude/audit-usage/`, so `guard` and `audit` return
+immediately.
+
+### Audit trail — what every run cost
+
+In a generated project, every invocation of a project skill or agent — typed as
+`/command` or chained by the model — leaves `.claude/audit-usage/<timestamp>--<piece>.md`.
+Excerpt of a real one, from a `/new-feature` run in the demo project:
+
+```text
+| ⏱️ Duração         | 2h55m35s  |   ⏸️ Espera pelo usuário | 2h44m33s |   ⚙️ Duração ativa | 11m01s |
+
+/new-feature                                  ████████████████████ 11m01s   100%
+├─ 📘 use-case-design                         ████░░░░░░░░░░░░░░░░ 2m17s    21%
+├─ 📘 domain-modeling (UC-002)                ██░░░░░░░░░░░░░░░░░░ 1m15s    11%
+├─ 📘 rest-api-architect (UC-002)             ███░░░░░░░░░░░░░░░░░ 1m43s    16%
+├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
+├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
+└─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
+     📎 java-patterns (pré-carregada)
+
+| Peça                          | Faturável próprio |     | 🧮 faturável (run) | 530.831 |
+| 📘 test-architect             |           242.813 |     | ♻️ cache read      | 6.849.774 |
+| 🤖 java-spring-boot-developer |            88.517 |     | cache hit          | 100% |
+```
+
+Plus files touched, permissions requested, tools that failed, and the rules that should
+have loaded. `/audit-usage` aggregates the ledgers across runs (spend per piece without
+double counting, failure rate, which report to open). The trail is a hook, not a skill:
+it survives the model forgetting and the session dying, and costs zero tokens to
+produce. Prompts are redacted before landing in git; prices are `null` until you fill
+`pricing.json`. Details: [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md).
 
 ---
 
@@ -404,7 +512,7 @@ cp .claude/blueprints/custom-template/custom.template.yaml .claude/blueprints/my
 $EDITOR .claude/blueprints/my-style.yaml
 ```
 
-Validation is the 5-rule checklist from `_schema.md`, run by the agent in step 2 of
+Validation is the 6-rule checklist from `_schema.md`, run by the agent in step 2 of
 the bootstrap. There's no external validator or anything to install; the build is the
 final arbiter.
 
@@ -448,7 +556,8 @@ features:  { rest: true, persistence-jpa: false, ... }
 ```
 
 Validation rules applied: `depends_on` graph is acyclic · exactly one
-`contains_main` · every referenced `feature` exists · every template exists on disk.
+`contains_main` · every referenced `feature` exists · every template exists on disk ·
+`single-module` has exactly one module · `architecture_paths` is non-empty.
 
 The field that does the heavy lifting is `forbidden_imports`: it feeds both the
 module's `CLAUDE.md` (so the model *knows*) and `ArchHook.java check` (so the build
@@ -609,6 +718,23 @@ on the OS (the same problem the Maven wrapper already solves), normalizes path
 separators, and forces UTF-8 on stderr because Windows consoles use cp1252 and would
 break accented characters.
 
+The same file carries every mode, so there is one place to read and one to test:
+
+| Mode | Event | Blocks? | What it does |
+|---|---|---|---|
+| `check` | `PostToolUse` Write\|Edit | yes | forbidden imports + incremental `test-compile` of the touched module |
+| `format` | `PostToolUse` Write\|Edit | no | `spotless:apply` on the module |
+| `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
+| `schema` | `PreToolUse` / `PostToolUse` / `Stop` | yes | frontmatter of skills, agents, rules, and `.mcp.json` against `schemas/extensions.json`; secret scan |
+| `guard` | `UserPromptSubmit`, `PreToolUse` | yes | design skills never write `src/`; approved specs are immutable (generated project only) |
+| `audit` | ten lifecycle events | no | execution trail of every skill and agent (generated project only) |
+| `compose` | manual; folded into `doctor` | no | every compose service `running`, no foreign container on this project's ports |
+| `doctor` | manual (`/arch-doctor`) | no | diagnoses the setup on this machine |
+
+Every list the hook reads — recognized fields, audited skills' exclusions, redaction
+patterns, guard paths — is data in `schemas/extensions.json`, never a constant in the
+Java. A new skill is audited, and a new field validated, without touching the hook.
+
 Assumed cost: ~1s of JVM startup per invocation, in single-file source mode. In a hook
 that's already waiting on a `test-compile`, it's not noticeable.
 
@@ -666,11 +792,26 @@ Not yet in `validate.yml`, known gaps:
   (see § Dependencies). Run it by hand before opening a PR; it's a cheap,
   complementary check to the `schema` step above and catches malformed YAML.
 
+## Documentation
+
+| Read | To learn |
+|---|---|
+| [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md) | What this repository does that similar ones don't, with sources and the honest non-differentiators |
+| [`docs/en/00-overview.md`](docs/en/00-overview.md) | The full graph of skills, agents, rules, hooks, and who calls whom |
+| [`docs/en/01-file-types.md`](docs/en/01-file-types.md) | How each piece behaves in the Claude Code runtime |
+| [`docs/en/02-init-project.md`](docs/en/02-init-project.md) · [`03-new-feature.md`](docs/en/03-new-feature.md) · [`04-arch-doctor.md`](docs/en/04-arch-doctor.md) | The three commands, step by step, with example output |
+| [`docs/en/05-blueprints.md`](docs/en/05-blueprints.md) · [`.claude/blueprints/README.md`](.claude/blueprints/README.md) | The blueprint contract, and pros/cons of each architecture |
+| [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md) | The audit trail, the guard hook, and `/audit-usage` |
+| [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
+| [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
+
+Portuguese versions of every document live under [`docs/`](docs/README.md).
+
 ## Contributing
 
 Blueprints and norms are the most useful contributions. Before opening a PR:
 
-- A new blueprint passes the 5-rule checklist from `_schema.md` and declares honest
+- A new blueprint passes the 6-rule checklist from `_schema.md` and declares honest
   `trade_offs`. There's no external validator — nothing to install.
 - A new norm lives in its own file under `rules/`, is listed in `00-index.md`, and is
   not copied into any skill.

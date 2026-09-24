@@ -7,7 +7,9 @@ Fonte primária: `.claude/skills/arch-doctor/SKILL.md`,
 
 Diagnostica se o enforcement de arquitetura está realmente funcionando na máquina
 atual: hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema de
-frontmatter válido. Não corrige nada por conta própria — só relata, e sugere o comando
+frontmatter válido, trilha de auditoria, servidores MCP declarados, e se todo serviço
+do `docker-compose.yml` está de fato `running` sem um container de outro projeto nas
+mesmas portas. Não corrige nada por conta própria — só relata, e sugere o comando
 exato para corrigir cada item marcado com ❌.
 
 ## Por que é a skill mais simples das três
@@ -46,6 +48,9 @@ sequenceDiagram
     HOOK->>FS: procura mvnw / mvnw.cmd
     HOOK->>FS: conta linhas válidas em .claude/forbidden-imports.txt
     HOOK->>FS: valida .claude/schemas/extensions.json (se existir)
+    HOOK->>FS: conta relatórios em .claude/audit-usage/ e testa a inferência de regras
+    HOOK->>FS: valida .mcp.json (se existir)
+    HOOK->>FS: docker compose ps + docker ps (se houver compose e docker no PATH)
     HOOK->>FS: git rev-parse HEAD
     HOOK-->>CMD: relatório ✅/❌/⚠️ linha a linha
     CMD->>FS: find .claude -maxdepth 2 -type f
@@ -64,6 +69,10 @@ sequenceDiagram
 | `Maven wrapper` | `mvnw`/`mvnw.cmd` encontrado | ❌ ausente — rodar `/init-project` (o `starter.tgz` já traz o wrapper) |
 | `Boundaries` | ≥ 1 regra válida em `.claude/forbidden-imports.txt` | ❌ 0 regras — enforcement OFF, gerado por `/init-project` |
 | `Schema` | todos os arquivos de extensão passam | ❌ N arquivos com frontmatter inválido, ou ⚠️ sem `extensions.json` — validação OFF |
+| `Audit` | N execuções registradas em `.claude/audit-usage/` (avisa se `pricing.json` falta) | ⚪ sem o diretório — trilha OFF (opcional; é o caso deste meta-repo) |
+| `Audit rule inference` | a inferência de regras renderiza sem erro para um `.java` sintético | ❌ `auditRules()` lança — todo relatório congelaria assim que uma execução tocasse `src/**` |
+| `MCP` | N servidores declarados em `.mcp.json`, todos válidos | ❌ N problemas — rodar `java ArchHook.java schema`; ou "no .mcp.json" (opcional) |
+| `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio | ❌ serviço em `created`/`exited`, ou porta publicada por outro projeto — detalhe linha a linha; sem compose ou sem `docker`, "not checked (optional)" |
 | `git HEAD` | existe pelo menos 1 commit | ❌ sem commits — o hook `tests` não roda (`git diff HEAD` falha) |
 
 A linha final resume: `✅ Setup operational.` só aparece quando **ao mesmo tempo**
@@ -85,11 +94,16 @@ ArchHook doctor
   Maven wrapper       ✅ ./mvnw
   Boundaries          ✅ 9 active rules
   Schema              ✅ all extension files pass
+  Audit ............. ✅ 3 execution(s) recorded — pricing.json missing, no cost estimate
+  Audit rule inference ✅ renders without error on a touched .java file
+  MCP ................ no .mcp.json — nothing declared (optional)
+  Compose ........... ✅ 3/3 services running · no foreign container on declared ports
   git HEAD            ✅ exists
 
 ✅ Setup operational.
 
 AI files
+.claude/audit-usage/GENESIS.md
 .claude/forbidden-imports.txt
 .claude/hooks/ArchHook.java
 .claude/schemas/extensions.json
@@ -100,7 +114,8 @@ Interpretação que o modelo devolve ao usuário (2-3 frases, conforme instruíd
 da skill):
 
 > Setup operacional — wrapper do Maven presente, 9 regras de boundary ativas, schema de
-> frontmatter validando sem erros. Nada para corrigir.
+> frontmatter validando sem erros, três serviços do compose de pé. A trilha de auditoria
+> tem 3 execuções mas `pricing.json` está vazio, então os relatórios não mostram custo.
 
 ## Exemplo de saída com problema
 

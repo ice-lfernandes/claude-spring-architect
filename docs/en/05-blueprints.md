@@ -13,20 +13,20 @@ a rule, it's read programmatically by `project-bootstrap`, not loaded as prose
 instruction.
 
 Each architecture lives at `.claude/blueprints/<id>/<id>.yaml`. A folder without a
-`.yaml` (today: `vertical-slice/`) is an architecture **not yet written** — it only
-has a `README.md` pointing to the contract; the skill ignores these folders until
-someone adds the YAML.
+`.yaml` would be an architecture **not yet written**, and the skill would leave it out
+of the interview listing — today all seven have a YAML. Pros, cons, and "when to
+choose" for each are in `.claude/blueprints/README.md` (and `README.pt-br.md`).
 
-| Blueprint | Has `.yaml`? |
-|---|---|
-| `hexagonal` | ✅ |
-| `clean-architecture-single-module` | ✅ |
-| `clean-architecture-multi-module` | ✅ |
-| `layered` | ✅ — controller/service/repository, single-module, the classic Spring Boot tutorial vocabulary instead of hexagonal's port/adapter naming |
-| `modular-monolith` | ✅ — several bounded contexts (Spring Modulith), each with full domain/application/adapter layering inside its own `internal`; cross-module isolation checked by `ApplicationModules.verify()`, not ArchUnit |
-| `onion` | ✅ — Palermo's Application Core: domain model and domain services in one `domain` module, `persistence`/`presentation` as independent outer rings |
-| `custom-template` | ✅ — starting point for creating your own, not a usable blueprint by itself |
-| `vertical-slice` | ❌ — `README.md` only |
+| Blueprint | Layout | Summary |
+|---|---|---|
+| `hexagonal` | multi-module | Ports as interfaces, inbound and outbound adapters in their own modules |
+| `clean-architecture-single-module` | single-module | domain/application/infrastructure as packages; boundary by ArchUnit only |
+| `clean-architecture-multi-module` | multi-module | Same layers as Maven modules; the compiler enforces the direction |
+| `layered` | single-module | controller/service/repository, the classic Spring Boot tutorial vocabulary instead of hexagonal's port/adapter naming |
+| `modular-monolith` | single-module | Several bounded contexts (Spring Modulith), each with full domain/application/adapter layering inside its own `internal`; cross-module isolation checked by `ApplicationModules.verify()`, not ArchUnit |
+| `onion` | multi-module | Palermo's Application Core: domain model and domain services in one `domain` module, `persistence`/`presentation` as independent outer rings |
+| `vertical-slice` | single-module | One self-contained package per use case (`features.<feature>.<usecase>`, REPR pattern); only the aggregate crosses the slice boundary, in a shared `domain` kernel |
+| `custom-template` | — | Starting point for creating your own, not a usable blueprint by itself |
 
 ## Who reads the YAML, and when
 
