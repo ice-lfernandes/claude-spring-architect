@@ -3,9 +3,13 @@
  * mechanism `.claude/rules/logging.md` cites for putting PII into a log line without it
  * being raw: mask it here, never log the unmasked value directly.
  * Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `annotations` sub-package of `commons.logging`; `MaskedType` sits in the
+ * sibling `enums` sub-package, one hop away since it's this annotation's only default.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.annotations;
 
+import com.exemplo.minhaapi.commons.logging.enums.MaskedType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

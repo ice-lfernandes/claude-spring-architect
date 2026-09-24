@@ -2,8 +2,11 @@
  * EXEMPLAR — method-level logging annotation for application/adapter code.
  * `.claude/rules/logging.md` §  Domain forbids this in the domain layer — apply only in
  * application services and adapters. Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `annotations` sub-package of `commons.logging`, same reasoning as
+ * `HttpMethodLogExecution.java.example`.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

@@ -1,8 +1,14 @@
 /*
  * EXEMPLAR — advice for `@LogExecution`. Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `aspect` sub-package of `commons.logging`, same reasoning as
+ * `GlobalHttpMethodLogAspect.java.example`.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.aspect;
 
+import com.exemplo.minhaapi.commons.logging.LoggingCommonsMethods;
+import com.exemplo.minhaapi.commons.logging.LoggingOptions;
+import com.exemplo.minhaapi.commons.logging.annotations.LogExecution;
 import java.util.Objects;
 import lombok.SneakyThrows;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -15,7 +21,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class LogExecutionAspect {
 
-    @Around("@annotation(com.exemplo.minhaapi.commons.logging.LogExecution)")
+    @Around("@annotation(com.exemplo.minhaapi.commons.logging.annotations.LogExecution)")
     @SneakyThrows
     public Object logExecution(ProceedingJoinPoint joinPoint) {
         var signature = (MethodSignature) joinPoint.getSignature();

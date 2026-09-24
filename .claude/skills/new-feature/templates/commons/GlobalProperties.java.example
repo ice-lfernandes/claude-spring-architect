@@ -1,8 +1,10 @@
 /*
  * EXEMPLAR — `app.logging.*`, not `spring.*`: Spring reserves that prefix for its own
  * properties. Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `properties` sub-package of `commons.logging`, with `HttpMethodProperties`.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.properties;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

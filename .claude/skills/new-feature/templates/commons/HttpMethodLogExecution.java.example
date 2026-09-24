@@ -2,8 +2,12 @@
  * EXEMPLAR — per-endpoint override of `GlobalHttpMethodLogAspect`'s default. Apply on a
  * `@RestController` method that needs a different `logReturn`/`logParameters` than the
  * global default. Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `annotations` sub-package of `commons.logging`, next to `LogExecution`
+ * and `MaskSensitiveData` — the annotation surface split from the aspects that advise
+ * them (`aspect` sub-package) and from the enums/interfaces/properties each one needs.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

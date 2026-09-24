@@ -86,9 +86,14 @@ or fix the blueprint by hand.
    `HttpMethodLogExecutionAspect`, `GlobalHttpMethodLogAspect`, `GlobalProperties`,
    `HttpMethodProperties` — package declaration and any fully-qualified self-reference
    (the `@Around` pointcut strings, the `AutoConfiguration.imports` lines) rewritten to
-   the real package, nothing else. Same andaime rule as every other exemplar-to-real
-   translation in this repo: strip the top `EXEMPLAR`/"compilable as-is" comment block,
-   keep the paragraph explaining *why* the file is shaped the way it is.
+   the real package, nothing else. The exemplars split across five sub-packages of
+   `commons.logging` — `annotations`, `aspect`, `enums`, `interfaces`, `properties` —
+   plus two classes (`LoggingCommonsMethods`, `LoggingOptions`) at `commons.logging`
+   itself; the rewrite is a prefix substitution on `com.exemplo.minhaapi.commons.logging`,
+   so each file's own sub-package suffix carries over unchanged. Same andaime rule as
+   every other exemplar-to-real translation in this repo: strip the top `EXEMPLAR`/
+   "compilable as-is" comment block, keep the paragraph explaining *why* the file is
+   shaped the way it is.
 
 4. **Write `AutoConfiguration.imports`** from `AutoConfiguration.imports.example`, same
    package rewrite, at
@@ -151,7 +156,7 @@ No rollback. The caller decides whether to retry after a fix.
 
 ```
 ✅ commons-logging-installer complete
-- Package: com.example.demoapp.commons.logging (12 classes translated)
+- Package: com.example.demoapp.commons.logging (12 classes translated across its annotations/aspect/enums/interfaces/properties sub-packages)
 - AutoConfiguration.imports: 3 aspects registered
 - Dependencies: spring-boot-starter-aspectj (or -aop, pre-Boot-4), spring-boot-configuration-processor (no <version> — parent-managed)
 - <module> test-compile: green

@@ -2,8 +2,11 @@
  * EXEMPLAR — predefined masking regexes for `@MaskSensitiveData`. `@Getter` on `regex`
  * is allowed under `.claude/rules/lombok.md`: `String` is immutable.
  * Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `enums` sub-package of `commons.logging`, its own small territory since
+ * `MaskSensitiveData` (`annotations`) is its only consumer.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.enums;
 
 import lombok.Getter;
 

@@ -5,9 +5,15 @@
  * `LogMask` + `@MaskSensitiveData` (see `LogMask.java`) before this aspect ever sees
  * it — `.claude/rules/logging.md`'s "zero raw sensitive data" line applies here first.
  * Compilable as-is — not pseudo-code.
+ *
+ * Lives in the `aspect` sub-package of `commons.logging`, with `HttpMethodLogExecutionAspect`
+ * and `LogExecutionAspect` — every `@Around` advice grouped apart from the annotations
+ * it advises and the property/utility types it depends on.
  */
-package com.exemplo.minhaapi.commons.logging;
+package com.exemplo.minhaapi.commons.logging.aspect;
 
+import com.exemplo.minhaapi.commons.logging.LoggingCommonsMethods;
+import com.exemplo.minhaapi.commons.logging.properties.GlobalProperties;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
