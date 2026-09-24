@@ -1,0 +1,25 @@
+# Init script for the `prometheus` service — mounted read-only at
+# /etc/prometheus/prometheus.yml, see docker-architect/SKILL.md step 6. Prometheus
+# refuses to start without a config file, even when everything it stores arrives by push.
+#
+# Metrics arrive over OTLP, pushed by the project's otel-collector to
+# /api/v1/otlp/v1/metrics — the receiver is opened by the `--web.enable-otlp-receiver`
+# flag in the service block, not by anything in this file. There is no scrape job against
+# the application: the application exports, it is not scraped.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  # Makes OTLP metric names predictable in PromQL: dots become underscores and the unit
+  # becomes a suffix, so `http.server.request.duration` in seconds is queried as
+  # `http_server_request_duration_seconds`. Leaving this implicit is how a dashboard ends
+  # up querying a name that never existed.
+  translation_strategy: UnderscoreEscapingWithSuffixes
+
+scrape_configs:
+  # Prometheus scraping itself — the one job worth keeping, because it answers "is the
+  # receiver even up?" without involving the application.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

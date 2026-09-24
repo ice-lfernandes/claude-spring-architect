@@ -411,11 +411,16 @@ that second category — a made-up aggregate competing with a real spec — not 
      other, swapping the service the normal way.
    - `observability` → `docker-architect/templates/otel-collector-service.yml.example`,
      plus its init script `templates/otel-collector-config.yml.example` mounted per
-     `docker-architect/SKILL.md` step 6.
+     `docker-architect/SKILL.md` step 6. **Skip its step 2.5**: generation stays
+     non-interactive, so the collector is born exporting to `debug` and no
+     visualization backend is chosen here. Naming that gap is step 8's job, below.
    - Wire the `app` service's environment for each service added, same as
      `docker-architect/SKILL.md` step 5 — `SPRING_DATASOURCE_URL` pointing at
-     `postgres`'s compose hostname, `OTLP_ENDPOINT` pointing at
-     `otel-collector`'s.
+     `postgres`'s compose hostname, and **both** OTLP variables pointing at
+     `otel-collector`'s: `OTLP_ENDPOINT` (`/v1/traces`) and `OTLP_METRICS_ENDPOINT`
+     (`/v1/metrics`). Two, not one: the observability fragment declares a placeholder
+     per signal, and an unwired metrics endpoint falls back to the app container's own
+     `localhost`, silently.
    - A feature with no service template (`rest`, `openapi`, `testcontainers`, `flyway`
      — Flyway rides on the same Postgres connection, `archunit`) adds nothing here.
 4. Same rule as § andaime (step 4): the exemplar's top comment explaining *why* stays;
@@ -604,7 +609,7 @@ and stays out of the generated project.
 | `rest-api-architect` | ✅ | Designs the endpoints, DTOs, error map, and OpenAPI contract for an already-modeled use case. Carries `templates/rest-spec.md.example`, the six Java shape exemplars (annotated controller, DTOs, mapper, `PageResponse`, `Idempotency-Key` interceptor, `ApiExceptionHandler`), the two JSON fixtures (`error-responses`, `page-response`), and `references/best-practices-links.md`. The contract test exemplar lives in `test-architect` |
 | `test-architect` | ✅ | Two modes: design (the `40-testes.md` partial, per use case, inline) and setup (installs ArchUnit, once per project, delegated to the `archunit-installer` agent — see 6.8). Carries `templates/{test-spec.md,ArchitectureTest.java,TestFixtures.java,DomainTest.java,UseCaseTest.java,ControllerTest.java,PersistenceIT.java}.example` and `references/best-practices-links.md`. It's the sole owner of test-code shape — no other skill carries a test exemplar |
 | `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example`, `templates/feature-spec-short.md.example`, and `templates/commons/*.example` (the thirteen logging/masking exemplars `commons-logging-installer` translates and writes — owned here because `new-feature`'s pre-flight check is what triggers that agent, same as `test-architect` owns `ArchitectureTest.java.example` for `archunit-installer`). Its own `## Entry into generated projects` section already documents it travels here |
-| `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example` |
+| `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example`, the collector pair (`otel-collector-{service,config}`), and the two observability backends its step 2.5 offers — `jaeger-service.yml.example` and `grafana-stack-service.yml.example` with their three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`). Copy the whole `templates/` directory rather than the list: this row has already been stale once |
 | `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the two Java exemplars (producer adapter, consumer adapter), and `application-kafka.yml.example` |
 | `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
 | `audit-usage` | ✅ | Reads the trail `ArchHook.java audit` writes into `.claude/audit-usage/` (step 7.4) through `ArchHook.java audit summary`, and consolidates spend per skill and agent, duration, and failures across runs. Only makes sense where the trail exists — the generated project, never this meta-repo, which creates no `audit-usage/`. Carries no `templates/` or `references/`, and cites neither `blueprints/` nor `decisions/`: it copies with none of the three corrections below |
@@ -689,7 +694,9 @@ Three parts, and the first one is easy to forget:
 
 1. Copy `.claude/hooks/ArchHook.java` (from this repo) to
    `<project>/.claude/hooks/ArchHook.java`, verbatim except for the `// .claude/decisions/
-   0001-schema-frontmatter-extensions.md` comment near line 220 — same exception as
+   0001-schema-frontmatter-extensions.md` comment in the header of the `schema` section
+   (`grep -n 'decisions/' .claude/hooks/ArchHook.java` finds it; don't trust a line
+   number, the file grows) — same exception as
    § 6.6/6.7: cut that citation, `decisions/` has no counterpart in the project. That's
    what the `settings.json`'s `${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java` points
    to — without the copy, the hooks fail to start on any machine that doesn't have this
@@ -949,6 +956,7 @@ Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-archit
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
+Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
 Docs: README.md (English, default) + README.pt-br.md — origin, blueprint, stack, skills/agents, this report

@@ -1,14 +1,23 @@
 # Shape for an OpenTelemetry Collector service block appended under docker-compose.yml's
-# `services:`. Speaks OTLP/HTTP on :4318 — the same port
-# `management.otlp.tracing.endpoint` defaults to in application.yml. Vendor-neutral
-# exporter (`debug`, logs spans to its own stdout): no backend chosen yet — swap the
-# exporter in `otel-collector-config.yml`, not this file, once the project picks one
-# (Jaeger, Tempo, a SaaS vendor). Version resolved against the registry, not memory —
-# same rule as every other version in this repo.
+# `services:`. Speaks OTLP/HTTP on :4318 — the same port `management.otlp.tracing.endpoint`
+# and `management.otlp.metrics.export.url` point at in application.yml. Vendor-neutral
+# exporter (`debug`, dumps spans and metrics to its own stdout): no backend chosen yet —
+# swap the exporter in `otel-collector-config.yml`, not this file, using the delta that
+# ships inside `jaeger-service.yml.example` or `grafana-stack-service.yml.example`.
+# Version resolved against the registry, not memory — same rule as every other version in
+# this repo.
+#
+# **No `ports:` on purpose.** 4318 is reached as `otel-collector:4318` over the compose
+# network, which is the only thing the application needs. Publishing it to the host gave
+# every project generated from this blueprint the same fixed host port, so an orphan
+# collector left running by a sibling project silently answered this project's OTLP
+# traffic — with its own, older config — while this project's collector stayed in
+# `Created`, never able to bind. `docker compose up -d` reports success either way. That
+# is lessons-learned-008; the fix is to stop competing for the port at all. A developer
+# who genuinely needs to curl the collector from the host adds the mapping locally, in a
+# compose override, and knows to take it back out.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.160.0
     command: ["--config=/etc/otel-collector-config.yml"]
     volumes:
       - ./docker/init/otel-collector/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
-    ports:
-      - "4318:4318"

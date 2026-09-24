@@ -1,0 +1,41 @@
+# Shape for a Jaeger service block appended under docker-compose.yml's `services:`.
+# Traces only — Jaeger stores no metrics, so the collector's `metrics` pipeline stays on
+# the `debug` exporter when this backend is chosen. Pick this over the Grafana stack when
+# one container and a trace UI is all the project needs.
+#
+# Jaeger v2, not the deprecated v1 `all-in-one`: v2 is itself an OpenTelemetry Collector
+# distribution and ingests OTLP natively on 4317/4318, so no bridge or agent is needed
+# between this project's collector and it. Version resolved against the registry, not
+# memory — same rule as every other version in this repo.
+#
+# The UI port is variable with a default on purpose, unlike the collector's 4318, which
+# this repo stopped publishing entirely: a UI is opened by a human and needs a
+# predictable number, so it gets a default; OTLP ingest is machine-to-machine inside the
+# compose network and needs no host binding at all. Two sibling projects generated from
+# the same blueprint can both run a UI by setting JAEGER_UI_PORT in one of them.
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    ports:
+      # Jaeger UI. Only this one reaches the host; OTLP 4317/4318 stay internal.
+      - "${JAEGER_UI_PORT:-16686}:16686"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+# --- Delta to apply to docker/init/otel-collector/otel-collector-config.yml -------------
+# Not a second copy of that file: only what changes. One collector config exemplar stays
+# the single owner of the collector's shape (invariant 2) — three near-identical full
+# configs is exactly the drift that produced lessons-learned-008.
+#
+# Add to `exporters:`:
+#
+#   otlp/jaeger:
+#     endpoint: jaeger:4317
+#     tls:
+#       insecure: true
+#
+# Then, in `service.pipelines.traces.exporters`, replace `[debug]` with `[otlp/jaeger]`
+# (or `[debug, otlp/jaeger]` to keep the stdout dump alongside it).
+# Leave `service.pipelines.metrics` untouched — Jaeger does not accept metrics.

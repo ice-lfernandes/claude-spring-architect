@@ -4,6 +4,15 @@
 # span — @.claude/rules/observability.md's "correlation identifier — origin" clause.
 # This fragment is what gives that bridge somewhere to export spans to; without it the
 # bridge is on the classpath but silently drops everything it records.
+#
+# Both signals are declared here on purpose. Metrics export is on by default the moment
+# `micrometer-registry-otlp` is on the classpath, and its default target is
+# `localhost:4318/v1/metrics` — which, from inside the app container, is the app itself
+# and never the collector. Leaving the line out does not turn metrics off; it points them
+# at nowhere, quietly. Each of these endpoints has a matching pipeline on the collector
+# side, and the collector's config is owned by a different skill — adding a third signal
+# means changing both files in the same change. See lessons-learned-008 and
+# docker-architect/SKILL.md § Boundary with neighboring pieces.
 management:
   tracing:
     sampling:
@@ -11,3 +20,6 @@ management:
   otlp:
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        url: ${OTLP_METRICS_ENDPOINT:http://localhost:4318/v1/metrics}

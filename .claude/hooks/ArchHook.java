@@ -14,6 +14,7 @@
 //   schema  Pre/PostToolUse + Stop — frontmatter of extension files   (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
 //   guard   PreToolUse  — design never writes src/, approved specs frozen (blocks)
+//   compose manual      — every compose service up, no foreign container on our ports (never blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
 //
 // Dependencies: JDK. Nothing else.
@@ -49,6 +50,7 @@ public class ArchHook {
                 case "schema" -> schema(stdin);
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
+                case "compose" -> compose();
                 case "doctor" -> doctor();
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
@@ -243,6 +245,10 @@ public class ArchHook {
         } else {
             err("  MCP ................ no .mcp.json — nothing declared (optional)");
         }
+        ComposeReport comp = composeReport();
+        report("Compose", comp.ok(), comp.summary(), comp.summary());
+        for (String d : comp.detail()) err("    " + d);
+
         boolean git = false;
         try { git = run("git", "rev-parse", "HEAD").exit == 0; } catch (Exception ignored) { }
         report("git HEAD", git, "exists",
@@ -256,6 +262,221 @@ public class ArchHook {
     static void report(String label, boolean ok, String yes, String no) {
         String pad = "                  ".substring(Math.min(label.length(), 17));
         err("  " + label + " " + pad.replace(' ', '.') + " " + (ok ? "✅ " + yes : "❌ " + no));
+    }
+
+    // ── compose ──────────────────────────────────────────────────────────────
+    //
+    // Two questions `docker compose up -d` does not answer, both cheap:
+    //   1. Is every service of this project actually running — not `created`, not
+    //      `exited`?
+    //   2. Is a container from ANOTHER project publishing a host port this project's
+    //      compose file also declares?
+    //
+    // Why this is a hook and not a paragraph in docker-architect/SKILL.md: `docker
+    // compose up -d` exits 0 even when an individual service never starts. A container
+    // that cannot bind its published host port stays in `Created`, and the command still
+    // reports success. It happened for real — an `otel-collector` left running for eight
+    // days by a sibling project generated from the same blueprint held host port 4318;
+    // this project's collector sat in `Created`; the application shipped every span and
+    // metric to the wrong container, which answered with its own older config. Two
+    // investigations, one `docker ps` away from the answer. Prose only helps whoever
+    // reads it at the right moment. This runs.
+    //
+    // Never blocks, and Docker is not a dependency of this repository: no compose file,
+    // no `docker` on PATH, or a daemon that is down all report and return.
+
+    /** Seconds each `docker` call gets before it is given up on. See {@link #runTimed}. */
+    static final int DOCKER_TIMEOUT = 10;
+
+    record ComposeReport(boolean ok, String summary, List<String> detail) {}
+
+    static void compose() {
+        ComposeReport r = composeReport();
+        err("ArchHook compose");
+        err("  Project root ...... " + ROOT);
+        report("Compose", r.ok(), r.summary(), r.summary());
+        for (String d : r.detail()) err("    " + d);
+        err("");
+        err(r.ok() ? "✅ Compose healthy." : "⚠️  See the marked lines above.");
+    }
+
+    /**
+     * Diagnoses this project's compose services. Shared by `compose` and `doctor` so the
+     * two can never disagree about what "healthy" means.
+     */
+    static ComposeReport composeReport() {
+        Path file = Stream.of("docker-compose.yml", "docker-compose.yaml", "compose.yml",
+                        "compose.yaml")
+                .map(ROOT::resolve).filter(Files::isRegularFile).findFirst().orElse(null);
+        if (file == null) {
+            return new ComposeReport(true, "no compose file — nothing to check (optional)",
+                    List.of());
+        }
+
+        Map<String, Set<String>> declared = composeHostPorts(readOrNull(file));
+
+        Proc ps;
+        try {
+            ps = runTimed(DOCKER_TIMEOUT, "docker", "compose", "ps", "-a", "--format", "json");
+        } catch (Exception e) {
+            return new ComposeReport(true,
+                    "docker not on PATH — service state not checked (optional)", List.of());
+        }
+        if (ps.exit() == -1) {
+            return new ComposeReport(true, "`docker compose ps` did not answer in "
+                    + DOCKER_TIMEOUT + "s (daemon starting?) — not checked", List.of());
+        }
+        if (ps.exit() != 0) {
+            return new ComposeReport(true,
+                    "`docker compose ps` failed (daemon down?) — not checked", List.of());
+        }
+
+        List<String> detail = new ArrayList<>();
+        Set<String> ours = new LinkedHashSet<>();
+        int running = 0, total = 0;
+        for (Object o : composeEntries(ps.out())) {
+            Map<String, Object> m = asMap(o);
+            if (m == null) continue;
+            total++;
+            String name = orDash(asStr(m.get("Name")));
+            String svc = orDash(asStr(m.get("Service")));
+            String state = Optional.ofNullable(asStr(m.get("State"))).orElse("?")
+                    .toLowerCase(Locale.ROOT);
+            ours.add(name);
+            if (state.startsWith("running")) { running++; continue; }
+            detail.add("service `" + svc + "` is " + state + ", not running"
+                    + ("created".equals(state)
+                            ? " — a `created` container usually failed to bind a"
+                              + " published port; see the port collisions below"
+                            : "")
+                    + "  →  docker compose logs " + svc);
+        }
+
+        // A foreign container holding one of our host ports. This is the check that would
+        // have answered lessons-learned-008 in seconds, and it runs even when every
+        // service above is fine: the collision is what stops a service from starting.
+        Set<String> wanted = declared.values().stream().flatMap(Set::stream)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!wanted.isEmpty()) {
+            try {
+                Proc all = runTimed(DOCKER_TIMEOUT, "docker", "ps",
+                        "--format", "{{.Names}}\t{{.Ports}}");
+                if (all.exit() == 0) {
+                    for (String line : all.out()) {
+                        int tab = line.indexOf('\t');
+                        if (tab < 0) continue;
+                        String name = line.substring(0, tab).strip();
+                        if (ours.contains(name)) continue;
+                        Set<String> held = publishedPorts(line.substring(tab + 1));
+                        held.retainAll(wanted);
+                        for (String p : held) {
+                            detail.add("host port " + p + " is held by `" + name
+                                    + "`, a container of ANOTHER project — "
+                                    + declaredBy(declared, p) + " here cannot bind it"
+                                    + "  →  docker stop " + name);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // `docker compose ps` worked, so this failing is not worth a line.
+            }
+        }
+
+        boolean ok = detail.isEmpty();
+        String summary = ok
+                ? running + "/" + total + " service(s) running, no port collision"
+                : detail.size() + " problem(s) — " + running + "/" + total + " running";
+        return new ComposeReport(ok, summary, detail);
+    }
+
+    /** Accepts both shapes `docker compose ps --format json` emits: an array, or one object per line. */
+    static List<Object> composeEntries(List<String> out) {
+        String joined = String.join("\n", out).strip();
+        if (joined.isEmpty()) return List.of();
+        Object arr = Json.parse(joined);
+        if (arr instanceof List) return asList(arr);
+        List<Object> entries = new ArrayList<>();
+        for (String line : out) {
+            String s = line.strip();
+            if (!s.startsWith("{")) continue;
+            Object o = Json.parse(s);
+            if (o != null) entries.add(o);
+        }
+        return entries;
+    }
+
+    /**
+     * Host ports each service publishes, read from the compose file itself rather than
+     * from `docker ps`: a service that never started publishes nothing, and that is
+     * precisely the one whose port is being held by someone else.
+     */
+    static Map<String, Set<String>> composeHostPorts(String yaml) {
+        Map<String, Set<String>> byService = new LinkedHashMap<>();
+        if (yaml == null) return byService;
+        boolean inServices = false, inPorts = false;
+        String service = null;
+        for (String raw : yaml.split("\r?\n", -1)) {
+            String line = raw.stripTrailing();
+            if (line.isBlank() || line.strip().startsWith("#")) continue;
+            int indent = line.length() - line.stripLeading().length();
+            String body = line.strip();
+
+            if (indent == 0) {                       // top-level key
+                inServices = body.startsWith("services:");
+                inPorts = false;
+                service = null;
+                continue;
+            }
+            if (!inServices) continue;
+            if (indent == 2 && body.endsWith(":")) { // a service name
+                service = body.substring(0, body.length() - 1).strip();
+                inPorts = false;
+                continue;
+            }
+            if (service == null) continue;
+            if (indent == 4) {                       // a key inside the service
+                inPorts = body.startsWith("ports:");
+                continue;
+            }
+            if (inPorts && body.startsWith("- ")) {
+                String p = hostPort(body.substring(2).strip());
+                if (p != null) byService.computeIfAbsent(service, k -> new LinkedHashSet<>()).add(p);
+            }
+        }
+        return byService;
+    }
+
+    /**
+     * The host side of one compose `ports:` entry, or null when there is none to collide
+     * over — the short form `"4318"` asks Docker for an ephemeral port, which is the
+     * whole point of writing it that way.
+     */
+    static String hostPort(String entry) {
+        String s = entry.replace("\"", "").replace("'", "").strip();
+        // ${VAR:-16686} resolves to its default; a bare ${VAR} has no value to compare.
+        s = Pattern.compile("\\$\\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)}").matcher(s).replaceAll("$1");
+        if (s.contains("${")) return null;
+        int slash = s.indexOf('/');                  // strip /tcp, /udp
+        if (slash >= 0) s = s.substring(0, slash);
+        String[] parts = s.split(":");
+        if (parts.length < 2) return null;           // ephemeral short form
+        String host = parts[parts.length - 2].strip();
+        return host.matches("\\d+(-\\d+)?") ? host : null;
+    }
+
+    /** Host ports out of a `docker ps` Ports column: `0.0.0.0:4318->4318/tcp, [::]:4318->4318/tcp`. */
+    static Set<String> publishedPorts(String ports) {
+        Set<String> found = new LinkedHashSet<>();
+        Matcher m = Pattern.compile("(\\d+)(?:-(\\d+))?->").matcher(ports);
+        while (m.find()) found.add(m.group(2) == null ? m.group(1) : m.group(1) + "-" + m.group(2));
+        return found;
+    }
+
+    static String declaredBy(Map<String, Set<String>> declared, String port) {
+        List<String> svcs = declared.entrySet().stream()
+                .filter(e -> e.getValue().contains(port)).map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+        return svcs.isEmpty() ? "a service" : "`" + String.join("`, `", svcs) + "`";
     }
 
     // ── schema ───────────────────────────────────────────────────────────────
@@ -2117,6 +2338,35 @@ public class ArchHook {
             out = r.lines().collect(Collectors.toList());
         }
         return new Proc(proc.waitFor(), out);
+    }
+
+    /**
+     * {@link #run} with a wall clock. For commands that can block indefinitely on
+     * something outside this process — a Docker daemon that is starting, hibernating, or
+     * unreachable. A diagnostic that hangs is worse than one that says "not checked":
+     * `doctor` is what someone runs when the session already feels broken.
+     * Returns exit -1 when the deadline passes, and the partial output.
+     */
+    static Proc runTimed(int seconds, String... cmd) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(ROOT.toFile());
+        pb.redirectErrorStream(true);
+        Process proc = pb.start();
+        List<String> out = new ArrayList<>();
+        Thread reader = new Thread(() -> {
+            try (BufferedReader r = new BufferedReader(
+                    new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+                String l;
+                while ((l = r.readLine()) != null) out.add(l);
+            } catch (IOException ignored) { }
+        });
+        reader.setDaemon(true);
+        reader.start();
+        if (!proc.waitFor(seconds, java.util.concurrent.TimeUnit.SECONDS)) {
+            proc.destroyForcibly();
+            return new Proc(-1, List.copyOf(out));
+        }
+        reader.join(1000);
+        return new Proc(proc.exitValue(), List.copyOf(out));
     }
 
     static String readAll(InputStream in) throws IOException {
