@@ -13,8 +13,15 @@
  *
  * What this level verifies, and nothing else: mapping, SQL, database constraints, fetch
  * strategy. Business rules have their test in the domain.
+ *
+ * The test package mirrors the main one, aggregate subpackage included
+ * (`.claude/rules/persistence.md` § Boundary) — that's what keeps this test able to see
+ * the package-private classes it exercises. A fixture that needs a row from ANOTHER
+ * aggregate (a foreign key's parent, for instance) goes through that aggregate's
+ * outbound port, not through its adapter class: the adapter isn't visible from here, and
+ * making it `public` to satisfy a test is the wrong fix.
  */
-package com.exemplo.minhaapi.adapter.out.persistence;
+package com.exemplo.minhaapi.adapter.out.persistence.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

@@ -67,7 +67,7 @@ already exists and serves.
 | `application/port/CancellationAuditLog.java` | application | outbound port — records who/when/why | NEW | `domain-modeling` |
 | `domain/model/Subscription.java` | domain | aggregate | CHANGE — adds `PENDING_CANCELLATION` and its undo | `domain-modeling` |
 | `domain/exception/SubscriptionNotActiveException.java` | domain | exception | NEW | `domain-modeling` |
-| `infrastructure/persistence/CancellationAuditLogAdapter.java` | infrastructure (out) | persists the audit record | NEW | `persistence-architect` |
+| `infrastructure/persistence/cancellationaudit/CancellationAuditLogAdapter.java` | infrastructure (out) | persists the audit record | NEW | `persistence-architect` |
 | `db/migration/V8__create_cancellation_audit_log.sql` | infrastructure | migration | NEW | `persistence-architect` |
 
 ## Invariants
@@ -110,7 +110,7 @@ already exists and serves.
 - [ ] 4. `application/port/CancellationAuditLog.java`
 - [ ] 5. `application/usecase/CancelSubscriptionUseCase.java`
 - [ ] 6. `db/migration/V8__create_cancellation_audit_log.sql`
-- [ ] 7. `infrastructure/persistence/CancellationAuditLogAdapter.java`
+- [ ] 7. `infrastructure/persistence/cancellationaudit/CancellationAuditLogAdapter.java`
 - [ ] 8. `infrastructure/rest/`
 - [ ] 9. tests for the levels above
 - [ ] 10. `./mvnw clean verify` green

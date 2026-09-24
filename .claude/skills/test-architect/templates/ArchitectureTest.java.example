@@ -114,6 +114,10 @@ class ArchitectureTest {
             .should().resideInAPackage("..adapter.in.rest..")
             .andShould().haveSimpleNameEndingWith("Controller");
 
+    // The trailing two dots are deliberate: the persistence adapter is organized as one
+    // subpackage per aggregate (`@.claude/rules/persistence.md` § Boundary), so the
+    // entity of `User` resides in `..adapter.out.persistence.user`. Narrowing this to a
+    // single-level glob would fail every project that follows the rule.
     @ArchTest
     static final ArchRule jpa_entities_have_entity_suffix = classes()
             .that().areAnnotatedWith("jakarta.persistence.Entity")

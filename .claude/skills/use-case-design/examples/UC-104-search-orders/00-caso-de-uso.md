@@ -70,7 +70,7 @@ already exists and serves.
 | `application/usecase/SearchOrdersUseCase.java` | application | passes criteria to the outbound query | NEW | `domain-modeling` |
 | `application/port/OrderSearchQuery.java` | application | outbound port — read-only query | NEW | `domain-modeling` |
 | `domain/model/OrderSearchCriteria.java` | domain | value object — the reusable predicate composition | NEW | `domain-modeling` |
-| `infrastructure/persistence/OrderSearchQueryAdapter.java` | infrastructure (out) | implements the query | NEW | `persistence-architect` |
+| `infrastructure/persistence/order/OrderSearchQueryAdapter.java` | infrastructure (out) | implements the query | NEW | `persistence-architect` |
 
 ## Invariants
 
@@ -106,7 +106,7 @@ already exists and serves.
 - [ ] 1. `domain/model/OrderSearchCriteria.java`
 - [ ] 2. `application/port/OrderSearchQuery.java`
 - [ ] 3. `application/usecase/SearchOrdersUseCase.java`
-- [ ] 4. `infrastructure/persistence/OrderSearchQueryAdapter.java`
+- [ ] 4. `infrastructure/persistence/order/OrderSearchQueryAdapter.java`
 - [ ] 5. `infrastructure/rest/` (DTO, mapper, controller)
 - [ ] 6. tests for the levels above
 - [ ] 7. `./mvnw clean verify` green

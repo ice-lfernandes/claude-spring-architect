@@ -21,11 +21,16 @@
  * breaks inside a `Set`. If they're really needed, base them on the business key
  * (`email`), not the PK.
  *
+ * PACKAGE: the aggregate's own subpackage, `…persistence.user` — one per aggregate,
+ * never a flat `…persistence` (`.claude/rules/persistence.md` § Boundary). The
+ * persistence-side enum below belongs to the same aggregate, so it goes in the same
+ * subpackage.
+ *
  * Each `// --- <File>.java` block is its own file.
  */
 
-// --- UserEntity.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserEntity.java
+package com.example.demo.adapter.out.persistence.user;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -131,8 +136,8 @@ class UserEntity implements Persistable<UUID> {
     }
 }
 
-// --- UserStatus.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserStatus.java
+package com.example.demo.adapter.out.persistence.user;
 
 // Persistence-side enum. Mirrors the domain's; not the same type.
 enum UserStatus { ACTIVE, SUSPENDED, CLOSED }

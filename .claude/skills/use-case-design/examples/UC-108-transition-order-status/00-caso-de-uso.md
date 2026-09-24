@@ -65,7 +65,7 @@ already exists and serves.
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds `transitionTo(OrderStatus)` | `domain-modeling` |
 | `domain/model/OrderStatus.java` | domain | value object — legal-next-status table | NEW | `domain-modeling` |
 | `domain/exception/IllegalOrderTransitionException.java` | domain | exception | NEW | `domain-modeling` |
-| `infrastructure/persistence/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
+| `infrastructure/persistence/order/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
 
 ## Invariants
 

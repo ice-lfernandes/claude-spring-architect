@@ -3,10 +3,13 @@
  * Form reference for the executor agent; not a file to copy.
  * Rules: `.claude/rules/persistence.md` (§ Boundary, § Queries)
  *        `.claude/rules/naming.md`
+ *
+ * PACKAGE: the aggregate's own subpackage, `…persistence.user` — one per aggregate,
+ * never a flat `…persistence` (`.claude/rules/persistence.md` § Boundary).
  */
 
-// --- UserJpaRepository.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserJpaRepository.java
+package com.example.demo.adapter.out.persistence.user;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -31,7 +34,7 @@ interface UserJpaRepository extends JpaRepository<UserEntity, UUID> {
     // Bound parameter, never concatenated. Projection because the listing doesn't need
     // the whole aggregate.
     @Query("""
-           select new com.example.demo.adapter.out.persistence.UserSummary(u.id, u.name, u.email)
+           select new com.example.demo.adapter.out.persistence.user.UserSummary(u.id, u.name, u.email)
            from UserEntity u
            where u.departmentId = :departmentId
            order by u.name asc, u.id asc
@@ -40,8 +43,8 @@ interface UserJpaRepository extends JpaRepository<UserEntity, UUID> {
                                                       org.springframework.data.domain.Pageable pageable);
 }
 
-// --- UserSummary.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserSummary.java
+package com.example.demo.adapter.out.persistence.user;
 
 import java.util.UUID;
 

@@ -1,7 +1,10 @@
 // Exemplar: Decorator over an output port. Adds cross-cutting behavior
 // without touching the real implementation or the domain. Lives in the adapter, not the domain.
 // Before using: confirm that Spring's @Cacheable or @Retryable doesn't already solve this.
-package com.example.adapter.out.persistence;
+// Same subpackage as the aggregate it decorates (`@.claude/rules/persistence.md`
+// § Boundary) — that's what lets it take the package-private `OrderRepositoryAdapter`
+// as its delegate without widening anything to `public`.
+package com.example.adapter.out.persistence.order;
 
 import com.example.application.port.out.OrderRepositoryPort;
 import com.example.domain.model.order.Order;
