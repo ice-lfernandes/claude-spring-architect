@@ -20,6 +20,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
 | Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
+| Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
 | Validate frontmatter of all extension files, and `.mcp.json` | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
@@ -94,7 +95,8 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
-| Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level | skill `docker-architect` |
+| Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level, choosing an observability backend (Jaeger or Grafana+Tempo+Prometheus) behind the OTLP collector | skill `docker-architect` |
+| A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |

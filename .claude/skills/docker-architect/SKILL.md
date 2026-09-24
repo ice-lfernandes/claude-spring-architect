@@ -5,10 +5,13 @@ description: >
   generation — adds the database or messaging service a modeled use case needs, keeps
   the compose-side image tag consistent with the one test-architect pins in
   TestcontainersConfiguration.java, and syncs with 20-persistencia.md / 40-testes.md.
-  Use when the request involves adding a service to docker-compose, containerizing a
-  new dependency, configuring Testcontainers at the compose level, or "docker-compose
-  is missing the database" — also fires when persistence-architect or test-architect
-  detect a service their spec needs isn't in docker-compose.yml yet.
+  Also owns the observability backend behind the OTLP collector: Jaeger, or Grafana +
+  Tempo + Prometheus. Use when the request involves adding a service to docker-compose,
+  containerizing a new dependency, configuring Testcontainers at the compose level,
+  "docker-compose is missing the database", or wanting a dashboard, a trace UI, or
+  somewhere to actually look at spans and metrics instead of the collector's `debug`
+  stdout — also fires when persistence-architect or test-architect detect a service
+  their spec needs isn't in docker-compose.yml yet.
 argument-hint: "[path of the UC-NNN-<slug> folder, or empty for a manual service add]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -69,6 +72,17 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 | `messaging-architect` | Broker choice, topic, consumer group (`25-mensageria.md`) | `docker-compose.yml` directly — invokes this skill instead |
 | `test-architect` | The pinned image tag inside `TestcontainersConfiguration.java` (one line, Java side) | The compose-side service definition — invokes this skill instead, and both should agree on the same tag |
 
+**The OTLP signal contract has two owners, one per half**, and that is what made
+lessons-learned-008 possible. `project-bootstrap`'s
+`templates/features/observability/application-observability.yml.example` decides **which
+signals the application exports** (`management.otlp.*`); this skill's
+`templates/otel-collector-config.yml.example` decides **which signals the collector
+accepts** (`service.pipelines`). The OTLP receiver registers no route for a signal that
+has no pipeline, so a mismatch is a `404` on every publish cycle, not a startup error.
+Adding or removing a signal on either side is a change to both files, in the same commit.
+No rule states this — `rules/` is a leaf and cannot name either skill (invariant 1), so
+this table is where it lives.
+
 ## Procedure
 
 1. **Confirm the base pair exists.** `docker-compose.yml` and `Dockerfile` at the
@@ -84,10 +98,29 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
    - If called from `project-bootstrap` at generation time: the feature already decided
      it — `persistence-jpa` means Postgres (the engine `application.yml.example`'s
      `datasource.url` already assumes), `observability` means the OTLP collector. No
-     engine question to ask; go straight to step 3.
+     engine question to ask, and **no backend question either**: generation stays
+     non-interactive, and `project-bootstrap`'s own final report is what tells the user
+     the collector exports to `debug` and how to add a UI later. Go straight to step 3.
    - If invoked manually with no folder: `AskUserQuestion` — engine (Postgres, MySQL,
      Kafka, other), version/tag, port, whether it needs an init script. Don't ask what a
      given spec already answers.
+
+2.5 **Observability backend — ask only when it is actually open.** Conditions, all three:
+   invoked manually (not chained), `otel-collector` already in `docker-compose.yml`, and
+   no backend service there yet. Otherwise skip this step without mentioning it.
+
+   `AskUserQuestion` with three options, and state what each costs:
+
+   | Answer | What gets merged |
+   |---|---|
+   | Jaeger | `templates/jaeger-service.yml.example`. One container, traces only, UI on `${JAEGER_UI_PORT:-16686}`. The `metrics` pipeline stays on `debug` |
+   | Grafana + Tempo + Prometheus | `templates/grafana-stack-service.yml.example` + its three init scripts. Three containers, both signals, UI on `${GRAFANA_PORT:-3000}` |
+   | Keep `debug` | Nothing merged. Say plainly that this means no UI — the collector dumps to its own stdout — and that the question can be re-asked any time by running this skill again |
+
+   Don't recommend by guessing the project's future: Jaeger when only traces are asked
+   for, the Grafana stack when the request names metrics or a dashboard. A backend
+   already present in `docker-compose.yml` is never replaced by this step — removing one
+   is a hand edit the user asks for explicitly.
 
 3. **Check what's already there.** `grep -A2 "^services:" docker-compose.yml` and the
    service names under it. A service already present gets left alone — this step never
@@ -103,11 +136,18 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 
 5. **Wire the app service's environment**, only the variables that change because of
    step 4 (`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD` pointing at the new service's
-   hostname and port from compose's internal network; `OTLP_ENDPOINT` pointing at the
-   collector's, e.g. `http://otel-collector:4318/v1/traces`, for the OTLP service).
+   hostname and port from compose's internal network). For the OTLP collector that is
+   **both** endpoint variables, one per signal — `OTLP_ENDPOINT=http://otel-collector:4318/v1/traces`
+   and `OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics`, matching the two
+   placeholders the observability fragment declares. Wiring only the tracing one leaves
+   metrics pointed at the app container's own `localhost`, which is silent and wrong.
    Don't invent datasource properties beyond connectivity — sizing and the rest are
    `@.claude/rules/persistence.md`'s and `persistence-architect`'s call, not this
    skill's.
+
+   The backend services from step 2.5 need no variable on the `app` service: the
+   application talks only to the collector, and the collector reaches the backend through
+   the exporter delta in step 6.
 
 6. **Init script.** Write it under `docker/init/<service>/` and mount it read-only in
    the service's `volumes:`, from the matching `templates/<name>-config.<ext>.example`
@@ -118,9 +158,37 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
    `templates/otel-collector-config.yml.example` mounted, so this step always runs for
    that service.
 
+   Same for the backends from step 2.5 — Tempo, Prometheus, and Grafana each refuse to
+   start, or start useless, without theirs:
+
+   | Service | Init script | From |
+   |---|---|---|
+   | `tempo` | `docker/init/tempo/tempo-config.yml` | `templates/tempo-config.yml.example` |
+   | `prometheus` | `docker/init/prometheus/prometheus-config.yml` | `templates/prometheus-config.yml.example` |
+   | `grafana` | `docker/init/grafana/datasources.yml` | `templates/grafana-datasources.yml.example` |
+   | `jaeger` | — none | Jaeger v2 ships a working default |
+
+6.5 **Apply the collector's exporter delta**, and only when step 2.5 merged a backend.
+   Edit `docker/init/otel-collector/otel-collector-config.yml` — never a template, never
+   a second copy of it — with the `exporters:` entries and the pipeline exporter lists
+   written in the header of the backend template just used. Two rules: the `metrics`
+   pipeline keeps `debug` when the backend is Jaeger (Jaeger stores no metrics), and an
+   exporter is added to `exporters:` rather than replacing what is there. Then note in
+   the report that the collector needs `docker compose up -d --force-recreate
+   otel-collector` to pick the file up — a mounted config is read once, at start.
+
 7. **Report and stop.** Service added, image tag used (and whether it matches
-   `test-architect`'s pin), files changed. Don't invoke anyone — a sibling skill that
-   chained this one resumes on its own thread.
+   `test-architect`'s pin), files changed, and — when step 2.5 merged a backend — the UI
+   URL with the variable that moves it (`http://localhost:16686`, `JAEGER_UI_PORT`).
+
+   End the report with the one command that verifies the result, and say what it
+   catches: `java .claude/hooks/ArchHook.java compose` — every service actually
+   `running` rather than `created`, and no container from another project holding a host
+   port this one publishes. `docker compose up -d` exits 0 in both of those failures.
+   Don't run it here: nothing has been started yet at this point, and a report about
+   containers that do not exist is noise.
+
+   Don't invoke anyone — a sibling skill that chained this one resumes on its own thread.
 
 ## Service catalog
 
@@ -129,8 +197,16 @@ Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
 | PostgreSQL | `templates/postgres-service.yml.example` | Engine chosen in `20-persistencia.md` isn't Postgres — or, at bootstrap time, when `persistence-jpa` isn't active in the blueprint |
 | MySQL | `templates/mysql-service.yml.example` | Engine chosen in `20-persistencia.md` isn't MySQL |
 | Kafka | `templates/kafka-service.yml.example` | Broker chosen in `25-mensageria.md` isn't Kafka, or there is none |
-| OpenTelemetry Collector | `templates/otel-collector-service.yml.example` + init script `templates/otel-collector-config.yml.example` | `observability` isn't active in the blueprint. No engine choice to make here — one vendor-neutral collector, always the same shape, unlike Postgres/MySQL/Kafka which branch on a real decision |
+| OpenTelemetry Collector | `templates/otel-collector-service.yml.example` + init script `templates/otel-collector-config.yml.example` | `observability` isn't active in the blueprint. No engine choice for the collector itself — one vendor-neutral ingest point, always the same shape. Where it *exports* to is a real choice, and it's the next two rows |
+| Jaeger | `templates/jaeger-service.yml.example` | No `otel-collector` in the file yet, a backend is already there, or the project wants metrics too — Jaeger stores traces only |
+| Grafana + Tempo + Prometheus | `templates/grafana-stack-service.yml.example` + three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`) | No `otel-collector` yet, a backend is already there, or three containers is too much for what the project needs — Jaeger is the one-container answer |
 | H2 | — no service | In-memory, runs inside the JVM; nothing to containerize |
+
+The collector's default exporter is `debug`, which writes to its own stdout and **is not
+a dashboard**. That default is deliberate — this skill doesn't pick an observability
+vendor on its own — but it is a starting point, not the end of the road: step 2.5 exists
+so the gap gets named out loud instead of waiting for someone to notice that "the traces
+work" and "I can see the traces" are different sentences.
 
 Other engines and brokers (Oracle, RabbitMQ, SQS via LocalStack) follow the same shape as
 the templates above: image, fixed dev port, named volume for data, healthcheck,

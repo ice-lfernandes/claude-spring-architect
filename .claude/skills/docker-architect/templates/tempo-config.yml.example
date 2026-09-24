@@ -1,0 +1,34 @@
+# Init script for the `tempo` service — mounted read-only at /etc/tempo-config.yml, see
+# docker-architect/SKILL.md step 6. Tempo refuses to start without a config file.
+#
+# Single-binary local mode: no object store, no separate ingester/querier. Blocks and WAL
+# live in the `tempo-data` named volume, which is why this is dev-shaped and not a
+# deployment artifact. The OTLP receiver here is what the project's otel-collector
+# exports traces to (`otlp/tempo`, endpoint `tempo:4317`) — the application never talks
+# to Tempo directly.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  # Short flush windows so a span shows up in the UI seconds after the request, not
+  # minutes. Wrong for a deployment, right for a laptop.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal

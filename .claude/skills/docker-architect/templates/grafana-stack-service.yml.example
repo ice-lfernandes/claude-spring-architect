@@ -1,0 +1,95 @@
+# Shape for the Grafana + Tempo + Prometheus stack, appended under docker-compose.yml's
+# `services:`. Three services, one UI. Covers **both** signals the collector publishes —
+# traces to Tempo, metrics to Prometheus — unlike Jaeger, which takes traces only. Pick
+# this when the project wants a dashboard over metrics, or when it expects to grow into a
+# real backend later: the same OTLP wiring points at Grafana Cloud with only an endpoint
+# and a credential changed.
+#
+# Versions resolved against the registry, not memory — same rule as every other version
+# in this repo.
+#
+# Only Grafana publishes a host port, and it is variable with a default. Tempo and
+# Prometheus are reached by Grafana over the compose network and have no reason to bind
+# the host; the collector's own 4318 is not published either, for the same reason. That
+# is what keeps two sibling projects generated from the same blueprint from fighting over
+# a port — see lessons-learned-008. Set GRAFANA_PORT in one of them to run both UIs.
+#
+# Init scripts for the three, written by docker-architect step 6:
+#   docker/init/tempo/tempo-config.yml              ← templates/tempo-config.yml.example
+#   docker/init/prometheus/prometheus-config.yml    ← templates/prometheus-config.yml.example
+#   docker/init/grafana/datasources.yml             ← templates/grafana-datasources.yml.example
+  tempo:
+    image: grafana/tempo:2.10.8
+    command: ["-config.file=/etc/tempo-config.yml"]
+    volumes:
+      - ./docker/init/tempo/tempo-config.yml:/etc/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    # --web.enable-otlp-receiver is what opens /api/v1/otlp/v1/metrics. Without it the
+    # collector's metrics exporter gets a 404 — the same failure shape as
+    # lessons-learned-008, one layer further out.
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-otlp-receiver"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./docker/init/prometheus/prometheus-config.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    environment:
+      # Dev only: no login screen in front of a dashboard that reads a throwaway local
+      # stack. A deployed Grafana never runs with these two.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_USERS_DEFAULT_THEME: dark
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./docker/init/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      tempo:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+
+# --- Named volumes: merge into docker-compose.yml's top-level `volumes:` ----------------
+# volumes:
+#   tempo-data:
+#   prometheus-data:
+#   grafana-data:
+
+# --- Delta to apply to docker/init/otel-collector/otel-collector-config.yml -------------
+# Not a second copy of that file: only what changes. One collector config exemplar stays
+# the single owner of the collector's shape (invariant 2) — three near-identical full
+# configs is exactly the drift that produced lessons-learned-008.
+#
+# Add to `exporters:`:
+#
+#   otlp/tempo:
+#     endpoint: tempo:4317
+#     tls:
+#       insecure: true
+#   otlphttp/prometheus:
+#     endpoint: http://prometheus:9090/api/v1/otlp
+#     tls:
+#       insecure: true
+#
+# Then replace the exporter list of each pipeline:
+#   service.pipelines.traces.exporters  → [otlp/tempo]
+#   service.pipelines.metrics.exporters → [otlphttp/prometheus]
+# Keep `debug` alongside either one while diagnosing; drop it once the UI shows data.

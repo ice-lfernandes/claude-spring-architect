@@ -1,0 +1,32 @@
+# Init script for the `grafana` service — mounted read-only at
+# /etc/grafana/provisioning/datasources/datasources.yml, see docker-architect/SKILL.md
+# step 6. Provisioning is what makes the stack usable on first `docker compose up`:
+# without it Grafana starts empty and every developer wires the same two datasources by
+# hand, differently.
+#
+# The `uid` values are fixed so a dashboard JSON committed to the repo keeps pointing at
+# the right datasource across machines. A generated uid would break every shared
+# dashboard the moment the volume is recreated.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # Turns the exemplar on a latency panel into a link to the trace that produced it.
+      # This is the payoff of the correlation identifier @.claude/rules/observability.md
+      # requires: metric and trace reach the same UI and point at each other.
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus

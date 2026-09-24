@@ -1,8 +1,23 @@
 # Init script for the `otel-collector` service — mounted read-only, see
 # docker-architect/SKILL.md step 6. The collector has no built-in default pipeline; it
-# refuses to start without this file. `debug` is the exporter here on purpose: it needs
-# no backend, no credentials, and no network beyond the collector itself — swap it (or
-# add a second exporter) once the project has a real tracing backend to send to.
+# refuses to start without this file.
+#
+# One pipeline per signal the application actually exports. Both are declared here on
+# purpose: the OTLP receiver only registers the route for a signal that has a pipeline,
+# so a missing `metrics` pipeline answers `404 page not found` on `/v1/metrics` while
+# traces work fine — a WARN on every publish cycle, in every generated project, forever.
+# That is lessons-learned-008. `logs` is deliberately absent: nothing exports it today,
+# and a pipeline nothing feeds is speculation. Adding a signal on the application side
+# (`management.otlp.*` in application.yml) means adding its pipeline here, in the same
+# change — the two halves of that contract have different owners, see
+# docker-architect/SKILL.md § Boundary with neighboring pieces.
+#
+# `debug` is the exporter here on purpose: it needs no backend, no credentials, and no
+# network beyond the collector itself. It is also not a dashboard — it dumps spans and
+# metrics to the collector's own stdout and nothing more. For a real UI, add a backend
+# with `/docker-architect`: `templates/jaeger-service.yml.example` (traces only, one
+# container) or `templates/grafana-stack-service.yml.example` (traces and metrics, three
+# containers). Each of those carries the exporter delta to apply to this file.
 receivers:
   otlp:
     protocols:
@@ -19,6 +34,10 @@ exporters:
 service:
   pipelines:
     traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug]
