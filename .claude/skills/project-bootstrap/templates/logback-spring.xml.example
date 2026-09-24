@@ -20,16 +20,21 @@ dependency (e.g. logstash-logback-encoder), replace the PatternLayoutEncoder bel
 that encoder in the same change that adds the dependency — update
 .claude/rules/logging.md's pattern line too, so the rule and this file don't diverge.
 -->
+<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="app"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{ISO8601} %-5level [traceId=%X{traceId}] %logger{36} - %msg%n</pattern>
+            <pattern>%magenta(%d{yyyy-MM-dd HH:mm:ss} app=${appName} [%thread] [%X{traceId}:%X{spanId}]) %cyan(%logger{36}) %highlight(%-5level M=%M, %msg%n)
+            </pattern>
+            <charset>utf8</charset>
         </encoder>
     </appender>
 
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="STDOUT"/>
     </root>
 
 </configuration>
