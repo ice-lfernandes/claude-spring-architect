@@ -29,6 +29,8 @@ import com.exemplo.minhaapi.domain.exception.ConflictException;
 import com.exemplo.minhaapi.domain.exception.DomainException;
 import com.exemplo.minhaapi.domain.exception.NotFoundException;
 import com.exemplo.minhaapi.domain.exception.ValidationException;
+import com.exemplo.minhaapi.adapter.in.rest.idempotent.IdempotencyKeyInterceptor;
+import com.exemplo.minhaapi.adapter.in.rest.idempotent.MissingIdempotencyKeyException;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import jakarta.servlet.http.HttpServletRequest;
@@ -76,6 +78,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ProblemDetail handleConflict(ConflictException e, HttpServletRequest request) {
         return problemDetail(HttpStatus.CONFLICT, e, request);
+    }
+
+    // Structural, same family as bean validation below: the request never reached the use
+    // case, so there's no domain exception and no `errorCode` — just `violations`, with the
+    // header name as the offending "field" (`IdempotencyKeyInterceptor.java.example`).
+    @ExceptionHandler(MissingIdempotencyKeyException.class)
+    public ProblemDetail handleMissingIdempotencyKey(MissingIdempotencyKeyException e, HttpServletRequest request) {
+        log.debug("Missing/malformed Idempotency-Key at {}", request.getRequestURI());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("violations", List.of(new Violation(IdempotencyKeyInterceptor.HEADER, e.getMessage())));
+        return problem;
     }
 
     // Bean validation is structural: the body never reached the domain. Carries `violations`

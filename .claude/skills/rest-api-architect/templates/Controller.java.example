@@ -1,15 +1,18 @@
 /*
  * EXEMPLAR — controller implementation, in the shape `.claude/rules/api-rest.md`
  * requires. Shows the four points every new endpoint tends to get wrong: explicit
- * version prefix, `@ApiResponse` for EVERY status the endpoint returns (on the
- * contract, see below), `Location` on 201, and zero business logic.
+ * version prefix, `@ApiResponse` for EVERY status the endpoint returns (declared on
+ * the contract, see below), `Location` on 201, and zero business logic.
  * Compilable as-is — not pseudo-code.
  *
- * Implements `UserApi` (`Api.java.example`) instead of carrying its own
- * `@GetMapping`/`@PostMapping`, `@Tag`, or `...OpenApiDocs` annotations: Spring
- * resolves those from the implemented interface's method, so repeating them here
- * would duplicate the same fact in two places. Only `@RestController` and the class's
- * base `@RequestMapping` stay on the class — nothing to inherit them from.
+ * Implements `UserApi` (`Api.java.example`) for its `@Tag` and `...OpenApiDocs`
+ * annotations, and carries every annotation that makes the endpoint actually work:
+ * `@PostMapping`/`@GetMapping`, `@Valid`, `@RequestBody`, `@PathVariable`, and the
+ * Spring Data Web resolution ones on `list`'s `Pageable` parameter. `UserApi` carries
+ * none of these — the split is by KIND, not by file-size convenience: mapping and
+ * binding here because they're what runs; OpenAPI documentation there because it's
+ * what's read, and mixing the two on one signature was harder to review than the
+ * annotation repeated on `@Override`'s companion method never is.
  *
  * What's deliberately NOT here:
  *   - try/catch. The domain exception bubbles up and ApiExceptionHandler translates it.
@@ -17,20 +20,32 @@
  *   - domain type in the public signature. DTO in, DTO out.
  *   - the idempotency transaction. `@Idempotent` (`IdempotencyAspect.java.example`) owns
  *     it around this method; this class only supplies the effect. The command carries no
- *     key (`.claude/rules/api-rest.md` § Idempotency).
+ *     key (`.claude/rules/api-rest.md` § Idempotency). No `Idempotency-Key` parameter
+ *     either: `IdempotencyAspect` reads the header directly off the raw
+ *     `HttpServletRequest`, so nothing in this method's signature has to carry it — see
+ *     `Api.java.example`'s own note on the same point.
  */
 package com.exemplo.minhaapi.adapter.in.rest;
 
 import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.PageResponse;
 import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
+import com.exemplo.minhaapi.adapter.in.rest.idempotent.Idempotent;
 import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
 import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
 import com.exemplo.minhaapi.domain.model.user.User;
+import jakarta.validation.Valid;
 import java.net.URI;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,11 +64,17 @@ public class UserController implements UserApi {
     }
 
     // `@Idempotent` wraps this method in the claim/replay transaction
-    // (`IdempotencyAspect.java.example`); `bodyArgIndex = 1` names `request` as the
-    // parameter to hash, since `idempotencyKey` at index 0 isn't the payload.
+    // (`IdempotencyAspect.java.example`); `bodyArgIndex = 0` names `request` — the only
+    // parameter here — as the one to hash. The aspect gets the key itself from the
+    // request header, not from a controller parameter.
+    // `@Idempotent` wraps this method in the claim/replay transaction
+    // (`IdempotencyAspect.java.example`); `bodyArgIndex = 0` names `request` — the only
+    // parameter here — as the one to hash. The aspect gets the key itself from the
+    // request header, not from a controller parameter.
     @Override
-    @Idempotent(bodyArgIndex = 1)
-    public ResponseEntity<UserResponse> create(String idempotencyKey, CreateUserRequest request) {
+    @Idempotent(bodyArgIndex = 0)
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         User user = createUser.handle(UserMapper.toCommand(request));
         UserResponse body = UserMapper.toResponse(user);
         // 201 carries Location + the created representation. Only one of the two is half a
@@ -62,21 +83,40 @@ public class UserController implements UserApi {
         return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
     }
 
-    // Spring Data Web already resolved `pageable` from the query string
-    // (`Api.java.example`'s `@ParameterObject` — that file's comment also covers adding
-    // one extra filter parameter alongside `Pageable`, and why an out-of-range `page`
-    // is clamped rather than rejected). `toCriteria` is the one spot that converts it to
-    // `PageCriteria` — the port never sees `Pageable`
-    // (`.claude/rules/architecture-ddd.md` § Application).
+    // `Pageable` instead of three `@RequestParam` primitives (`.claude/rules/api-rest.md`
+    // § Pagination) — Spring Data Web binds `page`/`size`/`sort` from the query string on
+    // its own, same names `ListUsersOpenApiDocs` documents. `@ParameterObject` stops
+    // springdoc from treating it as a request body. `size` above
+    // `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
+    // silent truncation — Spring Data doesn't enforce that cap by itself.
+    //
+    // A collection with one extra filter (a name/status/date-range search) takes it as a
+    // second parameter next to `Pageable` — `list(Pageable pageable, String status)` —
+    // and stays inside `code-quality.md`'s ParameterNumber ≤ 3. Only when a third
+    // independent filter shows up does the pair stop fitting; that's the point to
+    // introduce a small criteria object instead of a fourth primitive.
+    //
+    // `Pageable`'s own resolver clamps an out-of-range `page` (negative, or past the
+    // last one) to the first page instead of rejecting it — there's no way to tell
+    // "explicitly invalid" from "omitted" once Spring has already bound the parameter.
+    // A hard 400 on `page` needs a custom `HandlerMethodArgumentResolver` in front of
+    // it; accepting the clamp is the default unless the spec says otherwise.
+    //
+    // `toCriteria` is the one spot that converts it to `PageCriteria` — the port never
+    // sees `Pageable` (`.claude/rules/architecture-ddd.md` § Application).
     @Override
-    public PageResponse<UserResponse> list(Pageable pageable) {
+    @GetMapping
+    public PageResponse<UserResponse> list(
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         var result = listUsers.handle(UserMapper.toCriteria(pageable));
         return PageResponse.of(result.content().stream().map(UserMapper::toResponse).toList(),
                 pageable.getPageNumber(), pageable.getPageSize(), result.totalElements());
     }
 
     @Override
-    public UserResponse get(String userId) {
+    @GetMapping("/{userId}")
+    public UserResponse get(@PathVariable String userId) {
         return UserMapper.toResponse(listUsers.byId(userId));
     }
 }

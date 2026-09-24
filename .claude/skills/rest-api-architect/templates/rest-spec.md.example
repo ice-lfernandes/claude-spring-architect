@@ -54,8 +54,8 @@ table is the source of block 5 — no test case comes from anywhere but here.
 | Email already registered | `BusinessRuleViolationException` | 422 | `EMAIL_ALREADY_REGISTERED` | `errorCode` |
 | Given department doesn't exist | `NotFoundException` | 404 | `DEPARTMENT_NOT_FOUND` | `errorCode` |
 | Unknown `userId` in `GET` | `NotFoundException` | 404 | `USER_NOT_FOUND` | `errorCode` |
-| `Idempotency-Key` missing or malformed | `ValidationException` | 400 | `IDEMPOTENCY_KEY_INVALID` | `errorCode` |
 | Same key, different body | `ConflictException` | 409 | `IDEMPOTENCY_KEY_REUSED` | `errorCode` |
+| `Idempotency-Key` missing or malformed | — (`MissingIdempotencyKeyException`, structural) | 400 | **none** | `violations` |
 | Required field missing, malformed `email` | — (bean validation) | 400 | **none** | `violations` |
 | Unreadable JSON, incompatible type | — (deserialization) | 400 | **none** | — |
 | Unmapped | — | 500 | **none** | `traceId` |

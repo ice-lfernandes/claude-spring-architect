@@ -13,7 +13,8 @@
  *      has neither the body hash nor the effect. That half lives in the application
  *      layer, where transactions open (`.claude/rules/architecture-ddd.md` § Application):
  *      `@.claude/skills/persistence-architect/templates/IdempotentExecution.java.example`,
- *      called from the controller (`Controller.java.example`).
+ *      driven by `IdempotencyAspect.java.example` via `@Idempotent` on the controller
+ *      method — never a by-hand call from here.
  *
  * WHY IT'S AN INTERCEPTOR AND NOT A FILTER. A `Filter` runs before the `DispatcherServlet`,
  * and an exception thrown there does NOT go through `@RestControllerAdvice` — the response
@@ -22,15 +23,23 @@
  * comes out in the right shape. If you prefer a filter, you have to serialize the
  * `ProblemDetail` by hand in there.
  *
+ * PACKAGE. Every idempotency artifact — this file, `MissingIdempotencyKeyException` below,
+ * and everything `IdempotencyAspect.java.example` declares (`Idempotent`,
+ * `IdempotencyRequestHasher`, `IdempotencyResponseCodec`, `AspectInvocationException`) —
+ * lives together in its own `idempotent` subpackage of the inbound REST adapter, not
+ * loose in the adapter's root package. It's a cohesive unit read and changed as one, and
+ * the split keeps the controller/DTO/mapper files from scrolling past it. Shown here as
+ * `adapter.in.rest.idempotent` to match this folder's sibling exemplars — package per the
+ * active blueprint's `packages.map`.
+ *
  * The table that stores route, caller identity, body hash, status, and response body
  * (TTL >= 24 h) belongs to `20-persistencia.md`. The `30-rest.md` partial declares it's
  * needed and names it; it doesn't model it. Shape reference for the other half:
  * `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
  * `.../IdempotencyKeyStore.java.example`, and `.../IdempotentExecution.java.example`.
  */
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
-import com.exemplo.minhaapi.domain.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Set;
@@ -43,9 +52,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 
     public static final String HEADER = "Idempotency-Key";
-    // Attribute available to the controller, already validated as a UUID. The key goes to
-    // `IdempotentExecution`, never into the use case's command.
-    public static final String ATTRIBUTE = "idempotencyKey";
 
     // Routes that require the key: POST that creates a resource, moves money, or touches an
     // external system. Explicit list — requiring it across the whole API puts 400 on harmless actions.
@@ -59,14 +65,9 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 
         String key = request.getHeader(HEADER);
         if (key == null || !isUuid(key)) {
-            // 400: required header missing or malformed
-            // (`.claude/rules/api-rest.md` § Errors — 400 family). The body comes out as
-            // ProblemDetail because ApiExceptionHandler maps ValidationException.
-            throw new ValidationException(
-                    "IDEMPOTENCY_KEY_INVALID", "Header " + HEADER + " missing or malformed");
+            throw new MissingIdempotencyKeyException("Header " + HEADER + " missing or malformed");
         }
 
-        request.setAttribute(ATTRIBUTE, key);
         return true;
     }
 
@@ -82,6 +83,20 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+}
+
+// --- MissingIdempotencyKeyException.java
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
+
+// Thrown by IdempotencyKeyInterceptor when Idempotency-Key is missing or malformed.
+// Deliberately NOT a DomainException: `.claude/rules/api-rest.md` § Errors classifies this
+// case as adapter/structural, same family as bean validation — the request never reached
+// the use case, so the response carries `violations` and no `errorCode`
+// (ApiExceptionHandler#handleMissingIdempotencyKey, ApiExceptionHandler.java.example).
+public class MissingIdempotencyKeyException extends RuntimeException {
+    public MissingIdempotencyKeyException(String message) {
+        super(message);
     }
 }
 

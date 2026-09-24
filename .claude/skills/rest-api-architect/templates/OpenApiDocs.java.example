@@ -15,12 +15,13 @@
  *   - when there's a request body: @Operation(requestBody = ...) with a concrete JSON
  *     @ExampleObject, never just a @Schema reference
  *
- * These composed annotations go on the contract interface's method, next to
- * `@PostMapping`/`@GetMapping`/etc and the binding annotations (`Api.java.example`) —
- * the implementing controller (`Controller.java.example`) carries none of it. Spring
- * resolves mapping, binding and OpenAPI annotations from an implemented interface's
- * method, so repeating them on the implementation would duplicate the same fact in two
- * places, which `@CLAUDE.md` invariant 2 forbids even for code.
+ * These composed annotations go on the contract interface's method (`Api.java.example`)
+ * ALONE — no `@PostMapping`/`@GetMapping`, no binding annotation sits next to them there.
+ * Those live on the implementing controller instead (`Controller.java.example`), which
+ * carries none of these doc annotations. Spring still resolves them off the implemented
+ * interface's method at request time, so repeating them on the implementation would
+ * duplicate the same fact in two places, which `@CLAUDE.md` invariant 2 forbids even for
+ * code — the split is by kind (doc vs. runtime-functional), not by which file has room.
  *
  * Requires springdoc-openapi to resolve swagger-core annotations as meta-annotations
  * (annotation-on-annotation) — supported since springdoc-openapi 1.6 / swagger-core 2.2.
@@ -49,7 +50,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.springframework.http.ProblemDetail;
 
-/** Goes on `UserController#create`, next to `@PostMapping`. */
+/** Goes on `UserApi#create` alone — `@PostMapping` lives on `UserController#create` instead. */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Operation(
@@ -99,11 +100,11 @@ import org.springframework.http.ProblemDetail;
 public @interface CreateUserOpenApiDocs {}
 
 /**
- * Goes on `UserController#list`, next to `@GetMapping`. The method's parameter is
- * `@ParameterObject Pageable pageable` (`Api.java.example`), not three primitives —
- * springdoc still needs these three `@Parameter`s by name to attach a description and
- * example; it merges them with what it infers from `Pageable` instead of documenting an
- * opaque object.
+ * Goes on `UserApi#list` alone — `@GetMapping` and the `@ParameterObject
+ * @PageableDefault Pageable pageable` parameter live on `UserController#list` instead
+ * (`Controller.java.example`). springdoc still needs these three `@Parameter`s by name
+ * to attach a description and example; it merges them with what it infers from
+ * `Pageable` instead of documenting an opaque object.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -134,7 +135,7 @@ public @interface CreateUserOpenApiDocs {}
         content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
 public @interface ListUsersOpenApiDocs {}
 
-/** Goes on `UserController#get`, next to `@GetMapping("/{userId}")`. */
+/** Goes on `UserApi#get` alone — `@GetMapping("/{userId}")` lives on `UserController#get` instead. */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Operation(

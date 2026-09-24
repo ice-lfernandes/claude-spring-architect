@@ -52,12 +52,15 @@
  * Spring Boot 4 renamed starters.
  *
  * Each `// --- <File>.java` block is its own file. Package per the active blueprint's
- * `packages.map` — shown here as `adapter.in.rest`/`application.port.out` to match this
- * folder's sibling exemplars.
+ * `packages.map` — shown here as `adapter.in.rest.idempotent`/`application.port.out` to
+ * match this folder's sibling exemplars. All idempotency artifacts (this file, the two
+ * helpers, the annotation, and `IdempotencyKeyInterceptor.java.example` +
+ * `MissingIdempotencyKeyException`) share that one `idempotent` subpackage of the inbound
+ * REST adapter — not loose in the adapter's root package next to the controller and DTOs.
  */
 
 // --- Idempotent.java
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -75,7 +78,7 @@ public @interface Idempotent {
 }
 
 // --- IdempotencyRequestHasher.java
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -109,7 +112,7 @@ class IdempotencyRequestHasher {
 }
 
 // --- IdempotencyResponseCodec.java
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
 import com.exemplo.minhaapi.application.port.out.StoredResponse;
 import java.lang.reflect.Type;
@@ -172,7 +175,7 @@ class IdempotencyResponseCodec {
 }
 
 // --- AspectInvocationException.java
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
 // Unchecked carrier for whatever `ProceedingJoinPoint#proceed()` threw, alive only
 // between `proceedUnchecked` and `aroundIdempotent` — never seen outside this file, and
@@ -185,7 +188,7 @@ class AspectInvocationException extends RuntimeException {
 }
 
 // --- IdempotencyAspect.java
-package com.exemplo.minhaapi.adapter.in.rest;
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
 import com.exemplo.minhaapi.application.port.out.IdempotencyRequest;
 import com.exemplo.minhaapi.application.port.out.StoredResponse;

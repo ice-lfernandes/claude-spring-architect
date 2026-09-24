@@ -28,6 +28,18 @@
     "errorCode": "IDEMPOTENCY_KEY_REUSED"
   },
 
+  "400-idempotency-key-ausente": {
+    "_nota": "Structural, same family as bean validation below — the request never reached the use case, hence no errorCode. Field name is the header itself (MissingIdempotencyKeyException, thrown by IdempotencyKeyInterceptor).",
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "Invalid request",
+    "instance": "/api/v1/orders",
+    "violations": [
+      { "field": "Idempotency-Key", "message": "Header Idempotency-Key missing or malformed" }
+    ]
+  },
+
   "400-bean-validation": {
     "_nota": "Structural, doesn't come from the domain — hence no errorCode.",
     "type": "about:blank",

@@ -1,26 +1,36 @@
 /*
- * EXEMPLAR — controller contract as an interface. Every OpenAPI annotation lives
- * here: `@Tag` at type level, and each operation's composed `...OpenApiDocs`
- * annotation (`OpenApiDocs.java.example`) plus the Spring mapping and binding
- * annotations at method level. `Controller.java.example` implements this interface
- * and carries none of it — Spring resolves `@RequestMapping`/`@GetMapping`/
- * `@PostMapping`, `@PathVariable`, `@RequestParam`, `@RequestHeader`, `@RequestBody`
- * and bean-validation annotations declared on an implemented interface's method, so
- * the implementation doesn't repeat them (Spring Framework reference — Web MVC,
- * "Annotated Controllers": annotations on an interface are inherited by the class
- * that implements it).
+ * EXEMPLAR — controller contract as an interface, OpenAPI documentation ONLY:
+ * `@Tag` at type level, each operation's composed `...OpenApiDocs` annotation
+ * (`OpenApiDocs.java.example`) at method level, and nothing else. No
+ * `@RequestMapping`/`@GetMapping`/`@PostMapping`, no `@PathVariable`/`@RequestParam`/
+ * `@RequestBody`, no bean-validation annotation, no Spring Data Web resolution
+ * annotation (`@ParameterObject`, `@PageableDefault`) — every annotation that makes
+ * the endpoint actually work lives on `Controller.java.example`, which implements
+ * this interface and repeats none of the doc annotations declared here (Spring
+ * Framework reference — Web MVC, "Annotated Controllers": annotations declared on an
+ * implemented interface's method are inherited by the class that implements it, so
+ * springdoc still resolves `@Tag`/`@CreateUserOpenApiDocs` off this file even though
+ * the mapping lives on the other one).
  *
  * Why split it out at all: `.claude/rules/api-rest.md` § OpenAPI requires every
  * operation fully documented, and that's a lot of annotation weight. Separating the
  * contract (this file) from the implementation (`Controller.java.example`) keeps the
  * business method body free of documentation noise, and gives the contract a single
  * file reviewers check against `10-dominio.md`'s ports without wading through
- * `createUser.handle(...)` logic.
+ * `createUser.handle(...)` logic — and, unlike an earlier version of this exemplar,
+ * without wondering which file actually decides `/api/v1/users` or whether `@Valid`
+ * fires: that's answered by one file now, the controller.
  *
  * One interface per resource, matching its controller 1:1 — not one interface for the
  * whole API. A `UserApi` with no controller behind it, or a `UserController` that
  * doesn't implement `UserApi`, is a divergence: the interface is the contract, the
  * class is the one implementation.
+ *
+ * No `@RequestHeader("Idempotency-Key")` parameter on `create` below, nor anywhere in
+ * `Controller.java.example`: `IdempotencyAspect` (`IdempotencyAspect.java.example`)
+ * reads the header directly off the raw `HttpServletRequest`, so nothing in the method
+ * signature needs to carry it — it's still documented via `CreateUserOpenApiDocs`'s own
+ * `@Parameter`.
  */
 package com.exemplo.minhaapi.adapter.in.rest;
 
@@ -31,54 +41,18 @@ import com.exemplo.minhaapi.adapter.in.rest.openapi.CreateUserOpenApiDocs;
 import com.exemplo.minhaapi.adapter.in.rest.openapi.GetUserOpenApiDocs;
 import com.exemplo.minhaapi.adapter.in.rest.openapi.ListUsersOpenApiDocs;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 
 @Tag(name = "Users", description = "User management")
 public interface UserApi {
 
     @CreateUserOpenApiDocs
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<UserResponse> create(
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @Valid @RequestBody CreateUserRequest request);
+    ResponseEntity<UserResponse> create(CreateUserRequest request);
 
     @ListUsersOpenApiDocs
-    @GetMapping
-    // `Pageable` instead of three `@RequestParam` primitives (`.claude/rules/api-rest.md`
-    // § Pagination) — Spring Data Web binds `page`/`size`/`sort` from the query string on
-    // its own, same names ListUsersOpenApiDocs already documents. `@ParameterObject`
-    // stops springdoc from treating it as a request body. `size` above
-    // `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
-    // silent truncation — Spring Data doesn't enforce that cap by itself.
-    //
-    // A collection with one extra filter (a name/status/date-range search) takes it as a
-    // second parameter next to `Pageable` — `list(Pageable pageable, String status)` —
-    // and stays inside `code-quality.md`'s ParameterNumber ≤ 3. Only when a third
-    // independent filter shows up does the pair stop fitting; that's the point to
-    // introduce a small criteria object instead of a fourth primitive.
-    //
-    // `Pageable`'s own resolver clamps an out-of-range `page` (negative, or past the
-    // last one) to the first page instead of rejecting it — there's no way to tell
-    // "explicitly invalid" from "omitted" once Spring has already bound the parameter.
-    // A hard 400 on `page` needs a custom `HandlerMethodArgumentResolver` in front of
-    // it; accepting the clamp is the default unless the spec says otherwise.
-    PageResponse<UserResponse> list(
-            @ParameterObject
-                    @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
-                    Pageable pageable);
+    PageResponse<UserResponse> list(Pageable pageable);
 
     @GetUserOpenApiDocs
-    @GetMapping("/{userId}")
-    UserResponse get(@PathVariable String userId);
+    UserResponse get(String userId);
 }
