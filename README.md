@@ -809,7 +809,8 @@ Portuguese versions of every document live under [`docs/`](docs/README.md).
 
 ## Contributing
 
-Blueprints and norms are the most useful contributions. Before opening a PR:
+Blueprints and norms are the most useful contributions. Full guide, per file type:
+[`CONTRIBUTING.md`](CONTRIBUTING.md). The short version — before opening a PR:
 
 - A new blueprint passes the 6-rule checklist from `_schema.md` and declares honest
   `trade_offs`. There's no external validator — nothing to install.
@@ -818,6 +819,10 @@ Blueprints and norms are the most useful contributions. Before opening a PR:
 - No PR fixes Java or Spring Boot versions.
 - No PR adds dependencies outside JDK, Maven, git, and curl — `validate.yml` fails if
   it does.
+- `java .claude/hooks/ArchHook.java doctor` and `schema` both pass locally.
+
+Bugs and proposals have forms:
+[new issue](https://github.com/ice-lfernandes/claude-spring-architect/issues/new/choose).
 
 ## License
 
