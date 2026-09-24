@@ -69,7 +69,7 @@ already exists and serves.
 | `domain/model/LoanApplication.java` | domain | aggregate | NEW | `domain-modeling` |
 | `domain/model/LoanEvaluation.java` | domain | value object — outcome + rejecting check, if any | NEW | `domain-modeling` |
 | `domain/exception/LoanApplicationRejectedException.java` | domain | exception | NEW | `domain-modeling` |
-| `infrastructure/persistence/LoanEvaluationRepositoryAdapter.java` | infrastructure (out) | implements the port | NEW | `persistence-architect` |
+| `infrastructure/persistence/loanapplication/LoanEvaluationRepositoryAdapter.java` | infrastructure (out) | implements the port | NEW | `persistence-architect` |
 | `db/migration/V9__create_loan_evaluations.sql` | infrastructure | migration | NEW | `persistence-architect` |
 
 ## Invariants
@@ -112,7 +112,7 @@ already exists and serves.
 - [ ] 5. `application/port/` (three provider ports + repository)
 - [ ] 6. `application/usecase/EvaluateLoanApplicationUseCase.java`
 - [ ] 7. `db/migration/V9__create_loan_evaluations.sql`
-- [ ] 8. `infrastructure/persistence/`
+- [ ] 8. `infrastructure/persistence/loanapplication/`
 - [ ] 9. `infrastructure/rest/`
 - [ ] 10. tests for the levels above
 - [ ] 11. `./mvnw clean verify` green

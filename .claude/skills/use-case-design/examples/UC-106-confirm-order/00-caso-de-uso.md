@@ -65,7 +65,7 @@ already exists and serves.
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds `confirm()` | `domain-modeling` |
 | `domain/event/OrderConfirmed.java` | domain | domain event | NEW | `domain-modeling` |
 | `domain/exception/OrderNotAuthorizedException.java` | domain | exception | NEW | `domain-modeling` |
-| `infrastructure/persistence/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
+| `infrastructure/persistence/order/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
 
 ## Invariants
 

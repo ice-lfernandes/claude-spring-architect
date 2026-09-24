@@ -41,8 +41,11 @@ no return.
 
 ## 2 · Mapping
 
-Aggregate `User` → entity `UserEntity` in `adapter/out/persistence`. Explicit
+Aggregate `User` → entity `UserEntity` in `adapter/out/persistence/user`. Explicit
 translation in both directions; neither class knows the other through inheritance.
+Every class of this aggregate — entity, enum, Spring Data interface, mapper, adapter —
+lives in that one subpackage and stays package-private
+(`@.claude/rules/persistence.md` § Boundary).
 
 | Aggregate field | Domain type | Column | Translation |
 |---|---|---|---|

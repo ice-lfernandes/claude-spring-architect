@@ -12,11 +12,17 @@
  *   - any `if` that decides a business rule
  *   - any persistence type leaking out through the port
  *
+ * PACKAGE: one subpackage per aggregate — `…persistence.user`, `…persistence.order`,
+ * never a single flat `…persistence` holding both (`.claude/rules/persistence.md`
+ * § Boundary). The classes stay package-private, which after the split means aggregate
+ * `order` cannot see aggregate `user`'s classes: that is the point, and the way across
+ * is the outbound port, not a `public` on the adapter.
+ *
  * Each `// --- <File>.java` block is its own file.
  */
 
-// --- UserRepositoryAdapter.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserRepositoryAdapter.java
+package com.example.demo.adapter.out.persistence.user;
 
 import com.example.demo.application.port.out.LoadUserPort;
 import com.example.demo.application.port.out.SaveUserPort;
@@ -75,7 +81,7 @@ class UserRepositoryAdapter implements SaveUserPort, LoadUserPort, UserExistsPor
     }
 }
 
-// --- OrderRepositoryAdapter.java
+// --- order/OrderRepositoryAdapter.java
 // Second `save` variant: an UPDATE-only port for an aggregate whose domain type
 // deliberately doesn't carry `version` (`@.claude/rules/value-objects.md`'s
 // counter-catalog — optimistic locking is a pure persistence concern here).
@@ -84,7 +90,7 @@ class UserRepositoryAdapter implements SaveUserPort, LoadUserPort, UserExistsPor
 // `mapper.toEntity(order)` always carries `version = 0` (Java primitive default), so
 // the second UPDATE's `WHERE version = 0` would match nothing and false-conflict —
 // `@.claude/rules/persistence.md` § Boundary.
-package com.example.demo.adapter.out.persistence;
+package com.example.demo.adapter.out.persistence.order;
 
 import com.example.demo.application.port.out.SaveOrderPort;
 import com.example.demo.domain.exception.ConflictException;
@@ -124,8 +130,8 @@ class OrderRepositoryAdapter implements SaveOrderPort {
     }
 }
 
-// --- OrderPersistenceMapper.java
-package com.example.demo.adapter.out.persistence;
+// --- order/OrderPersistenceMapper.java
+package com.example.demo.adapter.out.persistence.order;
 
 import com.example.demo.domain.model.Order;
 import org.springframework.stereotype.Component;
@@ -144,8 +150,8 @@ class OrderPersistenceMapper {
     }
 }
 
-// --- UserPersistenceMapper.java
-package com.example.demo.adapter.out.persistence;
+// --- user/UserPersistenceMapper.java
+package com.example.demo.adapter.out.persistence.user;
 
 import com.example.demo.domain.model.DepartmentId;
 import com.example.demo.domain.model.Email;

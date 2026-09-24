@@ -64,7 +64,7 @@ already exists and serves.
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds `applyDiscount` | `domain-modeling` |
 | `domain/model/CustomerTier.java` | domain | value object — tier → percentage mapping | NEW | `domain-modeling` |
 | `domain/exception/OrderAlreadyPaidException.java` | domain | exception | NEW | `domain-modeling` |
-| `infrastructure/persistence/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
+| `infrastructure/persistence/order/OrderRepositoryAdapter.java` | infrastructure (out) | implements the port | REUSE | `persistence-architect` |
 | `db/migration/V5__add_order_discount_columns.sql` | infrastructure | migration | NEW | `persistence-architect` |
 
 ## Invariants
@@ -110,7 +110,7 @@ to `30-rest.md`.
 - [ ] 4. `application/usecase/ApplyOrderDiscountCommand.java`
 - [ ] 5. `application/usecase/ApplyOrderDiscountUseCase.java`
 - [ ] 6. `db/migration/V5__add_order_discount_columns.sql`
-- [ ] 7. `infrastructure/persistence/` (adapter change, if needed)
+- [ ] 7. `infrastructure/persistence/order/` (adapter change, if needed)
 - [ ] 8. `infrastructure/rest/` (DTO, mapper, controller)
 - [ ] 9. tests for the levels above
 - [ ] 10. `./mvnw clean verify` green

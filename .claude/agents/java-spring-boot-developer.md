@@ -66,7 +66,9 @@ The paths below use `[role]` because the real package depends on the blueprint �
 from the destination map surveyed in the guardrail, never from a path written here:
 
 - `[domain]/**` — domain classes (aggregate, VOs, events, ports)
-- `[persistence]/**` — JPA entities, repository adapter
+- `[persistence]/<aggregate>/**` — JPA entities, repository adapter. One subpackage per
+  aggregate, never the bare `[persistence]/` root — `.claude/rules/persistence.md`
+  § Boundary
 - `[rest]/**` — controller, DTOs, mapper, exception handler
 - `[application]/**` — application services (use cases)
 - `[messaging]/**` — Kafka producer/consumer adapters, payload records — Block M only,
@@ -279,6 +281,10 @@ translation (`.claude/rules/persistence.md` § Boundary). Every entity whose `@I
 `@GeneratedValue` implements `Persistable` (§ Identity and keys); every column whose SQL
 type isn't Hibernate's default inference carries `@JdbcTypeCode`, and no `@Lob` maps a
 `text` column (§ Mapping) — `ddl-auto: validate` only reports these at context startup.
+Every class of the aggregate goes in its own subpackage of the persistence adapter and
+stays package-private (§ Boundary); the test tree mirrors it. A cross-aggregate fixture
+depends on the other aggregate's outbound port — widening a class to `public` to make a
+test compile is the wrong fix.
 
 Compilation: `./mvnw -q -pl <persistence-module> test-compile` in multi-module, `./mvnw -q test-compile` in single-module ✅
 

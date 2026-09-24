@@ -66,13 +66,15 @@ already exists and serves.
 | `application/port/out/UserRepository.java` | application | outbound port | NEW | `domain-modeling` |
 | `domain/model/User.java` | domain | aggregate | NEW | `domain-modeling` |
 | `domain/model/Email.java` | domain | value object | NEW | `domain-modeling` |
-| `adapter/out/persistence/UserRepositoryAdapter.java` | outbound adapter | implements the port | NEW | `persistence-architect` |
-| `adapter/out/persistence/UserEntity.java` | outbound adapter | persistence entity | NEW | `persistence-architect` |
-| `adapter/out/persistence/UserJpaRepository.java` | outbound adapter | Spring Data interface | NEW | `persistence-architect` |
+| `adapter/out/persistence/user/UserRepositoryAdapter.java` | outbound adapter | implements the port | NEW | `persistence-architect` |
+| `adapter/out/persistence/user/UserEntity.java` | outbound adapter | persistence entity | NEW | `persistence-architect` |
+| `adapter/out/persistence/user/UserJpaRepository.java` | outbound adapter | Spring Data interface | NEW | `persistence-architect` |
 | `db/migration/V3__create_users.sql` | infrastructure | migration | NEW | `persistence-architect` |
 
 Paths derived from the active blueprint's `packages.map`. If the blueprint changes,
-this table is what gets rewritten — never the flow above.
+this table is what gets rewritten — never the flow above. The persistence path carries
+one extra level, the aggregate's own subpackage (`…/persistence/user/`), whatever the
+blueprint calls the layer — `@.claude/rules/persistence.md` § Boundary.
 
 ## Invariants
 
@@ -140,7 +142,7 @@ Derived from the Components table, in compile order.
 - [ ] 6. `application/port/out/UserRepository.java`
 - [ ] 7. `application/service/CreateUserService.java`
 - [ ] 8. `db/migration/V3__create_users.sql`
-- [ ] 9. `adapter/out/persistence/` (entity, Spring Data, adapter)
+- [ ] 9. `adapter/out/persistence/user/` (entity, Spring Data, adapter)
 - [ ] 10. `adapter/in/rest/` (DTOs, mapper, controller)
 - [ ] 11. tests for the levels above
 - [ ] 12. `./mvnw clean verify` green

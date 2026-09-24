@@ -30,6 +30,23 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
   application layer — `@.claude/rules/architecture-ddd.md`
 - One repository per aggregate. A repository that returns pieces of two aggregates is a
   query, and a query has its own port
+- **One subpackage per aggregate inside the persistence adapter**, always — including
+  while the project has a single aggregate. Entity, mapper, Spring Data interface, and
+  adapter of the `User` aggregate live in `…/persistence/user/`, the `Order` ones in
+  `…/persistence/order/`. A single flat package holding every aggregate's classes breaks
+  SRP at the package level and grows without bound: 3 aggregates are already 13 classes.
+  The `test/` tree mirrors the same subpackages. The conditional variant — flat while
+  there's one aggregate, split when the second arrives — is not the norm: it trades a
+  level of nesting for a multi-file refactor whose trigger nobody notices in time
+- **Visibility is package-private by default**, for entity, mapper, Spring Data
+  interface, and adapter alike. Splitting by aggregate makes the default bite: a class of
+  aggregate `A` is no longer visible from aggregate `B`'s subpackage. Only the specific
+  class another aggregate genuinely consumes becomes `public` — one class at a time,
+  never the whole subpackage, and never preemptively. Before opening one up, check
+  whether the outbound port the adapter already implements covers the need: depend on the
+  port, not on the concrete adapter. This holds inside an integration test's fixture
+  setup too — a test that inserts a referenced row to satisfy a foreign key depends on
+  that aggregate's port, the same as production code does
 - No driver, JPA, or framework exception leaves the adapter: the adapter translates it
   into the taxonomy of `@.claude/rules/error-handling.md`
 - Translating a constraint violation requires a **flush inside the adapter**
