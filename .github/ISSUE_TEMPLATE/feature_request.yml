@@ -1,0 +1,105 @@
+name: Feature request
+description: Propose a new skill, agent, norm, hook mode, MCP server or docs change.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Everything here is one of five file types: a skill, an agent, a norm under
+        `rules/`, a `CLAUDE.md` section, or a hook. Deciding which one is the hard part —
+        `/claude-code-architect-designer` exists for exactly that, and running it first
+        usually answers half of this form.
+
+        Proposing a new **architecture** instead? Use the *New blueprint* template: a
+        blueprint is data and needs no change to any skill, agent or command.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched the existing issues and discussions for the same idea.
+          required: true
+        - label: I checked `.claude/decisions/` and this was not already decided against.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard, repetitive or silently wrong today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: filetype
+    attributes:
+      label: Which file type should carry it?
+      description: |
+        Rough guide — a norm states what is always true; a skill is a procedure; an agent
+        exists only to preserve context, restrict tools or change model; a hook is for a
+        rule that must always hold; `CLAUDE.md` is for routing and pitfalls.
+      options:
+        - A norm in rules/ (a rule about the code)
+        - A skill (a procedure, possibly slash-invocable)
+        - An agent (preserves context, restricts tools, or changes model)
+        - A hook mode or a permissions.deny entry (must always hold)
+        - A CLAUDE.md section (routing, pitfall, invariant)
+        - An MCP server in .mcp.json
+        - Documentation only
+        - Not sure — help me decide
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What the file would say or do. Sketch the sections, the hook mode, or the norm's single owned topic.
+    validations:
+      required: true
+
+  - type: textarea
+    id: enforcement
+    attributes:
+      label: How would it be verified?
+      description: |
+        Prose nobody checks is decoration. Name the enforcement: a hook mode, a
+        `permissions.deny` rule, Checkstyle, ArchUnit, a contract test, a `grep` in a
+        *How to verify* section, or review.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Invariants this proposal respects
+      description: From `CLAUDE.md` § Invariants. Tick what applies; explain any you had to break in the box below.
+      options:
+        - label: It does not add a norm that mentions a skill, an agent or a command (`rules/` is a leaf).
+        - label: The norm it touches has a single owning file; others cite it by path.
+        - label: It does not put code boilerplate inside a norm or a `SKILL.md` body (that belongs in `templates/*.example`).
+        - label: It does not create a new `commands/` folder.
+        - label: It does not write a Java or Spring Boot version from memory.
+        - label: It does not add a literal secret to a versioned file.
+        - label: It does not add a dependency beyond JDK, Maven, git and curl.
+
+  - type: textarea
+    id: selfcontained
+    attributes:
+      label: Does the generated project need it too?
+      description: |
+        A cloned generated project does not have this repository. If the new norm, skill,
+        hook or MCP server must exist inside generated projects, say which copy step in
+        `project-bootstrap` has to be updated (step 6.6 norms, 6.7 skills, 7 hook and
+        schemas, 7.5 `mcp.json.example`).
+      placeholder: "No — it only serves before the project exists. / Yes — step 6.6 must copy it."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including doing nothing, and why the existing files do not already cover it.

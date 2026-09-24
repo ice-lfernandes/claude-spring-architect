@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/ice-lfernandes/claude-spring-architect/discussions
+    about: Ask how something works before opening an issue. Questions get answered faster here.
+  - name: Documentation
+    url: https://github.com/ice-lfernandes/claude-spring-architect/blob/main/docs/en/README.md
+    about: How every command, blueprint, skill and hook works — English and português.
+  - name: Contributing guide
+    url: https://github.com/ice-lfernandes/claude-spring-architect/blob/main/CONTRIBUTING.md
+    about: Setup, local checks, and the rules per file type — norm, skill, agent, hook, blueprint, MCP server.
+  - name: Architecture decisions
+    url: https://github.com/ice-lfernandes/claude-spring-architect/blob/main/.claude/decisions/README.md
+    about: Why a skill, norm or agent exists in the form it is in. Check here before proposing a redesign.

@@ -1,0 +1,128 @@
+name: New blueprint (architecture)
+description: Propose an architecture declared as data in .claude/blueprints/.
+title: "blueprint: "
+labels: ["blueprint"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A blueprint is data: adding an architecture must never require editing a skill, an
+        agent or a command. The contract every blueprint fulfills is
+        [`.claude/blueprints/_schema.md`](https://github.com/ice-lfernandes/claude-spring-architect/blob/main/.claude/blueprints/_schema.md),
+        and the starting point is
+        `.claude/blueprints/custom-template/custom.template.yaml`.
+
+        There is no external validator and nothing to install. Validation is the 6-rule
+        checklist in `_schema.md`, run by step 2 of `project-bootstrap`; the final arbiter
+        is whether the generated POMs compile.
+
+  - type: input
+    id: id
+    attributes:
+      label: Blueprint id
+      description: kebab-case, identical to the folder name and the YAML file name.
+      placeholder: cqrs-light
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: Readable name
+      description: What the interview shows to the user.
+      placeholder: CQRS (light, single module)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: One sentence.
+    validations:
+      required: true
+
+  - type: textarea
+    id: when_to_choose
+    attributes:
+      label: when_to_choose
+      description: Objective selection criteria, one per line. A reader must be able to tell whether it applies to their project without asking.
+    validations:
+      required: true
+
+  - type: textarea
+    id: trade_offs
+    attributes:
+      label: trade_offs
+      description: Honest costs, one per line. A blueprint with no trade-offs is poorly written and will be rejected.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layout
+    attributes:
+      label: build.layout
+      options:
+        - multi-module
+        - single-module
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: modules[] and dependency direction
+      description: |
+        For each module: `id`, `path`, `depends_on`, and `forbidden_imports` if any. Mark
+        the single module with `contains_main: true`. Under `single-module`,
+        `forbidden_imports` is enforced per package.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: packages
+    attributes:
+      label: packages.map and architecture_paths
+      description: |
+        `packages.map` maps each logical role to a package suffix. `architecture_paths`
+        are the globs that go verbatim into the generated
+        `<project>/.claude/rules/architecture-ddd.md` — the bootstrap does not infer them.
+        Globs copied from another blueprint leave the norm silently unloaded.
+      render: yaml
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 6-rule checklist from _schema.md
+      options:
+        - label: The `depends_on` graph is acyclic.
+          required: true
+        - label: "Exactly one module has `contains_main: true`."
+          required: true
+        - label: Every referenced `feature` exists in `features`.
+          required: true
+        - label: Every `templates.<role>` points to an existing file.
+          required: true
+        - label: Under `single-module`, `modules` has a single element.
+          required: true
+        - label: "`architecture_paths` exists and is not empty."
+          required: true
+
+  - type: checkboxes
+    id: datanotprompt
+    attributes:
+      label: Data, not prompt
+      options:
+        - label: Adding this architecture requires no change to any skill, agent or command. If I found I needed one, I say why below instead of opening the PR.
+          required: true
+        - label: It does not fix a Java or Spring Boot version, and adds no dependency beyond JDK, Maven, git and curl.
+          required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Articles or books backing the architecture. Material specific to it belongs in `.claude/blueprints/<id>/references/`.
