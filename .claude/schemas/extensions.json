@@ -126,17 +126,18 @@
     "frozen_statuses": ["approved", "implemented"]
   },
 
+  "source": {
+    "$comment": "Where a project pulls this `.claude/` from, and how. Read by `arch-adopt` and by the `export` mode's stamp; validated by `schema`. Deliberately a sibling of `export` and not a field inside it: the exported copy drops the `export` block (its lists describe THIS repository) and keeps this one, which is what lets a project update itself without the plugin. An indirection on purpose — moving from GitHub to a licensing endpoint changes `base_url` and `auth_env`, never the code path that consumes them. `{ref}` is substituted with the resolved ref; `git_url` is what resolves `latest-tag`, through `git ls-remote --tags`, with no API client and no JSON to parse. `auth_env` names an environment variable and never carries its value — invariant 11, the same rule .mcp.json obeys; the header is sent only when the variable is set, so a public repository needs no credential. `--source <local path>` bypasses this block entirely, which is how an unreleased change is tested.",
+    "base_url": "https://codeload.github.com/ice-lfernandes/claude-spring-architect/tar.gz/{ref}",
+    "git_url": "https://github.com/ice-lfernandes/claude-spring-architect.git",
+    "auth_env": "GH_TOKEN",
+    "auth_header": "Authorization: Bearer",
+    "default_ref": "latest-tag",
+    "stamp_file": ".claude/.arch-provenance.json"
+  },
+
   "export": {
     "$comment": "Single owner of WHAT the `export` mode writes into a target project and HOW each piece is transformed. Read by ArchHook.java `export`; cross-checked by `schema` at sweep time, the same way `guard.executor_agents` is. The failure it exists to close is silent in both directions: a skill added to this repo and forgotten here never reaches any project generated afterwards, and an entry left behind after a rename points at a file that no longer exists — neither breaks anything at generation time, only for whoever reads the dead citation inside the project. That is why `include` and `exclude` together must cover every skill and every agent on disk: not listing one is the bug, and `schema` says so by name. Prose counterpart, which branch `feat/bootstrap-invokes-export` replaces with a call to the mode: project-bootstrap/SKILL.md §§ 6.6, 6.7, 6.8, 7. Design: .claude/decisions/0054-deterministic-export-provenance-plugin.md",
-
-    "transport": {
-      "$comment": "How `arch-adopt` fetches this repository from inside a target project. An indirection on purpose: moving from GitHub to a licensing endpoint changes `base_url` and `auth_env`, never the code path that consumes them. `{ref}` is substituted with the resolved ref. `auth_env` names an environment variable and never carries its value — invariant 11, the same rule .mcp.json obeys; the header is only sent when the variable is set, so a public repository needs no credential at all. `--source <local path>` bypasses this block entirely, which is how an unreleased change is tested.",
-      "base_url": "https://codeload.github.com/ice-lfernandes/claude-spring-architect/tar.gz/{ref}",
-      "auth_env": "GH_TOKEN",
-      "auth_header": "Authorization: Bearer",
-      "default_ref": "latest-tag",
-      "stamp_file": ".claude/.arch-provenance.json"
-    },
 
     "copy": [
       { "from": ".claude/hooks/ArchHook.java", "to": ".claude/hooks/ArchHook.java" },
@@ -169,6 +170,7 @@
       "to": ".claude/skills",
       "keep": ["SKILL.md", "templates", "references"],
       "include": [
+        "arch-adopt",
         "arch-doctor",
         "audit-usage",
         "docker-architect",
@@ -234,7 +236,8 @@
       ],
       "clause_pattern": ",?\\s*(?:in|em|see|ver|cf\\.)?\\s*",
       "residue_markers": [".claude/decisions/", ".claude/blueprints/"],
-      "residue_exempt": [".claude/hooks/ArchHook.java"],
+      "$comment_exempt": "Two files name these directories on purpose and are not dead paths. `ArchHook.java`'s `export` mode prints them in its own usage and errors, and that mode refuses to run inside a project anyway (no `export` block there). `arch-adopt` talks about the tree it FETCHES, under /tmp, where blueprints/ does exist — cutting those sentences would delete the instructions instead of a citation.",
+      "residue_exempt": [".claude/hooks/ArchHook.java", ".claude/skills/arch-adopt/SKILL.md"],
       "replace": [
         {
           "find": "the active blueprint's `packages.map`",

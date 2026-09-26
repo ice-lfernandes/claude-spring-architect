@@ -104,6 +104,7 @@ direction above is unchanged.
 | If the task involves | Go to |
 |---|---|
 | Creating a project from scratch | skill `project-bootstrap` |
+| Installing this `.claude/` into a project that was never generated here, or pulling a newer version into one that was | skill `arch-adopt` — manual only, runs **inside the target project**, refuses a dirty worktree, and writes through `ArchHook.java export`. It travels into the generated project, unlike the other creation skills: that is how a project updates itself once the plugin that delivered it is gone |
 | Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the eight | skill `claude-code-architect-designer` |
 | Creating a hook, a new `ArchHook.java` mode, or a `permissions.allow`/`deny` line — and deciding whether the answer is a guarantee at all | skill `claude-code-architect-designer`, forms 7 and 8. Writes it after approval, always with a record in `decisions/`, and warns that `settings.json` is read only at startup |
 | Designing a use case before implementing it; knowing whether a request is one or several | skill `use-case-design` |

@@ -771,9 +771,9 @@ public class ArchHook {
         exportTree(exp, "skills", out);
         exportTree(exp, "agents", out);
         exportFiles(exp, bp, out, notes);
-        String stampFile = asStr(get(exp, "transport", "stamp_file")) == null
+        String stampFile = asStr(get(sch, "source", "stamp_file")) == null
                 ? ".claude/.arch-provenance.json"
-                : asStr(get(exp, "transport", "stamp_file"));
+                : asStr(get(sch, "source", "stamp_file"));
         out.put(stampFile, stamp(bp, ref, out));
 
         List<String> residue = new ArrayList<>();
@@ -1281,6 +1281,7 @@ public class ArchHook {
         if (file == null) {
             checkExecutorAgents(sch, errors);
             checkExportManifest(sch, errors);
+            checkSourceBlock(sch, errors);
         }
 
         if (!errors.isEmpty()) {
@@ -1397,27 +1398,41 @@ public class ArchHook {
             }
         }
 
-        // Transport: an indirection, never a credential — invariant 11, same scan the
-        // `mcp` block already gets, reading the same list of value prefixes.
-        String base = asStr(get(exp, "transport", "base_url"));
+    }
+
+    /**
+     * The `source` block: where a project pulls this `.claude/` from. Checked apart from
+     * the `export` manifest and not inside it, because the exported copy keeps this block
+     * and drops that one — a project validates its own update path, which is the only
+     * path it has. An indirection, never a credential: invariant 11, scanned with the
+     * same prefix list the `mcp` block already owns.
+     */
+    static void checkSourceBlock(Map<String, Object> sch, List<String> errors) {
+        Map<String, Object> src = asMap(sch.get("source"));
+        if (src == null) return;
+        String base = asStr(src.get("base_url"));
         if (base != null) {
             if (!base.startsWith("https://")) {
-                errors.add("  export.transport.base_url is not https — `" + base + "`");
+                errors.add("  source.base_url is not https — `" + base + "`");
             }
             if (!base.contains("{ref}")) {
-                errors.add("  export.transport.base_url has no `{ref}` placeholder"
+                errors.add("  source.base_url has no `{ref}` placeholder"
                         + " — every fetch would pull the same content");
             }
             for (String p : asStrList(get(sch, "mcp", "secret_scan", "value_prefixes"))) {
                 if (base.contains(p)) {
-                    errors.add("  export.transport.base_url carries a literal credential"
-                            + " (`" + p + "…`) — use transport.auth_env, invariant 11");
+                    errors.add("  source.base_url carries a literal credential"
+                            + " (`" + p + "…`) — use source.auth_env, invariant 11");
                 }
             }
         }
-        String authEnv = asStr(get(exp, "transport", "auth_env"));
+        String git = asStr(src.get("git_url"));
+        if (git != null && !git.startsWith("https://")) {
+            errors.add("  source.git_url is not https — `" + git + "`");
+        }
+        String authEnv = asStr(src.get("auth_env"));
         if (authEnv != null && !authEnv.matches("[A-Z][A-Z0-9_]*")) {
-            errors.add("  export.transport.auth_env is `" + authEnv
+            errors.add("  source.auth_env is `" + authEnv
                     + "` — it names an environment variable, never its value");
         }
     }
