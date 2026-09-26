@@ -11,7 +11,7 @@
 //   check   PostToolUse — forbidden imports + incremental compile     (blocks)
 //   format  PostToolUse — spotless on the touched module              (never blocks)
 //   tests   Stop        — tests of the changed modules                (blocks)
-//   schema  Pre/PostToolUse + Stop — frontmatter of extension files   (blocks)
+//   schema  Pre/PostToolUse + Stop — frontmatter + injection paths     (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
 //   guard   PreToolUse  — design never writes src/, approved specs frozen (blocks)
 //   compose manual      — every compose service up, no foreign container on our ports (never blocks)
@@ -523,7 +523,7 @@ public class ArchHook {
         }
 
         if (!errors.isEmpty()) {
-            err("❌ Invalid frontmatter — " + errors.size()
+            err("❌ Invalid extension file — " + errors.size()
                     + (errors.size() == 1 ? " problem" : " problems"));
             errors.forEach(ArchHook::err);
             err("");
@@ -616,6 +616,8 @@ public class ArchHook {
                          List<String> errors) {
         if (content == null) return;
 
+        checkInjections(sch, rel, content, errors);   // every visited file, any type
+
         if (matches(asStr(get(sch, "settings", "match")), rel)) {
             checkSettings(sch, rel, content, errors);
             return;
@@ -634,6 +636,87 @@ public class ArchHook {
             checkFrontmatter(sch, e.getKey(), t, rel, content, errors);
             return;
         }
+    }
+
+    static final Pattern INJECTION = Pattern.compile("!`([^`\\n]+)`");
+    /** A fenced block holds examples, not injections the runtime executes. */
+    static final Pattern FENCE = Pattern.compile("(?s)```.*?```");
+    /**
+     * A double-backtick span is how markdown quotes something that itself contains a
+     * backtick — which is exactly how prose has to write an injection when it talks about
+     * one. Dropped before scanning, so documenting the rule doesn't break the rule.
+     */
+    static final Pattern TICK_SPAN = Pattern.compile("``.*?``");
+
+    /**
+     * Requires every `` !`command` `` injection to resolve its paths from the project
+     * root instead of the shell's cwd. The injection runs in the session's persistent
+     * shell: a `cd` in an earlier Bash call silently poisons every later one, and a
+     * relative `test -f` then reports a file as absent while it exists — which is worse
+     * than no information, because it arms the entry guard of the skill it belongs to.
+     * lessons-learned-010 § 5: twelve occurrences across ten skills, one of them
+     * `docker-architect` aborting on a file that was present and complete.
+     * The required substring and the exemptions are data — `injections` in
+     * .claude/schemas/extensions.json, never here (invariant 10).
+     */
+    static void checkInjections(Map<String, Object> sch, String rel, String content,
+                                List<String> errors) {
+        Map<String, Object> inj = asMap(sch.get("injections"));
+        if (inj == null) return;                       // block absent: check is off
+        String require = asStr(inj.get("require"));
+        if (require == null || require.isEmpty()) return;
+        // Only files a `types` match captures — a skill, an agent, or a rule. Everything
+        // else the mode may be handed (a decision record, a lessons-learned) is prose
+        // about injections, not a file the runtime executes them from.
+        if (!typedFile(sch, rel)) return;
+
+        List<Pattern> exempt = new ArrayList<>();
+        for (String p : asStrList(inj.get("exempt_patterns"))) {
+            try { exempt.add(Pattern.compile(p)); }
+            catch (PatternSyntaxException e) {
+                errors.add("  " + SCHEMA_FILE + " — injections.exempt_patterns has an"
+                        + " invalid regex `" + p + "`: " + e.getDescription());
+            }
+        }
+
+        String scanned = TICK_SPAN.matcher(FENCE.matcher(content).replaceAll(""))
+                .replaceAll("");
+        Matcher m = INJECTION.matcher(scanned);
+        while (m.find()) {
+            String cmd = m.group(1);
+            if (cmd.contains(require)) continue;
+            if (exempt.stream().anyMatch(p -> p.matcher(cmd).find())) continue;
+            errors.add("  " + rel + ":" + lineOf(content, "!`" + cmd + "`")
+                    + " — injection `" + shorten(cmd) + "` resolves paths from the shell's"
+                    + " cwd. Use \"" + require + ":-.}/<path>\" — a `cd` in an earlier Bash"
+                    + " call makes it report a file as absent while it exists."
+                    + " Genuinely cwd-independent: add a regex to injections.exempt_patterns");
+        }
+    }
+
+    /** True when some `types` entry's `match` captures this path. */
+    static boolean typedFile(Map<String, Object> sch, String rel) {
+        Map<String, Object> types = asMap(sch.get("types"));
+        if (types == null) return false;
+        for (Object t : types.values()) {
+            Map<String, Object> m = asMap(t);
+            if (m != null && matches(asStr(m.get("match")), rel)) return true;
+        }
+        return false;
+    }
+
+    /** 1-based line of `needle` in `content`, or 0 when it isn't there. */
+    static int lineOf(String content, String needle) {
+        int at = content.indexOf(needle);
+        if (at < 0) return 0;
+        int line = 1;
+        for (int i = 0; i < at; i++) if (content.charAt(i) == '\n') line++;
+        return line;
+    }
+
+    static String shorten(String s) {
+        String one = s.replaceAll("\\s+", " ").strip();
+        return one.length() <= 60 ? one : one.substring(0, 57) + "...";
     }
 
     static void checkFrontmatter(Map<String, Object> sch, String type,

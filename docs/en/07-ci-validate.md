@@ -23,6 +23,7 @@ flowchart TD
     subgraph J1["hooks-cross-platform (matrix: ubuntu · macos · windows)"]
         H1[ArchHook.java doctor]
         H2[BoundaryTest.java — forbidden import → exit 2]
+        H3[InjectionPathTest.java — cwd-relative injection → exit 2]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -53,8 +54,8 @@ flowchart TD
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor` and `BoundaryTest` on all three OSes | Decision D8 — "cross-platform" as a fact, not a claim |
-| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored by the runtime |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest` and `InjectionPathTest` on all three OSes | Decision D8 — "cross-platform" as a fact, not a claim |
+| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored by the runtime. The same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
 | `skill name doesn't shadow a native slash command` | skill folder name against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
 | `new blueprint doesn't touch prompts` | adding a blueprint leaves `.claude/skills` and `.claude/agents` untouched | Invariant 7 — architectures are data |
 | `rules is a leaf of the graph` | no rule mentions "skill", "agent", "subagent" | Invariant 1 |
@@ -94,6 +95,7 @@ java .claude/hooks/ArchHook.java schema
 claude plugin validate .claude/skills   # not run in CI — CLI missing on the runner
 java .claude/hooks/ArchHook.java doctor
 java .claude/.ci/BoundaryTest.java
+java .claude/.ci/InjectionPathTest.java
 ```
 
 A `git push` without running this first still goes through the local hook

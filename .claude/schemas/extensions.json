@@ -61,6 +61,12 @@
     }
   },
 
+  "injections": {
+    "$comment": "Read by ArchHook.java `schema`, applied to every file that mode already visits. A `!`command`` injection runs in the session's persistent shell, at whatever cwd it holds: a `cd` in an earlier Bash call makes a relative `test -f` report a file as absent while it exists, and an injected state that lies fires the entry guard of the skill it belongs to. Requiring the substring below is deliberately blunt — an injection that touches no path at all is also flagged, because `ls -a | head -30` was one of the twelve real occurrences and names no path either. Scope and escapes, each one a false positive the first run produced: only files a `types` match captures are scanned (a decision record or a lessons-learned is prose about injections, and `schema` is handed one on every Edit under .claude/); a fenced code block is dropped; and so is a double-backtick span, which is how markdown has to quote an injection when documenting it. `exempt_patterns` is the escape hatch, one regex per genuinely cwd-independent injection; it is empty on purpose, and an entry added to it needs a reason in the commit. Why this is a hook and not a review item: CLAUDE.md invariant 6. Design: .claude/decisions/0051-frontmatter-injections-cwd-independent.md",
+    "require": "${CLAUDE_PROJECT_DIR",
+    "exempt_patterns": []
+  },
+
   "settings": {
     "match": ".claude/settings.json",
     "hook_entry": {

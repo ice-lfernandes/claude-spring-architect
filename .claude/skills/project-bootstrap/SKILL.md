@@ -886,11 +886,13 @@ Three parts, and the first one is easy to forget:
    to — without the copy, the hooks fail to start on any machine that doesn't have this
    repository.
 2. Copy `.claude/schemas/extensions.json` (from this repo) to
-   `<project>/.claude/schemas/extensions.json`, verbatim except for the trailing
-   "Design and rationale: .claude/decisions/0001-schema-frontmatter-extensions.md" clause
-   in its `$comment`, cut for the same reason. `ArchHook`'s `schema` mode reads this
-   file; without it, it switches off with a warning and nothing gets validated. Copying
-   the hook and forgetting the schema delivers enforcement that looks on and isn't.
+   `<project>/.claude/schemas/extensions.json`, verbatim except for every
+   `.claude/decisions/NNNN-....md` citation inside a `$comment` — cut the citing clause,
+   for the same reason as § 6.6/6.7. Several blocks carry one today (`$comment` at the
+   root, `audit`, `mcp`, `injections`); cut each, don't rewrite it. `ArchHook`'s `schema`
+   mode reads this file; without it, it switches off with a warning and nothing gets
+   validated. Copying the hook and forgetting the schema delivers enforcement that looks
+   on and isn't.
 3. Merge `templates/settings.json.example` into `<project>/.claude/settings.json`,
    preserving what's already there. The template already brings the `schema` mode's
    three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`), the thirteen

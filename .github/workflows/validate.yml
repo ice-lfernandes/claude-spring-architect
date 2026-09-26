@@ -32,6 +32,11 @@ jobs:
       - name: hook blocks forbidden import
         run: java .claude/.ci/BoundaryTest.java
 
+      # lessons-learned-010 § 5: a cwd-relative injection reports a file as absent while
+      # it exists, and that false negative arms the entry guard of the skill it's in.
+      - name: hook blocks a cwd-relative frontmatter injection
+        run: java .claude/.ci/InjectionPathTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest

@@ -22,7 +22,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
-| Validate frontmatter of all extension files, and `.mcp.json` | `java .claude/hooks/ArchHook.java schema` |
+| Validate frontmatter of all extension files, `.mcp.json`, and every `` !`…` `` injection's paths | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
 ## Architecture of the AI files
@@ -149,7 +149,9 @@ decisions/                  history — nobody reads it at runtime, outside the 
   every injection of every skill invoked afterward, and a relative `test -f` then reports
   a file as absent while it exists. Read a template with `Read` at an absolute path, never
   `cd` + `cat`. Every injection in this repo resolves paths from
-  `"${CLAUDE_PROJECT_DIR:-.}"` for the same reason — keep new ones that way.
+  `"${CLAUDE_PROJECT_DIR:-.}"`, and `ArchHook.java schema` blocks one that doesn't — a
+  genuinely cwd-independent injection needs a regex in `injections.exempt_patterns` of
+  `@.claude/schemas/extensions.json`.
 - **The `audit` mode is off in this repository, on purpose.** It switches itself on by
   the presence of `.claude/audit-usage/`, and this meta-repo doesn't create the
   directory: the trail is a feature of the *generated* project, wired in

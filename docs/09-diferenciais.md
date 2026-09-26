@@ -89,7 +89,8 @@ paralelo. Os oito modos:
 | `compose` | manual, e dentro de `doctor` | não | todo serviço do compose está `running`, nenhum container alheio nas portas |
 | `doctor` | manual (`/arch-doctor`) | não | diagnóstico do setup |
 
-O CI roda `doctor` e um `BoundaryTest` que injeta um import proibido e exige `exit 2`
+O CI roda `doctor`, um `BoundaryTest` que injeta um import proibido e um
+`InjectionPathTest` que injeta uma injection relativa ao cwd — ambos exigem `exit 2`
 em `ubuntu-latest`, `macos-latest` e `windows-latest`. "Multiplataforma" é fato
 verificado, não alegação.
 
