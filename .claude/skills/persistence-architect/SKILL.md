@@ -128,8 +128,11 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions
-   per call. Don't re-ask what `00-caso-de-uso.md`, `10-dominio.md`, or `30-rest.md` already answered —
-   the collection's growth, above all.
+   per call and **never fewer than 2 real options per question**: one option isn't a
+   question — decide it and record the decision in the partial, since the runtime rejects
+   the whole batch over a single one (`@CLAUDE.md` § Known pitfalls). Don't re-ask what
+   `00-caso-de-uso.md`, `10-dominio.md`, or `30-rest.md` already answered — the
+   collection's growth, above all.
 
    | Axis | Decides |
    |---|---|

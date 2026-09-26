@@ -113,7 +113,9 @@ what's left to cover outside of transport.
    aggregate is exactly the duplication the rule forbids.
 
 3. **Interview — only what the partials don't fix.** `AskUserQuestion`, at most 4
-   questions per call.
+   questions per call and **never fewer than 2 real options per question**: one option
+   isn't a question — decide it and record the decision in the partial, since the runtime
+   rejects the whole batch over a single one (`@CLAUDE.md` § Known pitfalls).
 
    | Axis | Decides |
    |---|---|
@@ -182,6 +184,11 @@ needs an interview. Reasoning and full procedure:
 Read the agent's returned summary and report it as-is. If it flags a Testcontainers
 tag mismatch against `docker-compose.yml`, invoke `docker-architect` next — the
 installer agent deliberately doesn't touch that file, single owner rule.
+
+The mismatch is also checked mechanically, so it doesn't depend on the agent noticing:
+`java .claude/hooks/ArchHook.java compose` compares every `image:` of the compose file
+with every `DockerImageName.parse` under `src/test`, and `/arch-doctor` folds the same
+check in. Run it after this mode pins the tag.
 
 ## What the partial contains
 

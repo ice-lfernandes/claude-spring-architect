@@ -65,7 +65,8 @@ already exists and serves.
 | `application/service/CreateUserService.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/out/UserRepository.java` | application | outbound port | NEW | `domain-modeling` |
 | `domain/model/User.java` | domain | aggregate | NEW | `domain-modeling` |
-| `domain/model/Email.java` | domain | value object | NEW | `domain-modeling` |
+| `domain/model/Email.java` | domain | typed field for `email` — value object or `enum`, `domain-modeling` decides | NEW | `domain-modeling` |
+| `domain/model/UserStatus.java` | domain | typed field for `status`, closed set (`ACTIVE`, `BLOCKED`) — value object or `enum`, `domain-modeling` decides | NEW | `domain-modeling` |
 | `adapter/out/persistence/user/UserRepositoryAdapter.java` | outbound adapter | implements the port | NEW | `persistence-architect` |
 | `adapter/out/persistence/user/UserEntity.java` | outbound adapter | persistence entity | NEW | `persistence-architect` |
 | `adapter/out/persistence/user/UserJpaRepository.java` | outbound adapter | Spring Data interface | NEW | `persistence-architect` |
@@ -75,6 +76,11 @@ Paths derived from the active blueprint's `packages.map`. If the blueprint chang
 this table is what gets rewritten — never the flow above. The persistence path carries
 one extra level, the aggregate's own subpackage (`…/persistence/user/`), whatever the
 blueprint calls the layer — `@.claude/rules/persistence.md` § Boundary.
+
+A domain field's row names the field and what it holds; the **shape stays open** — value
+object or `enum` is `domain-modeling`'s call, by `@.claude/rules/value-objects.md`, a rule
+this spec doesn't read. Writing `value object` here for a closed set produces a divergence
+this table guarantees and nobody learns from.
 
 ## Invariants
 

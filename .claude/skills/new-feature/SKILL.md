@@ -42,6 +42,14 @@ use case number or slug — `use-case-design` does.
 - `docs/use-cases/UC-NNN-<slug>/30-rest.md` — via `rest-api-architect`
 - `docs/use-cases/UC-NNN-<slug>/40-testes.md` — via `test-architect`
 
+**Writes (indirectly, outside `docs/`):**
+- `docker-compose.yml` and `docker/init/**` — via `docker-architect`, when
+  `persistence-architect` step 9 or `messaging-architect` step 9 chains it because a
+  partial named a service the compose file doesn't declare yet. The design phase is not
+  confined to `docs/`: these are the two territories it reaches, they belong to
+  `docker-architect` alone, and the "Not now" branch (§ End of flow) stages them for the
+  same reason it stages the spec
+
 **Writes (directly):**
 - `docs/use-cases/UC-NNN-<slug>/UC-NNN-spec.md` — implementation plan (executor-ready),
   including its `status:` line (`draft` → `approved`)
@@ -431,8 +439,19 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     `feat(UC-NNN-<slug>): <one-line summary>` as context.
   - **Failure** → report the executor's failure and stop. No git.
 - **Not now** → **invoke** `git-publish` via the `Skill` tool, with context
-  `docs(UC-NNN-<slug>): approved spec` and the paths `docs/use-cases/UC-NNN-<slug>/` and
-  `docs/use-cases/BACKLOG.md` as the only paths to stage.
+  `docs(UC-NNN-<slug>): approved spec` and these paths to stage:
+  - `docs/use-cases/UC-NNN-<slug>/` and `docs/use-cases/BACKLOG.md` — always;
+  - `docker-compose.yml` and `docker/init/**` — **when `docker-architect` ran in this
+    execution**, chained by `persistence-architect` step 9 or `messaging-architect`
+    step 9.
+
+  Design-only does **not** mean "nothing outside `docs/` changed". `docker-architect` is
+  the legitimate owner of those two territories and the pipeline chains it as soon as a
+  partial names a service the compose file doesn't have yet — a Kafka broker, a database
+  engine, an observability backend. Staging only `docs/` leaves that change uncommitted
+  and unmentioned, which is how a `kafka` service went orphan once
+  (`lessons-learned-010.md` § 7). List the extra paths in the `git-publish` context so
+  the diff the user confirms is the whole run, and name them in the final report.
 
 `git-publish`'s two confirmation gates decide whether anything is committed or pushed —
 this orchestrator only triggers the offer.
@@ -440,7 +459,9 @@ this orchestrator only triggers the offer.
 ### Final report
 
 Last message of the run, and the only report: the spec path and status, the backlog
-entries left for later (if any), what `git-publish` did, and a recommendation to run
+entries left for later (if any), **every file written outside `docs/`** (today only
+`docker-architect`'s two territories — "none" when it didn't run), what `git-publish`
+did, and a recommendation to run
 `/clear` before the next `/new-feature` — a clean context per use case keeps cost
 measurable per case.
 

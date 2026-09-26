@@ -71,6 +71,7 @@ record, with all four options and the notes, is in
 | **Path, verb, and HTTP status** | Fixing them here creates divergence: `api-rest.md` has URI and status rules this skill doesn't apply, and `30-rest.md` ends up correcting the parent spec's prose. Write the situation (`created`, `conflict with existing state`), not the number | `rest-api-architect`, in `30-rest.md` |
 | **Idempotency mechanism** (`Idempotency-Key`, key table) | `api-rest.md` requires it on creation `POST`s; deciding "no" here was overwritten downstream and cost a second persistence pass. Record the business fact — "does repeating the request create a duplicate?" — and mark the technical decision as delegated | `rest-api-architect`, in `30-rest.md` |
 | **Exception name and class** | A name fixed here gets demoted by `domain-modeling` (a subclass needs ≥ 2 call sites) and promoted back by a later case. Describe the situation (`email already in use`) and its kind (validation, not found, conflict, business rule) | `domain-modeling`, in `10-dominio.md` |
+| **Shape of a domain field** — value object, `enum`, or plain primitive | The criterion is `@.claude/rules/value-objects.md`, which this skill does not read: a closed set with no formation rule to validate is an `enum` by criterion 3, and calling it a value object here guarantees a divergence on every such field. Name the component and its role; leave the shape open | `domain-modeling`, in `10-dominio.md` |
 
 If the user asks for one of these, say which piece owns it and stop. Don't improvise
 the decision.
@@ -114,7 +115,8 @@ the decision.
    | an HTTP status code, a verb, or a path | don't ask — `rest-api-architect` decides |
    | idempotency, `Idempotency-Key`, a key table | don't ask — ask the business fact instead |
    | an exception class name | don't ask — `domain-modeling` decides |
-   | only one option | don't ask — decide and record it in the spec |
+   | the shape of a domain field (value object, `enum`, primitive) | don't ask — ask what values the field admits; `domain-modeling` decides the shape |
+   | fewer than 2 real options | don't ask — decide and record it in the spec. The runtime rejects the whole batch over a single one-option question (`@CLAUDE.md` § Known pitfalls) |
 
    A question whose answer another skill overwrites is worse than no question: it costs
    the user's time and produces a divergence.
