@@ -91,9 +91,14 @@ próprio CI:
   disputar a mesma conclusão.
 - **`timeout-minutes` em todo job** — 15 nos dois de hook e prompt, 30 no
   `exemplar-imports`, que depende de rede. O default é 6h.
-- **Actions fixadas por commit SHA**, com a tag como comentário ao lado. `@v4` é um ref
+- **Actions fixadas por commit SHA**, com a tag como comentário ao lado. `@v7` é um ref
   móvel que o dono da action pode reapontar — uma tag torna irreproduzível o que o CI
-  rodou. Subir os dois juntos.
+  rodou. Subir os dois juntos. Ambas estão no major atual (`checkout` v7.0.1,
+  `setup-java` v6.0.1): v1–v4 de `setup-java` estão deprecadas, e os majors intermediários
+  só apertam o que este workflow não usa — node24 (exige runner ≥ v2.327.1, que os
+  runners hospedados no GitHub são), o bloqueio de checkout de PR de fork, que vale para
+  `pull_request_target`/`workflow_run` e não para o gatilho `pull_request` daqui, e a
+  remoção das distribuições `adopt` legadas no `setup-java` v6, sendo `temurin` a usada.
 
 Os jobs `design` e `exemplar-imports` declaram `defaults.run.shell: bash` para ganhar
 `pipefail`, que o shell default (`bash -e {0}`) não tem. Por job, nunca no nível do

@@ -92,9 +92,14 @@ CI itself:
   instead of racing the new one to the same conclusion.
 - **`timeout-minutes` on every job** — 15 on the two hook/prompt jobs, 30 on
   `exemplar-imports`, which depends on the network. The default is 6h.
-- **Actions pinned by commit SHA**, with the tag as a comment beside it. `@v4` is a
+- **Actions pinned by commit SHA**, with the tag as a comment beside it. `@v7` is a
   moving ref the action's owner can repoint — a tag pin makes what CI ran
-  unreproducible. Bump both together.
+  unreproducible. Bump both together. Both sit on their current major (`checkout`
+  v7.0.1, `setup-java` v6.0.1): setup-java v1–v4 are deprecated, and the majors in
+  between only tighten things this workflow doesn't use — node24 (needs a runner ≥
+  v2.327.1, which GitHub-hosted runners are), the fork-PR checkout block that applies to
+  `pull_request_target`/`workflow_run` and not to the `pull_request` trigger here, and
+  setup-java v6 dropping the legacy `adopt` distributions, `temurin` being the one used.
 
 The `design` and `exemplar-imports` jobs declare `defaults.run.shell: bash` to get
 `pipefail`, which the default shell (`bash -e {0}`) lacks. Per job, never at workflow
