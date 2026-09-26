@@ -1,0 +1,19 @@
+# Multi-stage build (Gradle variant of Dockerfile.example). {{JAVA_VERSION}} is the JDK
+# resolved from the Initializr in step 3 — never pinned from memory, same rule as the
+# rest of this skill's version resolution.
+FROM eclipse-temurin:{{JAVA_VERSION}}-jdk-alpine AS build
+WORKDIR /workspace
+COPY gradle/ gradle/
+COPY gradlew settings.gradle build.gradle ./
+{{MODULE_BUILD_GRADLE_COPIES}}
+RUN ./gradlew -q --no-daemon dependencies
+COPY . .
+RUN ./gradlew -q --no-daemon bootJar -x test
+
+FROM eclipse-temurin:{{JAVA_VERSION}}-jre-alpine
+WORKDIR /app
+# {{MAIN_MODULE_JAR_PATH}} is the module with contains_main: true — single-module
+# layouts copy from build/libs/, multi-module layouts from <module>/build/libs/.
+COPY --from=build /workspace/{{MAIN_MODULE_JAR_PATH}} app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

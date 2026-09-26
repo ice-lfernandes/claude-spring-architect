@@ -1,0 +1,136 @@
+// EXEMPLAR — root build.gradle of a hexagonal multi-module project (Gradle, Groovy DSL).
+// Compilable as-is. When generating, adjust coordinates and the plugin versions that
+// came from the Spring Initializr / were resolved at runtime.
+// DO NOT pin versions based on this file: it's a reference for SHAPE.
+//
+// layout: single-module reuses only the per-project block below (checkstyle, spotless,
+// jacoco, test/integrationTest wiring), applied directly to the one project instead of
+// to `subprojects` — there's no `settings.gradle` to include modules from and no
+// `allprojects`/`subprojects` split. See SKILL.md step 4.
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '<!-- resolved by the Initializr, step 3 -->' apply false
+    id 'io.spring.dependency-management' version '<!-- resolved by the Initializr, step 3 -->' apply false
+    // Used by the format hook. Without this, the hook does nothing.
+    // Resolved at runtime against Maven Central (spotless-plugin-gradle, NOT
+    // spotless-maven-plugin — a different artifact), never from memory, same discipline
+    // as pom.parent.xml.example's <spotless.version>.
+    id 'com.diffplug.spotless' version '<!-- resolved in step 4 -->' apply false
+}
+
+allprojects {
+    group = 'com.exemplo'
+    version = '0.0.1-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+// Everything below applies to every module, `domain` included — mirrors what the Maven
+// exemplar inherits through the parent POM's own <dependencies>/<build> blocks.
+subprojects {
+    apply plugin: 'java-library'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'checkstyle'
+    apply plugin: 'com.diffplug.spotless'
+    apply plugin: 'jacoco'
+
+    java {
+        sourceCompatibility = JavaVersion.toVersion('<!-- resolved by the Initializr, step 3 -->')
+    }
+
+    // Pins every Spring-managed dependency's version, module by module — the Gradle
+    // equivalent of inheriting from spring-boot-starter-parent in Maven. Applying this
+    // plugin without importing the BOM leaves every spring-boot-starter-* version
+    // unmanaged.
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+        }
+    }
+
+    // No <version>: the imported BOM pins Lombok's, same as the Maven exemplar's
+    // comment about spring-boot-starter-parent. `compileOnly` + `annotationProcessor`
+    // keep it out of the classpath of anything depending on these modules — the Gradle
+    // equivalent of Maven's `<optional>true</optional>`. Legitimate in `domain`: SOURCE
+    // retention means no Lombok annotation reaches the published bytecode, so it isn't a
+    // framework under rules/architecture-ddd.md § Domain.
+    dependencies {
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+    }
+
+    // Mechanical half of rules/code-quality.md: length, parameters, complexity,
+    // nesting, magic numbers. What Checkstyle catches isn't up for debate in review.
+    // Gradle's `checkstyle` plugin ships built into Gradle itself — unlike Maven there's
+    // no separate "plugin version" to resolve, only the tool version below.
+    checkstyle {
+        toolVersion = '<!-- resolved in step 4.6, same source as the Maven exemplar -->'
+        configFile = rootProject.file('config/checkstyle/checkstyle.xml')
+        maxErrors = 0
+    }
+    // Runs as part of `check` (wired into `build`) automatically — Gradle's built-in
+    // lifecycle already gives this the same "runs before the rest, one violation stops
+    // the build" behavior the Maven exemplar wires by hand onto the `validate` phase.
+
+    spotless {
+        java {
+            // DO NOT use googleJavaFormat: it requires add-exports to jdk.compiler on
+            // JDK 16+, and the format hook runs on every Write/Edit — it would always fail.
+            palantirJavaFormat()
+            removeUnusedImports()
+        }
+    }
+
+    // Coverage: instrumentation and report, no gate. Same reasoning as the Maven
+    // exemplar's missing `check` execution — the limits in rules/testing.md (80%
+    // lines, 70% branches) only make sense over code that exists, and a freshly
+    // generated project has none. `test-architect`'s setup mode wires
+    // `jacocoTestCoverageVerification` into `check`, in the same pass that installs
+    // ArchUnit.
+    jacoco {
+        toolVersion = '<!-- resolved in step 4.6, same discipline as JaCoCo in the Maven exemplar -->'
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+        // rules/naming.md: `<Class>Test` (unit) vs `<Class>IT` (integration) live in the
+        // same `src/test/java` — no separate source set, same layout Maven's
+        // surefire/failsafe split already assumes. Filtering by name is what keeps them
+        // on separate tasks/JVMs.
+        include '**/*Test.class'
+        exclude '**/*IT.class'
+        finalizedBy 'jacocoTestReport'
+    }
+
+    jacocoTestReport {
+        reports {
+            xml.required = true
+        }
+        dependsOn tasks.named('test')
+        classDirectories.setFrom(
+            files(classDirectories.files.collect {
+                fileTree(dir: it, exclude: ['**/*Application.class', '**/config/**'])
+            })
+        )
+    }
+
+    // Gradle's equivalent of maven-failsafe-plugin: without this task the `*IT`s never
+    // run anywhere — not locally, not in CI's `./gradlew build`, which would go green
+    // without ever compiling or executing them.
+    tasks.register('integrationTest', Test) {
+        description = 'Runs the *IT integration tests.'
+        group = 'verification'
+        useJUnitPlatform()
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        include '**/*IT.class'
+        shouldRunAfter tasks.named('test')
+    }
+
+    tasks.named('check') {
+        dependsOn tasks.named('integrationTest')
+    }
+}

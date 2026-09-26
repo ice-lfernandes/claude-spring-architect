@@ -29,7 +29,8 @@ role in `packages.map` (step 4.7).
 ## Dependencies
 
 `java` (JDK 21+) · `git` · `curl`. **Nothing else.** `mvn`/`gradle` on the PATH are not
-required — the Initializr's `starter.tgz` already brings the Maven wrapper.
+required — the Initializr's `starter.tgz` already brings the matching wrapper (`mvnw` or
+`gradlew`, whichever `build.tool` resolved to).
 
 No Python, no template engines, no bash. The hooks are a single Java file run in
 single-file source mode, which makes them identical on Linux, macOS, and Windows — the
@@ -48,21 +49,42 @@ java --version && git --version && curl --version | head -1
 ls ${CLAUDE_SKILL_DIR}/templates/*.example
 ```
 
-Check that the exemplars the procedure cites are there —
-`pom.parent.xml.example` and `pom.module.xml.example` (step 4),
-`checkstyle.xml.example` (4.6), `lombok.config.example` (4.8), `Application.java.example`
+Check that the exemplars the procedure cites are there. Some are conditional on the
+active blueprint's `build.tool` — **check only the ones the resolved tool needs**, per
+the table below:
+
+| Build tool | Exemplars (step 4) |
+|---|---|
+| `maven` | `pom.parent.xml.example` and `pom.module.xml.example` |
+| `gradle` | `settings.gradle.example`, `build.gradle.parent.example`, and `build.gradle.module.example` |
+
+The rest are shared regardless of `build.tool`: `checkstyle.xml.example` (4.6),
+`lombok.config.example` (4.8), `Application.java.example`
 and `application.yml.example` (step 3), `features/actuator/application-actuator.yml.example`
 and `features/observability/application-observability.yml.example` and
-`features/observability/ApplicationTests-tracer.java.example` (4.7), `Dockerfile.example` and `docker-compose.yml.example` (4.10),
+`features/observability/ApplicationTests-tracer.java.example` (4.7),
+`docker-compose.yml.example` (4.10) plus **either** `Dockerfile.example` (`maven`) **or**
+`Dockerfile-gradle.example` (`gradle`) — never both,
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
-`settings.json.example` and `audit-pricing.json.example` (step 7), `ci.yml.example`
-(step 8), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
+`settings.json.example` and `audit-pricing.json.example` (step 7), **either**
+`ci.yml.example` (`maven`) **or** `ci-gradle.yml.example` (`gradle`) — never both (step
+6.5), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
 `GENESIS.md.example` (step 8.6) — plus whatever the
 active blueprint's `templates:` declares. Don't count files against a fixed number: the
 folder grows, the number falls behind, and the precondition starts failing for nothing.
 If a cited exemplar is missing, or a tool is missing: **stop and report**, naming what's
-missing. Don't improvise a root POM or invent Spring Boot versions from what you think
-you know — the version you have in memory is stale by construction.
+missing. Don't improvise a root POM/build.gradle or invent Spring Boot versions from
+what you think you know — the version you have in memory is stale by construction.
+
+**This skill generates exactly one build system per project — Maven or Gradle, never
+both.** `build.tool` in the blueprint YAML picks it, and it's overridable once at
+initialization (step 1's interview); once resolved, every later step branches on that
+single value and only ever touches that tool's exemplars. Writing a `pom.xml` and a
+`build.gradle` side by side (or vice versa) in the same generated project is a bug in
+this procedure, not a harmless extra — Maven and Gradle disagree about which one is
+authoritative, `./mvnw` and `./gradlew` both exist and diverge on the first dependency
+bump, and every downstream skill that shells out to a build tool (`test-architect`,
+`archunit-installer`, CI) has to guess which one is real.
 
 Step 4.10 additionally reads `docker-architect`'s own `templates/postgres-service.yml.example`
 and `templates/otel-collector-service.yml.example` (plus its
@@ -86,6 +108,11 @@ indicated which one, show `references/blueprint-selection.md` with each one's
 `when_to_choose` and `trade_offs`, and ask. **Never assume** the architecture: it's the
 most expensive decision to reverse in the whole project.
 
+The blueprint's `build.tool` (`maven` or `gradle`) is a default, not a lock-in — if the
+user hasn't said which build tool they want, confirm the blueprint's default with them
+here, once, same interview. Don't ask again later: step 2 resolves the final value and
+every step from step 3 on assumes it's already settled.
+
 ### 2 · Validate the blueprint
 
 Read the YAML and check, one by one:
@@ -101,9 +128,19 @@ Read the YAML and check, one by one:
 
 Don't invent defaults for `dependency_rules` — it's the backbone of the enforcement.
 
+**Resolve the effective build tool now, before step 3.** `build.tool` in the blueprint
+is the default; `@.claude/blueprints/_schema.md` documents it as "Overridable at
+initialization" — if the user asked for the other tool during step 1's interview, that
+override wins. Whatever the final value — `maven` or `gradle` — every step from here on
+branches on it once and stays with that choice. Never generate both.
+
 ### 3 · Generate the base with Spring Initializr
 
+The Initializr's `type=` parameter is what actually picks the build system — everything
+downstream just follows the file shapes it produces:
+
 ```bash
+# build.tool: maven
 curl -sS https://start.spring.io/starter.tgz \
   -d type=maven-project \
   -d language=java \
@@ -114,19 +151,45 @@ curl -sS https://start.spring.io/starter.tgz \
   -d javaVersion=21 \
   -d dependencies=<list derived from the features> \
   | tar -xzf - -C .
+
+# build.tool: gradle — same parameters, only `type` changes. Groovy DSL
+# (`gradle-project`), not Kotlin DSL (`gradle-project-kotlin`): this skill's own
+# exemplars (§ 4) are Groovy, and mixing DSLs between what the Initializr emits and what
+# this skill writes on top of it is its own silent divergence.
+curl -sS https://start.spring.io/starter.tgz \
+  -d type=gradle-project \
+  -d language=java \
+  -d groupId=<groupId> \
+  -d artifactId=<artifactId> \
+  -d name=<name> \
+  -d packageName=<packageBase> \
+  -d javaVersion=21 \
+  -d dependencies=<list derived from the features> \
+  | tar -xzf - -C .
 ```
+
+Run **exactly one** of the two, matching the build tool resolved above. Maven's
+`starter.tgz` extracts `pom.xml`, `mvnw`, `mvnw.cmd`, and `.mvn/wrapper/`; Gradle's
+extracts `build.gradle`, `settings.gradle`, `gradlew`, `gradlew.bat`, and
+`gradle/wrapper/`. There's no third case where both sets exist — if a stray `pom.xml` or
+`build.gradle` is left over from a previous attempt in this directory, that's the "already
+exists" case from § When NOT to use, not something to merge with the tool just generated.
 
 `javaVersion=21` is not a pin from memory — it's this skill's own precondition (JDK
 21+, see § Dependencies) made explicit. Without it the Initializr falls back to its own
 default, which has been observed to be an older LTS than what this skill requires;
-letting that happen means the generated `pom.xml` and `dependency-catalog.md`'s
-reasoning about the target JDK silently disagree.
+letting that happen means the generated `pom.xml`/`build.gradle` and
+`dependency-catalog.md`'s reasoning about the target JDK silently disagree.
 
 The Initializr **is** the version oracle for everything else: it returns the current
 Spring Boot GA, with nothing pinned in this repository. Confirm what came back:
 
 ```bash
+# maven
 grep -m1 '<version>' pom.xml && grep -m1 'java.version' pom.xml
+
+# gradle
+grep -m1 "id 'org.springframework.boot'" build.gradle && grep -m1 'sourceCompatibility\|JavaVersion' build.gradle
 ```
 
 If the network isn't available, **stop and ask** the user for the versions. Never write
@@ -136,6 +199,13 @@ suffix — see the note in `references/dependency-catalog.md`.
 Feature → Initializr dependency mapping in `references/dependency-catalog.md`.
 
 ### 4 · Restructure according to the blueprint
+
+Branch once on the build tool resolved before step 3, and stay on that branch for the
+rest of this step — **write only the files of the tool actually chosen.** A `gradle`
+project never gets a `pom.xml`, `mvnw`, or `.mvn/`; a `maven` project never gets a
+`build.gradle`, `settings.gradle`, or `gradlew`.
+
+#### build.tool: maven
 
 If `build.layout: single-module`, the result of step 3 already works as the structure:
 just create the packages from `packages.map`, there's no per-layer POM to write. The
@@ -172,9 +242,60 @@ If `multi-module`:
 Mandatory order: parent → modules → main class → configuration → docs → CI.
 A swapped order leaves the build broken halfway through generation.
 
+#### build.tool: gradle
+
+If `build.layout: single-module`, the result of step 3 already works as the structure:
+just create the packages from `packages.map`, there's no per-module `build.gradle` to
+write and no `settings.gradle` beyond its existing `rootProject.name` line. The
+Initializr's `build.gradle` still needs the `checkstyle`/`spotless`/`jacoco` blocks and
+the `test`/`integrationTest` task wiring from `templates/build.gradle.parent.example`
+(applied directly to the one project, not inside a `subprojects {}` block — there are no
+subprojects) because none of them come from the Initializr. Copy them in and move on to
+step 4.6. Steps 4.6 through 4.8 apply to both layouts.
+
+If `multi-module`:
+
+1. Write `settings.gradle` from `templates/settings.gradle.example`, with one `include`
+   line per module in `modules[]`, colon-separated to match each module's folder path
+   (`adapters/adapter-in-rest` → `include 'adapters:adapter-in-rest'`).
+2. Convert the root `build.gradle` into the parent shape of
+   `templates/build.gradle.parent.example` — the `plugins {}` block declares
+   `org.springframework.boot`, `io.spring.dependency-management`, and
+   `com.diffplug.spotless` with `apply false` (applied per-module instead, step 4.7's
+   note on `contains_main` decides where the Boot plugin actually activates), and the
+   `subprojects {}` block carries everything every module inherits — Lombok,
+   Checkstyle, Spotless, JaCoCo, the `test`/`integrationTest` split. The
+   `com.diffplug.spotless` version is a placeholder: resolve it the same way as step 3,
+   never from memory, but against the **Gradle plugin's own artifact** — a different one
+   from Maven's, don't reuse that URL:
+
+   ```bash
+   curl -sS 'https://repo1.maven.org/maven2/com/diffplug/spotless/spotless-plugin-gradle/maven-metadata.xml' \
+     | grep -o '<release>[^<]*</release>'
+   ```
+
+   No network: **ask**, don't invent. A made-up number that doesn't exist in the
+   repository breaks the build on the first `./gradlew`.
+
+   Same version-oracle discipline as Maven: `maven-metadata.xml` from `repo1.maven.org`,
+   never `search.maven.org`'s lagging index.
+3. Create a `build.gradle` per module from `templates/build.gradle.module.example`,
+   with the dependencies that module's `depends_on` authorizes — **and only those**. The
+   module with `contains_main: true` additionally applies `org.springframework.boot`
+   and declares the `spring-boot-starter-*` dependencies its features need — every
+   other module stays a plain `java-library`.
+4. Move the `@SpringBootApplication` class to the module with `contains_main: true`.
+5. Move `application.yml` into that module's `resources`.
+
+Mandatory order: settings → parent build.gradle → module build.gradles → main class →
+configuration → docs → CI. A swapped order leaves the build broken halfway through
+generation.
+
+#### Both
+
 The files in `templates/` are **real, compilable exemplars**, not molds to be
 mechanically substituted. Read them, understand the shape, and write the equivalent for
-this project. A `domain` POM doesn't carry `spring-boot-starter-web` even if the
+this project. A `domain` module doesn't carry `spring-boot-starter-web` even if the
 exemplar shows it in another module.
 
 <a id="andaime"></a>**The exemplar's scaffolding doesn't go into the project.** This
@@ -212,7 +333,11 @@ module.
 
 The limits from `@.claude/rules/code-quality.md` — method length, parameter count,
 cyclomatic complexity, nesting, magic numbers — stay prose without Checkstyle. It's the
-only automatic check the bootstrap installs.
+only automatic check the bootstrap installs. The config file itself
+(`config/checkstyle/checkstyle.xml`) is identical either way — only where the version
+numbers and the wiring go differs by build tool.
+
+**build.tool: maven**
 
 1. Resolve the versions on Maven Central, same rule as step 3:
 
@@ -243,17 +368,49 @@ only automatic check the bootstrap installs.
    `templates/checkstyle.xml.example`. Fixed path — it's what the root POM's
    `configLocation` points to, via `${maven.multiModuleProjectDirectory}`. Don't swap
    it for a relative path: it resolves at the root and fails in every submodule.
+
+**build.tool: gradle**
+
+1. Resolve the Checkstyle **tool** version the same way — Gradle's `checkstyle` plugin
+   ships built into Gradle itself, so there's no separate "plugin version" to resolve,
+   only the tool's:
+
+   ```bash
+   curl -sS 'https://repo1.maven.org/maven2/com/puppycrawl/tools/checkstyle/maven-metadata.xml' \
+     | grep -o '<release>[^<]*</release>'
+   ```
+
+   Goes into `checkstyle { toolVersion = '...' }` in the root `build.gradle` (or, in
+   `multi-module`, inside the `subprojects {}` block of `templates/build.gradle.parent.example`).
+
+   **JaCoCo's version, same discipline, against its own artifact** — not the Maven
+   plugin's:
+
+   ```bash
+   curl -sS 'https://repo1.maven.org/maven2/org/jacoco/org.jacoco.core/maven-metadata.xml' \
+     | grep -o '<release>[^<]*</release>'
+   ```
+
+   Goes into `jacoco { toolVersion = '...' }`, same block.
+2. Write `<project>/config/checkstyle/checkstyle.xml` with the shape of
+   `templates/checkstyle.xml.example` — same file, same path, same content as the Maven
+   case. It's what `checkstyle { configFile = rootProject.file('config/checkstyle/checkstyle.xml') }`
+   points to in `templates/build.gradle.parent.example`.
+
+**Both**
+
 3. **Don't change the exemplar's numbers.** Each one mirrors a limit from
    `code-quality.md`; changing one side just makes the rule and the build disagree. If
    the limit has to change, change it in both files, in the same pass.
 4. Don't add formatting checks (imports, braces, spacing): Spotless handles that,
-   already configured in the root POM. A duplicate check breaks the build over
+   already configured in the root build file. A duplicate check breaks the build over
    something the formatter would have fixed on its own.
 
-Runs at `validate`, before compiling — one violation stops the build immediately. If
-the freshly generated project already fails here, the error is in the translated
-exemplar or in a class coming from the Initializr, not in the limit: fix it before
-continuing.
+Runs before compiling in both build tools — Maven's `validate` phase, Gradle's `check`
+task (wired into `build`, so it can't be skipped by running `build` alone) — one
+violation stops the build immediately. If the freshly generated project already fails
+here, the error is in the translated exemplar or in a class coming from the Initializr,
+not in the limit: fix it before continuing.
 
 **Architecture tests (ArchUnit) are not generated here.** The bootstrap delivers a
 project with no business code, and a `classes().that()...should()` rule over zero
@@ -264,13 +421,15 @@ apply to. The bootstrap only records this in the output contract. The blueprint'
 not this step.
 
 **The coverage gate goes out the same door, for the same reason.** The
-`pom.parent.xml.example` brings JaCoCo with `prepare-agent` and `report`, and
-**without** the `check` execution: report yes, gate no. The limits from
+`pom.parent.xml.example`/`build.gradle.parent.example` exemplar brings JaCoCo with
+report generation (`prepare-agent`+`report` in Maven, `jacocoTestReport` in Gradle), and
+**without** a coverage gate (Maven's `check` execution, Gradle's
+`jacocoTestCoverageVerification`): report yes, gate no. The limits from
 `@.claude/rules/testing.md` (80% lines / 70% branches) only make sense over code that
 exists, and it's `test-architect`'s setup mode that wires them — in the same pass that
-installs ArchUnit. Don't add the `check` execution yourself: a project with no business
-classes either passes the gate vacuously, which proves nothing, or breaks it, which is
-a false negative.
+installs ArchUnit. Don't add the gate yourself: a project with no business classes
+either passes it vacuously, which proves nothing, or breaks it, which is a false
+negative.
 
 ### 4.7 · Materialize the packages and feature configuration
 
@@ -335,15 +494,17 @@ of the same role, which diverges from the first. That's what happened:
 
 ### 4.8 · Generate the `lombok.config`
 
-The root POM declares `org.projectlombok:lombok` as `optional`, inherited by all
-modules. Without this file, `@Data` and `@Setter` compile — and
-`@.claude/rules/lombok.md` stays prose, the same way `code-quality.md` stayed without
-Checkstyle.
+The root build file declares `org.projectlombok:lombok` as `optional` (Maven) /
+`compileOnly`+`annotationProcessor` (Gradle), inherited by all modules either way.
+Without this file, `@Data` and `@Setter` compile — and `@.claude/rules/lombok.md` stays
+prose, the same way `code-quality.md` stayed without Checkstyle.
 
-1. Write `<project>/lombok.config` with the shape of `templates/lombok.config.example`.
-   **One only, at the root, next to the root `pom.xml`.** Lombok climbs the folder tree
-   until `config.stopBubbling = true`, so the root covers every module. Copying the
-   file into each module adds nothing and creates four places to diverge.
+1. Write `<project>/lombok.config` with the shape of `templates/lombok.config.example`
+   — same file for both build tools, Lombok itself doesn't distinguish Maven from
+   Gradle. **One only, at the root, next to the root `pom.xml`/`build.gradle`.** Lombok
+   climbs the folder tree until `config.stopBubbling = true`, so the root covers every
+   module. Copying the file into each module adds nothing and creates four places to
+   diverge.
 2. Don't remove lines from it. Each `flagUsage = ERROR` mirrors a rule's prohibition;
    removing one makes the rule and the build disagree, same as in step 4.6.
 3. Don't add `lombok.fieldDefaults.defaultPrivate = true`. It would make implicit what
@@ -351,9 +512,11 @@ Checkstyle.
    annotation at the top of the class is what's read in the file, and a global default
    hides it.
 
-There's no version to resolve: `spring-boot-starter-parent` pins Lombok's. If you write
-a `<version>` in the POM, it's the same mistake as step 3 — a number written from
-memory.
+There's no version to resolve: `spring-boot-starter-parent` pins Lombok's in Maven, and
+the imported `spring-boot-dependencies` BOM pins it the same way in Gradle
+(`dependencyManagement { imports { mavenBom "org.springframework.boot:spring-boot-dependencies:..." } }`,
+already in `templates/build.gradle.parent.example`). If you write a version yourself, in
+either build file, it's the same mistake as step 3 — a number written from memory.
 
 ### 4.9 · Generate the `logback-spring.xml`
 
@@ -386,15 +549,24 @@ already implied by an active `features:` flag: a non-default engine, a broker, a
 extra datastore. `@.claude/decisions/0011-bootstrap-without-business-code.md` governs
 that second category — a made-up aggregate competing with a real spec — not this one.
 
-1. Write `<project>/Dockerfile` with the shape of `templates/Dockerfile.example`,
-   filling `{{JAVA_VERSION}}` with the version resolved in step 3 and
+1. Write `<project>/Dockerfile` from **either** `templates/Dockerfile.example`
+   (`build.tool: maven`) **or** `templates/Dockerfile-gradle.example` (`build.tool:
+   gradle`) — never both, same exemplar the resolved build tool has used since step 3.
+   Fill `{{JAVA_VERSION}}` with the version resolved in step 3 and
    `{{MAIN_MODULE_JAR_PATH}}` with the jar path of the module with `contains_main:
-   true` — `target/<artifactId>-<version>.jar` in `single-module`, `<module-path>/
-   target/<artifactId>-<version>.jar` in `multi-module`. In `multi-module`, replace
-   `{{MODULE_POM_COPIES}}` with one `COPY <module>/pom.xml <module>/` line per module,
-   so the dependency-resolution layer caches correctly; in `single-module`, delete that
-   placeholder line — there's nothing to copy beyond the root `pom.xml` already copied
-   above.
+   true`:
+   - Maven: `target/<artifactId>-<version>.jar` in `single-module`,
+     `<module-path>/target/<artifactId>-<version>.jar` in `multi-module`. In
+     `multi-module`, replace `{{MODULE_POM_COPIES}}` with one `COPY <module>/pom.xml
+     <module>/` line per module, so the dependency-resolution layer caches correctly;
+     in `single-module`, delete that placeholder line — there's nothing to copy beyond
+     the root `pom.xml` already copied above.
+   - Gradle: `build/libs/<artifactId>-<version>.jar` in `single-module`,
+     `<module-path>/build/libs/<artifactId>-<version>.jar` in `multi-module`. In
+     `multi-module`, replace `{{MODULE_BUILD_GRADLE_COPIES}}` with one `COPY
+     <module>/build.gradle <module>/` line per module, same caching reason; in
+     `single-module`, delete that placeholder line — there's nothing to copy beyond the
+     root `build.gradle`/`settings.gradle` already copied above.
 2. Write `<project>/docker-compose.yml` with the shape of
    `templates/docker-compose.yml.example`, verbatim — no substitution needed, it has no
    `{{...}}` placeholders. This is the base `app` service only.
@@ -460,9 +632,19 @@ that enforcement is off, but blocks nothing. Generating it is not optional.
 **Root** — write `<project>/CLAUDE.md` with the shape of
 `templates/root.CLAUDE.md.example`, replacing the `{{...}}` placeholders with the
 resolved data: name, versions from step 3, real build commands, and the list of
-modules with their `depends_on`. Target under 200 lines: it's an index and invariants,
-not a manual. No `rules/` rule is reproduced **inside** this file — only cited by path.
-The rule files themselves are copied into the project in step 6.6.
+modules with their `depends_on`. `{{buildCmd}}`/`{{testCmd}}`/`{{runCmd}}`/`{{formatCmd}}`
+resolve from the same build tool every earlier step branched on — never a mix:
+
+| Placeholder | `maven` | `gradle` |
+|---|---|---|
+| `{{buildCmd}}` | `./mvnw clean verify` | `./gradlew build` |
+| `{{testCmd}}` | `./mvnw test` | `./gradlew test` |
+| `{{runCmd}}` | `./mvnw spring-boot:run` | `./gradlew bootRun` |
+| `{{formatCmd}}` | `./mvnw spotless:apply` | `./gradlew spotlessApply` |
+
+Target under 200 lines: it's an index and invariants, not a manual. No `rules/` rule is
+reproduced **inside** this file — only cited by path. The rule files themselves are
+copied into the project in step 6.6.
 
 **Per module** — for each module with non-empty `forbidden_imports`, write
 `<module>/CLAUDE.md` with the shape of `templates/module.CLAUDE.md.example`, filled
@@ -472,10 +654,12 @@ by hand, it diverges from what the hook enforces.
 ### 6.5 · Generate CI
 
 The Initializr doesn't generate CI. Write `.github/workflows/build.yml` with the shape
-of `templates/ci.yml.example`, adjusted to the Java version resolved in step 3. Without
-this, the `.github/workflows/*` declared in the skill's § Contract has no real
-counterpart. The exemplar's comment "(see decisions/0011)" is the same dead reference as
-§ 6.6/6.7/7 — cut it, the reasoning it points to has no counterpart in the project.
+of **either** `templates/ci.yml.example` (`build.tool: maven`) **or**
+`templates/ci-gradle.yml.example` (`build.tool: gradle`) — never both — adjusted to the
+Java version resolved in step 3. Without this, the `.github/workflows/*` declared in the
+skill's § Contract has no real counterpart. The exemplar's comment "(see
+decisions/0011)" is the same dead reference as § 6.6/6.7/7 — cut it, the reasoning it
+points to has no counterpart in the project.
 
 The `.gitignore` is **not** generated here: the Initializr already delivers a correct
 one in step 3. Confirm it exists; if it's missing, write it then. It's not in `owns`
@@ -786,9 +970,12 @@ it, not something this step fixes by scrubbing on the way out. `ArchHook.java sc
 
 ### 8 · Verify
 
-The `starter.tgz` from step 3 **already brings** `mvnw`, `mvnw.cmd`, and
-`.mvn/wrapper/` — don't run `mvn -N wrapper:wrapper`. Confirm the wrapper exists and
-works before anything else:
+Everything in this step branches on the same build tool resolved before step 3 — run
+**only** the column that matches.
+
+**build.tool: maven** — the `starter.tgz` from step 3 **already brings** `mvnw`,
+`mvnw.cmd`, and `.mvn/wrapper/` — don't run `mvn -N wrapper:wrapper`. Confirm the
+wrapper exists and works before anything else:
 
 ```bash
 ./mvnw -v                       # failure here = starter.tgz didn't extract the wrapper
@@ -817,6 +1004,37 @@ at the first use case that injects it:
 # all three lines present on Spring Boot 4 — see references/dependency-catalog.md
 ```
 
+**build.tool: gradle** — the `starter.tgz` from step 3 **already brings** `gradlew`,
+`gradlew.bat`, and `gradle/wrapper/` — don't run `gradle wrapper`. Confirm the wrapper
+exists and works before anything else:
+
+```bash
+./gradlew -v                              # failure here = starter.tgz didn't extract the wrapper
+./gradlew -q --no-daemon compileTestJava  # boundaries + Checkstyle (part of `check`, see below)
+./gradlew -q --no-daemon test             # Initializr smoke test — only the `*Test`s
+./gradlew -q --no-daemon checkstyleMain checkstyleTest  # Checkstyle only, to isolate violations
+./gradlew --no-daemon build               # includes the `*IT`s via the `integrationTest` task
+```
+
+In `build`, the freshly generated project **has no `*IT` at all** — same expected
+zero-ITs result as Maven, for the same reason. What you're confirming is that the
+`integrationTest` task made it into `build.gradle` and is wired into `check`: without
+it, the first `*IT` that `test-architect` designs compiles and never runs.
+
+```bash
+grep -c "tasks.register('integrationTest'" build.gradle    # must be ≥ 1 (root, or the subprojects block)
+```
+
+With `features.observability` active, same confirmation, Gradle's dependency report
+instead of Maven's:
+
+```bash
+./gradlew -q --no-daemon dependencies | grep -E 'micrometer-tracing-bridge|opentelemetry-exporter-otlp|spring-boot-starter-opentelemetry'
+# all three lines present on Spring Boot 4 — see references/dependency-catalog.md
+```
+
+**Both, from here on**
+
 Boundary test, mandatory before reporting success: temporarily write
 `<domain-module>/src/main/java/<domain-package>/ArchHookProbe.java` with an
 `import org.springframework.stereotype.Component;`, confirm the hook blocks the write,
@@ -826,16 +1044,17 @@ only for the duration of the test.
 
 `lombok.config` test, for the same reason and the same way: temporarily put a
 `@Setter` with a field on the `@SpringBootApplication` class — the only one that
-exists —, run `./mvnw -q test-compile`, confirm the compilation stops with
-`Use of @Setter is flagged according to lombok configuration`, and remove it. Compiling
-green means the file isn't at the root, or `flagUsage` didn't make it in — the
-`lombok.md` rule would run with no enforcement at all.
+exists —, run `./mvnw -q test-compile` (Maven) or `./gradlew -q --no-daemon
+compileTestJava` (Gradle), confirm the compilation stops with `Use of @Setter is
+flagged according to lombok configuration`, and remove it. Compiling green means the
+file isn't at the root, or `flagUsage` didn't make it in — the `lombok.md` rule would
+run with no enforcement at all.
 
 If any test depends on Testcontainers (Spring context with a real DB), guard it with a
 condition that checks the Docker daemon (e.g. `@EnabledIf("dockerAvailable")`). Without
-that, `./mvnw test` goes red on any machine without local Docker — a false negative
-that says nothing about the code. The test actually runs in CI, where the runner has a
-daemon.
+that, `./mvnw test`/`./gradlew test` goes red on any machine without local Docker — a
+false negative that says nothing about the code. The test actually runs in CI, where
+the runner has a daemon.
 
 If the build fails, **fix it before reporting**. A bootstrap that delivers a red build
 isn't finished.
@@ -1035,7 +1254,9 @@ them into the project, and a partial copy isn't the rule.
 **Writes** (paths relative to the **generated project**, not this repository) — no
 other skill touches these files:
 
-- `pom.xml` and `*/pom.xml`
+- Exactly one of: `pom.xml` and `*/pom.xml` (`build.tool: maven`), or `settings.gradle`,
+  `build.gradle`, and `*/build.gradle` (`build.tool: gradle`) — never both in the same
+  project, see step 4
 - `CLAUDE.md` and `*/CLAUDE.md`
 - `.claude/forbidden-imports.txt`
 - `.claude/rules/*.md` — full copy of this repo's rules, see step 6.6

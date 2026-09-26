@@ -1,0 +1,23 @@
+// EXEMPLAR — build.gradle of the `domain` module (the most restricted of all).
+// Notice what is NOT here: no Spring starter, no JPA, no Jackson, no `org.springframework.boot`
+// plugin application. It's deliberate and is the module's whole reason for existing.
+//
+// When generating the other modules, add ONLY the dependencies that module's
+// `depends_on` authorizes in the blueprint. Copying this file and adding starters
+// "in case they're needed later" is how boundaries get lost.
+//
+// Everything common to every module — Lombok, Checkstyle, Spotless, JaCoCo, the
+// `test`/`integrationTest` split — is already wired in the root build.gradle's
+// `subprojects` block (build.gradle.parent.example) and needs no repetition here.
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+}
+
+// The module with `contains_main: true` (bootstrap, in this blueprint) is the only one
+// that applies `org.springframework.boot` and `spring-boot-starter-web`/etc — and the
+// only one whose build.gradle needs `apply plugin: 'org.springframework.boot'`. Every
+// other module stays a plain `java-library` (already applied at the root, subprojects
+// block) with no executable jar of its own, the equivalent of the Maven exemplar's "the
+// Spring Boot plugin does NOT go here: this module isn't executable."
