@@ -44,6 +44,11 @@ case, service) is the active blueprint's decision, see `packages.map`.
 - Explicit mapping: no domain entity serialized outward, no JPA entity entering the
   domain
 - An adapter only knows the abstractions it needs
+- A component that sweeps or polls persisted state — a relay, a scheduler, a
+  reconciler — reads and updates that state through an abstraction the application layer
+  owns, never through a sibling adapter's entity or repository. It is an adapter too:
+  reaching sideways into another adapter's persistence is a dependency no `depends_on`
+  grants
 - Spring configuration lives here and in bootstrap, not in the domain
 
 ## Composition
