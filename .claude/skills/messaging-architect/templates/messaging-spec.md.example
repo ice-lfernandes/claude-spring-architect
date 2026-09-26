@@ -35,13 +35,11 @@ Port declared in `10-dominio.md`: `PublishOrderConfirmedPort`.
 |---|---|---|---|
 | `PublishOrderConfirmedPort` | `void publish(OrderConfirmed event)` | `OrderConfirmedPublisher` | `OrderConfirmedPayload(orderId, customerId, occurredAt)` |
 
-Under **Form B** this block carries two more things, and the partial is incomplete without
-them: the relay (`OutboxRelay` + the application-layer `OutboxRelayGateway`, shape in
-`templates/OutboxRelayPublisher.java.example`), and the `outbox_events` **schema
-requirement** for `persistence-architect` — the columns the relay needs, as requirements, not
-as DDL. One outbox for the whole project, reused by every later event; when `20-persistencia.md`
-is already written, the requirement is a follow-up on that partial, stated here in full so it
-doesn't have to be re-derived.
+Under **Form B** this block carries one more thing, and the partial is incomplete without it:
+the relay (`OutboxRelay` + the application-layer `OutboxRelayGateway`, shape in
+`templates/OutboxRelayPublisher.java.example`). The `outbox_events` table it needs is not
+described here — it goes as a row of § 6, which is the list `persistence-architect` reads.
+One outbox for the whole project, reused by every later event.
 
 ## 3 · Consumer adapter and idempotency
 
@@ -49,9 +47,9 @@ doesn't have to be re-derived.
 |---|---|---|---|
 | `ReserveStockUseCase` | `OrderConfirmedListener` | `inventory-service` | `<orderId>:OrderConfirmed` |
 
-Dedupe table: reuses `processed_events` if `persistence-architect` already created it for
-another consumer in this project; otherwise this pass asks `persistence-architect` to model
-it — shared across consumers, not per use case, same pattern as `idempotency_keys`.
+Dedupe table: reuses `processed_events`, created by `persistence-architect` for another
+consumer in this project. Shared across consumers, not per use case, same pattern as
+`idempotency_keys`. Had it not existed yet, it would be a row of § 6 instead.
 
 ## 4 · Retry and DLQ
 
@@ -73,6 +71,24 @@ re-discussed here — `@.claude/rules/messaging.md` § Configuration.
 | `spring.kafka.listener.ack-mode` | `manual` | Offset commits only after `reserve()` returns |
 
 Full shape in `templates/application-kafka.yml.example`.
+
+## 6 · Schema requirements
+
+none
+
+Read by `persistence-architect` in its first pass, which runs after this skill. Every table
+or column this transport needs and the domain didn't model goes here, one row each —
+requirements, never DDL: the form is that skill's call.
+
+This use case publishes under **Form A**, so nothing survives outside the commit and no
+table is needed; the consumer reuses the `processed_events` table that already exists. Under
+**Form B**, or with a consumer in a project that has no dedupe table yet, the block is a
+table instead:
+
+| Requirement | Why | Columns the design needs | Addressee |
+|---|---|---|---|
+| `outbox_events` — shared, one per project | Form B: the event is written inside the caller's transaction and published by the relay | event id, aggregate id, topic, payload, occurred at, published at, claim marker, attempts, last error, dead-letter flag | `persistence-architect` step 4b |
+| `processed_events` — shared, one per project | Idempotent consumer: the dedupe key is checked before the use case is called | dedupe key, consumed at | `persistence-architect` |
 
 ## Impact on approved use cases
 
