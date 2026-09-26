@@ -246,6 +246,33 @@ public class ArchHook {
         } else {
             err("  MCP ................ no .mcp.json — nothing declared (optional)");
         }
+        Path settingsFile = ROOT.resolve(".claude/settings.json");
+        if (Files.isRegularFile(settingsFile)) {
+            List<String> hookErrs = new ArrayList<>();
+            Map<String, Object> schRoot = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+            String settingsContent = readOrNull(settingsFile);
+            if (schRoot != null) {
+                checkSettings(schRoot, ".claude/settings.json", settingsContent, hookErrs);
+            }
+            Map<String, Object> sRoot = asMap(Json.parse(settingsContent));
+            Map<String, Object> hookMap = sRoot == null ? null : asMap(sRoot.get("hooks"));
+            int entries = 0;
+            if (hookMap != null) {
+                for (Object groups : hookMap.values()) {
+                    for (Object group : asList(groups)) {
+                        Map<String, Object> g = asMap(group);
+                        if (g != null) entries += asList(g.get("hooks")).size();
+                    }
+                }
+            }
+            int evts = hookMap == null ? 0 : hookMap.size();
+            report("Hooks", hookErrs.isEmpty(),
+                    entries + " registration(s) across " + evts + " event(s)",
+                    hookErrs.size() + " problem(s) — run `java ArchHook.java schema`");
+        } else {
+            err("  Hooks .............. no .claude/settings.json — no hook registered");
+        }
+
         ComposeReport comp = composeReport();
         report("Compose", comp.ok(), comp.summary(), comp.summary());
         for (String d : comp.detail()) err("    " + d);
@@ -742,8 +769,7 @@ public class ArchHook {
                 if (g != null) globs.add(g);
             }
         }
-        String sg = asStr(get(sch, "settings", "match"));
-        if (sg != null) globs.add(sg);
+        globs.addAll(asStrList(get(sch, "settings", "match")));
         globs.addAll(asStrList(get(sch, "mcp", "match")));
 
         for (String g : globs) {
@@ -772,7 +798,7 @@ public class ArchHook {
 
         checkInjections(sch, rel, content, errors);   // every visited file, any type
 
-        if (matches(asStr(get(sch, "settings", "match")), rel)) {
+        if (matchesAny(asStrList(get(sch, "settings", "match")), rel)) {
             checkSettings(sch, rel, content, errors);
             return;
         }
@@ -917,7 +943,18 @@ public class ArchHook {
         }
     }
 
-    /** Validates the top-level keys and each hook entry of settings.json. */
+    /**
+     * Validates the top-level keys and every hook registration of a settings file —
+     * this repo's `.claude/settings.json` and the generated project's template, both
+     * listed in extensions.json's `settings.match`.
+     *
+     * <p>What it catches is the set of mistakes the runtime accepts in silence: an
+     * event name that exists nowhere, a `matcher` on an event that never reads one, a
+     * `type` this repo has no handler for, a shell string written where the executable
+     * goes, and a non-positive `timeout`. None of these fails at startup; the hook
+     * simply never runs, or runs without the filter it appears to have. Every list
+     * lives in extensions.json — invariant 10, @CLAUDE.md.
+     */
     static void checkSettings(Map<String, Object> sch, String rel, String content,
                               List<String> errors) {
         Map<String, Object> root = asMap(Json.parse(content));
@@ -937,15 +974,42 @@ public class ArchHook {
 
         List<String> req = asStrList(get(sch, "settings", "hook_entry", "required"));
         List<String> allowed = asStrList(get(sch, "settings", "hook_entry", "allowed"));
+        List<String> events = new ArrayList<>(asStrList(get(sch, "settings", "hook_events")));
+        events.addAll(asStrList(get(sch, "settings", "hook_events_extra")));
+        List<String> matcherEvents = asStrList(get(sch, "settings", "matcher_events"));
+        List<String> groupAllowed = asStrList(get(sch, "settings", "group_allowed"));
+        List<String> entryTypes = asStrList(get(sch, "settings", "entry_types"));
+        List<String> badChars = asStrList(get(sch, "settings", "command_forbidden_chars"));
 
         for (Map.Entry<String, Object> ev : hooks.entrySet()) {
+            String event = ev.getKey();
+            String where = rel + " › " + event;
+
+            if (!events.isEmpty() && !events.contains(event)) {
+                errors.add("  " + rel + " — `" + event + "` is not a lifecycle event."
+                        + " It never fires. Known events in"
+                        + " .claude/schemas/extensions.json › settings.hook_events");
+            }
+
             for (Object group : asList(ev.getValue())) {
                 Map<String, Object> g = asMap(group);
                 if (g == null) continue;
+
+                for (String k : g.keySet()) {
+                    if (!groupAllowed.isEmpty() && !groupAllowed.contains(k)) {
+                        errors.add("  " + where + " — `" + k
+                                + "` is not a hook group field");
+                    }
+                }
+                if (g.containsKey("matcher") && !matcherEvents.isEmpty()
+                        && !matcherEvents.contains(event)) {
+                    errors.add("  " + where + " — `matcher` is ignored on this event."
+                            + " It reads as a filter and filters nothing");
+                }
+
                 for (Object entry : asList(g.get("hooks"))) {
                     Map<String, Object> h = asMap(entry);
                     if (h == null) continue;
-                    String where = rel + " › " + ev.getKey();
                     for (String r : req) {
                         if (!h.containsKey(r)) {
                             errors.add("  " + where + " — hook entry missing `" + r + "`");
@@ -957,8 +1021,37 @@ public class ArchHook {
                                     + "` is not a hook entry field");
                         }
                     }
+                    checkHookEntry(where, h, entryTypes, badChars, errors);
                 }
             }
+        }
+    }
+
+    /** Type, exec form, and timeout of one hook entry. Lists come from extensions.json. */
+    static void checkHookEntry(String where, Map<String, Object> h, List<String> entryTypes,
+                               List<String> badChars, List<String> errors) {
+        String type = asStr(h.get("type"));
+        if (type != null && !entryTypes.isEmpty() && !entryTypes.contains(type)) {
+            errors.add("  " + where + " — `type: " + type + "` has no handler here."
+                    + " This repo runs command hooks only: "
+                    + String.join(", ", entryTypes));
+        }
+
+        String command = asStr(h.get("command"));
+        if (command != null) {
+            for (String bad : badChars) {
+                if (command.contains(bad)) {
+                    errors.add("  " + where + " — `command` contains `" + bad
+                            + "`: that is a shell string where the executable goes."
+                            + " Exec form: `command` is the binary, `args` the arguments");
+                    break;
+                }
+            }
+        }
+
+        Object timeout = h.get("timeout");
+        if (timeout != null && (!(timeout instanceof Number) || num(timeout) <= 0)) {
+            errors.add("  " + where + " — `timeout` must be a positive number of seconds");
         }
     }
 

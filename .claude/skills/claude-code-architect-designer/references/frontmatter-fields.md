@@ -46,7 +46,7 @@ Design, exit codes, and commit order:
 | `context: fork` | Runs the skill in an isolated subagent |
 | `agent` | Which subagent type to use with `context: fork` |
 | `background` | With `fork`, `false` = waits for the result in the same turn |
-| `hooks` | Hooks registered when invoking the skill |
+| `hooks` | Hooks registered when invoking the skill — Form 7b. Events and entry fields: `hook-events.md` |
 
 The **folder name** becomes the command: `.claude/skills/arch-doctor/` → `/arch-doctor`.
 The frontmatter `name` follows the folder; diverging is guaranteed confusion during
@@ -85,7 +85,7 @@ user only wanted to read the skill.
 | `maxTurns` | ➖ | Maximum turns before stopping |
 | `skills` | ➖ | Skills preloaded **in full** at startup |
 | `mcpServers` | ➖ | MCP servers only for this subagent |
-| `hooks` | ➖ | Hooks only while the subagent runs |
+| `hooks` | ➖ | Hooks only while the subagent runs — Form 7b. Events and entry fields: `hook-events.md` |
 | `memory` | ➖ | `user`, `project`, or `local` |
 | `background` | ➖ | `true` keeps it in the background |
 | `effort` | ➖ | `low` … `max` |

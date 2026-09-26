@@ -1,0 +1,46 @@
+{
+  "_comment": "Shape reference for Form 7a — a hook registration in .claude/settings.json, or in project-bootstrap/templates/settings.json.example for the generated project. MERGE into the `hooks` block that is already there; never replace it. Fields, events, and which events read a `matcher`: ../references/hook-events.md. Owner of the lists: .claude/schemas/extensions.json › settings.",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "matcher = tool name, or a list (Edit|Write), or a regex. Group level: only `matcher` and `hooks` exist here.",
+        "matcher": "Write",
+        "hooks": [
+          {
+            "_comment": "Exec form: `command` is the bare executable, `args` the arguments. No shell, no quoting, no execute bit, works on Windows. A pipe or && inside `command` is rejected by `ArchHook.java schema`.",
+            "type": "command",
+            "if": "Write(<path glob the check actually concerns>)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "<mode>"],
+            "statusMessage": "<what the user sees while it runs>",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "_comment": "No `matcher` here: Stop does not read one, and `ArchHook.java schema` rejects it. An event with no matcher and no `if` runs every single time — that is criterion 9 of the rubric, and it is only correct when the check genuinely has to.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "<mode>"],
+            "statusMessage": "<what the user sees while it runs>",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
+
+  "_comment_permissions": "Form 8 lives in the same file. `deny` is read before the call and spawns no process — prefer it over a hook whenever the answer is a flat refusal. Every line needs a reason in the decision record: there is nowhere here to write one.",
+  "permissions": {
+    "allow": ["Bash(<command that should never need approval>:*)"],
+    "deny": ["Read(./**/<path that must never be read>)"]
+  },
+
+  "_comment_restart": "Nothing in this file takes effect until `claude` is restarted. It is read at session startup only."
+}
