@@ -1359,6 +1359,14 @@ public class ArchHook {
         Map<String, Object> exp = asMap(sch.get("export"));
         if (exp == null) return;                      // no `export` block: nothing to check
 
+        // The manifest describes the repository it lives in. A tree that merely copied
+        // extensions.json — the CI injection sandbox, or a project that kept the block —
+        // has none of the files it names, and reporting all of them as missing says only
+        // that this is not that repository. `source_marker` is the directory that answers
+        // it: present here, travels nowhere.
+        String marker = asStr(exp.get("source_marker"));
+        if (marker != null && !Files.isDirectory(ROOT.resolve(marker))) return;
+
         for (String group : List.of("copy", "overwrite")) {
             for (Object e : asList(exp.get(group))) {
                 String from = asStr(get(e, "from"));

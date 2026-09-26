@@ -154,6 +154,9 @@
       { "from": ".claude/skills/project-bootstrap/templates/mcp-setup.md.example", "to": "MCP-SETUP.md" }
     ],
 
+    "$comment_marker": "The cross-check `schema` runs over this block only makes sense in the repository the block describes. `source_marker` is how the mode tells: a directory that exists here and travels nowhere. Without it the check fires in a throwaway tree that merely copied extensions.json — the CI injection sandbox is one — and reports every rule and skill as missing when what is actually missing is the repository.",
+    "source_marker": ".claude/blueprints",
+
     "ensure_dirs": [".claude/audit-usage"],
     "gitignore_lines": [".claude/audit-usage/.state/"],
 
