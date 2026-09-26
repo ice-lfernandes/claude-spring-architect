@@ -1,0 +1,275 @@
+/*
+ * EXEMPLAR — persistence side of the transactional outbox (Form B). Form reference for the
+ * executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/messaging.md` (§ Publication timing) · `.claude/rules/persistence.md`
+ *        (§ Boundary, § Mapping, § Identity and keys) · `.claude/rules/architecture-ddd.md`
+ *        (§ Adapters) · `.claude/rules/lombok.md` (`@Data` and `@Setter` forbidden)
+ *
+ * WHAT THIS EXEMPLAR SHOWS: the table `outbox_events` mapped, and the read/mark side of it
+ * served through `OutboxRelayGateway`. Table itself: `templates/OutboxEventTable.sql.example`.
+ *
+ * WHAT IT DOES NOT DECLARE, ON PURPOSE. `OutboxRelayGateway` and `PendingOutboxEvent` are
+ * declared in `.claude/skills/messaging-architect/templates/OutboxRelayPublisher.java.example`,
+ * which owns the relay that consumes them. This exemplar only implements the port — one
+ * interface, one owning file, the same discipline `IdempotencyKeyPort` follows. If the
+ * signature here and the signature there disagree, that file wins and this one is stale.
+ *
+ * WHAT IT DOES NOT COVER: the write side. `OutboxAppender` — the component the outbound port's
+ * implementation calls to insert the row inside the use case's transaction — stays in the
+ * messaging adapter, elided in that same exemplar. It writes this entity, so it is the one
+ * place outside this subpackage that needs `OutboxEventEntity` to be visible; see the
+ * visibility note below. Also not here: the pruning job (a scheduled DELETE sized by
+ * retention, commented at the tail of the SQL exemplar).
+ *
+ * PACKAGE: `…persistence.outbox` — its own subpackage, the same as `…persistence.idempotency`
+ * and as any aggregate's (`.claude/rules/persistence.md` § Boundary). It is not an aggregate:
+ * it is shared infrastructure, which is exactly why it must not be dumped in the persistence
+ * package root.
+ *
+ * WHY THIS PORT ISN'T DECLARED IN `10-dominio.md`: like `IdempotencyKeyPort`, it mirrors no
+ * output port of any aggregate. `domain-modeling` declares the port that *publishes the event*;
+ * this one serves the relay's own view of outbox state, and exists once for the whole project.
+ *
+ * TRANSACTIONS. Zero `@Transactional` here (`.claude/rules/persistence.md` § Boundary): each
+ * call below runs in the transaction Spring Data opens for the repository method itself. That
+ * is what the relay needs — a claim, a send, and a mark are three separate units, and holding
+ * one transaction across the broker call would keep a database transaction open for the length
+ * of a network round trip. The write side is the opposite case and is the whole point of Form
+ * B: the appender's INSERT joins the use case's transaction, and that transaction is opened by
+ * the application layer.
+ *
+ * SINGLE RELAY INSTANCE IS ASSUMED. The claim below does not lock rows, so two instances
+ * polling at once read the same batch and send the same event twice — absorbed by the
+ * idempotent consumer `.claude/rules/messaging.md` § Delivery semantics already requires, and
+ * `event_id` is that dedupe key. What it must never do is lose a row, and it doesn't. When a
+ * deployment does run more than one relay and the duplicate rate stops being acceptable, the
+ * fix is a claim lease — a `claimed_at` column and a single `UPDATE … WHERE event_id IN
+ * (SELECT … FOR UPDATE SKIP LOCKED) RETURNING …` statement, the same lease shape
+ * `IdempotencyKeyStore` uses for its IN_PROGRESS rows. That is a schema change: it belongs in
+ * the partial, not in a comment.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- outbox/OutboxEventEntity.java
+package com.example.demo.adapter.out.persistence.outbox;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import java.time.Instant;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
+
+/*
+ * Package-private, like every class in this subpackage. The one exception the write side
+ * forces: `OutboxAppender` lives in the messaging adapter and constructs this entity, so
+ * either it reaches the table through a narrow `public` port declared in the application
+ * layer — the option that keeps this class closed, and the one to prefer — or this class and
+ * its constructor become `public`, one class at a time and never the whole subpackage
+ * (`.claude/rules/persistence.md` § Boundary). Whichever the partial picks, it says so: the
+ * executor must not decide it by reflex.
+ */
+@Entity
+@Table(name = "outbox_events")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)   // required by Hibernate, closed to everyone else
+@FieldDefaults(level = AccessLevel.PRIVATE)
+class OutboxEventEntity implements Persistable<UUID> {
+
+    // Assigned id, never `@GeneratedValue`: `event_id` is the event's own identity and the
+    // consumer's dedupe key. Without `isNew`, Spring Data calls `merge()` on the insert —
+    // a SELECT before every append, on the request path
+    // (`.claude/rules/persistence.md` § Identity and keys).
+    @Transient
+    boolean isNew = true;
+
+    @Id
+    @Column(name = "event_id", nullable = false, updatable = false)
+    UUID eventId;
+
+    @Column(name = "aggregate_id", nullable = false, length = 200, updatable = false)
+    String aggregateId;
+
+    @Column(name = "event_type", nullable = false, length = 120, updatable = false)
+    String eventType;
+
+    // `jsonb` in the migration; a bare `String` infers `varchar` and `ddl-auto: validate`
+    // refuses to start. The payload stays a `String` here: this adapter never parses it,
+    // and mapping it to a tree would put the consumer's contract in two places.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "payload", nullable = false, updatable = false)
+    String payload;
+
+    @Column(name = "occurred_at", nullable = false, updatable = false)
+    Instant occurredAt;
+
+    // Null while pending. Set once, by `markPublished`.
+    @Column(name = "published_at")
+    Instant publishedAt;
+
+    // `smallint` in the migration; an `Integer` infers `integer`.
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "attempts", nullable = false)
+    short attempts;
+
+    // No `@Lob`: on Postgres it maps a `String` to `oid`, not `text`.
+    @Column(name = "last_error")
+    String lastError;
+
+    @Column(name = "dead_lettered", nullable = false)
+    boolean deadLettered;
+
+    // No `@Version`. Two relays racing on the same row is handled by the send being
+    // idempotent on the consumer's side, not by failing the second mark — and a false
+    // optimistic-lock failure here would leave a sent row pending.
+
+    OutboxEventEntity(UUID eventId, String aggregateId, String eventType, String payload, Instant occurredAt) {
+        this.eventId = eventId;
+        this.aggregateId = aggregateId;
+        this.eventType = eventType;
+        this.payload = payload;
+        this.occurredAt = occurredAt;
+    }
+
+    // No setter. These are the only two state changes a row ever makes.
+    void markPublished(Instant now) {
+        this.publishedAt = now;
+        this.lastError = null;
+    }
+
+    void markFailed(String reason, int maxAttempts) {
+        this.attempts = (short) (this.attempts + 1);
+        this.lastError = reason;
+        this.deadLettered = this.attempts >= maxAttempts;
+    }
+
+    @Override
+    public UUID getId() {
+        return eventId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        isNew = false;
+    }
+}
+
+// --- outbox/OutboxEventJpaRepository.java
+package com.example.demo.adapter.out.persistence.outbox;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.data.domain.Limit;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID> {
+
+    /*
+     * The claim query. Derived, not native: the partial index
+     * `ix_outbox_events_pending (occurred_at) WHERE published_at IS NULL AND NOT dead_lettered`
+     * serves it exactly, and `Limit` keeps the batch bound out of the method name.
+     * `ORDER BY occurred_at` is what preserves per-aggregate order: two events of one
+     * aggregate go to the same partition in the order they occurred
+     * (`.claude/rules/messaging.md` § Delivery semantics).
+     */
+    List<OutboxEventEntity> findByPublishedAtIsNullAndDeadLetteredIsFalseOrderByOccurredAtAsc(Limit limit);
+
+    // Read by the pruning job (the commented DELETE in
+    // `templates/OutboxEventTable.sql.example`, or a scheduled equivalent). Never on the
+    // relay path. A dead-lettered row is not pruned — it has no `published_at`.
+    List<OutboxEventEntity> findByPublishedAtBefore(Instant cutoff);
+}
+
+// --- outbox/OutboxEventStore.java
+package com.example.demo.adapter.out.persistence.outbox;
+
+import com.example.demo.application.port.out.OutboxRelayGateway;
+import com.example.demo.application.port.out.PendingOutboxEvent;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.data.domain.Limit;
+import org.springframework.stereotype.Component;
+
+@Component
+class OutboxEventStore implements OutboxRelayGateway {
+
+    // `last_error` is `text`, so nothing truncates for us. A stack trace in every row turns
+    // the outbox into a log table.
+    private static final int MAX_ERROR_LENGTH = 500;
+
+    private final OutboxEventJpaRepository repository;
+    // Injected, never `Instant.now()` — `.claude/rules/architecture-ddd.md` § Domain, and the
+    // reason this adapter can be tested without waiting for a clock. The port's signature
+    // carries no timestamp, so the stamp is this adapter's to produce.
+    private final Clock clock;
+
+    OutboxEventStore(OutboxEventJpaRepository repository, Clock clock) {
+        this.repository = repository;
+        this.clock = clock;
+    }
+
+    @Override
+    public List<PendingOutboxEvent> claimPending(int batchSize) {
+        return repository
+                .findByPublishedAtIsNullAndDeadLetteredIsFalseOrderByOccurredAtAsc(Limit.of(batchSize))
+                .stream()
+                .map(OutboxEventStore::toPending)
+                .toList();
+    }
+
+    @Override
+    public void markPublished(UUID eventId) {
+        // Loaded and saved in two repository transactions: the entity is detached in between,
+        // and `save` on a detached row with `isNew == false` is an UPDATE, not a merge-insert.
+        // A row that vanished between the claim and the mark was pruned, which cannot happen
+        // to a pending row — so `orElseThrow` here is a real defect, not a race.
+        OutboxEventEntity event = repository.findById(eventId).orElseThrow();
+        event.markPublished(clock.instant());
+        repository.save(event);
+    }
+
+    @Override
+    public void markFailed(UUID eventId, String reason, int maxAttempts) {
+        OutboxEventEntity event = repository.findById(eventId).orElseThrow();
+        event.markFailed(truncate(reason), maxAttempts);
+        repository.save(event);
+    }
+
+    // The port's type, not the entity: nothing outside this subpackage sees a JPA class
+    // (`.claude/rules/persistence.md` § Boundary).
+    private static PendingOutboxEvent toPending(OutboxEventEntity event) {
+        return new PendingOutboxEvent(
+                event.getEventId(),
+                event.getAggregateId(),
+                event.getEventType(),
+                event.getPayload(),
+                event.getOccurredAt());
+    }
+
+    private static String truncate(String reason) {
+        if (reason == null) {
+            return "unknown";
+        }
+        return reason.length() <= MAX_ERROR_LENGTH ? reason : reason.substring(0, MAX_ERROR_LENGTH);
+    }
+}

@@ -26,6 +26,9 @@
  *   published at (null = pending)  · attempts  · last error  · dead lettered
  *   an index that serves the claim query alone — pending rows only, not the whole table
  * Writing the DDL here would put schema in two owners' hands; see `.claude/rules/persistence.md`.
+ * That skill's step 4b models it from `persistence-architect/templates/OutboxEventTable.sql.example`
+ * and `OutboxEventStore.java.example` — the second implements `OutboxRelayGateway` below, and
+ * this file stays the port's only declaration.
  *
  * WHAT'S NOT HERE: the pruning job for published rows (a scheduled delete, sized by
  * retention, no messaging decision in it), and retry/DLQ of the broker send itself — that

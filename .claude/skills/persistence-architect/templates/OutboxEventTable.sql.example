@@ -1,0 +1,79 @@
+-- EXEMPLAR — Flyway migration for the shared transactional-outbox table.
+-- Form reference; not a file to copy.
+-- Rules: `.claude/rules/messaging.md` § Publication timing (Form B, and why the columns
+--        below exist) · `.claude/rules/persistence.md` (§ Migrations, § Mapping)
+--
+-- ONE TABLE, SHARED BY THE WHOLE PROJECT — not per event type, not per aggregate, and
+-- never with a foreign key to one. Same nature as `idempotency_keys`: created the first
+-- time a use case's `25-mensageria.md` fixes Form B (transactional outbox + relay), reused
+-- by every event after that. `messaging-architect` states the requirement in that partial's
+-- § 2; this skill's step 4b models it, once.
+--
+-- COLUMN TYPES AND THE ENTITY: `jsonb` and `smallint` aren't Hibernate's default inference
+-- for `String` and `Integer`, and `last_error` must not get `@Lob` — the entity in
+-- `templates/OutboxEventStore.java.example` carries the matching `@JdbcTypeCode`
+-- (`.claude/rules/persistence.md` § Mapping). `ddl-auto: validate` refuses to start otherwise.
+
+-- ---------------------------------------------------------------------------
+-- V4__create_outbox_events.sql — new table
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE outbox_events (
+    event_id      uuid          NOT NULL,
+    aggregate_id  varchar(200)  NOT NULL,          -- partition key source; kept as text, the relay never parses it
+    event_type    varchar(120)  NOT NULL,          -- resolved to a topic by the relay, not stored as a topic name
+    payload       jsonb         NOT NULL,          -- what the consumer needs, already serialized by the appender
+    occurred_at   timestamptz   NOT NULL,          -- the domain fact's instant, from the application's `Clock`
+    published_at  timestamptz   NULL,              -- null = pending. The only "is it sent?" flag; no status enum
+    attempts      smallint      NOT NULL DEFAULT 0,
+    last_error    text          NULL,              -- last failure reason, truncated by the adapter
+    dead_lettered boolean       NOT NULL DEFAULT false,
+    CONSTRAINT pk_outbox_events PRIMARY KEY (event_id)
+);
+
+-- `event_id` is the event's own identity, assigned by the appender — never `@GeneratedValue`.
+-- It is also the consumer's dedupe key, so it has to survive a relay retry unchanged
+-- (`.claude/rules/messaging.md` § Delivery semantics).
+
+-- The claim query reads pending rows only, oldest first. A plain index on `occurred_at`
+-- would grow with the whole table and be read for a fraction of it; the partial index
+-- covers exactly the rows the relay can still act on, and a published or dead-lettered row
+-- leaves it on update.
+CREATE INDEX ix_outbox_events_pending
+    ON outbox_events (occurred_at)
+    WHERE published_at IS NULL AND NOT dead_lettered;
+
+-- Serves the prune below, not the relay. Published rows only — a pending row is never
+-- pruned, and a dead-lettered one is kept for inspection.
+CREATE INDEX ix_outbox_events_published_at
+    ON outbox_events (published_at)
+    WHERE published_at IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Retry columns — a consequence of the rule, not a per-use-case choice
+-- ---------------------------------------------------------------------------
+-- `attempts` is bounded and `dead_lettered` is what stops a poisoned row from being re-read
+-- forever (`.claude/rules/messaging.md` § Publication timing, § Retry and DLQ). The bound
+-- itself lives in configuration (`app.outbox.max-attempts`), not in a column default: the
+-- relay compares against it, the schema only records what happened.
+-- A dead-lettered row is never deleted by the prune below. It is the record that the event
+-- was produced and never delivered — deleting it hides an incident.
+
+-- ---------------------------------------------------------------------------
+-- Pruning — its own scheduled job, not modeled by this migration
+-- ---------------------------------------------------------------------------
+-- An outbox that only grows becomes the slowest table in the schema, and this one is written
+-- once per event on the request path. Published rows are safe to delete: nothing reads a row
+-- after `published_at` is set.
+--
+-- RETENTION IS A DECISION, NOT A DEFAULT TO ADOPT SILENTLY. `7 days` below is the starting
+-- point step 4b puts to the user — long enough to reconcile a delivery complaint against the
+-- rows themselves, short enough that the table stays small. It is the same value as
+-- `app.outbox.prune-after` in `messaging-architect`'s `application-kafka.yml.example`
+-- (`P7D`); change one and change the other. Whatever is chosen goes into the partial's § 1
+-- with the reason.
+-- Batched, off-peak — a single unbounded DELETE on a hot table locks it.
+
+-- DELETE FROM outbox_events
+--  WHERE published_at IS NOT NULL
+--    AND published_at < now() - interval '7 days';
