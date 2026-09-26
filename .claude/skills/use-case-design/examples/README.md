@@ -6,9 +6,9 @@ Thirteen complete `00-caso-de-uso.md` — the artifact this skill emits (§ Proc
 
 **Meta-repo documentation, not project content.** These don't live at
 `docs/use-cases/**` because this repository isn't a Spring project (`@CLAUDE.md`: "It
-is not a Java application"). Step 6.7 of `project-bootstrap` does not copy this
-`examples/` folder into a generated project — only `SKILL.md`, `templates/`, and
-`references/` travel there.
+is not a Java application"). The `export` manifest keeps only `SKILL.md`, `templates/`
+and `references/` out of each skill, so this `examples/` folder never reaches a
+generated project.
 
 ## How to use
 

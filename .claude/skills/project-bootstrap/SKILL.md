@@ -66,7 +66,8 @@ and `features/observability/application-observability.yml.example` and
 `docker-compose.yml.example` (4.10) plus **either** `Dockerfile.example` (`maven`) **or**
 `Dockerfile-gradle.example` (`gradle`) — never both,
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
-`settings.json.example` and `audit-pricing.json.example` (step 7), **either**
+`settings.json.example` and `audit-pricing.json.example` (step 6.6, written by the
+`export` mode, not by hand), **either**
 `ci.yml.example` (`maven`) **or** `ci-gradle.yml.example` (`gradle`) — never both (step
 6.5), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
 `GENESIS.md.example` (step 8.6) — plus whatever the
@@ -658,329 +659,107 @@ of **either** `templates/ci.yml.example` (`build.tool: maven`) **or**
 `templates/ci-gradle.yml.example` (`build.tool: gradle`) — never both — adjusted to the
 Java version resolved in step 3. Without this, the `.github/workflows/*` declared in the
 skill's § Contract has no real counterpart. The exemplar's comment "(see
-decisions/0011)" is the same dead reference as § 6.6/6.7/7 — cut it, the reasoning it
-points to has no counterpart in the project.
+decisions/0011)" is the same dead reference the `export` mode cuts in § 6.6 — cut it
+here too, the reasoning it points to has no counterpart in the project.
 
 The `.gitignore` is **not** generated here: the Initializr already delivers a correct
 one in step 3. Confirm it exists; if it's missing, write it then. It's not in `owns`
 for that exact reason.
 
-### 6.6 · Copy the rules into the project
+### 6.6 · Write the project's `.claude/`
 
-The generated project lives on its own: nothing inside `<project>/` can depend on
-`claude-spring-architect` existing on the machine of whoever clones the repository. The root
-`CLAUDE.md` cites `.claude/rules/00-index.md`, and rules cite each other by path — if
-the files aren't there, each citation is a silent dead end.
+The generated project lives on its own: nothing inside `<project>/` may depend on
+`claude-spring-architect` existing on the machine of whoever clones it. The root
+`CLAUDE.md` cites `.claude/rules/00-index.md`, rules cite each other by path, and
+`settings.json` points at `.claude/hooks/ArchHook.java` — if those files aren't there,
+each citation is a silent dead end and the hooks fail to start.
 
-Copy into `<project>/.claude/rules/` **all** files from this repo's `.claude/rules/`:
+One command writes all of it:
 
-| File | How to copy |
-|---|---|
-| `naming.md` | `paths` verbatim — the `**/*.java` glob doesn't depend on the blueprint. **Body not verbatim:** the active blueprint's naming-convention comment block is written, as a bulleted list, under `## Architecture vocabulary`, replacing the HTML comment there. Without it the generated project has no use case vocabulary at all — the blueprint doesn't travel |
-| `error-handling.md` | verbatim — same |
-| `code-quality.md` | verbatim — same |
-| `lombok.md` | verbatim — same |
-| `logging.md` | verbatim — the `**/*.java` glob doesn't depend on the blueprint |
-| `testing.md` | verbatim — the `**/src/test/**` glob doesn't depend on the blueprint |
-| `value-objects.md` | derived `paths:` — see § Rules with a territory |
-| `api-rest.md` | derived `paths:` — see § Rules with a territory |
-| `persistence.md` | derived `paths:` — see § Rules with a territory |
-| `observability.md` | derived `paths:` — see § Rules with a territory |
-| `messaging.md` | derived `paths:` — see § Rules with a territory |
-| `architecture-ddd.md` | `paths:` derived from `architecture_paths` — see below |
-| `00-index.md` | one paragraph rewritten — see below |
-
-Verbatim means byte for byte, frontmatter included. Don't summarize, don't adapt to the
-blueprint, don't cut sections: a hand-rewritten rule stops being the same rule and
-diverges from the original on the next update. In the rules with derived `paths:`, the
-only thing that changes is the frontmatter's `paths:` block — the body is still copied
-byte for byte.
-
-One more exception, for the same reason as `paths:`: cut any `@.claude/decisions/NNNN-
-....md` citation found in the body — `value-objects.md`, `persistence.md`,
-`observability.md`, and `testing.md` all carry one or more. `decisions/` never enters
-the generated project (invariant 9, `@CLAUDE.md`) and, unlike a `blueprints/` citation
-(§ 6.7), a decision record has no counterpart inside the project to rewrite it to.
-Remove only the citing clause (e.g. a trailing "Record: `@.claude/decisions/...`." or a
-parenthetical "(see `@.claude/decisions/...`)") — leave the rest of the sentence and the
-rule's meaning intact. This is the same class of dead reference as `blueprints/`; § 6.7
-and § 7 apply the identical cut wherever the citation resurfaces.
-
-#### Rules with a territory — the `paths:` comes from `packages.map`, not from the original file
-
-A rule with an identifiable territory auto-loads when someone touches files in that
-territory. If the glob names a package this blueprint doesn't use, the rule **never
-enters context** — and the failure mode is silent: nothing breaks, the rule simply
-doesn't show up, and whoever edits a controller by hand goes without it.
-
-The glob is never copied from the original file nor written from memory. It's derived
-from the active blueprint's `packages.map`, with the same discipline `architecture_paths`
-already gets:
-
-| Rule | `packages.map` key | Glob to write |
-|---|---|---|
-| `api-rest.md` | the one ending in `.rest` (`adapter.in.rest`, `infrastructure.rest`, …) | `**/<value with `.` → `/`>/**` |
-| `persistence.md` | the one ending in `.persistence` | `**/<value>/**` plus `**/db/migration/**`, which doesn't come from the blueprint |
-| `value-objects.md` | `domain.model`, or `domain` if the blueprint doesn't declare a sub-package | `**/<value>/**/*.java` |
-| `observability.md` | the one ending in `.rest` and the one ending in `.config` | one glob for each |
-| `messaging.md` | the one ending in `.messaging` (`adapter.out.messaging`, `infrastructure.messaging`, …), inbound and outbound if the blueprint splits them | one glob for each; missing key → rule copied without `paths` (rule 3 below) |
-
-Rules of the derivation:
-
-1. **The value comes from `packages.map`, not the key.** The two coincide in every
-   blueprint today, but it's the value that becomes a package on disk.
-2. **Dot becomes slash.** `infrastructure.rest` → `infrastructure/rest`.
-3. **Missing key, rule without `paths`.** If the blueprint has no messaging package, a
-   rule about messaging is copied without `paths:` — not with an invented glob.
-   Without `paths` the rule can still be cited; with a dead glob both paths are lost.
-4. **No defensive union.** Write this blueprint's glob and no other. Listing the names
-   of every layout was the patch that produced the divergence this step closes.
-
-Check before moving on: for each rule with `paths`, at least one file or directory
-created in step 4.7 matches at least one of the globs. A glob that matches nothing is
-dead enforcement and is a failure of this step, not of the project.
-
-**`architecture-ddd.md`** — write the `paths:` frontmatter using the active
-blueprint's `architecture_paths` literally — don't invent, don't infer from
-`modules[].path`. It's that `paths` that makes the rule auto-load when someone, in the
-generated project, touches files in `domain`, `application`, `adapters`/
-`infrastructure`, or `bootstrap` — whatever they're called for this blueprint.
-
-```yaml
----
-paths:
-  - "domain/**/*.java"
-  - "application/**/*.java"
-  - "adapters/**/*.java"
-  - "bootstrap/**/*.java"
----
+```bash
+CLAUDE_PROJECT_DIR=<this repository> \
+  java <this repository>/.claude/hooks/ArchHook.java export <project> --blueprint <id>
 ```
 
-(example for `hexagonal`; each blueprint declares its own list —
-`clean-architecture-multi-module` has only 3 entries, domain/application/infrastructure,
-and `clean-architecture-single-module`, being `layout: single-module`, uses package
-globs instead of module folders)
+`CLAUDE_PROJECT_DIR` is the **source**, the same convention every other mode of the hook
+follows; `<project>` is the destination, and the mode refuses to run when the two are the
+same path. Add `--dry-run` to list what it would write without writing anything.
 
-**`00-index.md`** — the original explains that `architecture-ddd.md` has no `paths` of
-its own because the globs come from the blueprint's `architecture_paths`, and cites
-`@.claude/blueprints/_schema.md`. There's no `blueprints/` in the generated project:
-replace that paragraph with a line saying the `paths` was fixed at generation time from
-blueprint `<id>` and that changing it by hand disables the auto-loading. Everything
-else — the map of who covers what, the loading mechanism, the table of planned rules,
-the states — copy verbatim.
+What it writes, per the `export` block of `@.claude/schemas/extensions.json`:
 
-If you add a rule to this repo's `.claude/rules/`, add it to this table too and to the
-`## Skill contract` list. A rule that exists here and doesn't reach the generated
-project is exactly the failure this step closes.
+- **Every rule**, with the `paths` of those that have a territory derived from the
+  blueprint's `packages.map` — the value, `.` becoming `/`, this blueprint's glob and no
+  other. An architecture that names no such package (`vertical-slice` puts REST and
+  persistence inside each slice) falls back to the matching `architecture_paths` entry;
+  one that has no such territory at all (`messaging.md` where nothing is a broker) gets
+  the rule without `paths`, still citable. `naming.md` receives the blueprint's
+  naming-convention block as a list, and `00-index.md`'s two paragraphs about
+  `blueprints/` are rewritten to name the blueprint instead.
+- **The development skills**, each reduced to `SKILL.md`, `templates/` and
+  `references/` — a subdirectory that only serves this repository, like
+  `use-case-design/examples/`, stays behind.
+- **The development agents**, whole.
+- **`ArchHook.java`, `schemas/extensions.json`, `settings.json`**, plus
+  `.claude/audit-usage/` with its `pricing.json` and the one `.gitignore` line the trail
+  needs.
+- **`.mcp.json` and `MCP-SETUP.md`**, only if `templates/mcp.json.example` exists here.
+  Most bootstraps have nothing to copy and the mode says nothing — correct, not
+  incomplete. That template is written only by `claude-code-architect-designer`, when a
+  real server was designed with its axis 13 answered "the generated project" or "both".
 
-### 6.7 · Copy the development skills into the project
+Every citation to `.claude/decisions/` and `.claude/blueprints/` is cut on the way out:
+neither directory travels (invariant 9), and unlike a rule path there is nothing inside
+the project to rewrite them to. What survives the cut is printed at the end of the run,
+by file — **read that report**. A dead path breaks nothing at generation time and
+everything for whoever follows it six months later.
 
-Same reason as the previous step, applied to procedure: the root `CLAUDE.md` routes to
-skills by name, and a name with no `SKILL.md` behind it makes the model search and fail
-silently. Copy **only** `SKILL.md`, `templates/`, and `references/` from each
-development skill into `<project>/.claude/skills/<name>/`. **Not** the entire directory
-verbatim: `use-case-design/examples/` is meta-repo documentation — pipeline test
-fixtures for this repository's own `/new-feature` and `java-spring-boot-developer` —
-and stays out of the generated project.
+`settings.json` is written whole, not merged: re-serializing it would reorder its keys
+and drop its comments. On a fresh bootstrap there is nothing to preserve; when the mode
+runs again over an existing project, its previous content is one `git diff` away.
 
-| Skill | Goes to the project? | Why |
-|---|---|---|
-| `arch-doctor` | ✅ | Diagnoses **the project's** hooks and enforcement; the only place where running it makes sense. Prefixed name so it doesn't collide with Claude Code's native `/doctor` |
-| `use-case-design` | ✅ | Designs the use case before implementing it. Only makes sense once the project exists; carries `templates/use-case-spec.md.example`, `templates/backlog.md.example`, and `references/scope-boundary.md` |
-| `domain-modeling` | ✅ | Details domain and application for an already-designed use case. Carries `templates/domain-spec.md.example` and the twelve Java shape exemplars: seven model ones (VO, VO catalog, shared guards, aggregate, event, ports, command) and the five from the exception family, which moved here when the bootstrap stopped emitting code |
-| `java-patterns` | ✅ | Design patterns during development |
-| `persistence-architect` | ✅ | Designs the schema, mapping, and migrations for an already-modeled use case. Carries `templates/persistence-spec.md.example`, the three Java exemplars (entity, adapter with mapper, Spring Data interface), the idempotency trio (`IdempotencyKeyTable.sql.example`, `IdempotencyKeyStore.java.example`, `IdempotentExecution.java.example`), the outbox pair (`OutboxEventTable.sql.example`, `OutboxEventStore.java.example` — step 4b, the shared table Form B needs), `V1__create_table.sql.example`, `application-persistence.yml.example`, and the two `references/` (SQL diagnosis and external links). Copy the whole `templates/` directory rather than the list: this row enumerates exemplars by name and has grown twice |
-| `rest-api-architect` | ✅ | Designs the endpoints, DTOs, error map, and OpenAPI contract for an already-modeled use case. Carries `templates/rest-spec.md.example`, the six Java shape exemplars (annotated controller, DTOs, mapper, `PageResponse`, `Idempotency-Key` interceptor, `ApiExceptionHandler`), the two JSON fixtures (`error-responses`, `page-response`), and `references/best-practices-links.md`. The contract test exemplar lives in `test-architect` |
-| `test-architect` | ✅ | Two modes: design (the `40-testes.md` partial, per use case, inline) and setup (installs ArchUnit, once per project, delegated to the `archunit-installer` agent — see 6.8). Carries `templates/{test-spec.md,ArchitectureTest.java,TestFixtures.java,DomainTest.java,UseCaseTest.java,ControllerTest.java,PersistenceIT.java}.example` and `references/best-practices-links.md`. It's the sole owner of test-code shape — no other skill carries a test exemplar |
-| `new-feature` | ✅ | Orchestrates the six skills above into a single `UC-NNN-spec.md`. Only makes sense once the project exists; carries `templates/feature-spec.md.example`, `templates/feature-spec-short.md.example`, and `templates/commons/*.example` (the thirteen logging/masking exemplars `commons-logging-installer` translates and writes — owned here because `new-feature`'s pre-flight check is what triggers that agent, same as `test-architect` owns `ArchitectureTest.java.example` for `archunit-installer`). Its own `## Entry into generated projects` section already documents it travels here |
-| `docker-architect` | ✅ | Extends `docker-compose.yml`/`Dockerfile` after the base pair exists, chained by `persistence-architect`/`test-architect`/`messaging-architect` or invoked by hand. Only makes sense once the project (and the base pair from 4.10) exists. Carries `templates/{postgres,mysql,kafka}-service.yml.example`, the collector pair (`otel-collector-{service,config}`), and the two observability backends its step 2.5 offers — `jaeger-service.yml.example` and `grafana-stack-service.yml.example` with their three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`). Copy the whole `templates/` directory rather than the list: this row has already been stale once |
-| `messaging-architect` | ✅ | Designs the Kafka producer/consumer adapter, topic, delivery semantics, publication timing, and retry/DLQ for an already-modeled domain event. Carries `templates/messaging-spec.md.example`, the three Java exemplars (producer adapter — Form A, `OutboxRelayPublisher.java.example` — Form B, consumer adapter), and `application-kafka.yml.example`. Copy the whole `templates/` directory rather than the list: the two publication forms are one exemplar each, and a missing one leaves the skill's step 4 pointing at a file that isn't there |
-| `git-publish` | ✅ | Offers git init/commit and gh create+push, behind two confirmations. Chained by `/new-feature` after every future `java-spring-boot-developer` run inside the project — not just at bootstrap time. Carries no `templates/` or `references/` |
-| `audit-usage` | ✅ | Reads the trail `ArchHook.java audit` writes into `.claude/audit-usage/` (step 7.4) through `ArchHook.java audit summary`, and consolidates spend per skill and agent, duration, and failures across runs. Only makes sense where the trail exists — the generated project, never this meta-repo, which creates no `audit-usage/`. Carries no `templates/` or `references/`, and cites neither `blueprints/` nor `decisions/`: it copies with none of the three corrections below |
-| `project-bootstrap` | ❌ | Builds the project. Inside it there's nothing left for it to do, and it invites the model to re-generate on top of live code |
-| `init-project` | ❌ | Same reason: it's the creation ritual, not the maintenance one |
-| `claude-code-architect-designer` | ❌ | Designs **this** repository's own extensions — skills, agents, rules. Whoever clones an already-generated project has no extensions to design, and the invariants it applies are this repo's |
+**The manifest is the owner of what travels.** Adding a rule, skill or agent to this
+repository is only complete once it is in `export`'s `include` — or in its `exclude`,
+with the creation skills (`project-bootstrap`, `init-project`,
+`claude-code-architect-designer`) and `project-initializer`, which only serve before the
+project exists and, inside one, invite the model to regenerate on top of live code.
+`ArchHook.java schema` fails by name on anything listed in neither, so this is not a step
+to remember: it is a check that runs.
 
-Three corrections during the copy, because the generated project has neither
-`blueprints/` nor `decisions/`:
+### 7 · What the enforcement you just installed does
 
-1. `java-patterns/SKILL.md`, `use-case-design/SKILL.md`, `domain-modeling/SKILL.md`,
-   `rest-api-architect/SKILL.md`, and `messaging-architect/SKILL.md` say **Reads** `...
-   and the active blueprint's packages.map`. Replace with: the project's packages,
-   documented in the root `CLAUDE.md` and the module `CLAUDE.md` files. In
-   `use-case-design`, the same correction applies in procedure step 5 and in the "Active
-   blueprint" line of `templates/use-case-spec.md.example`.
+Nothing to run here — step 6.6 already wrote it. This section is what the final report
+(§ Output contract) has to be able to say.
 
-   This list has gone stale before — silently, since a rule/skill citing a dead path
-   breaks nothing at generation time, only for whoever reads it in the generated
-   project. Before moving to step 6.8, confirm the list above is exhaustive:
+**The hooks.** `settings.json` arrives with the `schema` mode's triggers, the `audit`
+triggers, the `guard` triggers, and the permissions: the pipeline skills in `allow`,
+`Bash(git push:*)` in `ask`. Preserving a project's own entries never means widening
+`git push` into an allow. The hooks run in **exec form** (`command: java` + `args`), with
+no shell and no execute bit, which is what makes them identical on Linux, macOS and
+Windows — there is no `chmod` anywhere in this skill.
 
-   ```bash
-   grep -rl "active blueprint's \`packages.map\`" \
-     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,messaging-architect,audit-usage}/
-   ```
+**The trail.** `.claude/audit-usage/` is the on/off switch: `ArchHook.java audit` returns
+immediately when the directory is absent. Every skill under `.claude/skills/` and every
+agent under `.claude/agents/` is recorded, whoever invoked it; a top-level invocation
+gets one Markdown report, and what it chains becomes sections of that report plus a line
+each in `nodes.jsonl`. Plugin skills and runtime agents (`Explore`, `general-purpose`)
+have no file in the project and are not recorded. It is a hook and not a skill because
+the record has to exist even when the model forgets, the session dies, or the user
+interrupts — `@CLAUDE.md` invariant 6.
 
-   Every file this returns needs the same correction, whether or not it's named above.
-2. Any other citation to `@.claude/blueprints/**` in a copied skill points to nothing.
-   Rewrite it to the equivalent source inside the project, or cut the sentence. Don't
-   leave the dead path there.
-3. Every citation to `@.claude/decisions/NNNN-....md` in a copied skill's `SKILL.md`,
-   `templates/`, or `references/` — same exception as § 6.6, same fix: cut the citing
-   clause, don't rewrite it, since there's no equivalent inside the project. Known
-   carriers today: `domain-modeling/SKILL.md`, `test-architect/SKILL.md`,
-   `rest-api-architect/SKILL.md` and its two templates
-   (`ApiExceptionHandler.java.example`, `IdempotencyKeyInterceptor.java.example`),
-   `use-case-design/SKILL.md`, `java-patterns/SKILL.md`, `persistence-architect/SKILL.md`,
-   `new-feature/SKILL.md`, `docker-architect/SKILL.md` (its `## Why this is a
-   skill` section), and `messaging-architect/SKILL.md` (its `## Why this is a skill and
-   not a subagent` section). Confirm the list is still exhaustive the same way as point 1:
+**The guard.** Two boundaries of the `/new-feature` pipeline that its skills state in
+prose and a real run broke anyway: while a design skill runs, nothing is written under
+`src/` except from inside the executor agent; and the files of a use case whose
+`UC-NNN-spec.md` is `approved` or `implemented` are frozen, except the executor's single
+`approved → implemented` status edit. The lists are data in the `guard` block of the
+`extensions.json` that step 6.6 copied. No `guard` block, no guard.
 
-   ```bash
-   grep -rl "decisions/" \
-     .claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,audit-usage}/
-   ```
-
-The rest of the content — including `disable-model-invocation` and `allowed-tools` —
-copies verbatim. Skills the root `CLAUDE.md` might route to that don't exist yet stay
-**out** of step 6's routing table, as that step already requires.
-
-### 6.8 · Copy the development agents into the project
-
-Same reason as steps 6.6 and 6.7: the project is self-contained. If the root
-`CLAUDE.md` delegates a task to an agent by name, and the agent isn't copied, the
-delegation is a silent dead end.
-
-Copy the **entire file** of each development agent — `<name>.md` — into
-`<project>/.claude/agents/<name>.md`.
-
-| Agent | Goes to the project? | Why |
-|---|---|---|
-| `java-spring-boot-developer` | ✅ | Reads `UC-NNN-spec.md` specs generated in the project and implements code. Only makes sense once the project exists and has designed use cases. Name recorded in D20 |
-| `archunit-installer` | ✅ | Invoked by `test-architect`'s setup mode, in the project, the same as in this repository. Without the copy, setup mode in the generated project delegates to an agent that doesn't exist. Name recorded in D30 |
-| `commons-logging-installer` | ✅ | Invoked by `new-feature`'s pre-flight check, in the project, the same as in this repository. Without the copy, that check delegates to an agent that doesn't exist. Reads `new-feature/templates/commons/*.example`, copied alongside it in step 6.7 |
-| `project-initializer` | ❌ | Creation ritual; nothing for it to do inside an already-generated project. Whoever clones the project doesn't create new projects from it — it's used as a base, not as a template generator |
-
-Verbatim — full frontmatter and content, no rewrites, with one exception: cut any
-`@.claude/decisions/NNNN-....md` citation the same way § 6.6/6.7 do for rules and
-skills — `decisions/` has no counterpart in the project. `archunit-installer.md` carries
-three; check every agent being copied, not just that one. Agents don't depend on
-`blueprints/` (unlike some skills), so that part needs no rewrite.
-
-The rest of the content — `model`, `tools`, `disallowedTools`, `effort` — copies as-is.
-Agents the root `CLAUDE.md` might delegate to that don't exist yet stay **out** of the
-copy table.
-
----
-
-### 7 · Install hooks
-
-Three parts, and the first one is easy to forget:
-
-1. Copy `.claude/hooks/ArchHook.java` (from this repo) to
-   `<project>/.claude/hooks/ArchHook.java`, verbatim except for the `// .claude/decisions/
-   0001-schema-frontmatter-extensions.md` comment in the header of the `schema` section
-   (`grep -n 'decisions/' .claude/hooks/ArchHook.java` finds it; don't trust a line
-   number, the file grows) — same exception as
-   § 6.6/6.7: cut that citation, `decisions/` has no counterpart in the project. That's
-   what the `settings.json`'s `${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java` points
-   to — without the copy, the hooks fail to start on any machine that doesn't have this
-   repository.
-2. Copy `.claude/schemas/extensions.json` (from this repo) to
-   `<project>/.claude/schemas/extensions.json`, verbatim except for every
-   `.claude/decisions/NNNN-....md` citation inside a `$comment` — cut the citing clause,
-   for the same reason as § 6.6/6.7. Several blocks carry one today (`$comment` at the
-   root, `audit`, `mcp`, `injections`, `settings`); cut each, don't rewrite it. Leave the
-   rest of `settings` alone, including the second entry of its `match` — it points at
-   this repo's bootstrap template, matches nothing inside the project, and costs nothing;
-   editing the list is how the block diverges from the `ArchHook` that reads it.
-   `ArchHook`'s `schema`
-   mode reads this file; without it, it switches off with a warning and nothing gets
-   validated. Copying the hook and forgetting the schema delivers enforcement that looks
-   on and isn't.
-3. Merge `templates/settings.json.example` into `<project>/.claude/settings.json`,
-   preserving what's already there. The template already brings the `schema` mode's
-   three triggers (`PreToolUse`/Write, `PostToolUse`/Edit, and `Stop`), the thirteen
-   `audit` triggers of part 4, the six `guard` triggers (`UserPromptSubmit`,
-   `PreToolUse`/Skill|Task|Agent, and four `PreToolUse`/Write|Edit entries filtered by
-   `if`), and the permissions: the pipeline skills in `allow`, `Bash(git push:*)` in
-   `ask`. Preserving what's already there never means widening `git push` to an allow.
-   A hook or `permissions` line designed by `claude-code-architect-designer` for the
-   generated project (its axis 8 = "both") is already **in** the template — that skill
-   writes it there, per its own propagation table. Nothing extra to do here; a mode it
-   added to `ArchHook.java` arrives with the copy in part 1.
-4. Create `<project>/.claude/audit-usage/` and copy
-   `templates/audit-pricing.json.example` into it as `pricing.json`. **The directory is
-   the on/off switch**: `ArchHook.java audit` returns immediately when it doesn't
-   exist, so skipping this part doesn't break anything — it just means the project has
-   no execution trail, and the `settings.json` entries of part 3 pay a process start
-   for nothing. `pricing.json` ships pre-filled with the official per-model rates as of
-   the date in its own `$comment` — never from memory, always fetched from
-   `platform.claude.com/docs/en/about-claude/pricing` at the moment the template is
-   updated, same discipline as invariant 8. A model missing from the file, or a price
-   that has since changed, prints "não configurado" instead of a confident `US$ 0.00`
-   built from a number nobody checked. Tell the user, in the final report, to re-check
-   the `$comment`'s date against the official page and update `pricing.json` if it's
-   gone stale — the file doesn't self-refresh.
-5. Append `.claude/audit-usage/.state/` to the project's `.gitignore` (the one the
-   Initializr delivered in step 6.5). That subdirectory is the append-only event log of
-   a run **in progress**; the reports and `history.jsonl` next to it are versioned on
-   purpose, the live state is not. `nodes.jsonl` is versioned too — one line per chained
-   piece, kept apart so `history.jsonl` stays one line per run. Without this line, every `Stop` leaves a dirty
-   working tree.
-
-There's no `chmod`: the hooks run in **exec form** (`command: java` + `args`), without
-a shell and without an execute bit — that's what makes them identical on Linux, macOS,
-and Windows.
-
-**What the trail records, and why it's a hook.** Every skill under `.claude/skills/` and
-every agent under `.claude/agents/` is recorded, whoever invoked it. A top-level
-invocation — `/<skill>` typed by the user, or a `Skill`/`Agent` call the model makes on
-its own with no run open — gets one Markdown report in `.claude/audit-usage/`; pieces
-it chains become sections of that report and one line each in `nodes.jsonl`. Plugin
-skills and runtime agents (`Explore`, `general-purpose`) have no file in the project and
-are not recorded. The report carries the initial prompt (redacted), the chain of skills
-and agents with duration bars, token use and estimated cost per piece and aggregated
-(a subagent's usage read from its own transcript), permissions granted
-mid-run, rules inferred from the files touched, rework, and the commits produced. It is
-a hook and not a skill because the record has to exist even when the model forgets, the
-session dies, or the user interrupts — `@CLAUDE.md` invariant 6. Design:
-`.claude/decisions/0035-auditoria-execucao-hook.md` and
-`.claude/decisions/0038-audit-trail-every-skill-and-agent.md` (this repo only; the records
-don't travel, invariant 9).
-
-**What the guard enforces, and why it's a hook.** Two boundaries of the `/new-feature`
-pipeline that its skills state in prose and a real run broke anyway: while a design
-skill runs, nothing is written under `src/` except from inside the executor agent; and
-the files of a use case whose `UC-NNN-spec.md` is `approved` or `implemented` are frozen,
-except the executor's single `approved → implemented` status edit. The lists — design
-skills, executor agents, forbidden paths, frozen statuses — are data in the `guard`
-block of the `extensions.json` part 2 copies. No `guard` block, no guard. Design:
-`.claude/decisions/0037-lessons-learned-005-remediation.md` (this repo only).
-
-### 7.5 · Copy designed MCP servers, if any exist
-
-Conditional, unlike every other step in § 7: most bootstraps have nothing to copy here,
-and that's correct, not incomplete.
-
-**Only if** `.claude/skills/project-bootstrap/templates/mcp.json.example` exists in this
-repo, copy it to `<project>/.mcp.json`. That file is only written by the
-`claude-code-architect-designer` skill, when a real MCP server has been designed with
-interview axis 13 ("destination") answered "the generated project" or "both" —
-`@.claude/decisions/0033-mcp-in-architect-designer.md`. If the file doesn't exist, skip
-this step silently: **don't invent a server**, same discipline as § 4.5's exception
-family and § 4.7's business classes — a placeholder `.mcp.json` with no real server
-behind it is the same anticipatory mistake `@.claude/decisions/0011-bootstrap-without-business-code.md`
-already closed once.
-
-If the template exists, also copy its companion setup doc (the `mcp-setup.md.example`-
-shaped file sitting next to it) to `<project>/MCP-SETUP.md`, verbatim. It names the
-environment variables the copied server(s) need — without it, the `${VAR}` placeholders
-in `.mcp.json` are undocumented.
-
-Same secret rule as everywhere else this repo touches `.mcp.json`: if the copied
-template somehow carries a literal credential, that's a bug in the file that produced
-it, not something this step fixes by scrubbing on the way out. `ArchHook.java schema`
-(installed in step 7) catches it on the next edit inside the generated project too.
+**`pricing.json` ages on its own.** It ships pre-filled with the official per-model rates
+as of the date in its own `$comment`, never from memory — same discipline as invariant 8.
+A model missing from it, or a rate that has since changed, prints "não configurado"
+instead of a confident `US$ 0.00` nobody checked. Tell the user, in the final report, to
+compare that date against
+`platform.claude.com/docs/en/about-claude/pricing` and update the file if it has gone
+stale; it does not refresh itself.
 
 ### 8 · Verify
 
@@ -1079,7 +858,7 @@ exists in `claude-spring-architect`.
 ```bash
 ls .claude/rules/ .claude/skills/ .claude/agents/ .claude/hooks/ArchHook.java .claude/schemas/extensions.json
 grep -rn "blueprints/" .claude/ CLAUDE.md */CLAUDE.md   # must return nothing
-grep -rn "decisions/" .claude/ CLAUDE.md */CLAUDE.md    # must return nothing — § 6.6/6.7/6.8/7 cut these
+grep -rn "decisions/" .claude/ CLAUDE.md */CLAUDE.md    # must return nothing — § 6.6 cuts these
 java .claude/hooks/ArchHook.java schema </dev/null      # must exit 0, and without warning
 ```
 
@@ -1089,7 +868,9 @@ into the project. Read the output, not just the exit code.
 
 Every skill the root `CLAUDE.md` routes to must have `SKILL.md` in the project. Every
 agent the root `CLAUDE.md` delegates to must have `<name>.md` in `.claude/agents/`. A
-dead path here is exactly the failure steps 6.6, 6.7, 6.8, and 7 exist to prevent.
+dead path here is exactly the failure § 6.6 exists to prevent, and the `export` mode
+already reported any citation that survived its cut — this is the second reading of the
+same question, from the project's side.
 
 ### 8.5 · Generate the project README
 
@@ -1124,11 +905,11 @@ Every `{{...}}` placeholder resolves from data this procedure already computed �
   versions, the same ones already in the Output contract below. Never re-resolve, never
   restate from memory.
 - `{{featuresList}}` — the active features from step 3/4.7, one bullet each.
-- `{{skillsList}}`, `{{agentsList}}` — one bullet per entry actually copied in step 6.7
-  / 6.8 (`ls .claude/skills/`, `ls .claude/agents/` — don't hand-copy the tables from
-  this SKILL.md, they list what *can* be copied, not what a given blueprint's feature
-  set actually triggered), each with the one-line "Why" already written for it in 6.7's
-  and 6.8's tables — reuse that sentence, don't invent a new one.
+- `{{skillsList}}`, `{{agentsList}}` — one bullet per entry actually written into the
+  project (`ls .claude/skills/`, `ls .claude/agents/` — read the disk, not the `export`
+  manifest: the manifest lists what *can* travel, not what a given blueprint's feature
+  set produced), each with a one-line "Why" taken from that skill's or agent's own
+  `description`, not invented here.
 - `{{outputContractBlock}}` — the exact block this step's successor (§ Output contract)
   renders, pasted verbatim. The README and the report given to the user are the same
   text; this is not a second, independently-written summary that can drift from the
@@ -1144,8 +925,8 @@ between the two.
 
 Runs **after** the README (8.5), for the same reason: the Output contract block it
 embeds only exists once step 8 has finished. Fixes a different gap than 8.5 —
-`@.claude/lessons-learned/lessons-learned-004.md` Gap 1: `.claude/audit-usage/` (step 7
-part 4) exists in the freshly generated project, but the hook that fills it
+`@.claude/lessons-learned/lessons-learned-004.md` Gap 1: `.claude/audit-usage/` (§ 6.6,
+`ensure_dirs`) exists in the freshly generated project, but the hook that fills it
 (`ArchHook.java audit`) has never run there, because that hook only fires from a live
 session rooted at the *generated* project, and the run that creates the project happens
 from a session rooted at the *meta-repo* instead. Without this step the trail is
@@ -1273,24 +1054,25 @@ other skill touches these files:
   project, see step 4
 - `CLAUDE.md` and `*/CLAUDE.md`
 - `.claude/forbidden-imports.txt`
-- `.claude/rules/*.md` — full copy of this repo's rules, see step 6.6
-- `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,java-patterns,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,git-publish,audit-usage}/**` — see step 6.7
+- `.claude/rules/*.md` — every rule of this repo, `paths` derived, see step 6.6
+- `.claude/skills/**` and `.claude/agents/**` — whatever `export`'s `include` lists, see
+  step 6.6. The list is data in `@.claude/schemas/extensions.json`, not prose here
 - `Dockerfile` and `docker-compose.yml` — base pair, step 4.10, plus (via
   `docker-architect`'s own templates and merge procedure, called from the same step)
   one service per blueprint feature that's already active and needs a container
   (`persistence-jpa`, `observability` today). Every service a **use case** adds
   afterward is `docker-architect`'s alone, invoked on its own thread, not this skill's
-- `.claude/hooks/ArchHook.java` — verbatim copy, see step 7
-- `.claude/schemas/extensions.json` — verbatim copy, see step 7
-- `.claude/settings.json` — merge, see step 7
+- `.claude/hooks/ArchHook.java` — copy, see step 6.6
+- `.claude/schemas/extensions.json` — copy without its own `export` block, see step 6.6
+- `.claude/settings.json` — written whole, see step 6.6
 - `.claude/audit-usage/pricing.json` and the `.claude/audit-usage/` directory itself —
-  step 7 part 4. The reports and `history.jsonl` inside it are written afterwards by
+  step 6.6. The reports and `history.jsonl` inside it are written afterwards by
   `ArchHook.java audit`, never by this skill
 - `.claude/audit-usage/GENESIS.md` — step 8.6, once, the only report in that directory
   this skill ever writes itself. Everything else in that directory after it is
   `ArchHook.java audit`'s alone
 - `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
-  7.5. Absent in most bootstraps, on purpose
+  6.6 as an optional copy. Absent in most bootstraps, on purpose
 - `config/checkstyle/checkstyle.xml`
 - `lombok.config`
 - `src/main/resources/application*.yml`

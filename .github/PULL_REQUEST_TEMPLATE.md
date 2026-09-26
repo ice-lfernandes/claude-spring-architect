@@ -64,11 +64,12 @@ exist inside generated projects, the copy step was updated in the same PR:
 
 - [ ] Not applicable — this only serves before the project exists
       (`project-bootstrap`, `init-project`, `blueprints/`)
-- [ ] Norm — step 6.6 of `project-bootstrap/SKILL.md`, including the derived `paths:`
-      row when the norm has a package territory
-- [ ] Development skill — step 6.7
-- [ ] `ArchHook.java` / `schemas/extensions.json` — step 7
-- [ ] MCP server — `project-bootstrap/templates/mcp.json.example`, copied in step 7.5
+- [ ] Norm — `export.rules` of `.claude/schemas/extensions.json`, plus an
+      `export.derived_paths` entry when the norm has a package territory
+- [ ] Development skill — `export.skills.include` (or `.exclude`, with the reason)
+- [ ] Agent — `export.agents.include` (or `.exclude`)
+- [ ] MCP server — `project-bootstrap/templates/mcp.json.example`, copied by
+      `export.optional_copy`
 
 ## Dependencies
 

@@ -218,5 +218,5 @@ in the spec.
 
 **Also carries** `examples/` — twelve complete `00-caso-de-uso.md` fixtures for testing
 `/new-feature` and `java-spring-boot-developer`, indexed in `examples/README.md`. Meta-repo
-documentation, not this skill's runtime output: step 6.7 of `project-bootstrap` does not
-copy this directory into a generated project.
+documentation, not this skill's runtime output: the `export` manifest keeps only
+`SKILL.md`, `templates/` and `references/`, so this directory does not travel.

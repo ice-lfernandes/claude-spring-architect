@@ -269,73 +269,15 @@ jobs:
           [ "$FAIL" -eq 0 ] && echo "✅ Every rule glob has a matching package in a blueprint."
           exit $FAIL
 
-      # The previous check proves the glob names a package that exists somewhere. It doesn't prove
-      # it exists in THIS blueprint — and that was the failure: `api-rest.md` named the hexagonal
-      # blueprint's package and the other two blueprints were left without the norm. The guarantee is step 6.6
-      # rewriting `paths` at generation time, and this check is what requires the norm to be there.
-      - name: norm with territory is in the bootstrap's derivation table
-        run: |
-          FAIL=0
-          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
-          for norma in .claude/rules/*.md; do
-            GLOBS=$(awk '/^paths:/{f=1;next}
-                         f&&/^  - /{s=$0; gsub(/[" -]/,"",s); print s; next}
-                         f{exit}' "$norma")
-            [ -z "$GLOBS" ] && continue
-            TERRITORY=0
-            for glob in $GLOBS; do
-              case "$glob" in
-                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
-              esac
-              TERRITORY=1
-            done
-            [ "$TERRITORY" -eq 0 ] && continue
-            NAME=$(basename "$norma")
-            if ! grep -q "\`$NAME\` | derived \`paths:\`" "$BOOTSTRAP"; then
-              echo "❌ $NAME has a glob by package and is not in the derivation table of"
-              echo "   step 6.6. The generated project takes this file's glob as-is,"
-              echo "   and the rule doesn't load in blueprints with a different package name."
-              FAIL=1
-            fi
-          done
-          [ "$FAIL" -eq 0 ] && echo "✅ Every rule with territory is derived at generation."
-          exit $FAIL
-
-      # Invariant 9: the generated project is self-contained, and §§ 6.6/6.7/6.8 of
-      # project-bootstrap ARE the copy lists that make it so. Nothing verified that those
-      # lists still cover the disk. CLAUDE.md states the failure mode itself — "a new norm
-      # or skill here is only complete once the step that copies it has also been updated"
-      # — and it is silent: a rule absent from § 6.6 breaks nothing at generation time,
-      # only for whoever clones the project later and follows a citation to a file that
-      # was never copied. Same class as the derivation-table check above.
-      - name: every rule, skill and agent has a row in the bootstrap copy list (invariant 9)
-        run: |
-          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
-          FAIL=0
-          # `grep -F`, not a regex: the ✅/❌ marker is multibyte and a bracket expression
-          # over it depends on the runner's locale. A literal alternative does not.
-          for f in .claude/rules/*.md; do
-            n=$(basename "$f")
-            grep -qF "\`$n\` |" "$BOOTSTRAP" || {
-              echo "❌ rule '$n' has no row in § 6.6 — the generated project won't carry it,"
-              echo "   and every citation of it from inside the project is a dead path."
-              FAIL=1; }
-          done
-          for d in .claude/skills/*/; do
-            n=$(basename "$d")
-            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
-              echo "❌ skill '$n' has no row in § 6.7 — decide ✅ (travels to the project)"
-              echo "   or ❌ (stays here), with the one-line reason the table asks for."
-              FAIL=1; }
-          done
-          for f in .claude/agents/*.md; do
-            n=$(basename "$f" .md)
-            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
-              echo "❌ agent '$n' has no row in § 6.8 — decide ✅ or ❌."
-              FAIL=1; }
-          done
-          [ "$FAIL" -eq 0 ] && echo "✅ §§ 6.6/6.7/6.8 cover every rule, skill and agent."
-          exit $FAIL
+      # Two checks used to live here, grepping the copy tables that steps 6.6/6.7/6.8 of
+      # `project-bootstrap` carried in prose: that a rule with a territory appears in the
+      # derivation table, and that every rule, skill and agent has a row in the copy
+      # list. Those tables are gone — the `export` block of `.claude/schemas/extensions.json`
+      # is the single owner now (D54) — and both checks moved into `ArchHook.java schema`,
+      # which the step above runs: `include`/`exclude` must cover every skill and agent on
+      # disk, and a rule whose `paths` names a package must have an entry in
+      # `derived_paths`. Same guarantee, one owner, and it also fires locally on every
+      # edit under .claude/ instead of only in CI.
 
   export-determinism:
     name: export is reproducible and self-contained

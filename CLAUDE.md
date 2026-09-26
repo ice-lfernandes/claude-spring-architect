@@ -68,21 +68,22 @@ direction above is unchanged.
    runtime via Spring Initializr; without network access, ask.
 9. **The generated project is self-contained.** Whoever clones it does not have
    `claude-spring-architect`. Everything cited from inside the project must exist inside the
-   project: norms (step 6.6), development skills (6.7), `ArchHook.java` and
-   `schemas/extensions.json` (7). Creation skills (`project-bootstrap`, `init-project`)
-   and `blueprints/` are left out on purpose — they only serve before the project exists.
-   A new norm or skill here is only complete once the step that copies it has also been
-   updated — and since the copy lists are data, that means the `export` block of
-   `@.claude/schemas/extensions.json`: every skill and every agent on disk must be in its
-   `include` or its `exclude`, and `ArchHook.java schema` fails by name on one that is in
-   neither. **An MCP server has the same obligation, per server, not per file:** it is
-   declared for this meta-repo (`.mcp.json`), for the generated project
-   (`project-bootstrap/templates/mcp.json.example`, copied in step 7.5), or both — and
-   the file it's written into **is** that declaration. A server useful to both is
+   project: norms, development skills, agents, `ArchHook.java` and
+   `schemas/extensions.json`. `ArchHook.java export` writes all of it (step 6.6 of
+   `project-bootstrap`), and **what travels is data, in the `export` block of
+   `@.claude/schemas/extensions.json`** — creation skills and `blueprints/` excluded on
+   purpose, they only serve before the project exists. A new norm, skill or agent is
+   complete once that block lists it: every skill and agent on disk in `include` or
+   `exclude`, a `derived_paths` entry for a rule with a package territory, and
+   `ArchHook.java schema` failing by name on either gap.
+   **An MCP server has the same obligation, per server, not per file:** it is declared
+   for this meta-repo (`.mcp.json`), for the generated project
+   (`project-bootstrap/templates/mcp.json.example`, copied by `export.optional_copy`),
+   or both — and the file it's written into **is** that declaration. A server useful to both is
    written in both files on purpose; that is not a duplication bug, see invariant 2.
    **A hook, the same:** the registration is per file (`.claude/settings.json`,
    `project-bootstrap/templates/settings.json.example`); a mode inside `ArchHook.java`
-   needs nothing, step 7 copies that file whole.
+   needs nothing, the `export` mode copies that file whole.
 10. **Recognized frontmatter fields, `.mcp.json`'s server fields, and `settings.json`'s
     hook events and entry fields are data with a single owner.** The list lives in
     `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
@@ -117,7 +118,7 @@ direction above is unchanged.
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
-| Auditing what any skill or agent run in a **generated project** cost and what it chained — invoked by `/command` or by the model | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, step 7 parts 4-5 |
+| Auditing what any skill or agent run in a **generated project** cost and what it chained — invoked by `/command` or by the model | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, installed by step 6.6 |
 | Reading that trail back — spend per skill and agent across runs, which report to open | skill `audit-usage` — aggregation by `ArchHook.java audit summary`, the skill renders; runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |

@@ -1317,12 +1317,15 @@ public class ArchHook {
                 errors.add("  export.rules.exclude names `" + r + "` — no such rule");
             }
         }
+        List<String> derived = new ArrayList<>();
         for (String r : asMapKeys(exp.get("derived_paths"))) {
-            if (r.startsWith("$")) continue;          // $comment
+            if (r.startsWith("$") || r.equals("derived_paths_exempt_globs")) continue;
+            derived.add(r);
             if (rulesDir != null && !Files.isRegularFile(ROOT.resolve(rulesDir).resolve(r))) {
                 errors.add("  export.derived_paths names `" + r + "` — no such rule");
             }
         }
+        checkRuleTerritories(exp, rulesDir, derived, errors);
         for (Object e : asList(get(exp, "body_transforms", "rewrite"))) {
             String f = asStr(get(e, "file"));
             if (f != null && !Files.isRegularFile(ROOT.resolve(f))) {
@@ -1352,6 +1355,45 @@ public class ArchHook {
         if (authEnv != null && !authEnv.matches("[A-Z][A-Z0-9_]*")) {
             errors.add("  export.transport.auth_env is `" + authEnv
                     + "` — it names an environment variable, never its value");
+        }
+    }
+
+    /**
+     * The other direction of `derived_paths`: a rule whose `paths` names a package has a
+     * territory, and that territory changes with the architecture. Missing from the map,
+     * it travels with the glob of whichever blueprint happened to be written into the
+     * file, and in every other architecture it never enters context — gap 8 of
+     * lessons-learned-001, which cost a norm that silently applied to one blueprint out
+     * of three. The globs that name no package are data, in `derived_paths_exempt_globs`.
+     */
+    static void checkRuleTerritories(Map<String, Object> exp, String rulesDir,
+                                     List<String> derived, List<String> errors) throws IOException {
+        if (rulesDir == null) return;
+        Path dir = ROOT.resolve(rulesDir);
+        if (!Files.isDirectory(dir)) return;
+        List<String> exempt = asStrList(get(exp, "derived_paths", "derived_paths_exempt_globs"));
+        Pattern glob = Pattern.compile("(?m)^[ \t]+-[ \t]+\"([^\"]+)\"");
+
+        try (Stream<Path> walk = Files.list(dir)) {
+            for (Path f : walk.filter(p -> p.toString().endsWith(".md")).sorted()
+                    .collect(Collectors.toList())) {
+                String name = f.getFileName().toString();
+                if (derived.contains(name)) continue;
+                String body = readOrNull(f);
+                if (body == null) continue;
+                int at = body.indexOf("\npaths:");
+                if (!body.startsWith("---\npaths:") && at < 0) continue;
+                int from = body.startsWith("---\npaths:") ? 4 : at + 1;
+                int to = body.indexOf("\nstatus:", from);
+                Matcher m = glob.matcher(body.substring(from, to < 0 ? body.length() : to));
+                while (m.find()) {
+                    if (exempt.contains(m.group(1))) continue;
+                    errors.add("  .claude/rules/" + name + " has the territory glob `" + m.group(1)
+                            + "` and no entry in export.derived_paths — it would travel naming"
+                            + " this repo's package, and never load where that package differs");
+                    break;
+                }
+            }
         }
     }
 
