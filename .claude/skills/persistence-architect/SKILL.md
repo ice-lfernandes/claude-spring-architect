@@ -38,6 +38,13 @@ contract. Without the domain partial, it stops and tells you to run `/domain-mod
 designing tables before the aggregate has a boundary produces a schema that describes the
 form, not the business.
 
+**Two more partials stop it, each under its own condition**, for the same reason: both
+carry schema requirements this pass has to honor, and a schema designed without them is a
+schema that gets revised. An HTTP-triggered case with no `30-rest.md` → run
+`/rest-api-architect` first. A case whose `10-dominio.md` Events block names external
+(Kafka) delivery with no `25-mensageria.md` → run `/messaging-architect` first. Step 1
+states what each list contains.
+
 **Exit rule: it writes only under `docs/`.** It emits `20-persistencia.md`, and the
 migration SQL goes **inside it** as a code block with its target file name and path —
 never as a file under `src/`. The migration file and the Java classes come from the
@@ -75,9 +82,9 @@ The division is by **moment and artifact**, not technology:
 |---|---|---|
 | `use-case-design` | Before the domain exists | `00-caso-de-uso.md` — boundary and canonical names |
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports |
-| **this skill** | After the domain partial | `20-persistencia.md`, migration SQL inside it |
-| `rest-api-architect` | Before this one | `30-rest.md` — transport, plus the schema requirements it creates |
-| `messaging-architect` | Only when an event leaves over a broker | `25-mensageria.md` — publication form, and the outbox schema requirement it creates (step 4b) |
+| `rest-api-architect` | Before this one | `30-rest.md` — transport, plus the schema requirements it creates (block 4) |
+| `messaging-architect` | Before this one, only when an event leaves over a broker | `25-mensageria.md` — publication form, plus the schema requirements it creates (§ 6: outbox, dedupe table) |
+| **this skill** | After both, so every requirement is on the table before the first column is named | `20-persistencia.md`, migration SQL inside it |
 | `test-architect` | After all of them | `40-testes.md` |
 
 If the aggregate has no written invariants yet, it isn't this skill. If the problem is a
@@ -95,12 +102,16 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    gets designed now, not in a second pass. An HTTP-triggered case whose `30-rest.md`
    doesn't exist yet → stop and tell the caller to run `/rest-api-architect` first.
 
-   Also read `25-mensageria.md` **when the file is in the folder** — optional, unlike
-   `30-rest.md`: absent means no broker in this use case and nothing extra to model. When
-   present, its § 2 is input to this pass the same way block 4 of `30-rest.md` is: a
-   publication form of B there means the shared outbox table is this pass's job (step 4b).
-   Its absence is never a reason to stop — `messaging-architect` may legitimately run after
-   this skill, and then the requirement arrives as a second pass on this same folder.
+   Also read `25-mensageria.md`, **mandatory on the same terms as `30-rest.md`**: when
+   `10-dominio.md`'s Events block names external (Kafka) delivery and the messaging partial
+   isn't in the folder → stop and tell the caller to run `/messaging-architect` first. In
+   `/new-feature` it always exists by now, because messaging runs before this skill. Its
+   § 6 `Schema requirements` list is input to this pass exactly as block 4 of `30-rest.md`
+   is: the shared outbox table under publication Form B (step 4b), a dedupe table for a
+   consumer, and anything else listed there gets designed now, not in a second pass.
+
+   A domain partial whose Events block is "none" or in-process means no messaging partial
+   exists and none is expected — read nothing, stop for nothing.
 
 2. **Survey what already exists.** Look for entities, repositories, and migrations in
    the project. A table that already exists gets altered; it isn't recreated. The
@@ -157,7 +168,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    `templates/OutboxEventTable.sql.example` (schema, partial index, retry columns, and the
    prune as a commented `DELETE`) and `templates/OutboxEventStore.java.example` (entity,
    Spring Data repository, and the adapter implementing `OutboxRelayGateway`). The column
-   set is the requirement list `25-mensageria.md` § 2 states; the criterion that made Form
+   set is the requirement row `25-mensageria.md` § 6 states; the criterion that made Form
    B apply is `@.claude/rules/messaging.md` § Publication timing, and it isn't re-litigated
    here — `messaging-architect` owns it.
 
@@ -232,10 +243,12 @@ executor agent that reads them when generating code.
 `@.claude/rules/lombok.md`, `@.claude/rules/value-objects.md`,
 `@.claude/rules/api-rest.md` § Idempotency (only when step 4a applies),
 `@.claude/rules/messaging.md` § Publication timing (only when step 4b applies), and the
-active blueprint's `packages.map`. Also reads `30-rest.md` for an HTTP-triggered case —
-mandatory then, its schema requirements are this pass's input — and `25-mensageria.md`
-when that file exists, optional by design: its § 2 says whether the shared outbox table is
-this pass's job.
+active blueprint's `packages.map`. Also reads two partials whose schema requirements are
+this pass's input, each mandatory under its own condition: `30-rest.md` for an
+HTTP-triggered case (block 4), and `25-mensageria.md` whenever `10-dominio.md`'s Events
+block names external delivery (§ 6 — the shared outbox table under Form B, a dedupe table
+for a consumer). Missing either one where it's required stops this skill instead of
+starting a design that a later pass would have to revise.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`. Nothing else — the
 migration SQL lives inside it.

@@ -61,16 +61,30 @@ below. No end of this flow is left without an explicit git instruction.
 1. `use-case-design` — invoked for a new case; skipped on resume when `00-caso-de-uso.md` exists
 2. `domain-modeling` — invoked if `10-dominio.md` is missing (depends on 1)
 3. `rest-api-architect` — invoked if `30-rest.md` is missing (depends on 2)
-4. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3)
-5. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
+4. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
    (Kafka) delivery and `25-mensageria.md` is missing (depends on 2). Skipped entirely
    when the event, if any, stays in-process — not every use case needs it
+5. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3, 4)
 6. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,4,5)
 
-**Why REST runs before persistence.** The order follows who generates requirements for
-whom. REST generates schema requirements — `Idempotency-Key` on a creation `POST` needs
-the shared key table — and persistence generates none for REST. With persistence first,
-the table was discovered after the partial was written, and persistence ran twice.
+**Why REST and messaging both run before persistence.** The order follows who generates
+requirements for whom. REST generates schema requirements — `Idempotency-Key` on a
+creation `POST` needs the shared key table — and persistence generates none for REST.
+With persistence first, the table was discovered after the partial was written, and
+persistence ran twice.
+
+Messaging is the same shape and was learned the same way: a transactional outbox needs the
+shared `outbox_events` table, a consumer needs the shared dedupe table, and neither is
+visible from the domain partial alone. With messaging after persistence, `20-persistencia.md` was
+written without the relay's retry columns and its partial index, and persistence ran twice
+again. Messaging depends only on step 2, so running it before persistence costs nothing —
+and persistence then reads both requirement lists, `30-rest.md` block 4 and
+`25-mensageria.md` § 6, in its first pass.
+
+**Design order isn't implementation order.** Messaging is designed fourth and implemented
+sixth: `UC-NNN-spec.md` keeps messaging as block 6, and the executor's conditional Block M
+still runs between REST and Tests. The pipeline orders by who needs whose requirements;
+the spec orders by what compiles against what.
 7. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
    one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
 8. `git-publish` — invoked at the end, per § End of flow
@@ -263,23 +277,28 @@ If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, 
 
 **Output:** "✅ REST ready" or gaps.
 
-### Step 4: Persistence (depends on 1,2,3)
-
-If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
-`30-rest.md`'s schema requirements — the idempotency table among them — in the same pass.
-If it exists: read, validate (three blocks: mapping, migrations, transactions).
-
-**Output:** "✅ Persistence ready" or gaps.
-
-### Step 5: Messaging (depends on 2, conditional)
+### Step 4: Messaging (depends on 2, conditional)
 
 Read `10-dominio.md`'s Events block. If it names external (Kafka) delivery for the
 event and `25-mensageria.md` is missing: **invoke** `/messaging-architect UC-NNN`. If
 the event is absent or stays in-process, skip this step — not every use case needs it.
-If `25-mensageria.md` exists: read, validate (producer/consumer, delivery semantics,
-retry/DLQ).
+If `25-mensageria.md` exists: read, validate (six blocks: topic and delivery, producer,
+consumer and idempotency, retry/DLQ, configuration, schema requirements).
+
+A missing § 6 is a gap, not an omission: it's the list step 5 reads. `none` is a valid
+value there and means publication Form A with no consumer dedupe table to build.
 
 **Output:** "✅ Messaging ready", "— skipped (no external delivery)", or gaps.
+
+### Step 5: Persistence (depends on 1,2,3,4)
+
+If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
+both schema requirement lists in the same pass — `30-rest.md` block 4 (the idempotency
+table among them) and, when step 4 ran, `25-mensageria.md` § 6 (the shared outbox table,
+the dedupe table). If it exists: read, validate (three blocks: mapping, migrations,
+transactions).
+
+**Output:** "✅ Persistence ready" or gaps.
 
 ### Step 6: Tests (depends on 1,2,3,4,5)
 
@@ -288,9 +307,9 @@ If it exists: read, validate (four blocks: pyramid, fixtures, coverage, cases).
 
 **Output:** "✅ Tests ready" or gaps.
 
-### Consolidation (after 1,2,3,4,6 ✅ — step 5 conditional)
+### Consolidation (after 1,2,3,5,6 ✅ — step 4 conditional)
 
-If all specs that apply exist and validate (messaging only when step 5 wasn't skipped):
+If all specs that apply exist and validate (messaging only when step 4 wasn't skipped):
 
 1. **Resolve divergences before consolidating.** The partials are written by different
    skills, and downstream corrects upstream: `30-rest.md` fixes the path and status
@@ -305,7 +324,7 @@ If all specs that apply exist and validate (messaging only when step 5 wasn't sk
    | Fact | Who wins |
    |---|---|
    | HTTP path, verb, status, body shape | `30-rest.md` |
-   | Table, column, key, index, migration | `20-persistencia.md` |
+   | Table, column, key, index, migration | `20-persistencia.md` — including every table or column another partial *asked for*: the requirement is born in `30-rest.md` block 4 or `25-mensageria.md` § 6, the final form (name, type, nullability, index, migration) is always this one's |
    | Topic, delivery guarantee, retry/DLQ | `25-mensageria.md` |
    | Aggregate name, value object, port, event | `10-dominio.md` |
    | Exception class and `errorCode` | `10-dominio.md` |
@@ -327,7 +346,7 @@ If all specs that apply exist and validate (messaging only when step 5 wasn't sk
      partial that details it. Never copy a partial's tables, SQL, or code: a copied
      consolidation doubled the output of a real run and added nothing the partial lacked
    - Structure: 5 blocks (use case, domain, persistence, REST, tests), plus a 6th
-     (messaging) only when step 5 wasn't skipped
+     (messaging) only when step 4 wasn't skipped
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
    - Order: implementation order (depends-on)

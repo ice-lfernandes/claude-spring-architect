@@ -75,9 +75,9 @@ The division is by **moment and artifact**, not technology:
 |---|---|---|
 | `use-case-design` | Before the domain exists | `00-caso-de-uso.md` — boundary and canonical names |
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports, **and the event itself** |
-| `persistence-architect` | After the domain partial | `20-persistencia.md` + migration |
-| **this skill** | After the domain partial, only when an event needs external delivery | `25-mensageria.md` |
-| `rest-api-architect` | In parallel with the two above | `30-rest.md` — transport, no schema |
+| `rest-api-architect` | After the domain partial | `30-rest.md` — transport, no schema, plus the schema requirements it creates |
+| **this skill** | After the domain partial, only when an event needs external delivery — and **before** `persistence-architect` | `25-mensageria.md`, § 6 included |
+| `persistence-architect` | After this skill | `20-persistencia.md` + migration — builds what § 6 asked for |
 | `test-architect` | After all of them | `40-testes.md` |
 
 `domain-modeling` decides **whether** an event exists and **who consumes it**. This skill
@@ -140,9 +140,11 @@ still transport.
 
    **4a. Form B's schema, when step 2 found no outbox.** One table for the whole project, not
    one per event — same nature as `idempotency_keys`. This skill doesn't design tables: name
-   the requirement in the partial's § 2 and flag that `persistence-architect` has to model it,
-   with the columns the relay needs (claim, attempts, failure reason, dead-letter flag) listed
-   as requirements, not as DDL. Exemplar's header comment carries the same list.
+   the requirement as a row of the partial's **§ 6 · Schema requirements** and flag that
+   `persistence-architect` has to model it, with the columns the relay needs (claim, attempts,
+   failure reason, dead-letter flag) listed as requirements, not as DDL. Exemplar's header
+   comment carries the same list. § 2 explains the form and why; § 6 is the list the next
+   skill reads — a requirement described only in § 2's prose is one nobody has to find.
 
    The receiving end is that skill's **step 4b**, which models the table once from
    `persistence-architect/templates/OutboxEventTable.sql.example` and
@@ -158,8 +160,9 @@ still transport.
 
    **5a. Dedupe table, when step 2 found none yet.** Not per-consumer: one table
    (`processed_events` or equivalent), shared by every listener in the project, modeled once.
-   If missing, name it in the partial and flag that `persistence-architect` needs to model it
-   — this skill doesn't design tables, `20-persistencia.md` does.
+   If missing, add it as a second row of **§ 6 · Schema requirements** and flag that
+   `persistence-architect` needs to model it — this skill doesn't design tables,
+   `20-persistencia.md` does.
 
 6. **Fix retry and DLQ.** Backoff attempts and the DLQ topic name, per
    `@.claude/rules/messaging.md` § Retry and DLQ. A business rejection (typed domain
@@ -171,20 +174,23 @@ still transport.
    reset tolerance) from step 3.
 
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/25-mensageria.md`, from
-   `templates/messaging-spec.md.example`. Five blocks, all mandatory.
+   `templates/messaging-spec.md.example`. Six blocks, all mandatory — § 6 included, written
+   as `none` when steps 4a and 5a both found nothing to ask for.
 
 9. **Check Kafka has a container.** `grep -A2 "^services:" docker-compose.yml` for a
    `kafka` service. Missing → invoke `docker-architect` with this UC's folder, so the
    dev-time broker matches the topic just designed. Don't edit `docker-compose.yml` here —
    that skill is its single owner.
 
-10. **Report and stop.** Path of the file written, whether a dedupe table was requested from
-    `persistence-architect`, whether `docker-architect` ran, and what's missing for the
-    folder to be complete (`30-rest.md`, `40-testes.md`). Don't invoke anyone else.
+10. **Report and stop.** Path of the file written, **the content of § 6** (each schema
+    requirement handed to `persistence-architect`, or "none"), whether `docker-architect`
+    ran, and what's missing for the folder to be complete (`20-persistencia.md`,
+    `40-testes.md`). Don't invoke anyone else — `persistence-architect` runs next in the
+    pipeline and reads § 6 in its first pass.
 
 ## What the partial contains
 
-Five blocks. An empty block is written as "none" — deleting it hides a question nobody
+Six blocks. An empty block is written as "none" — deleting it hides a question nobody
 asked.
 
 | Block | Fixes | Form exemplar |
@@ -194,6 +200,7 @@ asked.
 | Consumer adapter and idempotency | The consuming use case, the listener, the dedupe key and table | `KafkaConsumerAdapter.java.example` |
 | Retry and DLQ | Backoff, DLQ topic, which failures skip retry | `@.claude/rules/messaging.md` § Retry and DLQ |
 | Configuration | Group id, offset reset, ack mode, with the decided value and why | `application-kafka.yml.example` |
+| Schema requirements | Every table or column this transport needs that the domain didn't model — the shared `outbox_events` under Form B (step 4a), the shared dedupe table (step 5a) — one row each with the columns as requirements, never DDL. `none` when there are none | `@.claude/rules/messaging.md` § Publication timing · § Retry and DLQ |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.
@@ -216,8 +223,10 @@ executor agent.
 skill's Contract.
 
 **Does not model the dedupe table, nor the outbox table.** When step 5a or step 4a finds
-none, it names the need in the partial for `persistence-architect` to pick up — this skill
-doesn't design schema. Form B's relay reads that state through the application-layer
+none, it names the need as a row of § 6 for `persistence-architect` to pick up — this skill
+doesn't design schema. That block is the contract between the two: this skill runs **before**
+`persistence-architect` in `/new-feature`, so § 6 is input to that skill's first pass, not a
+correction to a partial already written. Form B's relay reads that state through the application-layer
 `OutboxRelayGateway`, never through the persistence adapter's entity or repository
 (`@.claude/rules/architecture-ddd.md` § Adapters).
 
