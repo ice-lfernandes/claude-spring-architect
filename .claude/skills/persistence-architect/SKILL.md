@@ -14,7 +14,7 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Available specs
 
-!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
+!`find "${CLAUDE_PROJECT_DIR:-.}/docs/use-cases" -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort`
 
 Empty above → none yet, run `/use-case-design` first. (`find`, not an `ls` glob: under zsh an unmatched glob
 aborts the command before any fallback runs.)

@@ -23,6 +23,7 @@ flowchart TD
     subgraph J1["hooks-cross-platform (matrix: ubuntu · macos · windows)"]
         H1[ArchHook.java doctor]
         H2[BoundaryTest.java — import proibido → exit 2]
+        H3[InjectionPathTest.java — injection relativa ao cwd → exit 2]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -53,8 +54,8 @@ flowchart TD
 
 | Job / passo | Verifica | Contra o quê |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor` e `BoundaryTest` nas três OSes | Decisão D8 — "cross-platform" como fato, não alegação |
-| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariante 10 — `extensions.json` é o dono único do frontmatter reconhecido; campo inventado ou `metadata:` falha alto em vez de ser ignorado em silêncio pelo runtime |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest` e `InjectionPathTest` nas três OSes | Decisão D8 — "cross-platform" como fato, não alegação |
+| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariante 10 — `extensions.json` é o dono único do frontmatter reconhecido; campo inventado ou `metadata:` falha alto em vez de ser ignorado em silêncio pelo runtime. O mesmo modo exige que toda injection `` !`command` `` resolva caminho a partir de `${CLAUDE_PROJECT_DIR}` — uma relativa reporta arquivo ausente sempre que o cwd do shell derivou |
 | `skill name doesn't shadow a native slash command` | nome de pasta de skill contra uma denylist (`doctor`, `init`, `context`, `memory`, …) | Uma skill substituir um comando nativo em silêncio, sem erro |
 | `new blueprint doesn't touch prompts` | adicionar um blueprint deixa `.claude/skills` e `.claude/agents` intactos | Invariante 7 — arquiteturas são dados |
 | `rules is a leaf of the graph` | nenhuma rule menciona "skill", "agent", "subagent" | Invariante 1 |
@@ -93,6 +94,7 @@ java .claude/hooks/ArchHook.java schema
 claude plugin validate .claude/skills   # não roda em CI — CLI ausente no runner
 java .claude/hooks/ArchHook.java doctor
 java .claude/.ci/BoundaryTest.java
+java .claude/.ci/InjectionPathTest.java
 ```
 
 Um `git push` sem rodar isso antes ainda passa pelo hook local (`settings.json`), mas

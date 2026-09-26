@@ -13,7 +13,7 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 
 ## Already-designed use cases
 
-!`find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort | tail -5`
+!`find "${CLAUDE_PROJECT_DIR:-.}/docs/use-cases" -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort | tail -5`
 
 Empty above → none yet, this will be `UC-001`. (`find`, not an `ls` glob: under zsh an unmatched glob
 aborts the command before any fallback runs.)

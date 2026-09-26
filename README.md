@@ -241,7 +241,9 @@ claude-spring-architect/
     │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
     ├── hooks/
     │   └── ArchHook.java          # enforcement, one file, eight modes
-    └── .ci/BoundaryTest.java      # CI: injects a forbidden import, requires exit 2
+    └── .ci/
+        ├── BoundaryTest.java      # CI: injects a forbidden import, requires exit 2
+        └── InjectionPathTest.java # CI: injects a cwd-relative `!`…``, requires exit 2
 ```
 
 There is no `commands/`: slash commands live as skills with
@@ -744,8 +746,9 @@ Verification on this machine:
 /arch-doctor
 ```
 
-In CI, `validate.yml` runs `ArchHook doctor` and a `BoundaryTest` that injects a
-forbidden import and requires exit 2 — on `ubuntu-latest`, `macos-latest`, and
+In CI, `validate.yml` runs `ArchHook doctor`, a `BoundaryTest` that injects a
+forbidden import and requires exit 2, and an `InjectionPathTest` that injects a
+cwd-relative `` !`command` `` and requires exit 2 — on `ubuntu-latest`, `macos-latest`, and
 `windows-latest`. Without the OS matrix, "cross-platform" would be a claim; with it,
 it's a fact verified on every push.
 
@@ -760,8 +763,8 @@ holds only as long as whoever writes the next skill remembers it.
 
 | Job / step | Verifies | Guards against |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor` and `BoundaryTest` on `ubuntu-latest`, `macos-latest`, `windows-latest` | Decision D8 — "cross-platform" as a fact, not a claim |
-| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored at runtime |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest` and `InjectionPathTest` on `ubuntu-latest`, `macos-latest`, `windows-latest` | Decision D8 — "cross-platform" as a fact, not a claim |
+| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored at runtime. Same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
 | `skill name doesn't shadow a native slash command` | skill folder names against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
 | `new blueprint doesn't touch prompts` | adding a blueprint leaves `.claude/skills` and `.claude/agents` untouched | Invariant 7 — architectures are data |
 | `rules is a leaf of the graph` | no rule mentions "skill", "agent", "subagent" | Invariant 1 |

@@ -15,7 +15,7 @@ allowed-tools: Bash, Read
 
 ## AI files
 
-!`find .claude -maxdepth 2 -type f | sort`
+!`find "${CLAUDE_PROJECT_DIR:-.}/.claude" -maxdepth 2 -type f | sort`
 
 ---
 

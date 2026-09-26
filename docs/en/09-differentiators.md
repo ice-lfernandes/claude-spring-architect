@@ -89,7 +89,8 @@ modes:
 | `compose` | manual, and inside `doctor` | no | every compose service is `running`, no foreign container on its ports |
 | `doctor` | manual (`/arch-doctor`) | no | setup diagnosis |
 
-CI runs `doctor` and a `BoundaryTest` that injects a forbidden import and requires
+CI runs `doctor`, a `BoundaryTest` that injects a forbidden import and an
+`InjectionPathTest` that injects a cwd-relative injection — both require
 `exit 2` on `ubuntu-latest`, `macos-latest`, and `windows-latest`. "Cross-platform" is
 a verified fact, not a claim.
 

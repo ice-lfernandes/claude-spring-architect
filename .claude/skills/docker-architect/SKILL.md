@@ -18,7 +18,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 
 ## Current compose state
 
-!`test -f docker-compose.yml && grep -E "^\s{2}\S+:$" docker-compose.yml || echo "(no docker-compose.yml at project root — run project-bootstrap first)"`
+!`R="${CLAUDE_PROJECT_DIR:-.}"; if test ! -d "$R"; then echo "(could not look: project root '$R' is not a readable directory — this is not an answer about docker-compose.yml)"; elif test -f "$R/docker-compose.yml"; then grep -E "^\s{2}\S+:$" "$R/docker-compose.yml" || echo "(docker-compose.yml exists but declares no service at two-space indent)"; else echo "(no docker-compose.yml at project root — run project-bootstrap first)"; fi`
 
 ## Target
 
@@ -37,6 +37,16 @@ MySQL, a broker) goes through this skill, so there's one owner instead of
 **Entry rule: without `docker-compose.yml` at the project root, there's nothing to
 extend.** If it's missing, stop and say to run `project-bootstrap` — this skill never
 generates the base pair, only grows it.
+
+The `## Current compose state` block above answers one of three things, and only the
+second one arms that rule:
+
+| Output | Meaning | What to do |
+|---|---|---|
+| A list of service names | The file exists | Proceed |
+| `(no docker-compose.yml at project root …)` | The project root was readable and the file is not there | Entry rule applies: stop |
+| `(could not look: project root … is not a readable directory …)` | The root itself couldn't be read — **this is not an answer about `docker-compose.yml`** | Don't apply the entry rule. Read the file at the path the user gave, or ask for the project root; run `/arch-doctor`, which reports `CLAUDE_PROJECT_DIR NOT set` |
+| `(docker-compose.yml exists but declares no service …)` | The file is there and malformed or empty | Entry rule doesn't apply — the base pair exists. Read the file before editing |
 
 ## How it's invoked
 

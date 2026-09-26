@@ -11,11 +11,11 @@ allowed-tools: Agent, Read, Write, Bash, Glob, AskUserQuestion
 
 ## Available blueprints
 
-!`find .claude/blueprints -mindepth 2 -maxdepth 2 -name '*.yaml' 2>/dev/null | xargs -n1 basename | sed 's/\.yaml$//'`
+!`find "${CLAUDE_PROJECT_DIR:-.}/.claude/blueprints" -mindepth 2 -maxdepth 2 -name '*.yaml' 2>/dev/null | xargs -n1 basename | sed 's/\.yaml$//'`
 
 ## Directory state
 
-!`ls -a | head -30`
+!`ls -a "${CLAUDE_PROJECT_DIR:-.}" | head -30`
 
 ## Arguments
 

@@ -13,13 +13,13 @@ allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(find:*), Bas
 
 ## Current inventory
 
-Skills: !`ls .claude/skills`
+Skills: !`ls "${CLAUDE_PROJECT_DIR:-.}/.claude/skills"`
 
-Agents: !`ls .claude/agents`
+Agents: !`ls "${CLAUDE_PROJECT_DIR:-.}/.claude/agents"`
 
-Rules: !`ls .claude/rules`
+Rules: !`ls "${CLAUDE_PROJECT_DIR:-.}/.claude/rules"`
 
-Decision records (the latest is the most recent): !`ls .claude/decisions`
+Decision records (the latest is the most recent): !`ls "${CLAUDE_PROJECT_DIR:-.}/.claude/decisions"`
 
 ## Scenario
 
