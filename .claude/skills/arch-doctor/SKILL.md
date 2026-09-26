@@ -2,9 +2,10 @@
 name: arch-doctor
 description: >
   Diagnoses the AI setup and architecture enforcement on this machine: active hooks,
-  loaded boundary rules, Maven wrapper, `java` on PATH, and whether every
-  docker-compose service is actually running with no foreign container on its ports and
-  no image tag disagreeing with the one the test suite pins. Explicit invocation only.
+  loaded boundary rules, Maven wrapper, `java` on PATH, which `.claude/` this project
+  was written from and what has been edited since, and whether every docker-compose
+  service is actually running with no foreign container on its ports and no image tag
+  disagreeing with the one the test suite pins. Explicit invocation only.
 disable-model-invocation: true
 allowed-tools: Bash, Read
 ---
@@ -22,5 +23,9 @@ allowed-tools: Bash, Read
 Interpret the result above and tell the user, in two or three sentences, whether the
 setup is operational. If something is marked with ❌, give the concrete command that
 fixes it — don't describe the problem in general terms.
+
+The `Provenance` line is the one exception to "give the command": when it lists files
+edited locally, say which ones and that an update would overwrite them. Don't offer to
+run the update — losing a hand-edited norm is the user's call, not a fix to apply.
 
 Don't fix anything without the user asking.

@@ -220,9 +220,10 @@ Non-negotiable restrictions of this repo:
   command. If it needs to, it's a procedure: it belongs in a skill.
 - **Invariant 2 — single owner.** The rule lives in one file; others cite it by path
   (`@.claude/rules/naming.md`). Written in two places, it diverges on the first update.
-- A new rule enters `@.claude/rules/00-index.md` (leaves "planned", enters "written") and
-  step 6.6 of `project-bootstrap` — otherwise the generated project cites a file that
-  doesn't exist there.
+- A new rule enters `@.claude/rules/00-index.md` (leaves "planned", enters "written"). It
+  travels to the generated project on its own — `export.rules` takes the whole directory —
+  but a rule with a package territory also needs an `export.derived_paths` entry, or it
+  ships naming this repo's package and never loads.
 
 What does **not** go into a rule or `CLAUDE.md`: architecture readable from the code, a
 dependency list, directory layout, a multi-step procedure. What does: build and test
@@ -244,7 +245,7 @@ their reasoning. Specific always beats vague.
 | 7 | Invented frontmatter | Field the runtime ignores | `frontmatter-fields.md` |
 | 8 | Code in the skill body | Boilerplate pasted into markdown | `templates/*.example` |
 | 9 | Piece built on anticipation | No symptom in interview axis 1 | Create nothing |
-| 10 | Creation skill copied into the generated project | Outside step 6.7 | Leave it out, and say so |
+| 10 | Creation skill copied into the generated project | Missing from `export.skills.exclude` | Exclude it, and say so |
 | 11 | MCP where a CLI already solves it | `gh`/`psql`/`aws`/etc. already installed | Create nothing + `permissions.allow` (§ 2.1) |
 | 12 | Literal secret in `.mcp.json` | A token, key, or password spelled out in `headers`/`env` | `${VAR}`, `${VAR:-default}`, `oauth`, or `headersHelper` — invariant 11 |
 | 13 | MCP server with no observed use | No symptom in interview axis 1; its name still costs context at every startup | Create nothing |
@@ -270,7 +271,7 @@ nearest integer and show what cost points.
 | 4 | **Enforcement** | Relies on persuasion where a guarantee was available |
 | 5 | **Maintenance cost** | Adds pieces or indirection without proportional gain |
 | 6 | **Precedent in the repo** | No similar form already in use; novel design |
-| 7 | **Complete propagation** | Doesn't close routing, `00-index`, steps 6.6/6.7/7.5, or the § 9 decision record |
+| 7 | **Complete propagation** | Doesn't close routing, `00-index`, the `export` manifest, or the § 9 decision record |
 | 8 | **Trust surface** | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 | 9 | **Cost of always running** | Frequency of the event × cost per firing, and whether `if`/`matcher` narrows before a process is spawned. A `PostToolUse` hook with no filter pays a JVM startup on every edit in the repo; a `SessionStart` hook pays once. Also loses a point when the hook blocks (exit `2`) on a judgment call that will sometimes be wrong — the cost there isn't milliseconds, it's a person stuck |
 

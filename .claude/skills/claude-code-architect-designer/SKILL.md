@@ -94,7 +94,7 @@ below eliminates candidate forms, and an unanswered axis leaves the decision gue
 | 5 | Nature — declarative fact or sequence of steps | Forms 4/5 vs 1/2/3 |
 | 6 | Isolation — verbose output, tools to restrict, different model | Form 3, and only it |
 | 7 | Mandatoriness — can it fail sometimes, or is it build/security/compliance | Forms 7 · 8 vs everything above |
-| 8 | Destination — this repo only, also the generated project, or both | Steps 6.6/6.7/7 of `project-bootstrap` |
+| 8 | Destination — this repo only, also the generated project, or both | The `export` block of `@.claude/schemas/extensions.json` |
 | 9 | Integration — what it reads, what it writes, which existing piece it collides with | Ownership conflict |
 | 10 | Cost of getting it wrong | minutes or days | Weight in the score |
 | 11 | Does a CLI already solve it (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | Eliminates Form 6 before it's even considered — decision matrix § 2.1 |
@@ -116,7 +116,7 @@ allowed to fail. Skip them otherwise — everything above the line in § 1 of th
 matrix is persuasion, and asking which lifecycle event a skill fires on is a category
 error. Axis 8 (destination) covers Form 7 unchanged: the generated project's hooks live
 in `project-bootstrap/templates/settings.json.example`, and a mode in `ArchHook.java`
-travels there on its own, since step 7 of `project-bootstrap` copies the whole file.
+travels there on its own, since the `export` mode copies the whole file.
 
 ### Phase 2 · Classify
 
@@ -257,22 +257,22 @@ the same interview again.
    | You created | Also update |
    |---|---|
    | Skill | `@CLAUDE.md` routing table |
-   | Development skill (valid inside the generated project) | Table in step 6.7 of `project-bootstrap/SKILL.md` and the `## Skill contract` list |
-   | Rule | `@.claude/rules/00-index.md` (written-rules table; remove from planned) **and** the table in step 6.6 of `project-bootstrap/SKILL.md` |
+   | Development skill (valid inside the generated project) | `export.skills.include` in `@.claude/schemas/extensions.json` — `ArchHook.java schema` fails on a skill listed in neither `include` nor `exclude` |
+   | Rule | `@.claude/rules/00-index.md` (written-rules table; remove from planned). Every rule travels by default; a rule with a package territory also needs an `export.derived_paths` entry, and `schema` fails without it |
    | Agent | `@CLAUDE.md` routing table, if it's invocable by name |
    | `CLAUDE.md` section | Nothing else — but confirm the total stays under ~200 lines |
    | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
-   | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example`, its own companion setup doc, and the copy table in step 7.5 of `project-bootstrap/SKILL.md` |
+   | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example` and its own companion setup doc — both already named in `export.optional_copy`, so nothing else to wire |
    | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, if the hook blocks something a reader would otherwise call a bug |
-   | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: step 7 of `project-bootstrap` copies `ArchHook.java` and `schemas/extensions.json` whole |
+   | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java` and `schemas/extensions.json` whole |
    | Hook mode (Form 7c) | The mode table in `@CLAUDE.md` § Commands, and the `doctor` report if the mode has state worth reporting |
    | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into `@CLAUDE.md` § Known pitfalls — a tool that silently refuses reads as a broken tool |
 
-   A creation skill (only useful before the project exists) stays **outside** step 6.7,
+   A creation skill (only useful before the project exists) goes in `export.skills.exclude`,
    like `project-bootstrap` and `init-project`. State this explicitly in the report.
 
    **Delegation, and only in this case.** If axis 8 or axis 13 answered "both,"
-   propagation grows — steps 6.6/6.7/7/7.5 of `project-bootstrap`, plus its `templates/`.
+   propagation grows — the `export` block plus `project-bootstrap`'s `templates/`.
    There, delegate **this step 8 and no other** to the generic agent with `model:
    sonnet`, passing the path of the Phase 3.5 record and the exact list of files to
    touch. These are mechanical table edits with a destination fixed in writing. Without a
@@ -321,7 +321,7 @@ makes, and this skill only writes it when asked outright.
 
 **A second hook file.** Form 7c is a mode inside `ArchHook.java`, never
 `.claude/hooks/<Other>.java`. Enforcement stays in one executable that the generated
-project receives whole in step 7 of `project-bootstrap`; a second file would have to be
+project receives whole from the `export` mode; a second file would have to be
 copied, registered, and kept in sync separately, and the first one to fall out of sync
 fails silently.
 

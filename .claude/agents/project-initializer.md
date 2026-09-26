@@ -41,8 +41,8 @@ field is obtained through the interview.
 
 - `.claude/skills/project-bootstrap/SKILL.md` (the procedure)
 - `.claude/blueprints/` (dynamic list, never fixed)
-- `.claude/rules/*.md` — all of them: steps 6.6 and 6.7 copy them into the project, and
-  a partial copy isn't the norm
+- `.claude/rules/*.md` — all of them: step 6.6 writes them into the project, and a
+  partial copy isn't the norm
 
 **Output** — report block in the format from
 `.claude/skills/project-bootstrap/SKILL.md` § Output contract. No extra prose.

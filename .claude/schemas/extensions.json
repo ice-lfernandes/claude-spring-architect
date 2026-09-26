@@ -126,6 +126,167 @@
     "frozen_statuses": ["approved", "implemented"]
   },
 
+  "source": {
+    "$comment": "Where a project pulls this `.claude/` from, and how. Read by `arch-adopt` and by the `export` mode's stamp; validated by `schema`. Deliberately a sibling of `export` and not a field inside it: the exported copy drops the `export` block (its lists describe THIS repository) and keeps this one, which is what lets a project update itself without the plugin. An indirection on purpose — moving from GitHub to a licensing endpoint changes `base_url` and `auth_env`, never the code path that consumes them. `{ref}` is substituted with the resolved ref; `git_url` is what resolves `latest-tag`, through `git ls-remote --tags`, with no API client and no JSON to parse. `auth_env` names an environment variable and never carries its value — invariant 11, the same rule .mcp.json obeys; the header is sent only when the variable is set, so a public repository needs no credential. `--source <local path>` bypasses this block entirely, which is how an unreleased change is tested.",
+    "base_url": "https://codeload.github.com/ice-lfernandes/claude-spring-architect/tar.gz/{ref}",
+    "git_url": "https://github.com/ice-lfernandes/claude-spring-architect.git",
+    "auth_env": "GH_TOKEN",
+    "auth_header": "Authorization: Bearer",
+    "default_ref": "latest-tag",
+    "stamp_file": ".claude/.arch-provenance.json"
+  },
+
+  "export": {
+    "$comment": "Single owner of WHAT the `export` mode writes into a target project and HOW each piece is transformed. Read by ArchHook.java `export`; cross-checked by `schema` at sweep time, the same way `guard.executor_agents` is. The failure it exists to close is silent in both directions: a skill added to this repo and forgotten here never reaches any project generated afterwards, and an entry left behind after a rename points at a file that no longer exists — neither breaks anything at generation time, only for whoever reads the dead citation inside the project. That is why `include` and `exclude` together must cover every skill and every agent on disk: not listing one is the bug, and `schema` says so by name. Prose counterpart, which branch `feat/bootstrap-invokes-export` replaces with a call to the mode: project-bootstrap/SKILL.md §§ 6.6, 6.7, 6.8, 7. Design: .claude/decisions/0054-deterministic-export-provenance-plugin.md",
+
+    "copy": [
+      { "from": ".claude/hooks/ArchHook.java", "to": ".claude/hooks/ArchHook.java" },
+      { "from": ".claude/schemas/extensions.json", "to": ".claude/schemas/extensions.json" },
+      { "from": ".claude/skills/project-bootstrap/templates/audit-pricing.json.example", "to": ".claude/audit-usage/pricing.json" }
+    ],
+
+    "overwrite": [
+      { "$comment": "Not a merge, on purpose: re-serializing the file would reorder its keys and drop its comments, and a real three-way merge is a program nobody asked for. The export refuses a dirty worktree, so the destination's previous content is one `git diff` away and one `git checkout` from coming back. A project that added hook entries of its own loses them here and sees exactly that in the diff.", "from": ".claude/skills/project-bootstrap/templates/settings.json.example", "to": ".claude/settings.json" }
+    ],
+
+    "optional_copy": [
+      { "from": ".claude/skills/project-bootstrap/templates/mcp.json.example", "to": ".mcp.json" },
+      { "from": ".claude/skills/project-bootstrap/templates/mcp-setup.md.example", "to": "MCP-SETUP.md" }
+    ],
+
+    "$comment_marker": "The cross-check `schema` runs over this block only makes sense in the repository the block describes. `source_marker` is how the mode tells: a directory that exists here and travels nowhere. Without it the check fires in a throwaway tree that merely copied extensions.json — the CI injection sandbox is one — and reports every rule and skill as missing when what is actually missing is the repository.",
+    "source_marker": ".claude/blueprints",
+
+    "ensure_dirs": [".claude/audit-usage"],
+    "gitignore_lines": [".claude/audit-usage/.state/"],
+
+    "rules": {
+      "$comment": "Every rule travels; `exclude` is empty on purpose and an entry added to it needs a reason in the commit. `00-index.md` is listed in `body_transforms.rewrite` because its paragraph about architecture_paths cites blueprints/, which the project does not have.",
+      "from": ".claude/rules",
+      "to": ".claude/rules",
+      "exclude": []
+    },
+
+    "skills": {
+      "$comment": "`keep` is what travels out of each skill directory, and it is a keep-list rather than an exclude-list so that a new subdirectory here (use-case-design/examples/ was the first) stays out by default instead of leaking into every project. `exclude` holds the creation skills: they only serve before the project exists, and inside one they invite the model to regenerate on top of live code.",
+      "from": ".claude/skills",
+      "to": ".claude/skills",
+      "keep": ["SKILL.md", "templates", "references"],
+      "include": [
+        "arch-adopt",
+        "arch-doctor",
+        "audit-usage",
+        "docker-architect",
+        "domain-modeling",
+        "git-publish",
+        "java-patterns",
+        "messaging-architect",
+        "new-feature",
+        "persistence-architect",
+        "rest-api-architect",
+        "test-architect",
+        "use-case-design"
+      ],
+      "exclude": ["claude-code-architect-designer", "init-project", "project-bootstrap"]
+    },
+
+    "agents": {
+      "from": ".claude/agents",
+      "to": ".claude/agents",
+      "include": ["archunit-installer", "commons-logging-installer", "java-spring-boot-developer"],
+      "exclude": ["project-initializer"]
+    },
+
+    "derived_paths": {
+      "$comment_exempt": "Globs that are valid in any architecture and so need no derivation: they name no package. A rule whose `paths` holds only these is not expected here; one that names a package and is missing from this map would travel with the glob of whichever blueprint happened to be written into the file — gap 8 of lessons-learned-001. `schema` checks both directions.",
+      "derived_paths_exempt_globs": ["**/*.java", "**/src/test/**", "**/db/migration/**"],
+      "$comment": "A rule with a territory auto-loads by `paths`, and a glob naming a package the active blueprint does not use leaves it silently unloaded. The glob is therefore derived from the blueprint's packages.map — the VALUE, not the key, with `.` becoming `/` — and never copied from the original file. `suffix` selects the packages.map entry whose key ends with it; `key` names candidates in order of preference, first hit wins. A selector that matches nothing and is `optional` copies the rule WITHOUT `paths` (still citable); one that matches nothing and is not optional is a failure of the export, not of the project. No defensive union: this blueprint's glob and no other.",
+      "api-rest.md": {
+        "suffix": [".rest"],
+        "glob": "**/{}/**",
+        "fallback_architecture_paths_containing": ["features", "slice"]
+      },
+      "persistence.md": {
+        "suffix": [".persistence"],
+        "glob": "**/{}/**",
+        "fallback_architecture_paths_containing": ["features", "slice"],
+        "extra": ["**/db/migration/**"]
+      },
+      "value-objects.md": { "key": ["domain.model", "domain"], "glob": "**/{}/**/*.java" },
+      "observability.md": { "suffix": [".rest", ".config"], "glob": "**/{}/**" },
+      "messaging.md": { "suffix": [".messaging"], "glob": "**/{}/**", "optional": true },
+      "architecture-ddd.md": { "from_blueprint": "architecture_paths" }
+    },
+
+    "blueprint": {
+      "$comment": "Where the mode reads the architecture from, and how. `vocabulary_anchor_key` names the top-level YAML key the naming-convention comment block sits immediately above — the block is a comment in every blueprint written so far, so it is located by position rather than by a marker, and the position is data because a blueprint that moves it would otherwise need Java changed. Invariant 7: adding an architecture edits no code.",
+      "path": ".claude/blueprints/{id}/{id}.yaml",
+      "packages_map_path": ["packages", "map"],
+      "architecture_paths_key": "architecture_paths",
+      "vocabulary_anchor_key": "dependency_rules"
+    },
+
+    "body_transforms": {
+      "$comment": "Applied to every copied text file. A citation to decisions/ has no counterpart inside a project, so it is cut, not rewritten: a sentence that exists only to cite the record goes whole (that is what `sentence_lead_ins` recognizes), and a citation inside a sentence that says something else loses only the citing clause. Whatever survives both is reported by `residue_markers` at the end of the run — a dead path that ships in silence is the failure this whole block exists against, and the report is what makes it not silent.",
+      "citation_pattern": "`?@?\\.claude/decisions/[0-9]{4}-[^`\\s)]+\\.md`?",
+      "cut_shapes": [
+        "\\s*\\((?:see\\s+|cf\\.\\s+|ver\\s+)?{cite}\\)",
+        "(?m)^[ \\t]*[-*][ \\t]*{cite}[^\\n]*\\n"
+      ],
+      "sentence_lead_ins": [
+        "Full record", "Decision recorded", "Decision", "Record", "Rationale and design",
+        "Design", "Registro", "Decisão registrada", "Desenho"
+      ],
+      "clause_pattern": ",?\\s*(?:in|em|see|ver|cf\\.)?\\s*",
+      "residue_markers": [".claude/decisions/", ".claude/blueprints/"],
+      "$comment_exempt": "Two files name these directories on purpose and are not dead paths. `ArchHook.java`'s `export` mode prints them in its own usage and errors, and that mode refuses to run inside a project anyway (no `export` block there). `arch-adopt` talks about the tree it FETCHES, under /tmp, where blueprints/ does exist — cutting those sentences would delete the instructions instead of a citation.",
+      "residue_exempt": [".claude/hooks/ArchHook.java", ".claude/skills/arch-adopt/SKILL.md"],
+      "replace": [
+        {
+          "find": "the active blueprint's `packages.map`",
+          "with": "the project's packages, documented in the root `CLAUDE.md` and the module `CLAUDE.md` files"
+        },
+        {
+          "$comment": "Wrapped across three lines in the source, so the `find` carries the line breaks and the list indentation with it. Brittle by nature — which is what `residue_markers` is for: change the sentence upstream and the export reports the dead path instead of shipping it.",
+          "find": "the active blueprint's own\n   `packages.map` and its naming-convention comment (`.claude/blueprints/<id>/<id>.yaml`)\n   — read the comment, not just the map,",
+          "with": "the project's own packages\n   and vocabulary, in the root `CLAUDE.md`, the module `CLAUDE.md` files, and\n   `.claude/rules/naming.md` § Architecture vocabulary — read the vocabulary, not just\n   the package table,"
+        }
+      ],
+      "rewrite": [
+        {
+          "file": ".claude/rules/naming.md",
+          "op": "replace_paragraph",
+          "anchor": "belong to the active blueprint's naming convention",
+          "replacement": "The names of the use case, its ports, and their implementations change with the\narchitecture. They belong to this project's own naming convention, fixed at generation\ntime from blueprint\n`{blueprint}`, not to the table above. Where the two disagree, the convention below\nwins."
+        },
+        {
+          "file": ".claude/rules/naming.md",
+          "op": "blueprint_vocabulary",
+          "anchor_start": "<!-- Written at generation time:",
+          "anchor_end": "-->"
+        },
+        {
+          "$comment": "The exported copy keeps no `export` block: its include/exclude lists describe THIS repository's directories, and inside a project `schema` would report the creation skills it excludes as stale entries. Nothing is lost — `arch-adopt` reads the manifest from the copy it fetches, never from the project it is writing into.",
+          "file": ".claude/schemas/extensions.json",
+          "op": "drop_block",
+          "block": "export"
+        },
+        {
+          "file": ".claude/rules/00-index.md",
+          "op": "replace_paragraph",
+          "anchor": "`architecture-ddd.md` is the only one without its own `paths`",
+          "replacement": "`architecture-ddd.md` carries the `paths` fixed at generation time from blueprint\n`{blueprint}`. Changing it by hand disables the auto-loading of that rule."
+        },
+        {
+          "file": ".claude/rules/00-index.md",
+          "op": "replace_paragraph",
+          "anchor": "The rules whose territory is a package",
+          "replacement": "The rules whose territory is a package — `api-rest.md`, `persistence.md`,\n`value-objects.md`, `observability.md`, `messaging.md` — had their `paths` written at\ngeneration time from blueprint `{blueprint}`, and they name this project's packages.\nA glob edited by hand to a package that does not exist leaves the rule unloaded, in\nsilence."
+        }
+      ]
+    }
+  },
+
   "mcp": {
     "$comment": "Validated by ArchHook.java schema, same as `types` above. Design: .claude/decisions/0033-mcp-in-architect-designer.md",
     "match": [

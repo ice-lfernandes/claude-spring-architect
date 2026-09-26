@@ -92,8 +92,8 @@ body:
       description: |
         A cloned generated project does not have this repository. If the new norm, skill,
         hook or MCP server must exist inside generated projects, say which copy step in
-        `project-bootstrap` has to be updated (step 6.6 norms, 6.7 skills, 7 hook and
-        schemas, 7.5 `mcp.json.example`).
+        the `export` block of `.claude/schemas/extensions.json` has to list it — that
+        block is what step 6.6 of `project-bootstrap` writes a project's `.claude/` from.
       placeholder: "No — it only serves before the project exists. / Yes — step 6.6 must copy it."
     validations:
       required: true

@@ -511,7 +511,7 @@ See `templates/feature-spec.md.example` for the full shape.
 
 ## Entry into generated projects
 
-Step 6.7 copies skills. `/new-feature` travels the same way — the user runs
+Step 6.6 writes the skills into the project. `/new-feature` travels the same way — the user runs
 `/new-feature <feature description>` to design a new feature.
 
 No adaptation needed — skills already use relative paths.

@@ -1,9 +1,10 @@
 name: validate
 
-# Proves the three claims this template makes about itself:
+# Proves the four claims this template makes about itself:
 #   1. the hooks run on Linux, macOS and Windows (decision D8)
 #   2. each norm has a single owning file
 #   3. adding a blueprint doesn't require touching skills, agents or commands
+#   4. the transformation into a project's `.claude/` is reproducible (decision D54)
 on:
   push: { branches: [main] }
   pull_request:
@@ -268,73 +269,112 @@ jobs:
           [ "$FAIL" -eq 0 ] && echo "✅ Every rule glob has a matching package in a blueprint."
           exit $FAIL
 
-      # The previous check proves the glob names a package that exists somewhere. It doesn't prove
-      # it exists in THIS blueprint — and that was the failure: `api-rest.md` named the hexagonal
-      # blueprint's package and the other two blueprints were left without the norm. The guarantee is step 6.6
-      # rewriting `paths` at generation time, and this check is what requires the norm to be there.
-      - name: norm with territory is in the bootstrap's derivation table
+      # Two checks used to live here, grepping the copy tables that steps 6.6/6.7/6.8 of
+      # `project-bootstrap` carried in prose: that a rule with a territory appears in the
+      # derivation table, and that every rule, skill and agent has a row in the copy
+      # list. Those tables are gone — the `export` block of `.claude/schemas/extensions.json`
+      # is the single owner now (D54) — and both checks moved into `ArchHook.java schema`,
+      # which the step above runs: `include`/`exclude` must cover every skill and agent on
+      # disk, and a rule whose `paths` names a package must have an entry in
+      # `derived_paths`. Same guarantee, one owner, and it also fires locally on every
+      # edit under .claude/ instead of only in CI.
+
+  export-determinism:
+    name: export is reproducible and self-contained
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    # The `export` mode is the single implementation of what used to be prose in steps
+    # 6.6/6.7/6.8/7 of `project-bootstrap`, and from stage 2 of D54 it runs on other
+    # people's machines, pulled by `arch-adopt`. Two properties have to hold there and
+    # cannot be checked by reading the diff of a PR: the same input produces the same
+    # tree, and the tree carries nothing that only exists in this repository. No example
+    # project is versioned to diff against — a checked-in tree would only prove that the
+    # tree matches itself, and the sibling demo repository measures accumulated drift,
+    # not correctness (D54 § Stages).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Every blueprint, not just one: the `paths` derivation reads `packages.map`, and a
+      # package name that only one architecture has is exactly how a rule ends up with a
+      # dead glob — gap 8 of lessons-learned-001, in its new home.
+      - name: export twice per blueprint, require identical trees
         run: |
           FAIL=0
-          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
-          for norma in .claude/rules/*.md; do
-            GLOBS=$(awk '/^paths:/{f=1;next}
-                         f&&/^  - /{s=$0; gsub(/[" -]/,"",s); print s; next}
-                         f{exit}' "$norma")
-            [ -z "$GLOBS" ] && continue
-            TERRITORY=0
-            for glob in $GLOBS; do
-              case "$glob" in
-                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
-              esac
-              TERRITORY=1
+          for bp in .claude/blueprints/*/; do
+            id=$(basename "$bp")
+            [ -f "$bp/$id.yaml" ] || continue
+            for n in 1 2; do
+              java .claude/hooks/ArchHook.java export "/tmp/exp-$id-$n" --blueprint "$id" \
+                > "/tmp/log-$id-$n.txt" 2>&1 || {
+                  echo "❌ export failed for blueprint '$id':"; cat "/tmp/log-$id-$n.txt"; FAIL=1; continue; }
             done
-            [ "$TERRITORY" -eq 0 ] && continue
-            NAME=$(basename "$norma")
-            if ! grep -q "\`$NAME\` | derived \`paths:\`" "$BOOTSTRAP"; then
-              echo "❌ $NAME has a glob by package and is not in the derivation table of"
-              echo "   step 6.6. The generated project takes this file's glob as-is,"
-              echo "   and the rule doesn't load in blueprints with a different package name."
+            # The provenance stamp carries `exported_at`: it is the one file that is not
+            # reproducible, by design, and every comparison excludes it.
+            if ! diff -r -x '.arch-provenance.json' "/tmp/exp-$id-1" "/tmp/exp-$id-2" > /tmp/d.txt; then
+              echo "❌ blueprint '$id': two exports differ — the transformation is not deterministic."
+              head -40 /tmp/d.txt; FAIL=1
+            fi
+            # A citation to decisions/ or blueprints/ that survived the transform is a
+            # dead path inside every project exported afterwards. The mode reports it and
+            # still writes; here it is a failure.
+            if grep -q "dead citation" "/tmp/log-$id-1.txt"; then
+              echo "❌ blueprint '$id': the export reports a surviving dead citation."
+              grep -A6 "dead citation" "/tmp/log-$id-1.txt"; FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every blueprint exports the same tree twice, with no dead citation."
+          exit $FAIL
+
+      # Invariant 9, from the other side: the check above proves the copy lists cover the
+      # disk, this one proves nothing travelled that shouldn't.
+      - name: the exported tree carries nothing that only exists here
+        run: |
+          OUT=/tmp/exp-clean-architecture-single-module-1
+          FAIL=0
+          for forbidden in \
+            .claude/decisions .claude/blueprints \
+            .claude/skills/project-bootstrap .claude/skills/init-project \
+            .claude/skills/claude-code-architect-designer \
+            .claude/skills/use-case-design/examples \
+            .claude/agents/project-initializer.md; do
+            if [ -e "$OUT/$forbidden" ]; then
+              echo "❌ $forbidden reached the exported tree — it only serves this repository."
               FAIL=1
             fi
           done
-          [ "$FAIL" -eq 0 ] && echo "✅ Every rule with territory is derived at generation."
+          for required in \
+            .claude/rules/00-index.md .claude/hooks/ArchHook.java \
+            .claude/schemas/extensions.json .claude/settings.json \
+            .claude/.arch-provenance.json; do
+            if [ ! -f "$OUT/$required" ]; then
+              echo "❌ $required is missing from the exported tree."
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ The exported tree is what a project needs, and only that."
           exit $FAIL
 
-      # Invariant 9: the generated project is self-contained, and §§ 6.6/6.7/6.8 of
-      # project-bootstrap ARE the copy lists that make it so. Nothing verified that those
-      # lists still cover the disk. CLAUDE.md states the failure mode itself — "a new norm
-      # or skill here is only complete once the step that copies it has also been updated"
-      # — and it is silent: a rule absent from § 6.6 breaks nothing at generation time,
-      # only for whoever clones the project later and follows a citation to a file that
-      # was never copied. Same class as the derivation-table check above.
-      - name: every rule, skill and agent has a row in the bootstrap copy list (invariant 9)
+      # The exported `extensions.json` is what the project's own hook reads. If it no
+      # longer validates, enforcement inside the generated project is off from day one —
+      # and `schema` switches itself off with a warning rather than failing, so the exit
+      # code alone would not say.
+      - name: the exported tree passes its own schema
         run: |
-          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
-          FAIL=0
-          # `grep -F`, not a regex: the ✅/❌ marker is multibyte and a bracket expression
-          # over it depends on the runner's locale. A literal alternative does not.
-          for f in .claude/rules/*.md; do
-            n=$(basename "$f")
-            grep -qF "\`$n\` |" "$BOOTSTRAP" || {
-              echo "❌ rule '$n' has no row in § 6.6 — the generated project won't carry it,"
-              echo "   and every citation of it from inside the project is a dead path."
-              FAIL=1; }
-          done
-          for d in .claude/skills/*/; do
-            n=$(basename "$d")
-            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
-              echo "❌ skill '$n' has no row in § 6.7 — decide ✅ (travels to the project)"
-              echo "   or ❌ (stays here), with the one-line reason the table asks for."
-              FAIL=1; }
-          done
-          for f in .claude/agents/*.md; do
-            n=$(basename "$f" .md)
-            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
-              echo "❌ agent '$n' has no row in § 6.8 — decide ✅ or ❌."
-              FAIL=1; }
-          done
-          [ "$FAIL" -eq 0 ] && echo "✅ §§ 6.6/6.7/6.8 cover every rule, skill and agent."
-          exit $FAIL
+          OUT=/tmp/exp-clean-architecture-single-module-1
+          cd "$OUT"
+          CLAUDE_PROJECT_DIR="$OUT" java .claude/hooks/ArchHook.java schema
+          CLAUDE_PROJECT_DIR="$OUT" java .claude/hooks/ArchHook.java doctor 2>&1 | tee /tmp/doc.txt
+          grep -q "Schema ............ ✅" /tmp/doc.txt || {
+            echo "❌ The exported tree's schema validation is not on."; exit 1; }
+          echo "✅ The exported tree validates itself."
 
   exemplar-imports:
     name: exemplar imports resolve against the real classpath

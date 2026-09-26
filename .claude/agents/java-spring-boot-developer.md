@@ -538,7 +538,7 @@ Or manual invocation (advanced):
 - **Invariant 2** — Single owner: executor owns `src/**`
 - **Invariant 6** — Agent only for 3 reasons (context, tools, model) — all 3 apply
 - **Invariant 8** — Specs via skills; code via **executor**
-- **Invariant 9** — Generated project is self-contained (agent copied by step 6.8)
+- **Invariant 9** — Generated project is self-contained (agent copied by step 6.6)
 - **Testing norm** (`@.claude/rules/testing.md`) — 80/70 JaCoCo gate
 - **Architecture norm** (`@.claude/rules/architecture-ddd.md`) — clean arch, DDD invariants
 - **Messaging norm** (`@.claude/rules/messaging.md`) — topic naming, idempotent consumer,
