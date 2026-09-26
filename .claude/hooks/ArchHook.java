@@ -274,6 +274,8 @@ public class ArchHook {
             err("  Hooks .............. no .claude/settings.json — no hook registered");
         }
 
+        provenance();
+
         ComposeReport comp = composeReport();
         report("Compose", comp.ok(), comp.summary(), comp.summary());
         for (String d : comp.detail()) err("    " + d);
@@ -286,6 +288,55 @@ public class ArchHook {
         err(rules > 0 && w != null
                 ? "✅ Setup operational."
                 : "⚠️  Setup incomplete — see marked lines above.");
+    }
+
+    /**
+     * Where this `.claude/` came from, and what has been edited since. Reads the stamp
+     * `export` writes; in the repository that produces one there is no stamp and none is
+     * expected, which is a third state and not a failure. The comparison is local: an
+     * update overwrites (D54), so the list of locally edited files is the list of what
+     * that update would discard, and it is the only thing a person can act on before
+     * running it. How far behind the source is cannot be answered without reaching the
+     * source — `arch-adopt` does that when it fetches; `doctor` does not open the
+     * network.
+     */
+    static void provenance() {
+        Path stamp = ROOT.resolve(".claude/.arch-provenance.json");
+        boolean origin = Files.isDirectory(ROOT.resolve(".claude/blueprints"))
+                && get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))), "export") != null;
+        if (!Files.isRegularFile(stamp)) {
+            err("  Provenance ........ " + (origin
+                    ? "⚪ origin repository — writes stamps, carries none"
+                    : "⚠️  no stamp — this .claude/ was not written by `export`"));
+            return;
+        }
+        Map<String, Object> s = asMap(Json.parse(readOrNull(stamp)));
+        if (s == null) {
+            report("Provenance", false, "", ".arch-provenance.json is not valid JSON");
+            return;
+        }
+        Map<String, Object> files = asMap(s.get("files"));
+        List<String> changed = new ArrayList<>();
+        int missing = 0;
+        if (files != null) {
+            for (Map.Entry<String, Object> e : files.entrySet()) {
+                String cur = readOrNull(ROOT.resolve(e.getKey()));
+                if (cur == null) { missing++; changed.add(e.getKey() + " (missing)"); }
+                else if (!sha256(cur).equals(asStr(e.getValue()))) changed.add(e.getKey());
+            }
+        }
+        int tracked = files == null ? 0 : files.size();
+        report("Provenance", changed.isEmpty(),
+                "blueprint " + orDash(asStr(s.get("blueprint"))) + " · ref "
+                        + orDash(asStr(s.get("ref"))) + " · " + orDash(asStr(s.get("exported_at")))
+                        + " · " + tracked + " file(s) unchanged since",
+                changed.size() + " of " + tracked + " exported file(s) edited locally"
+                        + (missing > 0 ? " (" + missing + " missing)" : "")
+                        + " — an update overwrites them");
+        for (String c : changed.stream().sorted().limit(8).collect(Collectors.toList())) {
+            err("    " + c);
+        }
+        if (changed.size() > 8) err("    … and " + (changed.size() - 8) + " more");
     }
 
     static void report(String label, boolean ok, String yes, String no) {
@@ -720,9 +771,10 @@ public class ArchHook {
         exportTree(exp, "skills", out);
         exportTree(exp, "agents", out);
         exportFiles(exp, bp, out, notes);
-        out.put(asStr(get(exp, "transport", "stamp_file")) == null
+        String stampFile = asStr(get(exp, "transport", "stamp_file")) == null
                 ? ".claude/.arch-provenance.json"
-                : asStr(get(exp, "transport", "stamp_file")), stamp(bp, ref));
+                : asStr(get(exp, "transport", "stamp_file"));
+        out.put(stampFile, stamp(bp, ref, out));
 
         List<String> residue = new ArrayList<>();
         List<String> exempt = asStrList(get(exp, "body_transforms", "residue_exempt"));
@@ -1074,18 +1126,30 @@ public class ArchHook {
 
     // ── export · the provenance stamp and the YAML it reads ──────────────────
 
-    static String stamp(Blueprint bp, String ref) throws Exception {
+    /**
+     * The provenance stamp. `files` is what makes it answer a question offline: an
+     * update overwrites, so before running one the person needs to know which of these
+     * files they have edited since the last export — `doctor` recomputes the digests and
+     * names them. Everything else in the stamp answers "from where, and how old".
+     */
+    static String stamp(Blueprint bp, String ref, Map<String, String> files) throws Exception {
         String commit = firstLine(run("git", "-C", ROOT.toString(), "rev-parse", "HEAD"));
         String origin = firstLine(run("git", "-C", ROOT.toString(), "config", "--get", "remote.origin.url"));
         String manifest = readOrNull(ROOT.resolve(SCHEMA_FILE));
-        return "{\n"
+        StringBuilder b = new StringBuilder("{\n"
                 + "  \"source\": \"" + jsonEscape(origin == null ? ROOT.toString() : origin) + "\",\n"
                 + "  \"ref\": \"" + jsonEscape(ref) + "\",\n"
                 + "  \"commit\": \"" + jsonEscape(commit == null ? "unknown" : commit) + "\",\n"
                 + "  \"exported_at\": \"" + Instant.now() + "\",\n"
                 + "  \"blueprint\": \"" + jsonEscape(bp.id()) + "\",\n"
-                + "  \"manifest_digest\": \"" + (manifest == null ? "unknown" : sha256(manifest)) + "\"\n"
-                + "}\n";
+                + "  \"manifest_digest\": \"" + (manifest == null ? "unknown" : sha256(manifest)) + "\",\n"
+                + "  \"files\": {\n");
+        int i = 0;
+        for (Map.Entry<String, String> e : files.entrySet()) {
+            b.append("    \"").append(jsonEscape(e.getKey())).append("\": \"")
+             .append(sha256(e.getValue())).append(++i < files.size() ? "\",\n" : "\"\n");
+        }
+        return b.append("  }\n}\n").toString();
     }
 
     static String firstLine(Proc p) {

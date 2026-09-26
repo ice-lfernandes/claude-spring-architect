@@ -702,6 +702,9 @@ What it writes, per the `export` block of `@.claude/schemas/extensions.json`:
 - **`ArchHook.java`, `schemas/extensions.json`, `settings.json`**, plus
   `.claude/audit-usage/` with its `pricing.json` and the one `.gitignore` line the trail
   needs.
+- **`.claude/.arch-provenance.json`** — where this `.claude/` came from (source, ref,
+  commit, blueprint) and a digest per written file. `arch-doctor` recomputes those
+  digests and names anything edited since, which is what a later update would overwrite.
 - **`.mcp.json` and `MCP-SETUP.md`**, only if `templates/mcp.json.example` exists here.
   Most bootstraps have nothing to copy and the mode says nothing — correct, not
   incomplete. That template is written only by `claude-code-architect-designer`, when a
@@ -967,7 +970,8 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin <v> · tool <v>, validat
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
+Provenance: .claude/.arch-provenance.json — blueprint <id>, ref <ref>, commit <short sha>. `/arch-doctor` reports anything edited since
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
