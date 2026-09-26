@@ -1,25 +1,25 @@
 {
-  "$comment": "Prices for the cost estimate in .claude/audit-usage/*.md. Values are null on purpose: ArchHook.java audit prints 'não configurado' while any of them is null, and never a confident US$ 0.00 built from a price nobody checked. Fill each field from the official pricing page, per `per` tokens, and keep the model key exactly as it appears in the transcript (the `message.model` field). Same discipline as @CLAUDE.md invariant 8: a number that changes outside this repository is never written from memory.",
+  "$comment": "Prices for the cost estimate in .claude/audit-usage/*.md. Filled from https://platform.claude.com/docs/en/about-claude/pricing on 2026-09-26 — cache_write is the 5-minute cache write rate (1.25x base input), not the 1-hour rate (2x). Re-check the official page before trusting these on a later date: same discipline as @CLAUDE.md invariant 8, a number that changes outside this repository is never written from memory.",
   "currency": "USD",
   "per": 1000000,
   "models": {
     "claude-opus-5": {
-      "input": null,
-      "output": null,
-      "cache_read": null,
-      "cache_write": null
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write": 6.25
     },
     "claude-sonnet-5": {
-      "input": null,
-      "output": null,
-      "cache_read": null,
-      "cache_write": null
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.2,
+      "cache_write": 2.5
     },
     "claude-haiku-4-5-20251001": {
-      "input": null,
-      "output": null,
-      "cache_read": null,
-      "cache_write": null
+      "input": 1,
+      "output": 5,
+      "cache_read": 0.1,
+      "cache_write": 1.25
     }
   }
 }

@@ -903,10 +903,14 @@ Three parts, and the first one is easy to forget:
    the on/off switch**: `ArchHook.java audit` returns immediately when it doesn't
    exist, so skipping this part doesn't break anything — it just means the project has
    no execution trail, and the `settings.json` entries of part 3 pay a process start
-   for nothing. `pricing.json` ships with `null` prices on purpose: the report prints
-   "não configurado" instead of a confident `US$ 0.00` built from a number nobody
-   checked — same discipline as invariant 8. Tell the user, in the final report, that
-   filling it in is what turns tokens into money.
+   for nothing. `pricing.json` ships pre-filled with the official per-model rates as of
+   the date in its own `$comment` — never from memory, always fetched from
+   `platform.claude.com/docs/en/about-claude/pricing` at the moment the template is
+   updated, same discipline as invariant 8. A model missing from the file, or a price
+   that has since changed, prints "não configurado" instead of a confident `US$ 0.00`
+   built from a number nobody checked. Tell the user, in the final report, to re-check
+   the `$comment`'s date against the official page and update `pricing.json` if it's
+   gone stale — the file doesn't self-refresh.
 5. Append `.claude/audit-usage/.state/` to the project's `.gitignore` (the one the
    Initializr delivered in step 6.5). That subdirectory is the append-only event log of
    a run **in progress**; the reports and `history.jsonl` next to it are versioned on

@@ -1813,9 +1813,11 @@ public class ArchHook {
 
     /**
      * Prices are data, never memory — the same discipline invariant 8 imposes on Java
-     * and Spring versions. pricing.json ships with null values on purpose: an unfilled
-     * price prints as "não configurado", never as a confident US$ 0.00. Any model with
-     * usage and no price makes the whole amount unknown, not a partial sum.
+     * and Spring versions. pricing.json ships pre-filled from the official pricing page
+     * as of the date in its own $comment, but a model added later, or a price that has
+     * since changed, is null until someone re-checks it: an unfilled price prints as
+     * "não configurado", never as a confident US$ 0.00. Any model with usage and no
+     * price makes the whole amount unknown, not a partial sum.
      */
     static Double auditUsd(Path dir, Usage u) {
         Map<String, Object> pr = asMap(Json.parse(readOrNull(dir.resolve("pricing.json"))));
