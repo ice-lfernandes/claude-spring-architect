@@ -144,6 +144,12 @@ decisions/                  history — nobody reads it at runtime, outside the 
   command (`ls .claude/skills`, not `find … | sed | sort`). This only affects skills
   that restrict Bash: `allowed-tools: Bash` without a filter lets the whole pipeline
   through.
+- **A frontmatter `` !`…` `` injection runs in the session's persistent shell, at whatever
+  cwd it currently holds.** `cd` into a skill directory in one `Bash` call contaminates
+  every injection of every skill invoked afterward, and a relative `test -f` then reports
+  a file as absent while it exists. Read a template with `Read` at an absolute path, never
+  `cd` + `cat`. Every injection in this repo resolves paths from
+  `"${CLAUDE_PROJECT_DIR:-.}"` for the same reason — keep new ones that way.
 - **The `audit` mode is off in this repository, on purpose.** It switches itself on by
   the presence of `.claude/audit-usage/`, and this meta-repo doesn't create the
   directory: the trail is a feature of the *generated* project, wired in
