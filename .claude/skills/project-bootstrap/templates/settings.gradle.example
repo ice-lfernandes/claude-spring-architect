@@ -1,0 +1,24 @@
+// EXEMPLAR — settings.gradle of a hexagonal multi-module project (Gradle, Groovy DSL).
+// Compilable as-is once the module list matches the blueprint. DO NOT invent module
+// names: mirror `modules[]` from the active blueprint, same discipline as
+// pom.parent.xml.example's <modules> block.
+//
+// Gradle has no per-module POM to declare the graph in — this file is the one place the
+// module list lives. A colon path (`adapters:adapter-in-rest`) maps to the folder
+// `adapters/adapter-in-rest` automatically; no `project(':...').projectDir` override
+// needed as long as the folder structure matches.
+//
+// Unlike the Maven <modules> block, declaration order here carries no meaning — Gradle
+// resolves the build graph from each module's own `project(':...')` dependency
+// declarations in its build.gradle, not from this list's order.
+rootProject.name = 'minha-api'
+
+include 'domain'
+include 'application'
+include 'adapters:adapter-in-rest'
+include 'adapters:adapter-out-persistence'
+include 'bootstrap'
+
+// layout: single-module never gets this file beyond the `rootProject.name` line above —
+// there is nothing to include, the Initializr's own build.gradle already is the whole
+// project. Don't add an `include` block in that case.

@@ -16,7 +16,7 @@ Used in step 3 to build the `-d dependencies=` parameter.
 | `validation` | `validation` | **Mandatory whenever `rest` is active.** `api-rest.md` § Errors requires bean validation on the DTO, and without this dependency `@NotBlank`/`@Email`/`@Size` don't compile and the controller's `@Valid` has no processor. Not optional: it's a direct consequence of a rule the same blueprint installs |
 | `observability` | — | Doesn't exist in the Initializr; add `io.micrometer:micrometer-tracing-bridge-otel`, `io.opentelemetry:opentelemetry-exporter-otlp`, **and** the Boot glue that registers the `Tracer` bean — on Spring Boot 4, `org.springframework.boot:spring-boot-starter-opentelemetry` (verified on `4.1.1`; version managed by the parent). The bridge and the exporter alone register no bean. On Boot 3 the bean came from `actuator`'s auto-configuration; for any other line, confirm the artifactId against the resolved BOM, never from memory. Without this feature there's no `Tracer` bean, and an error handler that injects it prevents the context from starting — `.claude/rules/observability.md` § Correlation then requires generating the identifier locally and saying so in a comment |
 | `uuid-v7` | — | Doesn't exist in the Initializr; add `com.fasterxml.uuid:java-uuid-generator`. Required whenever `persistence-jpa` is active and the primary key is `UUID`: `persistence.md` § Identity and keys requires v7, and JDK 21's `java.util.UUID.randomUUID()` generates v4. See the JDK 25 note below |
-| `spring-modulith` | `modulith` | `modular-monolith` blueprint only. Adds `spring-modulith-starter-core` (compile). Also add by hand, same BOM: `spring-modulith-starter-test` (test scope, not in the Initializr catalog) — needed for `ApplicationModules`/`@ApplicationModuleTest`. Import `spring-modulith-bom` in `<dependencyManagement>` with `<scope>import</scope>`, version from `boms.spring-modulith.version` in the same `curl` response, never from memory — it moves independently of Spring Boot's own version |
+| `spring-modulith` | `modulith` | `modular-monolith` blueprint only. Adds `spring-modulith-starter-core` (compile). Also add by hand, same BOM: `spring-modulith-starter-test` (test scope, not in the Initializr catalog) — needed for `ApplicationModules`/`@ApplicationModuleTest`. Import `spring-modulith-bom`, version from `boms.spring-modulith.version` in the same `curl` response, never from memory — it moves independently of Spring Boot's own version. Maven: `<dependencyManagement>` with `<scope>import</scope>`. Gradle: `dependencyManagement { imports { mavenBom "org.springframework.modulith:spring-modulith-bom:<version>" } }`, same block as the `spring-boot-dependencies` import in `templates/build.gradle.parent.example` |
 
 **`commons` logging/masking isn't a `features:` key** — every blueprint carries the
 empty package unconditionally (step 4.7), same as `domain`. Its dependencies
@@ -29,7 +29,8 @@ No `<version>` on either: `spring-boot-starter-parent` manages both.
 ## Warning — Spring Boot 4 renamed starters
 
 The Initializr `id` above **doesn't change** between Boot versions, but the
-`artifactId` recorded in `pom.xml` does. Confirmed in Boot 4 for this template:
+`artifactId` recorded in `pom.xml`/`build.gradle` does. Confirmed in Boot 4 for this
+template:
 
 - `spring-boot-starter-web` → **`spring-boot-starter-webmvc`**
 - `spring-boot-starter-aop` → **`spring-boot-starter-aspectj`** — the old artifactId
@@ -52,8 +53,8 @@ The Initializr `id` above **doesn't change** between Boot versions, but the
   and let the Initializr choose the current GA.
 
 **Practical rule:** after `curl`-ing the Initializr, trust the `artifactId` that came
-back in the generated `pom.xml`, never the name you have from memory — it may have
-changed again.
+back in the generated `pom.xml`/`build.gradle`, never the name you have from memory — it
+may have changed again.
 
 ## Warning — `uuid-v7` closes itself out when the target LTS moves up
 
@@ -66,14 +67,14 @@ bits is infrastructure code that needs auditing, a bug in it doesn't break any t
 `MagicNumber` forces naming around ten constants just for the file to pass the
 `validate` phase.
 
-## Warning — after the `curl`, confirm what ended up in `pom.xml`
+## Warning — after the `curl`, confirm what ended up in `pom.xml`/`build.gradle`
 
 Three of the features above have no `id` in the Initializr (`openapi`, `observability`,
 `uuid-v7`) and one has one but tends to be missing by default (`validation`). After
-step 3, confirm each one with `./mvnw dependency:tree` before moving on. A missing
-dependency only shows up on the first real feature, when it's already the executor
-discovering it — and resolving that in the middle of a use case is making an
-infrastructure decision in the wrong place.
+step 3, confirm each one with `./mvnw dependency:tree` (Maven) or `./gradlew
+dependencies` (Gradle) before moving on. A missing dependency only shows up on the
+first real feature, when it's already the executor discovering it — and resolving that
+in the middle of a use case is making an infrastructure decision in the wrong place.
 
 ## Which module each one goes into
 

@@ -1,4 +1,5 @@
-# EXEMPLAR — goes to <project>/lombok.config (root, next to the root pom.xml).
+# EXEMPLAR — goes to <project>/lombok.config (root, next to the root pom.xml or
+# build.gradle — same file regardless of build tool, Lombok doesn't distinguish them).
 #
 # This file is the mechanical half of .claude/rules/lombok.md. The rule's prohibitions
 # are enforced here by the compiler, with file and line, instead of by review.
