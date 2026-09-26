@@ -701,6 +701,7 @@ public class ArchHook {
 
         if (file == null) {
             checkExecutorAgents(sch, errors);
+            checkExportManifest(sch, errors);
         }
 
         if (!errors.isEmpty()) {
@@ -757,6 +758,143 @@ public class ArchHook {
                         + ".md claims `**Executor:** yes` — missing from guard.executor_agents");
             }
         }
+    }
+
+    /**
+     * Cross-checks the `export` manifest against what is actually on disk. The mode that
+     * reads the manifest writes a project's whole `.claude/`, so an entry naming a file
+     * this repo no longer has produces a dead citation inside every project exported
+     * afterwards, and a skill or agent listed in neither `include` nor `exclude` simply
+     * never travels — both silent, which is why they are checked here and not left to
+     * review. Runs only at sweep time (Stop, or a manual `schema`): it walks three
+     * directories, and paying that on every Edit would buy nothing.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, motivated by axis 7 — the export
+     * runs unattended on other people's machines, so its input cannot be trusted to a
+     * reviewer's memory. The closest rejected form was a line in a rule: prose that had
+     * already gone stale twice in `project-bootstrap`'s copy tables, which this manifest
+     * replaces. Design: .claude/decisions/0054-deterministic-export-provenance-plugin.md
+     */
+    static void checkExportManifest(Map<String, Object> sch, List<String> errors) throws IOException {
+        Map<String, Object> exp = asMap(sch.get("export"));
+        if (exp == null) return;                      // no `export` block: nothing to check
+
+        for (String group : List.of("copy", "merge")) {
+            for (Object e : asList(exp.get(group))) {
+                String from = asStr(get(e, "from"));
+                if (from == null) {
+                    errors.add("  export." + group + " has an entry without `from`");
+                } else if (!Files.isRegularFile(ROOT.resolve(from))) {
+                    errors.add("  export." + group + " names `" + from + "` — no such file");
+                }
+            }
+        }
+
+        checkExportSet(exp, "skills", ".claude/skills", "/SKILL.md", errors);
+        checkExportSet(exp, "agents", ".claude/agents", ".md", errors);
+
+        String rulesDir = asStr(get(exp, "rules", "from"));
+        if (rulesDir != null && !Files.isDirectory(ROOT.resolve(rulesDir))) {
+            errors.add("  export.rules.from is `" + rulesDir + "` — no such directory");
+        }
+        for (String r : asStrList(get(exp, "rules", "exclude"))) {
+            if (rulesDir != null && !Files.isRegularFile(ROOT.resolve(rulesDir).resolve(r))) {
+                errors.add("  export.rules.exclude names `" + r + "` — no such rule");
+            }
+        }
+        for (String r : asMapKeys(exp.get("derived_paths"))) {
+            if (r.startsWith("$")) continue;          // $comment
+            if (rulesDir != null && !Files.isRegularFile(ROOT.resolve(rulesDir).resolve(r))) {
+                errors.add("  export.derived_paths names `" + r + "` — no such rule");
+            }
+        }
+        for (Object e : asList(get(exp, "body_transforms", "rewrite"))) {
+            String f = asStr(get(e, "file"));
+            if (f != null && !Files.isRegularFile(ROOT.resolve(f))) {
+                errors.add("  export.body_transforms.rewrite names `" + f + "` — no such file");
+            }
+        }
+
+        // Transport: an indirection, never a credential — invariant 11, same scan the
+        // `mcp` block already gets, reading the same list of value prefixes.
+        String base = asStr(get(exp, "transport", "base_url"));
+        if (base != null) {
+            if (!base.startsWith("https://")) {
+                errors.add("  export.transport.base_url is not https — `" + base + "`");
+            }
+            if (!base.contains("{ref}")) {
+                errors.add("  export.transport.base_url has no `{ref}` placeholder"
+                        + " — every fetch would pull the same content");
+            }
+            for (String p : asStrList(get(sch, "mcp", "secret_scan", "value_prefixes"))) {
+                if (base.contains(p)) {
+                    errors.add("  export.transport.base_url carries a literal credential"
+                            + " (`" + p + "…`) — use transport.auth_env, invariant 11");
+                }
+            }
+        }
+        String authEnv = asStr(get(exp, "transport", "auth_env"));
+        if (authEnv != null && !authEnv.matches("[A-Z][A-Z0-9_]*")) {
+            errors.add("  export.transport.auth_env is `" + authEnv
+                    + "` — it names an environment variable, never its value");
+        }
+    }
+
+    /**
+     * One side of {@link #checkExportManifest}: every directory entry under {@code dir}
+     * must appear in `include` or in `exclude`, and every listed name must resolve to a
+     * real file. Coverage is the point — a new skill nobody added to either list is the
+     * failure this catches, and it looks exactly like a working repository.
+     */
+    static void checkExportSet(Map<String, Object> exp, String key, String defaultDir,
+                               String suffix, List<String> errors) throws IOException {
+        Map<String, Object> block = asMap(exp.get(key));
+        if (block == null) return;
+
+        String dir = asStr(block.get("from")) != null ? asStr(block.get("from")) : defaultDir;
+        Path base = ROOT.resolve(dir);
+        if (!Files.isDirectory(base)) {
+            errors.add("  export." + key + ".from is `" + dir + "` — no such directory");
+            return;
+        }
+
+        List<String> include = asStrList(block.get("include"));
+        List<String> exclude = asStrList(block.get("exclude"));
+        for (String name : include) {
+            if (!Files.isRegularFile(base.resolve(name + suffix))) {
+                errors.add("  export." + key + ".include names `" + name
+                        + "` — no `" + dir + "/" + name + suffix + "`");
+            }
+        }
+        for (String name : exclude) {
+            if (!Files.isRegularFile(base.resolve(name + suffix))) {
+                errors.add("  export." + key + ".exclude names `" + name
+                        + "` — no `" + dir + "/" + name + suffix + "`, stale entry");
+            }
+        }
+        for (String name : include) {
+            if (exclude.contains(name)) {
+                errors.add("  export." + key + " lists `" + name + "` in include AND exclude");
+            }
+        }
+
+        try (Stream<Path> walk = Files.list(base)) {
+            List<String> onDisk = walk.map(p -> p.getFileName().toString())
+                    .map(n -> n.endsWith(".md") ? n.replaceFirst("\\.md$", "") : n)
+                    .sorted().collect(Collectors.toList());
+            for (String name : onDisk) {
+                if (!Files.isRegularFile(base.resolve(name + suffix))) continue;
+                if (!include.contains(name) && !exclude.contains(name)) {
+                    errors.add("  `" + dir + "/" + name + "` is in neither export." + key
+                            + ".include nor .exclude — it would silently never travel");
+                }
+            }
+        }
+    }
+
+    static List<String> asMapKeys(Object o) {
+        Map<String, Object> m = asMap(o);
+        return m == null ? List.of() : new ArrayList<>(m.keySet());
     }
 
     /** Sweeps every file that some schema `match` captures. */

@@ -22,7 +22,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
-| Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, and every `` !`…` `` injection's paths | `java .claude/hooks/ArchHook.java schema` |
+| Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
 ## Architecture of the AI files
@@ -71,7 +71,10 @@ direction above is unchanged.
    `schemas/extensions.json` (7). Creation skills (`project-bootstrap`, `init-project`)
    and `blueprints/` are left out on purpose — they only serve before the project exists.
    A new norm or skill here is only complete once the step that copies it has also been
-   updated. **An MCP server has the same obligation, per server, not per file:** it is
+   updated — and since the copy lists are data, that means the `export` block of
+   `@.claude/schemas/extensions.json`: every skill and every agent on disk must be in its
+   `include` or its `exclude`, and `ArchHook.java schema` fails by name on one that is in
+   neither. **An MCP server has the same obligation, per server, not per file:** it is
    declared for this meta-repo (`.mcp.json`), for the generated project
    (`project-bootstrap/templates/mcp.json.example`, copied in step 7.5), or both — and
    the file it's written into **is** that declaration. A server useful to both is
