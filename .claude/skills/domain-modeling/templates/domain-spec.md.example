@@ -101,9 +101,9 @@ concrete `CreateUserUseCase` is the implementation.
 
 ## 4 · Events
 
-| Event | Payload | Emitted when | Consumed by |
-|---|---|---|---|
-| `UserCreated` | `UserId`, `Email`, `Instant occurredAt` | `User` built and persisted successfully | **UC-002** — welcome email |
+| Event | Payload | Emitted when | Consumed by | Durability |
+|---|---|---|---|---|
+| `UserCreated` | `UserId`, `Email`, `Instant occurredAt` | `User` built and persisted successfully | **UC-002** — welcome email | loss tolerable — a missing welcome email is visible to the user and re-sendable by hand |
 
 Past-tense name. Immutable `record`, no framework types. `occurredAt` comes from an
 injected `Clock`, never `Instant.now()` — `@.claude/rules/architecture-ddd.md`.
@@ -113,6 +113,13 @@ would have to live inside this use case, which is exactly what the mother spec r
 
 Publishing and transport aren't part of this file. Who publishes and with what guarantee
 is a `messaging-architect` decision.
+
+`Durability` is the exception, and it is a domain property, not a transport one: whether the
+absence of this event is later detectable and recoverable (**loss tolerable**), or whether
+losing it corrupts state a human then has to reconcile (**must not be lost** — money moved,
+an external ledger, a regulatory record, or an effect nothing else would ever notice missing).
+Two words and the reason; `messaging-architect` reads this column and picks the publication
+form from it, and writing the form here instead is deciding outside this file's territory.
 
 ## 5 · Components to create
 

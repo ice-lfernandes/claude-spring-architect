@@ -25,3 +25,19 @@ spring:
       ack-mode: manual
       # Backoff: 3 attempts, 1s / 2s / 4s, then DLQ — wired once in a
       # DefaultErrorHandler + DeadLetterPublishingRecoverer bean, not per @KafkaListener.
+
+# FORM B ONLY — transactional outbox + relay (`.claude/rules/messaging.md` § Publication
+# timing). Omit this whole block under Form A, where there is no relay to configure.
+# Shape of the component these values drive: `OutboxRelayPublisher.java.example`.
+app:
+  outbox:
+    # Fixed delay between passes, never fixed rate: a slow pass must not overlap the next.
+    poll-interval: PT1S
+    # Rows claimed per pass. Sized so a pass finishes well inside poll-interval.
+    batch-size: 100
+    # Send attempts before the row is flagged dead-lettered and stops being re-read.
+    # Not the broker-side retry above: that one retries a single send, this one retries a row.
+    max-attempts: 5
+    # Retention for rows already published, swept by the pruning job. An outbox that only
+    # grows becomes the slowest table in the schema.
+    prune-after: P7D

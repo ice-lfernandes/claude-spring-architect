@@ -27,9 +27,21 @@
 
 Port declared in `10-dominio.md`: `PublishOrderConfirmedPort`.
 
+| Property | Value | Why |
+|---|---|---|
+| Publication form | **A — publish after commit** | `10-dominio.md` § Events marks the event `Durability: loss tolerable`: a missed reservation is caught by the next stock reconciliation, so no row survives what a commit already recorded. Form B's table, gateway, and relay would be cost with no failure to prevent — `@.claude/rules/messaging.md` § Publication timing |
+
 | Port | Signature | Adapter | Payload |
 |---|---|---|---|
 | `PublishOrderConfirmedPort` | `void publish(OrderConfirmed event)` | `OrderConfirmedPublisher` | `OrderConfirmedPayload(orderId, customerId, occurredAt)` |
+
+Under **Form B** this block carries two more things, and the partial is incomplete without
+them: the relay (`OutboxRelay` + the application-layer `OutboxRelayGateway`, shape in
+`templates/OutboxRelayPublisher.java.example`), and the `outbox_events` **schema
+requirement** for `persistence-architect` — the columns the relay needs, as requirements, not
+as DDL. One outbox for the whole project, reused by every later event; when `20-persistencia.md`
+is already written, the requirement is a follow-up on that partial, stated here in full so it
+doesn't have to be re-derived.
 
 ## 3 · Consumer adapter and idempotency
 

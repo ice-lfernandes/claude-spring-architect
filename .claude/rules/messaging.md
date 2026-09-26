@@ -41,6 +41,57 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
 - Ordering only within a partition. If the use case needs order between two events of the
   same aggregate, they share a partition key — the aggregate id, never a random key
 
+## Publication timing
+
+§ Delivery semantics fixes *what guarantee* the message carries. This section fixes *when
+the publish happens relative to the transaction that produced the event* — a separate
+decision, and the more expensive one: it decides whether the project gains a table, an
+outbound abstraction, and a scheduled component, or none of the three.
+
+Publishing **before** the commit is never one of the forms. A rollback after a successful
+send leaves a consumer acting on a state that no longer exists, and no retry policy on
+either side can undo it.
+
+**Form A — publish after commit. The default.** The transaction commits, then the outbound
+port's implementation sends to the broker. One component, no extra table, nothing to
+operate. The loss window is real and unmonitored: a broker outage, a pod kill, or a network
+partition between the commit and the send drops the event with no trace — the state change
+is durable, the announcement isn't.
+
+**Form B — transactional outbox + relay.** The outbound port's implementation inserts a row
+into an outbox table **in the same transaction as the state change**; commit makes state and
+intent-to-publish atomic. A separate relay component claims unpublished rows, sends them, and
+marks them published. Costs one shared table, one application-layer abstraction over it, a
+scheduled component, and duplicates whenever the send succeeds and the mark fails — absorbed
+by the idempotent consumer § Delivery semantics already requires.
+
+Choose Form B when at least one holds:
+
+- Losing the event corrupts state that a human then has to reconcile — money moved, an
+  external ledger, a regulatory record
+- The consumer is external and its effect is irreversible once it does run, so a silent
+  non-delivery is indistinguishable from "it never happened"
+- The event is the only record that the fact occurred: no later request, poll, or
+  reconciliation job would notice its absence
+
+Otherwise Form A. "This event matters" is not the criterion — every event matters. The
+question is whether silence is recoverable.
+
+Form B's own boundaries:
+
+- The relay reads and updates outbox state through an application-layer abstraction, never
+  through the persistence adapter's entity or repository — `@.claude/rules/architecture-ddd.md`
+  § Adapters
+- Rows are claimed in batches and sent in occurrence order per aggregate, so Form B does not
+  weaken the partition-key ordering above
+- Attempts are counted and bounded. An exhausted row is flagged dead-lettered and stops being
+  re-read; it is not retried forever and not deleted
+- Published rows are pruned on a schedule. An outbox that only grows becomes the slowest
+  table in the schema
+- The table, its columns, and its migration belong to `@.claude/rules/persistence.md`. One
+  outbox for the whole project, not one per aggregate — same as any other shared
+  infrastructure table
+
 ## Topics and serialization
 
 - One topic per event type. A shared topic for unrelated event types forces every consumer
@@ -87,6 +138,10 @@ grep -rn "org.apache.kafka\|org.springframework.kafka" --include=*.java . | grep
 
 # Producer idempotence and acks are set explicitly, not left to the client default.
 grep -rn "enable.idempotence\|acks" src/main/resources/
+
+# Form B only: the relay never reaches the persistence adapter's entity or repository.
+# Zero lines is the expected result.
+grep -rn "import .*persistence.*\(Entity\|Repository\)" --include=*.java . | grep -i "outbox\|relay"
 
 # Consumer idempotency and DLQ routing are integration-test territory, not grep territory.
 ./mvnw -q test

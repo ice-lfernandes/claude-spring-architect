@@ -115,16 +115,34 @@ still transport.
 
    | Axis | Decides |
    |---|---|
+   | **Publication timing** — must the event survive a broker outage between the commit and the publish? | Form A (publish after commit) or Form B (transactional outbox + relay), per `@.claude/rules/messaging.md` § Publication timing. Read the `Durability` column of `10-dominio.md` § Events **first**: when it already answers, record the form and don't ask again |
    | Partition key candidate (which field must stay ordered) | Whether the aggregate id is enough, or a composite key is needed |
    | Consumer group id, new or existing | Reuse vs. a fresh subscription with its own offset |
    | `auto-offset-reset` tolerance (losing vs. reprocessing on redeploy) | `earliest` or `latest` |
    | Ordering requirement across different aggregates | Whether one topic is enough or the event needs to fan out differently |
    | Existing `processed_events`-style dedupe table in this project | Reuse vs. ask `persistence-architect` to model one |
 
+   Every axis but the first is consumer-side. A use case that only **produces** still has the
+   publication timing to settle, so "no axis applies, no `AskUserQuestion` this pass" is never
+   the right conclusion for a producing use case: either the domain partial's `Durability`
+   column already fixed the form and the partial records which, or this step asks.
+
 4. **Design the producer adapter.** Implements the outbound port `domain-modeling` already
    declared — never a new interface. Payload is the minimum the consumer needs, mapped
-   explicitly from the domain event; the event itself never serializes directly.
-   Shape: `templates/KafkaProducerAdapter.java.example`.
+   explicitly from the domain event; the event itself never serializes directly. The
+   publication form from step 3 decides the shape, and only the shape — the port's signature
+   is the same either way:
+
+   | Form | What implements the port | Extra pieces | Exemplar |
+   |---|---|---|---|
+   | A — publish after commit (default) | The adapter sends to the broker directly | none | `templates/KafkaProducerAdapter.java.example` |
+   | B — transactional outbox + relay | The adapter writes an outbox row inside the caller's transaction | relay component, `OutboxRelayGateway` port, shared `outbox_events` table | `templates/OutboxRelayPublisher.java.example` |
+
+   **4a. Form B's schema, when step 2 found no outbox.** One table for the whole project, not
+   one per event — same nature as `idempotency_keys`. This skill doesn't design tables: name
+   the requirement in the partial's § 2 and flag that `persistence-architect` has to model it,
+   with the columns the relay needs (claim, attempts, failure reason, dead-letter flag) listed
+   as requirements, not as DDL. Exemplar's header comment carries the same list.
 
 5. **Design the consumer adapter.** Translates the inbound payload into a call on the target
    use case's inbound port. Dedupe on the event's own identity before calling it; manual
@@ -165,7 +183,7 @@ asked.
 | Block | Fixes | Form exemplar |
 |---|---|---|
 | Topic and delivery | Topic name, partition key, serialization, delivery semantics | `@.claude/rules/messaging.md` § Topics and serialization |
-| Producer adapter | The port from `10-dominio.md`, the adapter, the payload shape | `KafkaProducerAdapter.java.example` |
+| Producer adapter | The port from `10-dominio.md`, **the publication form (A or B) and why**, the adapter, the payload shape, and — Form B only — the outbox schema requirement for `persistence-architect` | `KafkaProducerAdapter.java.example` (A) · `OutboxRelayPublisher.java.example` (B) |
 | Consumer adapter and idempotency | The consuming use case, the listener, the dedupe key and table | `KafkaConsumerAdapter.java.example` |
 | Retry and DLQ | Backoff, DLQ topic, which failures skip retry | `@.claude/rules/messaging.md` § Retry and DLQ |
 | Configuration | Group id, offset reset, ack mode, with the decided value and why | `application-kafka.yml.example` |
@@ -190,8 +208,16 @@ executor agent.
 `docker-architect` instead of writing the service block itself — single owner, see that
 skill's Contract.
 
-**Does not model the dedupe table.** When step 5a finds none, it names the need in the
-partial for `persistence-architect` to pick up — this skill doesn't design schema.
+**Does not model the dedupe table, nor the outbox table.** When step 5a or step 4a finds
+none, it names the need in the partial for `persistence-architect` to pick up — this skill
+doesn't design schema. Form B's relay reads that state through the application-layer
+`OutboxRelayGateway`, never through the persistence adapter's entity or repository
+(`@.claude/rules/architecture-ddd.md` § Adapters).
+
+**Owns the publication form** (after-commit vs. outbox + relay), from step 3's first axis.
+`domain-modeling` records whether the event tolerates being lost — the `Durability` column of
+`10-dominio.md` § Events; this skill turns that property into a transport decision. A form
+chosen upstream of the `Durability` column is a divergence to report, not to adopt silently.
 
 **Does not decide** the use case boundary (`00-caso-de-uso.md`), whether an event exists or
 its payload's business meaning (`10-dominio.md`, `domain-modeling`'s call), the transport for

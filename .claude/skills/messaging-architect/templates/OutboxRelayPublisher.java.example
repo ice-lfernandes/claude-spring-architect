@@ -1,0 +1,139 @@
+/*
+ * EXEMPLAR — Form B: transactional outbox + relay.
+ * The counterpart of `KafkaProducerAdapter.java.example` (Form A, publish after commit).
+ * Which form applies is decided in `SKILL.md` step 3, first axis, against the criterion in
+ * `.claude/rules/messaging.md` § Publication timing. Form A is the default; this file is
+ * for the case where losing the event between the commit and the publish is not acceptable.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/messaging.md` (§ Publication timing, § Delivery semantics)
+ *        `.claude/rules/architecture-ddd.md` (Adapters, Application)
+ *        `.claude/rules/persistence.md` (the table itself)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the outbound port's implementation writes a row instead of sending: it runs inside the
+ *    caller's transaction, so state and intent-to-publish commit or roll back together;
+ *  - the relay is a separate component and the only place that talks to the broker;
+ *  - the relay reaches outbox state through `OutboxRelayGateway`, an application-layer
+ *    abstraction — never through the persistence adapter's JPA entity or Spring Data
+ *    repository, which live in a sibling adapter it may not import;
+ *  - duplicates are expected by design (send succeeds, mark fails) and are absorbed by the
+ *    idempotent consumer the rule already requires.
+ *
+ * SCHEMA REQUIREMENT, NOT DDL. `outbox_events` is shared by the whole project — one table,
+ * not one per event, same nature as `idempotency_keys`. `persistence-architect` models it,
+ * from the requirements the messaging partial's § 2 states:
+ *   id · aggregate id (partition key source) · event type · payload · occurred at
+ *   published at (null = pending)  · attempts  · last error  · dead lettered
+ *   an index that serves the claim query alone — pending rows only, not the whole table
+ * Writing the DDL here would put schema in two owners' hands; see `.claude/rules/persistence.md`.
+ *
+ * WHAT'S NOT HERE: the pruning job for published rows (a scheduled delete, sized by
+ * retention, no messaging decision in it), and retry/DLQ of the broker send itself — that
+ * stays `application-kafka.yml`'s `DefaultErrorHandler`, same as Form A.
+ *
+ * ELIDED, adapter-local and uninteresting: `OutboxAppender` (serializes the payload record
+ * and inserts the row through the same outbound abstraction), `TopicResolver` (event type to
+ * topic name, per `.claude/rules/messaging.md` § Topics and serialization), and
+ * `OrderConfirmedPayload` — unchanged from Form A, see `KafkaProducerAdapter.java.example`.
+ * The payload shape does not depend on the publication form.
+ */
+
+// --- OutboxRelayGateway.java (application layer — the relay's only view of outbox state)
+package com.example.demo.application.port.out;
+
+import java.util.List;
+
+public interface OutboxRelayGateway {
+
+    /** Pending rows, oldest first, capped. Ordered per aggregate so partition order holds. */
+    List<PendingOutboxEvent> claimPending(int batchSize);
+
+    void markPublished(java.util.UUID eventId);
+
+    /** Increments attempts; flags the row dead-lettered once maxAttempts is reached. */
+    void markFailed(java.util.UUID eventId, String reason, int maxAttempts);
+}
+
+// --- PendingOutboxEvent.java (application layer — carries no JPA and no Kafka type)
+package com.example.demo.application.port.out;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record PendingOutboxEvent(
+        UUID eventId, String aggregateId, String eventType, String payload, Instant occurredAt) {}
+
+// --- OrderConfirmedOutboxWriter.java (implements the port domain-modeling declared)
+package com.example.demo.adapter.out.messaging;
+
+import com.example.demo.application.port.out.PublishOrderConfirmedPort;
+import com.example.demo.domain.event.OrderConfirmed;
+
+/*
+ * No `@Transactional` here: the use case owns the transaction
+ * (`.claude/rules/architecture-ddd.md` § Application). This class only has to run inside it —
+ * writing the row in its own transaction would recreate exactly the gap Form B closes.
+ */
+public class OrderConfirmedOutboxWriter implements PublishOrderConfirmedPort {
+
+    private final OutboxAppender outbox;
+
+    public OrderConfirmedOutboxWriter(OutboxAppender outbox) {
+        this.outbox = outbox;
+    }
+
+    @Override
+    public void publish(OrderConfirmed event) {
+        outbox.append(
+                event.orderId().value().toString(),
+                "OrderConfirmed",
+                OrderConfirmedPayload.from(event));
+    }
+}
+
+// --- OutboxRelay.java (the only class in Form B that imports KafkaTemplate)
+package com.example.demo.adapter.out.messaging;
+
+import com.example.demo.application.port.out.OutboxRelayGateway;
+import com.example.demo.application.port.out.PendingOutboxEvent;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
+
+public class OutboxRelay {
+
+    private static final int BATCH_SIZE = 100;
+    private static final int MAX_ATTEMPTS = 5;
+
+    private final OutboxRelayGateway gateway;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final TopicResolver topics;
+
+    public OutboxRelay(
+            OutboxRelayGateway gateway,
+            KafkaTemplate<String, String> kafkaTemplate,
+            TopicResolver topics) {
+        this.gateway = gateway;
+        this.kafkaTemplate = kafkaTemplate;
+        this.topics = topics;
+    }
+
+    /*
+     * Fixed delay, not fixed rate: a slow pass must not overlap the next one. Interval and
+     * batch size come from configuration — `application-kafka.yml.example`, `app.outbox.*`.
+     */
+    @Scheduled(fixedDelayString = "${app.outbox.poll-interval:PT1S}")
+    public void relay() {
+        for (PendingOutboxEvent event : gateway.claimPending(BATCH_SIZE)) {
+            try {
+                kafkaTemplate
+                        .send(topics.forEventType(event.eventType()), event.aggregateId(), event.payload())
+                        .join();
+                gateway.markPublished(event.eventId());
+            } catch (RuntimeException e) {
+                // The send may well have succeeded; the consumer's dedupe is what makes the
+                // retry safe. Never rethrow: one poisoned row must not stall the batch.
+                gateway.markFailed(event.eventId(), e.getMessage(), MAX_ATTEMPTS);
+            }
+        }
+    }
+}
