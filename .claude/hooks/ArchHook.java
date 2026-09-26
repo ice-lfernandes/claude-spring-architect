@@ -962,6 +962,15 @@ public class ArchHook {
                 String v = bp.packages().get(key);
                 if (v != null) { globs.add(shape.replace("{}", v.replace('.', '/'))); break; }
             }
+            // An architecture that doesn't name the layer as a package — vertical-slice
+            // puts REST and persistence inside each slice — still has a territory, and it
+            // is one of its own `architecture_paths`. Selected by token, never by union
+            // of every path: a rule that loads on domain edits is noise, not coverage.
+            if (globs.isEmpty()) {
+                for (String token : asStrList(spec.get("fallback_architecture_paths_containing"))) {
+                    for (String p : bp.archPaths()) if (p.contains(token)) globs.add(p);
+                }
+            }
             globs.addAll(asStrList(spec.get("extra")));
         }
         if (globs.isEmpty()) {

@@ -194,8 +194,17 @@
 
     "derived_paths": {
       "$comment": "A rule with a territory auto-loads by `paths`, and a glob naming a package the active blueprint does not use leaves it silently unloaded. The glob is therefore derived from the blueprint's packages.map — the VALUE, not the key, with `.` becoming `/` — and never copied from the original file. `suffix` selects the packages.map entry whose key ends with it; `key` names candidates in order of preference, first hit wins. A selector that matches nothing and is `optional` copies the rule WITHOUT `paths` (still citable); one that matches nothing and is not optional is a failure of the export, not of the project. No defensive union: this blueprint's glob and no other.",
-      "api-rest.md": { "suffix": [".rest"], "glob": "**/{}/**" },
-      "persistence.md": { "suffix": [".persistence"], "glob": "**/{}/**", "extra": ["**/db/migration/**"] },
+      "api-rest.md": {
+        "suffix": [".rest"],
+        "glob": "**/{}/**",
+        "fallback_architecture_paths_containing": ["features", "slice"]
+      },
+      "persistence.md": {
+        "suffix": [".persistence"],
+        "glob": "**/{}/**",
+        "fallback_architecture_paths_containing": ["features", "slice"],
+        "extra": ["**/db/migration/**"]
+      },
       "value-objects.md": { "key": ["domain.model", "domain"], "glob": "**/{}/**/*.java" },
       "observability.md": { "suffix": [".rest", ".config"], "glob": "**/{}/**" },
       "messaging.md": { "suffix": [".messaging"], "glob": "**/{}/**", "optional": true },
