@@ -9,18 +9,44 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Nothing here writes: every job reads the checkout and runs `java`. The default token
+# permission is whatever the repository settings grant (write, unless restricted), and a
+# workflow that never needs it shouldn't carry it.
+permissions:
+  contents: read
+
+# `push: [main]` and `pull_request` both fire on the same head when a PR branch is
+# pushed. Superseded runs are cancelled instead of racing the new one to the same
+# conclusion.
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hooks-cross-platform:
     name: hooks · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # Each step is one `java` invocation over a handful of files. A run that passes ten
+    # minutes is hung, and without this it would hold a runner for the 6h default.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      # Pinned by commit SHA, not by tag: `@v7` is a moving branch-like ref the action's
+      # owner can repoint, so a tag pin makes what CI ran unreproducible. The trailing
+      # comment is the human-readable half — bump both together.
+      #
+      # Both actions are on their current major. v1–v4 of setup-java are deprecated, and
+      # the majors in between only tighten things this workflow doesn't use: node24 (needs
+      # runner ≥ v2.327.1, which GitHub-hosted runners are), the fork-PR checkout block
+      # that applies to `pull_request_target`/`workflow_run` and not to the `pull_request`
+      # trigger above, and setup-java v6 dropping the legacy `adopt` distributions —
+      # `temurin` below is unaffected.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -37,13 +63,27 @@ jobs:
       - name: hook blocks a cwd-relative frontmatter injection
         run: java .claude/.ci/InjectionPathTest.java
 
+      # Question 3 of the `compose` mode reads two files and needs no Docker, so it runs
+      # on all three OSes — including the two runners with no daemon. The test also proves
+      # the `src/test/` path match survives Windows' separator.
+      - name: hook reports a compose image tag that disagrees with src/test
+        run: java .claude/.ci/ComposeTagTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The runner default is `bash -e {0}` — no `pipefail`. Without it the failure of the
+    # first command in `$(grep … | grep -v … || true)` is invisible and the step passes on
+    # a broken pipeline. Declared per job, never at workflow level: the
+    # `hooks-cross-platform` matrix has a `windows-latest` leg whose default shell is pwsh.
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -260,17 +300,60 @@ jobs:
           [ "$FAIL" -eq 0 ] && echo "✅ Every rule with territory is derived at generation."
           exit $FAIL
 
+      # Invariant 9: the generated project is self-contained, and §§ 6.6/6.7/6.8 of
+      # project-bootstrap ARE the copy lists that make it so. Nothing verified that those
+      # lists still cover the disk. CLAUDE.md states the failure mode itself — "a new norm
+      # or skill here is only complete once the step that copies it has also been updated"
+      # — and it is silent: a rule absent from § 6.6 breaks nothing at generation time,
+      # only for whoever clones the project later and follows a citation to a file that
+      # was never copied. Same class as the derivation-table check above.
+      - name: every rule, skill and agent has a row in the bootstrap copy list (invariant 9)
+        run: |
+          BOOTSTRAP=.claude/skills/project-bootstrap/SKILL.md
+          FAIL=0
+          # `grep -F`, not a regex: the ✅/❌ marker is multibyte and a bracket expression
+          # over it depends on the runner's locale. A literal alternative does not.
+          for f in .claude/rules/*.md; do
+            n=$(basename "$f")
+            grep -qF "\`$n\` |" "$BOOTSTRAP" || {
+              echo "❌ rule '$n' has no row in § 6.6 — the generated project won't carry it,"
+              echo "   and every citation of it from inside the project is a dead path."
+              FAIL=1; }
+          done
+          for d in .claude/skills/*/; do
+            n=$(basename "$d")
+            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
+              echo "❌ skill '$n' has no row in § 6.7 — decide ✅ (travels to the project)"
+              echo "   or ❌ (stays here), with the one-line reason the table asks for."
+              FAIL=1; }
+          done
+          for f in .claude/agents/*.md; do
+            n=$(basename "$f" .md)
+            grep -qF "\`$n\` | ✅" "$BOOTSTRAP" || grep -qF "\`$n\` | ❌" "$BOOTSTRAP" || {
+              echo "❌ agent '$n' has no row in § 6.8 — decide ✅ or ❌."
+              FAIL=1; }
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ §§ 6.6/6.7/6.8 cover every rule, skill and agent."
+          exit $FAIL
+
   exemplar-imports:
     name: exemplar imports resolve against the real classpath
     runs-on: ubuntu-latest
+    # This job downloads from start.spring.io and resolves the whole test classpath from
+    # Maven Central. Both are network, and a hung download is what the default 6h timeout
+    # would sit on.
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     # Half of lessons-learned-001's gaps (4, 5, 9) were the same mistake: an exemplar
     # names a package that the current Spring Boot or Testcontainers version no longer has.
     # The exemplar "compiles in the head of whoever wrote it" and only blows up in the generated project.
     # This job resolves every `import` against the JARs the Initializr resolves today.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -284,7 +367,12 @@ jobs:
       # Versions never written from memory — invariant 8 of CLAUDE.md.
       - name: reference project from the Initializr
         run: |
-          curl -sS https://start.spring.io/starter.tgz \
+          # `--fail` is what makes an HTTP error an error: without it a 5xx page is written
+          # to starter.tgz, curl exits 0, and the step dies on `gzip: stdin: not in gzip
+          # format` — an error that points at tar and says nothing about the outage.
+          # `--retry-all-errors` covers the 5xx too, not only the transport failures.
+          curl -sS --fail --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            https://start.spring.io/starter.tgz \
             -d type=maven-project -d language=java -d javaVersion=21 \
             -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka \
             -o /tmp/starter.tgz
@@ -337,14 +425,18 @@ jobs:
           org.springframework.boot.test.autoconfigure.orm.jpa=Boot 3 package; in Boot 4 it's org.springframework.boot.data.jpa.test.autoconfigure
           org.springframework.boot.test.autoconfigure.web.servlet=Boot 3 package; in Boot 4 it's org.springframework.boot.webmvc.test.autoconfigure
           org.testcontainers.containers.PostgreSQLContainer=Testcontainers 1.x package; in 2.x it's org.testcontainers.postgresql"
-          echo "$DENY" | while IFS= read -r linha; do
+          # `<<<`, not `echo … | while`: a pipeline runs the loop in a subshell, where
+          # `FAIL=1` is lost and the only way to fail the step is `exit 1` inside it — which
+          # aborts the sweep at the first hit. Four symbols, one reported. Here the loop
+          # runs in this shell, so every entry is checked and every hit is printed.
+          while IFS= read -r linha; do
             SYMBOL=$(echo "$linha" | sed -e 's/=.*//' -e 's/^ *//')
             REASON=$(echo "$linha" | sed 's/^[^=]*=//')
-            [ -z "$SYMBOL" ] && continue
+            [ -n "$SYMBOL" ] || continue
             if grep -rn --fixed-strings "$SYMBOL" .claude/skills/*/templates/*.java.example; then
               echo "❌ '$SYMBOL' — $REASON"
-              exit 1
+              FAIL=1
             fi
-          done || FAIL=1
+          done <<< "$DENY"
           [ "$FAIL" -eq 0 ] && echo "✅ No denylist symbol in the exemplars."
           exit $FAIL
