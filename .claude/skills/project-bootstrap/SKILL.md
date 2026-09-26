@@ -889,7 +889,11 @@ Three parts, and the first one is easy to forget:
    `<project>/.claude/schemas/extensions.json`, verbatim except for every
    `.claude/decisions/NNNN-....md` citation inside a `$comment` — cut the citing clause,
    for the same reason as § 6.6/6.7. Several blocks carry one today (`$comment` at the
-   root, `audit`, `mcp`, `injections`); cut each, don't rewrite it. `ArchHook`'s `schema`
+   root, `audit`, `mcp`, `injections`, `settings`); cut each, don't rewrite it. Leave the
+   rest of `settings` alone, including the second entry of its `match` — it points at
+   this repo's bootstrap template, matches nothing inside the project, and costs nothing;
+   editing the list is how the block diverges from the `ArchHook` that reads it.
+   `ArchHook`'s `schema`
    mode reads this file; without it, it switches off with a warning and nothing gets
    validated. Copying the hook and forgetting the schema delivers enforcement that looks
    on and isn't.
@@ -900,6 +904,10 @@ Three parts, and the first one is easy to forget:
    `PreToolUse`/Skill|Task|Agent, and four `PreToolUse`/Write|Edit entries filtered by
    `if`), and the permissions: the pipeline skills in `allow`, `Bash(git push:*)` in
    `ask`. Preserving what's already there never means widening `git push` to an allow.
+   A hook or `permissions` line designed by `claude-code-architect-designer` for the
+   generated project (its axis 8 = "both") is already **in** the template — that skill
+   writes it there, per its own propagation table. Nothing extra to do here; a mode it
+   added to `ArchHook.java` arrives with the copy in part 1.
 4. Create `<project>/.claude/audit-usage/` and copy
    `templates/audit-pricing.json.example` into it as `pricing.json`. **The directory is
    the on/off switch**: `ArchHook.java audit` returns immediately when it doesn't

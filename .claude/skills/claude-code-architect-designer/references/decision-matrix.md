@@ -30,8 +30,15 @@ which is exactly why MCP and a skill combine (`@claude-help.md` § 9) instead of
 replacing one.
 
 **Consequence for classification:** if breaking the rule is a compliance, security, or
-build bug, the answer isn't among the six forms. It's a hook or `permissions.deny`, and
-this skill proposes without writing.
+build bug, the answer is below the line — Form 7 (hook) or Form 8 (`permissions`), § 2.2.
+This skill designs and writes both, after approval, like every other form.
+
+**And the consequence for the diagram of `@CLAUDE.md`:** a skill that writes a hook
+appears to point back at the layer that verifies it. It doesn't. The arrow is
+*design-time* — the same one `project-bootstrap` already has when it writes `src/` — and
+at runtime nothing changes: the hook still verifies the skill, and the skill is still
+read by a model that can ignore it. What the skill gains is the ability to close the
+decision instead of ending it with "that's a hook, ask someone else."
 
 ---
 
@@ -42,7 +49,7 @@ elimination power, not by frequency.
 
 | Question | If yes |
 |---|---|
-| Must it happen always, without depending on the model's judgment? | **Hook** or `permissions.deny` — out of scope, propose and stop |
+| Must it happen always, without depending on the model's judgment? | **Form 7 or 8** — go to § 2.2, which decides which |
 | Does it need to access an external system (Jira, database, S3) — go to § 2.1 first | **Form 6** — MCP server, unless § 2.1 eliminates it |
 | Is it a declarative fact that holds in every session and across the whole repo? | **Form 5** — `CLAUDE.md` section |
 | Is it a declarative fact that only holds for part of the files? | **Form 4** — rule in `rules/` with `paths` |
@@ -72,6 +79,25 @@ No row matches → **create nothing**. A server with no observed call is dead we
 the first session: its name alone costs context at startup (§ 3, "cheap triage" row
 doesn't apply here — see § 7 anti-pattern 13).
 
+### 2.2. Sub-table — which guarantee, and whether it needs one
+
+Reached only from the first row of § 2. Same rule: **the first row that matches decides.**
+
+| Question | If yes |
+|---|---|
+| Is the answer a flat refusal of a tool call — this path, this command, never? | **Form 8** — `permissions.deny`. Read before the call, costs no process. A hook that spawns a JVM to print "no" is the same answer at a hundred times the price |
+| Should a tool run without asking, every time? | **Form 8** — `permissions.allow`. Same file, opposite direction; the alternative is the user approving the same call forever |
+| Does the check need to read the file, run the build, or compare two sources? | **Form 7** — a hook. `permissions` matches a pattern and stops there; it cannot open anything |
+| Does the check already exist as a mode of `ArchHook.java` (`check`, `format`, `schema`, `tests`, `guard`, `audit`, `compose`)? | **Form 7a alone** — a registration, no Java. This is the common case |
+| Does only one skill or agent need it, while it runs? | **Form 7b** — `hooks:` in that file's frontmatter. The rest of the session pays nothing |
+| Does the whole session need it, on a lifecycle event? | **Form 7a** — the `hooks` block of `.claude/settings.json`, plus **7c** if no mode covers the check |
+| Does the model already get it right, and the hook would only make it official? | **Create nothing.** A hook is a guarantee against a failure that was observed — axis 1. Without the observed failure it is a process spawned per event to confirm what was already true |
+
+Deciding **which event** is a separate question from which form, and it has one source:
+`references/hook-events.md`. Two mistakes it exists to prevent — an event name that
+exists nowhere (the hook simply never fires, with no error) and a `matcher` on an event
+that never reads one (it looks like a filter and filters nothing).
+
 ---
 
 ---
@@ -90,6 +116,10 @@ the piece is born speculative and dies from disuse.
 | A task fills context with verbose output (search, logs, build) | 3 |
 | A task shouldn't be able to write files | 3, with restricted `tools` |
 | Cheap triage repeating many times | 3, with `model: haiku` |
+| A rule written in prose was broken anyway, a second time | 7 — the prose was a request; make it enforcement |
+| The same file keeps getting edited when it shouldn't be | 8 — `permissions.deny` on that path |
+| The same permission prompt gets approved every session | 8 — `permissions.allow` |
+| A check exists as a script somebody remembers to run | 7a on the event that check belongs to |
 
 ---
 
@@ -206,7 +236,7 @@ their reasoning. Specific always beats vague.
 | # | Anti-pattern | Signal | Redirect |
 |---|---|---|---|
 | 1 | Agent where a skill would do | None of the three reasons in § 5 | Skill |
-| 2 | Prose where it had to be a hook | "Always run X before finishing" repeated | Hook — out of scope |
+| 2 | Prose where it had to be a hook | "Always run X before finishing" repeated | Form 7 (§ 2.2) |
 | 3 | Obese `CLAUDE.md` | Past ~200 lines | Extract to `rules/` with `paths` |
 | 4 | Rule that talks about skills | Breaks invariant 1 | Move the procedure to the skill |
 | 5 | Duplicated rule | Same theme in two files | Single owner + citation |
@@ -219,12 +249,17 @@ their reasoning. Specific always beats vague.
 | 12 | Literal secret in `.mcp.json` | A token, key, or password spelled out in `headers`/`env` | `${VAR}`, `${VAR:-default}`, `oauth`, or `headersHelper` — invariant 11 |
 | 13 | MCP server with no observed use | No symptom in interview axis 1; its name still costs context at every startup | Create nothing |
 | 14 | Same server duplicated across scopes with no destination reason | Same name in `.mcp.json` and an agent's `mcpServers`, or in both this repo's `.mcp.json` and the project template, with no axis-13 "both" answer behind it | Single destination, or record the "both" answer in the decision |
+| 15 | Hook with no filter | A `PostToolUse` entry with no `if` and no `matcher`, for a check that concerns a handful of paths | Add the `if`; criterion 9 of the rubric. A JVM per edit to every file |
+| 16 | Hook for something the model already gets right | No observed failure in axis 1; the hook only makes the rule official | Create nothing. A guarantee is bought against an observed failure, not against a worry |
+| 17 | New Java mode where a registration would do | A Form 7c proposed while `check`, `format`, `schema`, `tests`, `guard`, `audit`, or `compose` already runs the check | Form 7a alone, reusing the mode |
+| 18 | Hook that blocks without saying how to proceed | Exit `2` with a bare "not allowed" on stderr | Name the rule, the file, and the alternative. That text is all the blocked person sees |
+| 19 | Shell string in `command` | A pipe, `&&`, or redirect inside `"command"` instead of exec form | `command` = binary, `args` = arguments. Rejected by `ArchHook.java schema` |
 
 ---
 
 ## 8. Score rubric (0-10)
 
-So the score isn't opinion. Eight criteria, equal weight, 1.25 points each. Round to the
+So the score isn't opinion. Nine criteria, equal weight, 1.11 points each. Round to the
 nearest integer and show what cost points.
 
 | # | Criterion | A point is lost when |
@@ -237,6 +272,12 @@ nearest integer and show what cost points.
 | 6 | **Precedent in the repo** | No similar form already in use; novel design |
 | 7 | **Complete propagation** | Doesn't close routing, `00-index`, steps 6.6/6.7/7.5, or the § 9 decision record |
 | 8 | **Trust surface** | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
+| 9 | **Cost of always running** | Frequency of the event × cost per firing, and whether `if`/`matcher` narrows before a process is spawned. A `PostToolUse` hook with no filter pays a JVM startup on every edit in the repo; a `SessionStart` hook pays once. Also loses a point when the hook blocks (exit `2`) on a judgment call that will sometimes be wrong — the cost there isn't milliseconds, it's a person stuck |
+
+Criterion 9 only bites on Forms 7 and 8. For the persuasion forms it is scored full: they
+cost nothing until read. This is the same treatment criterion 3 gives an MCP server whose
+tool names load at every startup — the two are the runtime bill, before and after the
+line in § 1.
 
 Violating an invariant caps the score at **≤ 4**, regardless of the rest. A score **≥ 8**
 is a recommendation; **5 to 7** is viable with a written caveat; **≤ 4** appears only to
@@ -252,13 +293,18 @@ months from now. Two levels, and the first is mandatory:
 
 | Level | Where | When | Content |
 |---|---|---|---|
-| 1 | `## Why this is <form>` section in the created file | Always — except Form 5, which has no body | Form chosen, axis that motivated it, closest alternative and why. Three sentences |
-| 2 | `.claude/decisions/NNNN-<slug>.md` | Only if there was a real choice | Interview, all options with score, rubric, references, propagation |
+| 1 | `## Why this is <form>` section in the created file | Always — except Forms 5, 6a, 7a, and 8, which are JSON or have no body. Form 7c carries it in the new mode's Javadoc | Form chosen, axis that motivated it, closest alternative and why. Three sentences |
+| 2 | `.claude/decisions/NNNN-<slug>.md` | Only if there was a real choice — or always, for Forms 7 and 8 | Interview, all options with score, rubric, references, propagation |
 
 Level 2 is saved when at least one of these is true: two or more options scored ≥ 5; the
 approved option strains an invariant; axis 8 = "both"; axis 13 (MCP destination) =
-"both". None of these → level 1 is enough. A record for a trivial decision is ceremony,
-not memory.
+"both"; **the approved form is 7 or 8**. None of these → level 1 is enough. A record for a
+trivial decision is ceremony, not memory.
+
+Forms 7 and 8 have no trivial case. A hook changes what every session enforces and has
+almost nowhere to explain itself — a `permissions.deny` line has nowhere at all. Whoever
+finds it later and can't reconstruct why it blocks will delete it the first time it gets
+in the way, and the failure it was bought against comes back.
 
 Level 1 travels with the file, including into the generated project. Level 2 stays in
 this repository — it records decisions about this `.claude/`, invariant 9. It is not a

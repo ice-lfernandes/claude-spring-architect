@@ -21,6 +21,22 @@
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
             "statusMessage": "Validating .mcp.json...",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Write(.claude/settings.json)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating hook registrations...",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Write(.claude/skills/project-bootstrap/templates/settings.json.example)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating the generated project's hooks...",
+            "timeout": 30
           }
         ]
       }
@@ -57,6 +73,22 @@
             "command": "java",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
             "statusMessage": "Validating .mcp.json...",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Edit(.claude/settings.json)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating hook registrations...",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Edit(.claude/skills/project-bootstrap/templates/settings.json.example)",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
+            "statusMessage": "Validating the generated project's hooks...",
             "timeout": 30
           }
         ]

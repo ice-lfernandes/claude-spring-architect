@@ -22,7 +22,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
-| Validate frontmatter of all extension files, `.mcp.json`, and every `` !`…` `` injection's paths | `java .claude/hooks/ArchHook.java schema` |
+| Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, and every `` !`…` `` injection's paths | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
 ## Architecture of the AI files
@@ -41,6 +41,10 @@ rules/ + blueprints/ + .mcp.json   norms and data   ← LEAF
 decisions/                  history — nobody reads it at runtime, outside the graph
 ```
 
+`claude-code-architect-designer` writes upward into `hooks/ + settings.json`, after
+approval — a design-time edge, like `project-bootstrap` writing `src/`. At runtime the
+direction above is unchanged.
+
 ## Invariants (non-negotiable)
 
 1. **`rules/` is a leaf.** A norm never mentions a skill, an agent, or a command. If it
@@ -54,7 +58,9 @@ decisions/                  history — nobody reads it at runtime, outside the 
 5. **An agent exists only for one of three reasons:** preserving context, restricting
    tools, or changing model. If none applies, it's a skill.
 6. **If a rule must always hold, it's a hook or `permissions.deny`** — not prose in
-   markdown.
+   markdown. Owner: `claude-code-architect-designer`, forms 7 and 8, after approval and
+   always with a record in `decisions/`. The mirror holds too — a hook against a failure
+   nobody observed is a process per event confirming what was already true.
 7. **Architectures are data.** Adding a blueprint must never require editing a skill, an
    agent, or a command.
 8. **Java and Spring Boot versions are never written from memory.** They are resolved at
@@ -70,12 +76,18 @@ decisions/                  history — nobody reads it at runtime, outside the 
    (`project-bootstrap/templates/mcp.json.example`, copied in step 7.5), or both — and
    the file it's written into **is** that declaration. A server useful to both is
    written in both files on purpose; that is not a duplication bug, see invariant 2.
-10. **Recognized frontmatter fields, and `.mcp.json`'s server fields, are data with a
-    single owner.** The list lives in `.claude/schemas/extensions.json`, `ArchHook.java
-    schema` is what reads it, and any other file that displays it is derived and must
-    match it exactly. A corollary of 2 and 7, written separately because its failure
-    mode is silent: the runtime ignores an unknown field without any error, and `claude
-    plugin validate` lets it through too — and does not look at `.mcp.json` at all.
+   **A hook, the same:** the registration is per file (`.claude/settings.json`,
+   `project-bootstrap/templates/settings.json.example`); a mode inside `ArchHook.java`
+   needs nothing, step 7 copies that file whole.
+10. **Recognized frontmatter fields, `.mcp.json`'s server fields, and `settings.json`'s
+    hook events and entry fields are data with a single owner.** The list lives in
+    `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
+    other file that displays it is derived and must match it exactly. A corollary of 2
+    and 7, written separately because its failure mode is silent: the runtime ignores an
+    unknown field without any error — an unknown *event* too, and a `matcher` on an event
+    that never reads one — and `claude plugin validate` lets it all through, looking at
+    neither `.mcp.json` nor `settings.json`. Binds the Java too: a mode reads its lists
+    from `extensions.json`, never from a constant in the source.
 11. **No literal secret in a versioned file.** `.mcp.json` (this repo's or the copy
     inside a generated project) carries only `${VAR}` / `${VAR:-default}` expansion,
     `oauth`, or `headersHelper` — never a token, key, or password spelled out. Verified
@@ -87,7 +99,8 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | If the task involves | Go to |
 |---|---|
 | Creating a project from scratch | skill `project-bootstrap` |
-| Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the five | skill `claude-code-architect-designer` |
+| Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the eight | skill `claude-code-architect-designer` |
+| Creating a hook, a new `ArchHook.java` mode, or a `permissions.allow`/`deny` line — and deciding whether the answer is a guarantee at all | skill `claude-code-architect-designer`, forms 7 and 8. Writes it after approval, always with a record in `decisions/`, and warns that `settings.json` is read only at startup |
 | Designing a use case before implementing it; knowing whether a request is one or several | skill `use-case-design` |
 | Aggregate, value object, invariant, ports of an already-designed use case | skill `domain-modeling` |
 | Table, JPA mapping, migration, index, slow query, datasource properties | skill `persistence-architect` |
@@ -117,6 +130,12 @@ decisions/                  history — nobody reads it at runtime, outside the 
   native command doesn't produce an error — it runs the wrong command.
 - **`.claude/settings.json` is only read at session startup.** Editing hooks mid-session
   has no effect — `claude` must be restarted.
+- **A hook fails silently in four ways, none an error.** Unknown event name — never
+  fires. `matcher` on an event that doesn't read one — filters nothing. Pipe or `&&`
+  inside `"command"` — part of the filename (exec form: `command` is the binary, `args`
+  the arguments). A mode that throws — exits 0 through `main`'s catch, looks like it
+  passed. `schema` catches the first three, from `settings` in
+  `@.claude/schemas/extensions.json`; the fourth only by running the mode by hand.
 - **The runtime silently ignores unknown frontmatter.** An invented field is decoration,
   not behavior. List of native fields in `@claude-help.md`.
 - **`AskUserQuestion` rejects a question with fewer than 2 options**, and rejects the

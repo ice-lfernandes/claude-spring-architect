@@ -1,0 +1,76 @@
+// Shape reference for Form 7c — a new mode inside .claude/hooks/ArchHook.java.
+//
+// A mode is NOT a new file. Enforcement stays in one executable, which step 7 of
+// `project-bootstrap` copies whole into the generated project; a second hook file would
+// have to be copied, registered and kept in sync on its own, and the first one to fall
+// out of sync fails without a word.
+//
+// Three pieces, in this order:
+//   1. a `case` in the dispatch in `main`
+//   2. the method, with the Javadoc that carries the "why this is a hook" record
+//   3. the lists it reads, in .claude/schemas/extensions.json — never in the Java
+//
+// Then register it: ../templates/hook-entry.json.example.
+
+// ── 1. dispatch, in main ────────────────────────────────────────────────────────
+// Next to the existing modes. `mode` defaults to "check" when no argument is given.
+
+            switch (mode) {
+                case "check"  -> check(filePath(stdin));
+                // ...
+                case "<mode>" -> <mode>();          // ← the new one
+            }
+
+// ── 2. the method ───────────────────────────────────────────────────────────────
+
+    /**
+     * <One line: what this refuses to let through.>
+     *
+     * <p><Why this is a hook and not prose: the failure that was actually observed, and
+     * the form that was rejected — usually a rule or a line in CLAUDE.md, which the
+     * model may ignore. Name the event that invokes it. Three sentences; this Javadoc is
+     * the level-1 record for Form 7c, since JSON has nowhere to put one.>
+     *
+     * <p>Design: .claude/decisions/NNNN-<slug>.md
+     */
+    static void <mode>() {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        if (sch == null) return;
+
+        // Every name, path and pattern comes from extensions.json — invariant 10.
+        // A list hardcoded here has two owners and diverges on the first edit.
+        List<String> subjects = asStrList(get(sch, "<block>", "<list>"));
+
+        List<String> errors = new ArrayList<>();
+        for (String subject : subjects) {
+            // ... the check
+        }
+
+        if (errors.isEmpty()) return;
+
+        // stderr is the entire user interface of a blocking hook: it is all the person
+        // who just got stopped will read. Name the rule, the file, and the way out.
+        err("❌ <what was refused> — " + errors.size() + " problem(s)");
+        for (String e : errors) err(e);
+        err("");
+        err("<what to do instead, concretely>");
+        System.exit(2);          // 2 blocks. Any other non-zero is a non-blocking error.
+    }
+
+// ── 3. the data, in .claude/schemas/extensions.json ─────────────────────────────
+//
+//   "<block>": {
+//     "$comment": "Read by ArchHook.java `<mode>`. Why this list is data and not Java:
+//                  invariant 10 — the runtime ignores what it does not recognize, so a
+//                  list with two owners diverges silently. Design: .claude/decisions/NNNN-<slug>.md",
+//     "<list>": []
+//   }
+//
+// ── before reporting it done ────────────────────────────────────────────────────
+//
+//   java .claude/hooks/ArchHook.java <mode>     ← run it once by hand.
+//   java .claude/hooks/ArchHook.java schema     ← validates the registration.
+//   java .claude/hooks/ArchHook.java doctor     ← confirms the count.
+//
+// A mode that throws exits 0 through the top-level catch in `main` and looks like it
+// passed. Running it by hand is the only thing that catches that.
