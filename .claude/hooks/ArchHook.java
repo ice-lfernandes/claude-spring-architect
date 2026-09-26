@@ -52,6 +52,7 @@ public class ArchHook {
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
                 case "compose" -> compose();
+                case "export" -> export(args);
                 case "doctor" -> doctor();
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
@@ -660,6 +661,511 @@ public class ArchHook {
         return svcs.isEmpty() ? "a service" : "`" + String.join("`, `", svcs) + "`";
     }
 
+    // ── export ───────────────────────────────────────────────────────────────
+    //
+    // Writes a target project's `.claude/` from this repository's, transformed for one
+    // blueprint: rules with their `paths` derived from `packages.map`, skills and agents
+    // without the subdirectories that only serve the meta-repo, and every citation to
+    // `decisions/` or `blueprints/` cut, since neither exists inside a project.
+    //
+    // Form 7c of `claude-code-architect-designer`, motivated by axis 7 of its interview:
+    // the transformation runs unattended on other people's machines — `arch-adopt` pulls
+    // this repository and invokes this mode — so the same input has to produce the same
+    // tree. The closest rejected form was a skill in prose, which is what steps 6.6 to 7
+    // of `project-bootstrap` are today: a model re-deriving the copy on every run, at the
+    // reader's expense and with no way for the CI to check it. No lifecycle event invokes
+    // this mode; like `compose`, it is called by hand and by a skill.
+    //
+    // WHAT it copies and HOW each piece is transformed is not here: it is the `export`
+    // block of .claude/schemas/extensions.json — invariant 10 — and `schema` cross-checks
+    // that block against what is on disk.
+    // Design: .claude/decisions/0054-deterministic-export-provenance-plugin.md
+
+    record Blueprint(String id, Map<String, String> packages, List<String> archPaths,
+                     List<String> vocabulary) {}
+
+    static void export(String[] args) throws Exception {
+        String dest = null, blueprintId = null, ref = "working-tree";
+        boolean dry = false;
+        for (int i = 1; i < args.length; i++) {
+            String a = args[i];
+            if (a.equals("--dry-run")) dry = true;
+            else if (a.equals("--blueprint") && i + 1 < args.length) blueprintId = args[++i];
+            else if (a.equals("--ref") && i + 1 < args.length) ref = args[++i];
+            else if (a.startsWith("--")) { err("❌ Unknown option: " + a); exportUsage(); System.exit(2); }
+            else if (dest == null) dest = a;
+            else { err("❌ Only one destination is accepted, got also: " + a); exportUsage(); System.exit(2); }
+        }
+        if (dest == null || blueprintId == null) { exportUsage(); System.exit(2); }
+
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        Map<String, Object> exp = sch == null ? null : asMap(sch.get("export"));
+        if (exp == null) {
+            err("❌ No `export` block in " + SCHEMA_FILE + " — there is nothing to copy.");
+            err("   This mode reads its lists from that file; it hardcodes none.");
+            System.exit(2);
+        }
+
+        Path destRoot = Paths.get(dest).toAbsolutePath().normalize();
+        if (destRoot.equals(ROOT)) {
+            err("❌ The destination is this repository itself: " + destRoot);
+            err("   Export writes a project's .claude/ from this one; give it another path.");
+            System.exit(2);
+        }
+        Blueprint bp = loadBlueprint(exp, blueprintId);
+
+        Map<String, String> out = new TreeMap<>();
+        List<String> notes = new ArrayList<>();
+        exportRules(exp, bp, out);
+        exportTree(exp, "skills", out);
+        exportTree(exp, "agents", out);
+        exportFiles(exp, bp, out, notes);
+        out.put(asStr(get(exp, "transport", "stamp_file")) == null
+                ? ".claude/.arch-provenance.json"
+                : asStr(get(exp, "transport", "stamp_file")), stamp(bp, ref));
+
+        List<String> residue = new ArrayList<>();
+        List<String> exempt = asStrList(get(exp, "body_transforms", "residue_exempt"));
+        for (String marker : asStrList(get(exp, "body_transforms", "residue_markers"))) {
+            for (Map.Entry<String, String> e : out.entrySet()) {
+                if (exempt.contains(e.getKey())) continue;
+                if (e.getValue().contains(marker)) residue.add(e.getKey() + " still carries `" + marker + "`");
+            }
+        }
+
+        err("ArchHook export");
+        err("  Source ............ " + ROOT);
+        err("  Destination ....... " + destRoot);
+        err("  Blueprint ......... " + bp.id() + " (" + bp.packages().size() + " packages, "
+                + bp.archPaths().size() + " architecture paths)");
+        err("  Files ............. " + out.size());
+        for (String n : notes) err("  " + n);
+        if (dry) {
+            err("");
+            out.keySet().forEach(p -> err("    " + p));
+            err("");
+            err("⚪ --dry-run: nothing was written.");
+        } else {
+            for (Map.Entry<String, String> e : out.entrySet()) {
+                Path target = destRoot.resolve(e.getKey());
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, e.getValue(), StandardCharsets.UTF_8);
+            }
+            for (String d : asStrList(exp.get("ensure_dirs"))) Files.createDirectories(destRoot.resolve(d));
+            appendGitignore(destRoot, asStrList(exp.get("gitignore_lines")));
+            err("");
+            err("✅ Written. Review with `git -C " + destRoot + " diff`.");
+        }
+        if (!residue.isEmpty()) {
+            err("");
+            err("⚠️  " + residue.size() + " dead citation(s) survived the transform:");
+            residue.forEach(r -> err("    " + r));
+            err("   Neither decisions/ nor blueprints/ exists inside a project — fix the");
+            err("   sentence at the source, or add its shape to body_transforms.");
+        }
+    }
+
+    static void exportUsage() {
+        err("usage: java .claude/hooks/ArchHook.java export <dest> --blueprint <id>"
+                + " [--ref <label>] [--dry-run]");
+        err("  <dest>        the target project's root (never this repository)");
+        err("  --blueprint   id of a blueprint under .claude/blueprints/");
+        err("  --ref         label recorded in the provenance stamp (default: working-tree)");
+    }
+
+    /** Reads `packages.map`, `architecture_paths` and the naming-convention comment block. */
+    static Blueprint loadBlueprint(Map<String, Object> exp, String id) throws IOException {
+        String tpl = asStr(get(exp, "blueprint", "path"));
+        if (tpl == null) tpl = ".claude/blueprints/{id}/{id}.yaml";
+        Path file = ROOT.resolve(tpl.replace("{id}", id));
+        if (!Files.isRegularFile(file)) {
+            err("❌ Blueprint `" + id + "` not found at " + relative(file));
+            err("   Available: " + availableBlueprints());
+            System.exit(2);
+        }
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<String> mapPath = asStrList(get(exp, "blueprint", "packages_map_path"));
+        Map<String, String> pkgs = yamlNestedMap(lines,
+                mapPath.isEmpty() ? List.of("packages", "map") : mapPath);
+        String apKey = asStr(get(exp, "blueprint", "architecture_paths_key"));
+        List<String> arch = yamlList(lines, apKey == null ? "architecture_paths" : apKey);
+        String vocKey = asStr(get(exp, "blueprint", "vocabulary_anchor_key"));
+        List<String> voc = yamlCommentBlockAbove(lines, vocKey == null ? "dependency_rules" : vocKey);
+
+        if (pkgs.isEmpty() || arch.isEmpty()) {
+            err("❌ Blueprint `" + id + "` has no packages.map or no architecture_paths.");
+            err("   Both are required by .claude/blueprints/_schema.md; without them every");
+            err("   rule with a territory would be copied with a dead glob.");
+            System.exit(2);
+        }
+        return new Blueprint(id, pkgs, arch, voc);
+    }
+
+    static String availableBlueprints() throws IOException {
+        Path dir = ROOT.resolve(".claude/blueprints");
+        if (!Files.isDirectory(dir)) return "(none)";
+        try (Stream<Path> walk = Files.list(dir)) {
+            return walk.filter(Files::isDirectory)
+                    .filter(p -> Files.isRegularFile(p.resolve(p.getFileName() + ".yaml")))
+                    .map(p -> p.getFileName().toString()).sorted()
+                    .collect(Collectors.joining(", "));
+        }
+    }
+
+    // ── export · the three sets ──────────────────────────────────────────────
+
+    static void exportRules(Map<String, Object> exp, Blueprint bp, Map<String, String> out)
+            throws IOException {
+        Map<String, Object> block = asMap(exp.get("rules"));
+        if (block == null) return;
+        String from = asStr(block.get("from")), to = asStr(block.get("to"));
+        List<String> exclude = asStrList(block.get("exclude"));
+        Path dir = ROOT.resolve(from);
+        if (!Files.isDirectory(dir)) return;
+        try (Stream<Path> walk = Files.list(dir)) {
+            for (Path f : walk.filter(p -> p.toString().endsWith(".md")).sorted()
+                    .collect(Collectors.toList())) {
+                String name = f.getFileName().toString();
+                if (exclude.contains(name)) continue;
+                String body = Files.readString(f, StandardCharsets.UTF_8);
+                body = derivePaths(exp, bp, name, body);
+                body = transform(exp, bp, to + "/" + name, body);
+                out.put(to + "/" + name, body);
+            }
+        }
+    }
+
+    /** Copies `keep` entries of each included skill, or the single file of each agent. */
+    static void exportTree(Map<String, Object> exp, String key, Map<String, String> out)
+            throws IOException {
+        Map<String, Object> block = asMap(exp.get(key));
+        if (block == null) return;
+        String from = asStr(block.get("from")), to = asStr(block.get("to"));
+        List<String> keep = asStrList(block.get("keep"));
+        for (String name : asStrList(block.get("include"))) {
+            Path base = ROOT.resolve(from).resolve(name);
+            if (keep.isEmpty()) {                                  // agents: one flat file
+                Path f = ROOT.resolve(from).resolve(name + ".md");
+                if (Files.isRegularFile(f)) {
+                    String rel = to + "/" + name + ".md";
+                    out.put(rel, transform(exp, null, rel, Files.readString(f, StandardCharsets.UTF_8)));
+                }
+                continue;
+            }
+            for (String entry : keep) {
+                Path p = base.resolve(entry);
+                if (Files.isRegularFile(p)) {
+                    String rel = to + "/" + name + "/" + entry;
+                    out.put(rel, transform(exp, null, rel, Files.readString(p, StandardCharsets.UTF_8)));
+                } else if (Files.isDirectory(p)) {
+                    try (Stream<Path> walk = Files.walk(p)) {
+                        for (Path f : walk.filter(Files::isRegularFile).sorted()
+                                .collect(Collectors.toList())) {
+                            String rel = to + "/" + name + "/" + base.relativize(f).toString()
+                                    .replace(File.separatorChar, '/');
+                            out.put(rel, transform(exp, null, rel,
+                                    Files.readString(f, StandardCharsets.UTF_8)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static void exportFiles(Map<String, Object> exp, Blueprint bp, Map<String, String> out,
+                            List<String> notes) throws IOException {
+        for (String group : List.of("copy", "overwrite", "optional_copy")) {
+            for (Object e : asList(exp.get(group))) {
+                String from = asStr(get(e, "from")), to = asStr(get(e, "to"));
+                if (from == null || to == null) continue;
+                Path p = ROOT.resolve(from);
+                if (!Files.isRegularFile(p)) {
+                    if (!group.equals("optional_copy")) {
+                        err("❌ export." + group + " names `" + from + "` — no such file.");
+                        System.exit(2);
+                    }
+                    continue;
+                }
+                out.put(to, transform(exp, bp, from, Files.readString(p, StandardCharsets.UTF_8)));
+                if (group.equals("overwrite")) {
+                    notes.add("Overwrites ........ " + to + " (its previous content is in the diff)");
+                }
+            }
+        }
+    }
+
+    // ── export · transforms ──────────────────────────────────────────────────
+
+    /**
+     * Cuts what has no counterpart inside a project and applies the rewrites the manifest
+     * names for this file. A sentence whose only job is to cite a decision record goes
+     * whole; a citation inside a sentence that says something else loses only its clause.
+     */
+    static String transform(Map<String, Object> exp, Blueprint bp, String sourceRel, String body) {
+        Map<String, Object> bt = asMap(exp.get("body_transforms"));
+        if (bt == null) return body;
+
+        String cite = asStr(bt.get("citation_pattern"));
+        if (cite != null) {
+            // Shapes where the citation IS the content: a parenthetical, or a list item
+            // whose whole line describes the record. Cutting only the clause there would
+            // leave `()` or a bullet with a dangling dash.
+            for (String shape : asStrList(bt.get("cut_shapes"))) {
+                body = body.replaceAll(shape.replace("{cite}", cite), "");
+            }
+            // A lead-in is matched across line breaks: the sentence it opens is wrapped
+            // at 90 columns like every other, and "Full\nrecord in `@…`." is the common
+            // case, not the exception.
+            for (String lead : asStrList(bt.get("sentence_lead_ins"))) {
+                String words = Arrays.stream(lead.trim().split("\\s+")).map(Pattern::quote)
+                        .collect(Collectors.joining("\\s+"));
+                body = body.replaceAll("(?s)" + words + "[^.]{0,200}?" + cite + "\\.?[ ]?", "");
+            }
+            String clause = asStr(bt.get("clause_pattern"));
+            body = body.replaceAll((clause == null ? "\\s*" : clause) + cite, "");
+        }
+        for (Object r : asList(bt.get("replace"))) {
+            String find = asStr(get(r, "find")), with = asStr(get(r, "with"));
+            if (find != null && with != null) body = body.replace(find, with);
+        }
+        for (Object r : asList(bt.get("rewrite"))) {
+            if (!sourceRel.equals(asStr(get(r, "file")))) continue;
+            body = switch (String.valueOf(asStr(get(r, "op")))) {
+                case "blueprint_vocabulary" -> replaceBetween(body, asStr(get(r, "anchor_start")),
+                        asStr(get(r, "anchor_end")), vocabularyMarkdown(bp));
+                case "replace_paragraph" -> replaceParagraph(body, asStr(get(r, "anchor")),
+                        String.valueOf(asStr(get(r, "replacement")))
+                                .replace("{blueprint}", bp == null ? "" : bp.id()));
+                case "drop_block" -> dropJsonBlock(body, asStr(get(r, "block")));
+                default -> body;
+            };
+        }
+        return body.replaceAll("(?m)[ \t]+$", "").replaceAll("\n{3,}", "\n\n");
+    }
+
+    /** Rewrites a rule's `paths:` from the blueprint, never from the original file. */
+    static String derivePaths(Map<String, Object> exp, Blueprint bp, String rule, String body) {
+        Map<String, Object> spec = asMap(get(exp, "derived_paths", rule));
+        if (spec == null) return body;
+
+        List<String> globs = new ArrayList<>();
+        if (asStr(spec.get("from_blueprint")) != null) {
+            globs.addAll(bp.archPaths());
+        } else {
+            String shape = asStr(spec.get("glob"));
+            for (String suffix : asStrList(spec.get("suffix"))) {
+                for (Map.Entry<String, String> e : bp.packages().entrySet()) {
+                    if (e.getKey().endsWith(suffix)) globs.add(shape.replace("{}", e.getValue().replace('.', '/')));
+                }
+            }
+            for (String key : asStrList(spec.get("key"))) {
+                String v = bp.packages().get(key);
+                if (v != null) { globs.add(shape.replace("{}", v.replace('.', '/'))); break; }
+            }
+            globs.addAll(asStrList(spec.get("extra")));
+        }
+        if (globs.isEmpty()) {
+            if (!Boolean.TRUE.equals(spec.get("optional"))) {
+                err("❌ Rule `" + rule + "` derives no glob from blueprint `" + bp.id() + "`.");
+                err("   A rule copied with a dead glob never enters context, in silence.");
+                err("   Mark it `optional` in export.derived_paths, or fix packages.map.");
+                System.exit(2);
+            }
+            return stripPathsBlock(body);            // optional: travels without `paths`
+        }
+        StringBuilder b = new StringBuilder("paths:\n");
+        for (String g : globs) b.append("  - \"").append(g).append("\"\n");
+        return replacePathsBlock(body, b.toString());
+    }
+
+    /** Replaces (or inserts) the `paths:` block inside the leading frontmatter. */
+    static String replacePathsBlock(String body, String block) {
+        String stripped = stripPathsBlock(body);
+        int open = stripped.indexOf("---\n");
+        if (open != 0) return stripped;                        // no frontmatter: nothing to do
+        return "---\n" + block + stripped.substring(4);
+    }
+
+    static String stripPathsBlock(String body) {
+        return body.replaceAll("(?m)^paths:\\n(?:[ \\t]+-[^\\n]*\\n)+", "");
+    }
+
+    static String replaceBetween(String body, String start, String end, String replacement) {
+        if (start == null || end == null) return body;
+        int a = body.indexOf(start);
+        if (a < 0) return body;
+        int b = body.indexOf(end, a);
+        if (b < 0) return body;
+        return body.substring(0, a) + replacement + body.substring(b + end.length());
+    }
+
+    static String replaceParagraph(String body, String anchor, String replacement) {
+        if (anchor == null) return body;
+        int a = body.indexOf(anchor);
+        if (a < 0) return body;
+        int start = body.lastIndexOf("\n\n", a);
+        start = start < 0 ? 0 : start + 2;
+        int end = body.indexOf("\n\n", a);
+        if (end < 0) end = body.length();
+        return body.substring(0, start) + replacement + body.substring(end);
+    }
+
+    /** Removes a top-level block of a two-space-indented JSON object, braces balanced. */
+    static String dropJsonBlock(String body, String key) {
+        if (key == null) return body;
+        String needle = "\n  \"" + key + "\": {";
+        int a = body.indexOf(needle);
+        if (a < 0) return body;
+        int depth = 0, i = a + needle.length() - 1;
+        for (; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) break;
+        }
+        int end = i + 1;
+        if (end < body.length() && body.charAt(end) == ',') end++;
+        while (end < body.length() && (body.charAt(end) == '\n' || body.charAt(end) == ' ')) end++;
+        return body.substring(0, a + 1) + body.substring(end);
+    }
+
+    /** The blueprint's naming-convention comment block, as a markdown list. */
+    static String vocabularyMarkdown(Blueprint bp) {
+        if (bp == null || bp.vocabulary().isEmpty()) return "";
+        List<String> prose = new ArrayList<>(), entries = new ArrayList<>();
+        int base = Integer.MAX_VALUE;
+        List<String> body = new ArrayList<>();
+        for (String raw : bp.vocabulary()) {
+            String l = raw.replaceFirst("^#\\s?", "");
+            if (l.trim().toLowerCase(Locale.ROOT).startsWith("reference")) break;
+            body.add(l);
+            int ind = l.length() - l.stripLeading().length();
+            if (!l.isBlank() && ind > 0) base = Math.min(base, ind);
+        }
+        for (String l : body) {
+            int ind = l.length() - l.stripLeading().length();
+            if (l.isBlank()) continue;
+            if (ind == 0) prose.add(l.trim());
+            else if (ind == base) entries.add(l.trim());
+            else if (!entries.isEmpty()) entries.set(entries.size() - 1,
+                    entries.get(entries.size() - 1) + " " + l.trim());
+        }
+        StringBuilder b = new StringBuilder();
+        if (!prose.isEmpty()) b.append(String.join(" ", prose)).append("\n\n");
+        for (String e : entries) {
+            // The comment aligns its columns with runs of spaces; markdown doesn't, and
+            // the role before the first colon is what a reader scans for.
+            String flat = e.replaceAll(" {2,}", " ");
+            int colon = flat.indexOf(':');
+            b.append("- ").append(colon > 0
+                    ? "**" + flat.substring(0, colon) + ":**" + flat.substring(colon + 1)
+                    : flat).append('\n');
+        }
+        return b.toString().stripTrailing();
+    }
+
+    // ── export · the provenance stamp and the YAML it reads ──────────────────
+
+    static String stamp(Blueprint bp, String ref) throws Exception {
+        String commit = firstLine(run("git", "-C", ROOT.toString(), "rev-parse", "HEAD"));
+        String origin = firstLine(run("git", "-C", ROOT.toString(), "config", "--get", "remote.origin.url"));
+        String manifest = readOrNull(ROOT.resolve(SCHEMA_FILE));
+        return "{\n"
+                + "  \"source\": \"" + jsonEscape(origin == null ? ROOT.toString() : origin) + "\",\n"
+                + "  \"ref\": \"" + jsonEscape(ref) + "\",\n"
+                + "  \"commit\": \"" + jsonEscape(commit == null ? "unknown" : commit) + "\",\n"
+                + "  \"exported_at\": \"" + Instant.now() + "\",\n"
+                + "  \"blueprint\": \"" + jsonEscape(bp.id()) + "\",\n"
+                + "  \"manifest_digest\": \"" + (manifest == null ? "unknown" : sha256(manifest)) + "\"\n"
+                + "}\n";
+    }
+
+    static String firstLine(Proc p) {
+        return p.exit() == 0 && !p.out().isEmpty() ? p.out().get(0).trim() : null;
+    }
+
+    static void appendGitignore(Path destRoot, List<String> lines) throws IOException {
+        if (lines.isEmpty()) return;
+        Path gi = destRoot.resolve(".gitignore");
+        String cur = Files.isRegularFile(gi) ? Files.readString(gi, StandardCharsets.UTF_8) : "";
+        StringBuilder add = new StringBuilder();
+        for (String l : lines) if (!cur.contains(l)) add.append(l).append('\n');
+        if (add.length() == 0) return;
+        Files.writeString(gi, cur.isEmpty() || cur.endsWith("\n") ? cur + add : cur + "\n" + add,
+                StandardCharsets.UTF_8);
+    }
+
+    static int indentOf(String l) { return l.length() - l.stripLeading().length(); }
+
+    static int indexOfTopKey(List<String> lines, String key) {
+        for (int i = 0; i < lines.size(); i++) if (lines.get(i).matches("^" + Pattern.quote(key) + ":.*")) return i;
+        return -1;
+    }
+
+    static String unquote(String v) {
+        v = v.trim();
+        if (v.startsWith("\"") && v.indexOf('"', 1) > 0) return v.substring(1, v.indexOf('"', 1));
+        if (v.startsWith("'") && v.indexOf('\'', 1) > 0) return v.substring(1, v.indexOf('\'', 1));
+        int hash = v.indexOf(" #");
+        return (hash > 0 ? v.substring(0, hash) : v).trim();
+    }
+
+    /** The list of scalars under a top-level key. */
+    static List<String> yamlList(List<String> lines, String key) {
+        List<String> out = new ArrayList<>();
+        int i = indexOfTopKey(lines, key);
+        if (i < 0) return out;
+        for (int j = i + 1; j < lines.size(); j++) {
+            String l = lines.get(j);
+            if (l.trim().startsWith("#")) continue;
+            if (l.isBlank()) { if (!out.isEmpty()) break; continue; }
+            Matcher m = Pattern.compile("^\\s+-\\s*(.+?)\\s*$").matcher(l);
+            if (!m.matches()) break;
+            out.add(unquote(m.group(1)));
+        }
+        return out;
+    }
+
+    /** The scalar entries of a nested map, e.g. `packages` → `map`. */
+    static Map<String, String> yamlNestedMap(List<String> lines, List<String> path) {
+        int i = indexOfTopKey(lines, path.get(0));
+        if (i < 0) return Map.of();
+        int indent = 0;
+        i++;
+        for (int d = 1; d < path.size(); d++) {
+            int found = -1;
+            for (int j = i; j < lines.size(); j++) {
+                String l = lines.get(j);
+                if (l.isBlank() || l.trim().startsWith("#")) continue;
+                if (indentOf(l) <= indent) break;
+                if (l.trim().startsWith(path.get(d) + ":")) { found = j; indent = indentOf(l); break; }
+            }
+            if (found < 0) return Map.of();
+            i = found + 1;
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        Pattern entry = Pattern.compile("^\\s*([A-Za-z0-9_.\\-]+)\\s*:\\s*(.+?)\\s*$");
+        for (int j = i; j < lines.size(); j++) {
+            String l = lines.get(j);
+            if (l.isBlank() || l.trim().startsWith("#")) continue;
+            if (indentOf(l) <= indent) break;
+            Matcher m = entry.matcher(l);
+            if (m.matches()) map.put(m.group(1), unquote(m.group(2)));
+        }
+        return map;
+    }
+
+    /** The contiguous comment block sitting immediately above a top-level key. */
+    static List<String> yamlCommentBlockAbove(List<String> lines, String key) {
+        int i = indexOfTopKey(lines, key);
+        if (i < 0) return List.of();
+        int j = i - 1;
+        while (j >= 0 && lines.get(j).isBlank()) j--;
+        List<String> block = new ArrayList<>();
+        while (j >= 0 && lines.get(j).startsWith("#")) block.add(lines.get(j--));
+        Collections.reverse(block);
+        return block;
+    }
+
     // ── schema ───────────────────────────────────────────────────────────────
     //
     // Guards the frontmatter fields of Claude Code's extension files.
@@ -779,7 +1285,7 @@ public class ArchHook {
         Map<String, Object> exp = asMap(sch.get("export"));
         if (exp == null) return;                      // no `export` block: nothing to check
 
-        for (String group : List.of("copy", "merge")) {
+        for (String group : List.of("copy", "overwrite")) {
             for (Object e : asList(exp.get(group))) {
                 String from = asStr(get(e, "from"));
                 if (from == null) {

@@ -144,8 +144,8 @@
       { "from": ".claude/skills/project-bootstrap/templates/audit-pricing.json.example", "to": ".claude/audit-usage/pricing.json" }
     ],
 
-    "merge": [
-      { "from": ".claude/skills/project-bootstrap/templates/settings.json.example", "to": ".claude/settings.json" }
+    "overwrite": [
+      { "$comment": "Not a merge, on purpose: re-serializing the file would reorder its keys and drop its comments, and a real three-way merge is a program nobody asked for. The export refuses a dirty worktree, so the destination's previous content is one `git diff` away and one `git checkout` from coming back. A project that added hook entries of its own loses them here and sees exactly that in the diff.", "from": ".claude/skills/project-bootstrap/templates/settings.json.example", "to": ".claude/settings.json" }
     ],
 
     "optional_copy": [
@@ -202,16 +202,71 @@
       "architecture-ddd.md": { "from_blueprint": "architecture_paths" }
     },
 
+    "blueprint": {
+      "$comment": "Where the mode reads the architecture from, and how. `vocabulary_anchor_key` names the top-level YAML key the naming-convention comment block sits immediately above — the block is a comment in every blueprint written so far, so it is located by position rather than by a marker, and the position is data because a blueprint that moves it would otherwise need Java changed. Invariant 7: adding an architecture edits no code.",
+      "path": ".claude/blueprints/{id}/{id}.yaml",
+      "packages_map_path": ["packages", "map"],
+      "architecture_paths_key": "architecture_paths",
+      "vocabulary_anchor_key": "dependency_rules"
+    },
+
     "body_transforms": {
-      "$comment": "Applied to every copied markdown file. `cut_citations` removes the citing clause and leaves the sentence standing — decisions/ has no counterpart inside a project, so there is nothing to rewrite the path to. `rewrite` names the files whose body needs more than a cut; each `op` is implemented by the mode, and the list of files it runs on lives here.",
-      "cut_citations": ["@?\\.claude/decisions/[0-9]{4}-[^\\s)`]+\\.md"],
-      "rewrite": [
-        { "file": ".claude/rules/naming.md", "op": "blueprint_vocabulary" },
-        { "file": ".claude/rules/00-index.md", "op": "index_architecture_paths_paragraph" },
-        { "file": ".claude/schemas/extensions.json", "op": "cut_citations_in_comments" },
-        { "file": ".claude/hooks/ArchHook.java", "op": "cut_citations_in_comments" }
+      "$comment": "Applied to every copied text file. A citation to decisions/ has no counterpart inside a project, so it is cut, not rewritten: a sentence that exists only to cite the record goes whole (that is what `sentence_lead_ins` recognizes), and a citation inside a sentence that says something else loses only the citing clause. Whatever survives both is reported by `residue_markers` at the end of the run — a dead path that ships in silence is the failure this whole block exists against, and the report is what makes it not silent.",
+      "citation_pattern": "`?@?\\.claude/decisions/[0-9]{4}-[^`\\s)]+\\.md`?",
+      "cut_shapes": [
+        "\\s*\\((?:see\\s+|cf\\.\\s+|ver\\s+)?{cite}\\)",
+        "(?m)^[ \\t]*[-*][ \\t]*{cite}[^\\n]*\\n"
       ],
-      "blueprint_citation_op": "project_packages_instead_of_blueprint"
+      "sentence_lead_ins": [
+        "Full record", "Decision recorded", "Decision", "Record", "Rationale and design",
+        "Design", "Registro", "Decisão registrada", "Desenho"
+      ],
+      "clause_pattern": ",?\\s*(?:in|em|see|ver|cf\\.)?\\s*",
+      "residue_markers": [".claude/decisions/", ".claude/blueprints/"],
+      "residue_exempt": [".claude/hooks/ArchHook.java"],
+      "replace": [
+        {
+          "find": "the active blueprint's `packages.map`",
+          "with": "the project's packages, documented in the root `CLAUDE.md` and the module `CLAUDE.md` files"
+        },
+        {
+          "$comment": "Wrapped across three lines in the source, so the `find` carries the line breaks and the list indentation with it. Brittle by nature — which is what `residue_markers` is for: change the sentence upstream and the export reports the dead path instead of shipping it.",
+          "find": "the active blueprint's own\n   `packages.map` and its naming-convention comment (`.claude/blueprints/<id>/<id>.yaml`)\n   — read the comment, not just the map,",
+          "with": "the project's own packages\n   and vocabulary, in the root `CLAUDE.md`, the module `CLAUDE.md` files, and\n   `.claude/rules/naming.md` § Architecture vocabulary — read the vocabulary, not just\n   the package table,"
+        }
+      ],
+      "rewrite": [
+        {
+          "file": ".claude/rules/naming.md",
+          "op": "replace_paragraph",
+          "anchor": "belong to the active blueprint's naming convention",
+          "replacement": "The names of the use case, its ports, and their implementations change with the\narchitecture. They belong to this project's own naming convention, fixed at generation\ntime from blueprint\n`{blueprint}`, not to the table above. Where the two disagree, the convention below\nwins."
+        },
+        {
+          "file": ".claude/rules/naming.md",
+          "op": "blueprint_vocabulary",
+          "anchor_start": "<!-- Written at generation time:",
+          "anchor_end": "-->"
+        },
+        {
+          "$comment": "The exported copy keeps no `export` block: its include/exclude lists describe THIS repository's directories, and inside a project `schema` would report the creation skills it excludes as stale entries. Nothing is lost — `arch-adopt` reads the manifest from the copy it fetches, never from the project it is writing into.",
+          "file": ".claude/schemas/extensions.json",
+          "op": "drop_block",
+          "block": "export"
+        },
+        {
+          "file": ".claude/rules/00-index.md",
+          "op": "replace_paragraph",
+          "anchor": "`architecture-ddd.md` is the only one without its own `paths`",
+          "replacement": "`architecture-ddd.md` carries the `paths` fixed at generation time from blueprint\n`{blueprint}`. Changing it by hand disables the auto-loading of that rule."
+        },
+        {
+          "file": ".claude/rules/00-index.md",
+          "op": "replace_paragraph",
+          "anchor": "The rules whose territory is a package",
+          "replacement": "The rules whose territory is a package — `api-rest.md`, `persistence.md`,\n`value-objects.md`, `observability.md`, `messaging.md` — had their `paths` written at\ngeneration time from blueprint `{blueprint}`, and they name this project's packages.\nA glob edited by hand to a package that does not exist leaves the rule unloaded, in\nsilence."
+        }
+      ]
     }
   },
 

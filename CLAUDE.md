@@ -22,6 +22,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
+| Write a target project's `.claude/` from this one, transformed for a blueprint | `java .claude/hooks/ArchHook.java export <dest> --blueprint <id> [--dry-run]` |
 | Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
 
