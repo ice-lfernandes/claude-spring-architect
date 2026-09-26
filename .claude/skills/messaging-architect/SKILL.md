@@ -144,6 +144,13 @@ still transport.
    with the columns the relay needs (claim, attempts, failure reason, dead-letter flag) listed
    as requirements, not as DDL. Exemplar's header comment carries the same list.
 
+   The receiving end is that skill's **step 4b**, which models the table once from
+   `persistence-architect/templates/OutboxEventTable.sql.example` and
+   `templates/OutboxEventStore.java.example` — the mirror of its own step 4a for
+   `idempotency_keys`. Name the step in the partial, so the requirement has an addressee
+   instead of a hope. The port stays declared here: that pair implements
+   `OutboxRelayGateway`, it doesn't re-declare it.
+
 5. **Design the consumer adapter.** Translates the inbound payload into a call on the target
    use case's inbound port. Dedupe on the event's own identity before calling it; manual
    acknowledgment, offset commits only after the use case returns.

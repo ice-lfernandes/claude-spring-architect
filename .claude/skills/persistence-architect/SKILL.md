@@ -77,6 +77,7 @@ The division is by **moment and artifact**, not technology:
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports |
 | **this skill** | After the domain partial | `20-persistencia.md`, migration SQL inside it |
 | `rest-api-architect` | Before this one | `30-rest.md` — transport, plus the schema requirements it creates |
+| `messaging-architect` | Only when an event leaves over a broker | `25-mensageria.md` — publication form, and the outbox schema requirement it creates (step 4b) |
 | `test-architect` | After all of them | `40-testes.md` |
 
 If the aggregate has no written invariants yet, it isn't this skill. If the problem is a
@@ -94,16 +95,25 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    gets designed now, not in a second pass. An HTTP-triggered case whose `30-rest.md`
    doesn't exist yet → stop and tell the caller to run `/rest-api-architect` first.
 
+   Also read `25-mensageria.md` **when the file is in the folder** — optional, unlike
+   `30-rest.md`: absent means no broker in this use case and nothing extra to model. When
+   present, its § 2 is input to this pass the same way block 4 of `30-rest.md` is: a
+   publication form of B there means the shared outbox table is this pass's job (step 4b).
+   Its absence is never a reason to stop — `messaging-architect` may legitimately run after
+   this skill, and then the requirement arrives as a second pass on this same folder.
+
 2. **Survey what already exists.** Look for entities, repositories, and migrations in
    the project. A table that already exists gets altered; it isn't recreated. The
    mother spec's REUSE state overrides intuition. Same check for `idempotency_keys`: it's
    shared by the whole application, not per use case — if a prior pass already created
-   it, this one reuses it and doesn't touch it again.
+   it, this one reuses it and doesn't touch it again. Same for `outbox_events`: one per
+   project, whatever the number of events.
 
    ```bash
    ls db/migration/ src/main/resources/db/migration/ 2>/dev/null
    grep -rln "@Entity" --include='*.java' src/ 2>/dev/null
    grep -rl "idempotency_keys" db/migration/ src/main/resources/db/migration/ 2>/dev/null
+   grep -rl "outbox_events" db/migration/ src/main/resources/db/migration/ 2>/dev/null
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions
@@ -139,6 +149,30 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    of the mechanism whose structural half is `rest-api-architect`'s `IdempotencyKeyInterceptor.java.example`.
    Column set and TTL floor come from `@.claude/rules/api-rest.md` § Idempotency; don't
    redecide them here.
+
+   **4b. Outbox, when `25-mensageria.md` fixes publication Form B and step 2 found no
+   `outbox_events` table yet.** Exact mirror of 4a, and for the same reason: one table for
+   the whole project, shared by every event, modeled once and reused afterward — never one
+   outbox per aggregate or per event type. Shape in
+   `templates/OutboxEventTable.sql.example` (schema, partial index, retry columns, and the
+   prune as a commented `DELETE`) and `templates/OutboxEventStore.java.example` (entity,
+   Spring Data repository, and the adapter implementing `OutboxRelayGateway`). The column
+   set is the requirement list `25-mensageria.md` § 2 states; the criterion that made Form
+   B apply is `@.claude/rules/messaging.md` § Publication timing, and it isn't re-litigated
+   here — `messaging-architect` owns it.
+
+   Two boundaries this step does **not** cross. `OutboxRelayGateway` and
+   `PendingOutboxEvent` are declared in `messaging-architect`'s
+   `templates/OutboxRelayPublisher.java.example`, which owns the relay consuming them: this
+   step implements the port, it doesn't re-declare it. And the relay itself, the appender,
+   and `app.outbox.*` are that skill's too — what lands in `20-persistencia.md` is the
+   table, its mapping, and the adapter.
+
+   **Retention is the one open value, and it gets asked.** The exemplar's `7 days` (matching
+   `app.outbox.prune-after: P7D`) is a starting point, not a default to adopt in silence:
+   put it to the user with `AskUserQuestion` — the default first, plus real alternatives —
+   and write the chosen window and its reason into the partial's § 1. Never a single-option
+   question: with nothing to choose between, decide and record instead of asking.
 
 5. **Fix the migration in the partial.** Name per `@.claude/rules/persistence.md`
    § Migrations, with `<N>` following the highest one found in step 2, and the target
@@ -184,6 +218,7 @@ asked.
 | Migrations | New files, order, and the expand/contract pair when the table already exists | `V1__create_table.sql.example` |
 | Configuration | Datasource and JPA properties, with the decided value and why | `application-persistence.yml.example` |
 | Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, adapter, and application component — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` · `IdempotentExecution.java.example` |
+| Outbox (only when `25-mensageria.md` fixes publication Form B) | The shared `outbox_events` table, its mapping, the adapter implementing `OutboxRelayGateway`, and the retention chosen for the prune — modeled once, reused by every later event | `OutboxEventTable.sql.example` · `OutboxEventStore.java.example` |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.
@@ -195,9 +230,12 @@ executor agent that reads them when generating code.
 `@.claude/rules/architecture-ddd.md` (Adapters and Composition sections),
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
 `@.claude/rules/lombok.md`, `@.claude/rules/value-objects.md`,
-`@.claude/rules/api-rest.md` § Idempotency (only when step 4a applies), and the active
-blueprint's `packages.map`. Also reads `30-rest.md` for an HTTP-triggered case —
-mandatory then, its schema requirements are this pass's input.
+`@.claude/rules/api-rest.md` § Idempotency (only when step 4a applies),
+`@.claude/rules/messaging.md` § Publication timing (only when step 4b applies), and the
+active blueprint's `packages.map`. Also reads `30-rest.md` for an HTTP-triggered case —
+mandatory then, its schema requirements are this pass's input — and `25-mensageria.md`
+when that file exists, optional by design: its § 2 says whether the shared outbox table is
+this pass's job.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`. Nothing else — the
 migration SQL lives inside it.
@@ -215,6 +253,12 @@ itself — single owner, see that skill's Contract.
 **Does not decide** the use case boundary (`00-caso-de-uso.md`), the domain model
 (`10-dominio.md`), the transport (`30-rest.md`), or the tests (`40-testes.md`). Doesn't
 touch `.claude/rules/**`.
+
+**Does not collide with `messaging-architect`**: that one decides the publication form and
+owns the relay, the appender, `app.outbox.*`, and the declaration of `OutboxRelayGateway` /
+`PendingOutboxEvent`. This one owns the `outbox_events` table, its mapping, and the adapter
+implementing that port. A form choice is never made here — an outbox requirement that
+contradicts `25-mensageria.md` is a divergence to report.
 
 **Does not collide with `domain-modeling`**: that one declares the output port, this one
 says how it's served. The port's signature belongs to the other; if it needs to change,
