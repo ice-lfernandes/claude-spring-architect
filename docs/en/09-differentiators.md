@@ -90,9 +90,10 @@ modes:
 | `doctor` | manual (`/arch-doctor`) | no | setup diagnosis |
 
 CI runs `doctor`, a `BoundaryTest` that injects a forbidden import and an
-`InjectionPathTest` that injects a cwd-relative injection — both require
-`exit 2` on `ubuntu-latest`, `macos-latest`, and `windows-latest`. "Cross-platform" is
-a verified fact, not a claim.
+`InjectionPathTest` that injects a cwd-relative injection — both require `exit 2` — plus
+a `ComposeTagTest` that requires an `image:` tag disagreeing with the one `src/test` pins
+to be reported, on `ubuntu-latest`, `macos-latest`, and `windows-latest`. "Cross-platform"
+is a verified fact, not a claim.
 
 See [01-file-types.md § Hook](01-file-types.md#hook).
 

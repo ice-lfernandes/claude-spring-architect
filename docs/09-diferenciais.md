@@ -90,9 +90,10 @@ paralelo. Os oito modos:
 | `doctor` | manual (`/arch-doctor`) | não | diagnóstico do setup |
 
 O CI roda `doctor`, um `BoundaryTest` que injeta um import proibido e um
-`InjectionPathTest` que injeta uma injection relativa ao cwd — ambos exigem `exit 2`
-em `ubuntu-latest`, `macos-latest` e `windows-latest`. "Multiplataforma" é fato
-verificado, não alegação.
+`InjectionPathTest` que injeta uma injection relativa ao cwd — ambos exigem `exit 2` —,
+e um `ComposeTagTest` que exige que uma tag de `image:` divergente da que `src/test` fixa
+seja reportada, em `ubuntu-latest`, `macos-latest` e `windows-latest`. "Multiplataforma"
+é fato verificado, não alegação.
 
 Ver [01-tipos-de-arquivo.md § Hook](01-tipos-de-arquivo.md#hook).
 
