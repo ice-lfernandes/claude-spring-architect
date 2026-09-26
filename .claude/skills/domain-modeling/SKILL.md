@@ -85,6 +85,7 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    | Type of each field — `String` or value object | `email: String` spreads validation everywhere; `Email` concentrates it in one place. The criterion isn't opinion: `@.claude/rules/value-objects.md` |
    | Invariant in the constructor or in a method | Constructor = always true. Method = only for that transition |
    | Does the aggregate emit an event? | Decides whether there's a sibling UC to consume it, and whether `messaging-architect` comes in |
+   | …and can that event be lost without anyone noticing? | The `Durability` column of § 4 · Events. A property of the event — whether its absence is later detectable and recoverable — not of its transport. `messaging-architect` turns the answer into a publication form; deciding the form here is opining outside this skill's territory |
    | Aggregate boundary — what's inside and what's a reference by id | An aggregate that's too big is an unnecessary lock |
    | Command with a single field | Sometimes the record is ceremony; sometimes it's cheap extensibility |
 

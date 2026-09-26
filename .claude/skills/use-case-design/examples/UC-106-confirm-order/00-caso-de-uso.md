@@ -43,7 +43,13 @@
    `order.confirm()`, which validates it's in the `AUTHORIZED` state and transitions to
    `CONFIRMED`, recording the domain event `OrderConfirmed`.
 4. `OrderRepository` persists the state change and publishes `OrderConfirmed` after
-   commit.
+   commit. After commit and not inside the transaction, because a rollback after a
+   successful publish would leave both consumers acting on an order that was never
+   confirmed. Publishing directly, and not through an outbox, because losing the event is
+   recoverable here: an unreserved order surfaces in the next stock reconciliation and an
+   unsent notification is visible to the customer. The criterion, and the case where the
+   answer is the outbox instead (**UC-113**), is `@.claude/rules/messaging.md`
+   § Publication timing.
 5. Two independent consumers react to `OrderConfirmed`, each in its own module,
    neither aware of the other: inventory reservation (`InventoryModule`) and customer
    notification (**UC-103**, already specified). This use case's boundary ends at

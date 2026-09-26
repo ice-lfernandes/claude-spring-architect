@@ -1,6 +1,12 @@
 /*
- * EXEMPLAR — Kafka producer adapter. Implements the outbound port `domain-modeling`
- * already declared for the event; doesn't invent its own interface.
+ * EXEMPLAR — Kafka producer adapter, Form A: publish after commit.
+ * Implements the outbound port `domain-modeling` already declared for the event; doesn't
+ * invent its own interface.
+ * Form A is the default of `.claude/rules/messaging.md` § Publication timing: the
+ * transaction commits, then this adapter sends. It accepts one loss window — an outage
+ * between the commit and the send drops the event silently. When that is unacceptable, the
+ * form is B and the exemplar is `OutboxRelayPublisher.java.example`; `SKILL.md` step 3,
+ * first axis, is where the two are chosen between.
  * Form reference for the executor agent; not a file to copy verbatim.
  * Rules: `.claude/rules/messaging.md` (payload shape, idempotent producer, topic naming)
  *        `.claude/rules/architecture-ddd.md` (Adapters: translate, no business logic)

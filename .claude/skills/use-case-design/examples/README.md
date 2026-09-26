@@ -1,6 +1,6 @@
 # Example use-case specs
 
-Twelve complete `00-caso-de-uso.md` — the artifact this skill emits (§ Procedure step
+Thirteen complete `00-caso-de-uso.md` — the artifact this skill emits (§ Procedure step
 7, `templates/use-case-spec.md.example`) — written as fixtures to exercise the
 `/new-feature` pipeline and the `java-spring-boot-developer` executor end to end.
 
@@ -43,6 +43,15 @@ annotation, read only by whoever picks a fixture, not part of the spec file itse
 | 10 | `UC-110-export-invoice` | Export an invoice as CSV, PDF, or XLSX | Same fetch/validate/write skeleton, format-specific step | `pattern-catalog.md`, Template Method |
 | 11 | `UC-111-compute-product-charges` | Compute tax, shipping eligibility, and export payload for a product | Several unrelated operations over one fixed type hierarchy → `pattern-catalog.md`, Visitor |
 | 12 | `UC-112-select-payment-gateway` | Instantiate the right payment gateway client for a payment method | Concrete type returned depends on input, grows with new methods → `pattern-catalog.md`, Factory Method |
+| 13 | `UC-113-settle-merchant-payout` | Settle a merchant payout, crediting an external accounting service | Event whose loss nothing downstream would ever notice → `@.claude/rules/messaging.md` § Publication timing, transactional outbox |
+
+Row 13 is the one whose right-hand column isn't a `java-patterns` entry: what it surfaces
+is a **publication form**, decided by `messaging-architect` from the rule's criterion, and
+it is the only fixture that reaches step 5 of the pipeline at all. Pair it with row 6 —
+`UC-106` states in its flow why publishing straight after the commit is enough there, and
+`UC-113` states why nothing downstream would ever notice the same event going missing. Same
+question, opposite answers, and neither spec names the form: that is the reader's check that
+the criterion in `@.claude/rules/messaging.md` § Publication timing is doing the work.
 
 ## Why examples, not `templates/`
 
