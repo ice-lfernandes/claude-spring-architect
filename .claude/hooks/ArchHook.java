@@ -14,7 +14,8 @@
 //   schema  Pre/PostToolUse + Stop — frontmatter + injection paths     (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
 //   guard   PreToolUse  — design never writes src/, approved specs frozen (blocks)
-//   compose manual      — every compose service up, no foreign container on our ports (never blocks)
+//   compose manual      — every compose service up, no foreign container on our ports,
+//                         compose image tags equal to the ones src/test pins (never blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
 //
 // Dependencies: JDK. Nothing else.
@@ -266,11 +267,20 @@ public class ArchHook {
 
     // ── compose ──────────────────────────────────────────────────────────────
     //
-    // Two questions `docker compose up -d` does not answer, both cheap:
+    // Three questions `docker compose up -d` does not answer, all cheap:
     //   1. Is every service of this project actually running — not `created`, not
     //      `exited`?
     //   2. Is a container from ANOTHER project publishing a host port this project's
     //      compose file also declares?
+    //   3. Does every `image:` of the compose file carry the same tag the test suite
+    //      pins for that same repository in `DockerImageName.parse(...)`?
+    //
+    // Question 3 needs no Docker at all — it compares two files — and it is here because
+    // this mode already owns `docker-compose.yml`. Two skills used to promise the match in
+    // prose (`docker-architect` step 4, `test-architect`'s setup mode), with a YAML comment
+    // as the only link between the halves and the execution order deciding which side led.
+    // A promise that has to hold is a hook, not a paragraph — `@CLAUDE.md` invariant 6.
+    // The mismatch is silent: the test suite passes against an engine version nobody runs.
     //
     // Why this is a hook and not a paragraph in docker-architect/SKILL.md: `docker
     // compose up -d` exits 0 even when an individual service never starts. A container
@@ -315,20 +325,24 @@ public class ArchHook {
 
         Map<String, Set<String>> declared = composeHostPorts(readOrNull(file));
 
+        // Files only, no daemon: computed before the first `docker` call so it survives
+        // every early return below. A machine with Docker off still gets this answer.
+        List<String> tagIssues = imageTagMismatches(file);
+
         Proc ps;
         try {
             ps = runTimed(DOCKER_TIMEOUT, "docker", "compose", "ps", "-a", "--format", "json");
         } catch (Exception e) {
-            return new ComposeReport(true,
-                    "docker not on PATH — service state not checked (optional)", List.of());
+            return withTags(tagIssues,
+                    "docker not on PATH — service state not checked (optional)");
         }
         if (ps.exit() == -1) {
-            return new ComposeReport(true, "`docker compose ps` did not answer in "
-                    + DOCKER_TIMEOUT + "s (daemon starting?) — not checked", List.of());
+            return withTags(tagIssues, "`docker compose ps` did not answer in "
+                    + DOCKER_TIMEOUT + "s (daemon starting?) — not checked");
         }
         if (ps.exit() != 0) {
-            return new ComposeReport(true,
-                    "`docker compose ps` failed (daemon down?) — not checked", List.of());
+            return withTags(tagIssues,
+                    "`docker compose ps` failed (daemon down?) — not checked");
         }
 
         List<String> detail = new ArrayList<>();
@@ -382,11 +396,24 @@ public class ArchHook {
             }
         }
 
+        detail.addAll(tagIssues);
         boolean ok = detail.isEmpty();
         String summary = ok
-                ? running + "/" + total + " service(s) running, no port collision"
+                ? running + "/" + total
+                        + " service(s) running, no port collision, image tags match"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";
         return new ComposeReport(ok, summary, detail);
+    }
+
+    /**
+     * A report whose service-state half could not be checked. The tag comparison reads
+     * files only, so it still counts — and still fails the report on a mismatch, however
+     * unreachable the daemon is.
+     */
+    static ComposeReport withTags(List<String> tagIssues, String summary) {
+        if (tagIssues.isEmpty()) return new ComposeReport(true, summary, List.of());
+        return new ComposeReport(false,
+                tagIssues.size() + " image tag mismatch(es); " + summary, tagIssues);
     }
 
     /** Accepts both shapes `docker compose ps --format json` emits: an array, or one object per line. */
@@ -462,6 +489,133 @@ public class ArchHook {
         if (parts.length < 2) return null;           // ephemeral short form
         String host = parts[parts.length - 2].strip();
         return host.matches("\\d+(-\\d+)?") ? host : null;
+    }
+
+    /** One image reference pinned by a test file: repository, tag, and where it was read. */
+    record ImagePin(String repo, String tag, String where) {}
+
+    /**
+     * Compose services whose `image:` tag disagrees with the tag `src/test` pins for the
+     * same repository. Compared per repository, reported per tag: `postgres:16-alpine` in
+     * the compose file against `postgres:15` in `TestcontainersConfiguration.java` is the
+     * whole failure mode — the suite proves nothing about the engine that actually runs.
+     *
+     * <p>A repository that appears on only one side is not a mismatch: a Testcontainers-only
+     * dependency needs no compose service, and a compose service can exist with no test
+     * touching it.
+     */
+    static List<String> imageTagMismatches(Path composeFile) {
+        Map<String, String> images = composeImages(readOrNull(composeFile));
+        if (images.isEmpty()) return List.of();
+        List<ImagePin> pins = testImagePins();
+        if (pins.isEmpty()) return List.of();
+
+        List<String> out = new ArrayList<>();
+        String compose = relative(composeFile);
+        for (Map.Entry<String, String> e : images.entrySet()) {
+            String[] img = splitImage(e.getValue());
+            if (img == null) continue;
+            for (ImagePin pin : pins) {
+                if (!pin.repo().equals(img[0]) || pin.tag().equals(img[1])) continue;
+                out.add("image tag mismatch for `" + img[0] + "`: " + compose + " service `"
+                        + e.getKey() + "` pins `" + img[1] + "`, " + pin.where() + " pins `"
+                        + pin.tag() + "` — the tests then run against a different version"
+                        + " than `docker compose up` does  →  make both the same tag");
+            }
+        }
+        return out;
+    }
+
+    /** The `image:` value of each compose service. Same walk as {@link #composeHostPorts}. */
+    static Map<String, String> composeImages(String yaml) {
+        Map<String, String> byService = new LinkedHashMap<>();
+        if (yaml == null) return byService;
+        boolean inServices = false;
+        String service = null;
+        for (String raw : yaml.split("\r?\n", -1)) {
+            String line = raw.stripTrailing();
+            if (line.isBlank() || line.strip().startsWith("#")) continue;
+            int indent = line.length() - line.stripLeading().length();
+            String body = line.strip();
+
+            if (indent == 0) {                       // top-level key
+                inServices = body.startsWith("services:");
+                service = null;
+                continue;
+            }
+            if (!inServices) continue;
+            if (indent == 2 && body.endsWith(":")) { // a service name
+                service = body.substring(0, body.length() - 1).strip();
+                continue;
+            }
+            if (service != null && indent == 4 && body.startsWith("image:")) {
+                byService.put(service, body.substring("image:".length()).strip());
+            }
+        }
+        return byService;
+    }
+
+    /**
+     * Every `DockerImageName.parse("…")` literal under a `src/test` tree, with the file it
+     * came from. Read from the source rather than from a running container: the mismatch
+     * has to be visible before anyone starts anything.
+     */
+    static List<ImagePin> testImagePins() {
+        List<ImagePin> pins = new ArrayList<>();
+        Pattern re = Pattern.compile("DockerImageName\\s*\\.\\s*parse\\s*\\(\\s*\"([^\"]+)\"");
+        try {
+            Files.walkFileTree(ROOT, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes a) {
+                    String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                    // Build output and VCS metadata hold copies and no source of truth.
+                    return Set.of("target", "build", ".git", "node_modules", ".idea")
+                            .contains(name) ? FileVisitResult.SKIP_SUBTREE
+                                            : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) {
+                    String rel = relative(f);
+                    if (!rel.endsWith(".java") || !rel.contains("src/test/")) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    String content = readOrNull(f);
+                    if (content == null) return FileVisitResult.CONTINUE;
+                    Matcher m = re.matcher(content);
+                    while (m.find()) {
+                        String[] img = splitImage(m.group(1));
+                        if (img != null) pins.add(new ImagePin(img[0], img[1], rel));
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path f, IOException e) {
+                    return FileVisitResult.CONTINUE;   // unreadable file is not a failure
+                }
+            });
+        } catch (IOException ignored) {
+            // No `src/test` yet, or an unreadable tree: nothing to compare, not a failure.
+        }
+        return pins;
+    }
+
+    /**
+     * An image reference split into repository and tag, or null when there is nothing to
+     * compare. A digest (`repo@sha256:…`) and an unresolved `${VAR}` both return null: the
+     * first pins something stronger than a tag, the second has no value to read here.
+     * `${VAR:-17-alpine}` resolves to its default, same as {@link #hostPort} does.
+     */
+    static String[] splitImage(String ref) {
+        String s = ref.replace("\"", "").replace("'", "").strip();
+        s = Pattern.compile("\\$\\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)}").matcher(s).replaceAll("$1");
+        if (s.isEmpty() || s.contains("${") || s.contains("@")) return null;
+        int colon = s.lastIndexOf(':');
+        // A colon before the last slash is a registry port (`localhost:5000/postgres`),
+        // not a tag: such a reference carries no tag at all.
+        if (colon < 0 || s.indexOf('/', colon) >= 0) return new String[] {s, "latest"};
+        return new String[] {s.substring(0, colon), s.substring(colon + 1)};
     }
 
     /** Host ports out of a `docker ps` Ports column: `0.0.0.0:4318->4318/tcp, [::]:4318->4318/tcp`. */

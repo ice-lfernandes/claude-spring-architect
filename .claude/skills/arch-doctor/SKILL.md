@@ -3,8 +3,8 @@ name: arch-doctor
 description: >
   Diagnoses the AI setup and architecture enforcement on this machine: active hooks,
   loaded boundary rules, Maven wrapper, `java` on PATH, and whether every
-  docker-compose service is actually running with no foreign container on its ports.
-  Explicit invocation only.
+  docker-compose service is actually running with no foreign container on its ports and
+  no image tag disagreeing with the one the test suite pins. Explicit invocation only.
 disable-model-invocation: true
 allowed-tools: Bash, Read
 ---

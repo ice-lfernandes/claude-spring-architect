@@ -96,7 +96,7 @@ decisions/                  history — nobody reads it at runtime, outside the 
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level, choosing an observability backend (Jaeger or Grafana+Tempo+Prometheus) behind the OTLP collector | skill `docker-architect` |
-| A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it |
+| A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse` | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison needs no Docker: it reads both files |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
@@ -119,6 +119,12 @@ decisions/                  history — nobody reads it at runtime, outside the 
   has no effect — `claude` must be restarted.
 - **The runtime silently ignores unknown frontmatter.** An invented field is decoration,
   not behavior. List of native fields in `@claude-help.md`.
+- **`AskUserQuestion` rejects a question with fewer than 2 options**, and rejects the
+  **whole batch** with it: `InputValidationError ... "too_small" ... path:
+  ["questions",1,"options"]`. A question with one option isn't a question — decide it,
+  and record the decision where the answer would have gone. The batch also has an upper
+  bound of 4 questions per call. The generated project carries the same pitfall in its own
+  `CLAUDE.md`, from `project-bootstrap/templates/root.CLAUDE.md.example`.
 - **Everything the model must obey lives in the body of the file**, never in
   frontmatter. `metadata.*` was removed from skills and agents: ownership, `reads`,
   `handoff`, and contracts live in the `## Contrato` section of the body. Do not put

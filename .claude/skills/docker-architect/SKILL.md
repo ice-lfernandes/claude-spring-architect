@@ -144,6 +144,13 @@ this table is where it lives.
    so in the report — `test-architect`'s setup mode is what should pick it up from here,
    not the other way around.
 
+   Which half leads depends on execution order, and that is why the match isn't only
+   promised here: `ArchHook.java compose` compares every `image:` of the compose file with
+   every `DockerImageName.parse` under `src/test` and reports a repository whose tags
+   disagree. Run it after this step — `java .claude/hooks/ArchHook.java compose` — instead
+   of leaving a YAML comment as the only link between the two halves, which is what let a
+   tag drift go unnoticed once (`lessons-learned-010.md` § 6).
+
 5. **Wire the app service's environment**, only the variables that change because of
    step 4 (`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD` pointing at the new service's
    hostname and port from compose's internal network). For the OTLP collector that is

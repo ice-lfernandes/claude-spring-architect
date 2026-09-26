@@ -107,8 +107,10 @@ chain, this isn't the right skill.
    project doesn't have returns empty and passes for "no controller yet".
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4
-   questions per call. Don't re-ask what `00-caso-de-uso.md` or `10-dominio.md` already
-   answered.
+   questions per call and **never fewer than 2 real options per question**: one option
+   isn't a question — decide it and record the decision in the partial, since the runtime
+   rejects the whole batch over a single one (`@CLAUDE.md` § Known pitfalls). Don't re-ask
+   what `00-caso-de-uso.md` or `10-dominio.md` already answered.
 
    | Axis | Decides |
    |---|---|

@@ -78,7 +78,13 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    aggregate might already exist and the use case be just a new method. Confirm or
    correct the mother spec's NEW/CHANGE/REUSE state — and if you correct it, say so in
    the report: the mother spec is now stale and someone needs to review it.
-3. **Ask only what's missing.** `AskUserQuestion` for what the mother spec didn't fix:
+3. **Ask only what's missing.** `AskUserQuestion` for what the mother spec didn't fix,
+   **at most 4 questions per call and never fewer than 2 real options per question**. One
+   option isn't a question: decide that item and record the decision in the partial. The
+   runtime rejects the **whole batch** over a single one-option question
+   (`InputValidationError ... "too_small"`), which is a full round trip lost —
+   `@CLAUDE.md` § Known pitfalls. This step is where it happened
+   (`lessons-learned-010.md` § 8).
 
    | Typical gap | Why it matters |
    |---|---|

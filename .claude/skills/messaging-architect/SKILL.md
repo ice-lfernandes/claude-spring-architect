@@ -111,7 +111,10 @@ still transport.
    ```
 
 3. **Interview — only what the specs don't fix.** `AskUserQuestion`, at most 4 questions per
-   call. Don't re-ask what `00-caso-de-uso.md` or `10-dominio.md` already answered.
+   call and **never fewer than 2 real options per question**: one option isn't a question —
+   decide it and record the decision in the partial, since the runtime rejects the whole
+   batch over a single one (`@CLAUDE.md` § Known pitfalls). Don't re-ask what
+   `00-caso-de-uso.md` or `10-dominio.md` already answered.
 
    | Axis | Decides |
    |---|---|
