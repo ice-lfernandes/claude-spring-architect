@@ -197,12 +197,66 @@
     }
   },
 
+  "agent_classes": {
+    "$comment": "Single owner of what class each agent belongs to, what shape its body has, which frontmatter fields it must declare, and what it is allowed to write. The agent-side twin of `skill_classes` above, read by the same two modes: `schema` validates every .claude/agents/*.md, `guard` enforces `write_allow`. It is also the single owner of WHICH AGENTS EXECUTE — `executor: true` replaces the hand-written `guard.executor_agents` list that used to live below, and `schema` still cross-checks it against each file's own `**Executor:** yes` marker in both directions. Territory is keyed on `agent_type`, which the PreToolUse payload of a subagent's write already carries — the field the old unconditional bypass read. That is why an agent's territory needs no phase file, no SubagentStop bookkeeping, and is immune by construction to the two-hook ordering race of lessons-learned-006 § 1: there is nothing to order, the payload names the agent on every single write. Before this block the four agents each documented a prose `**Writes:**`/`**Does not write:**` contract — archunit-installer promising not to touch docker-compose.yml, commons-logging-installer promising to stay inside its own package — and the guard granted all four an unconditional bypass, so none of those promises was enforced by anything. `required_sections` is prefix-matched against H2 lines, exactly as in `skill_classes`, which is what lets `## Input validation (guardrail)` satisfy `## Input validation` and `## Procedure — 4 fixed blocks + 1 conditional` satisfy `## Procedure`. `overrides.<agent>.write_allow` REPLACES the class default: `installer` holds two agents that share a shape and not a territory, so the class default is their intersection (the POMs) and each override states its full territory. commons-logging-installer's package is blueprint-dependent (`commons.logging` here, `shared.logging` in modular-monolith), so its glob matches on the leaf segment instead of on a package name no blueprint guarantees. Design: .claude/decisions/0059-agent-classes-territory-schema.md",
+    "match": ".claude/agents/*.md",
+    "class_marker": "**Class:**",
+    "executor_marker": "**Executor:** yes",
+    "require_h1": true,
+    "universal_sections": ["## Contract", "## Procedure"],
+    "universal_fields": ["model", "tools"],
+    "forbidden_values": { "permissionMode": ["bypassPermissions"] },
+    "why_section": "(?m)^##\\s+Why\\b",
+    "classes": {
+      "driver": {
+        "$comment": "Interviews the user and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude.",
+        "executor": true,
+        "write_allow": ["**"],
+        "required_sections": ["## Interview"],
+        "agents": ["project-initializer"]
+      },
+      "executor": {
+        "$comment": "Implements an approved spec: the spec replaces the interview, so the body carries an input guardrail instead of questions. The one path outside src/ is the single Edit that closes `status: approved` to `status: implemented` — the frozen-folder check in `guard` allows that line and only that line, and the allowlist has to let the file through before that check is even reached.",
+        "executor": true,
+        "required_fields": ["effort"],
+        "write_allow": ["src/**", "**/src/**", "docs/use-cases/UC-*/UC-*-spec.md"],
+        "required_sections": ["## Input validation", "## Failure mode", "## References"],
+        "agents": ["java-spring-boot-developer"]
+      },
+      "installer": {
+        "$comment": "One-shot mechanical setup with no interview, returning a structured summary. The class default is the intersection of its two agents' territories — the POMs, which both edit — and each agent replaces it with its own full list.",
+        "executor": true,
+        "required_fields": ["effort"],
+        "write_allow": ["pom.xml", "**/pom.xml"],
+        "required_sections": ["## Failure mode", "## Summary format", "## References"],
+        "agents": ["archunit-installer", "commons-logging-installer"],
+        "overrides": {
+          "archunit-installer": {
+            "$comment": "Each path is listed twice, once rooted and once under `**/`, because `**` expands to `.*` and a single-module project writes `src/test/...` with nothing before it — the same pair `executor` carries for `src/**`.",
+            "write_allow": [
+              "pom.xml", "**/pom.xml",
+              "src/test/java/**/ArchitectureTest.java",
+              "**/src/test/java/**/ArchitectureTest.java",
+              "src/test/java/**/TestcontainersConfiguration.java",
+              "**/src/test/java/**/TestcontainersConfiguration.java"
+            ]
+          },
+          "commons-logging-installer": {
+            "write_allow": [
+              "pom.xml", "**/pom.xml",
+              "src/main/java/**/logging/**",
+              "**/src/main/java/**/logging/**",
+              "src/main/resources/META-INF/spring/*.imports",
+              "**/src/main/resources/META-INF/spring/*.imports"
+            ]
+          }
+        }
+      }
+    }
+  },
+
   "guard": {
-    "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt or on an `executor_agents` Agent call. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute and what each class may write are NOT here: they are `skill_classes` above, single owner. Design: .claude/decisions/0058-skill-classes-territory-schema.md",
-    "executor_agents": [
-      "java-spring-boot-developer", "archunit-installer", "commons-logging-installer",
-      "project-initializer"
-    ],
+    "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A write that carries an `agent_type` is judged by that agent's own class instead, `agent_classes` above — no phase involved, which is also why an Agent call no longer closes the open phase: the main thread's territory is not the subagent's business. A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute, and what each class may write are NOT here: they are `skill_classes` and `agent_classes` above, single owner each. Design: .claude/decisions/0058-skill-classes-territory-schema.md and .claude/decisions/0059-agent-classes-territory-schema.md",
     "use_cases_dir": "docs/use-cases",
     "frozen_statuses": ["approved", "implemented"]
   },

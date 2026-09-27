@@ -490,15 +490,16 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
       the `Agent` tool. No owning per-feature skill to route through: this orchestrator
       is the trigger, same as it owns `git-publish`'s invocation.
-    - **Both gaps found and both answered "Install now" → never fire the `Skill` call
-      and the `Agent` call in the same turn.** `Skill(test-architect)` opens a design
-      phase (`ArchHook.java`'s guard) and `Agent(commons-logging-installer)` closes one —
-      two independent `PreToolUse` hooks with no ordering guarantee between them when
-      dispatched together, and the loser blocks every write the other agent makes under
-      `src/` for the rest of the run. Run them one at a time, in separate turns: the
-      `Skill` call first, wait for it to finish, then the `Agent` call.
-      `.claude/hooks/ArchHook.java` § guard documents the same rule; lessons-learned-006
-      § 1 is the run that hit it (138k tokens, zero files written, had to relaunch alone).
+    - **Both gaps found and both answered "Install now" → either order works, and the
+      same turn is fine.** This used to be the one place in the repo that could deadlock
+      itself: `Skill(test-architect)` opened a design phase and
+      `Agent(commons-logging-installer)` closed one, two `PreToolUse` hooks with no ordering
+      guarantee between them, and the loser blocked every write the other agent made under
+      `src/` for the rest of the run — lessons-learned-006 § 1 is the run that hit it (138k
+      tokens, zero files written, had to relaunch alone). `agent_classes` retired it: a
+      subagent's write is judged by its own `agent_type`, so no phase reaches it and nothing
+      closes a phase on an `Agent` call any more
+      (`@.claude/decisions/0059-agent-classes-territory-schema.md`).
     - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
       `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
       compile; skipping isn't a gate failure, it's the user's call.

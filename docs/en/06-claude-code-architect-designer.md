@@ -131,7 +131,7 @@ sequenceDiagram
     CMD->>FM: confirms native frontmatter fields
     CMD->>FS: generates from templates/*.example
     CMD->>FS: "## Why this is <form>" section in the body
-    CMD->>FS: propagates — CLAUDE.md, 00-index.md, extensions.json (skill_classes/export), settings.json, per the form
+    CMD->>FS: propagates — CLAUDE.md, 00-index.md, extensions.json (skill_classes/agent_classes/export), settings.json, per the form
     CMD->>FS: runs claude plugin validate .claude/skills
     end
     CMD-->>U: Phase 5 · report — files created/changed, decision, validate output, restart warning
@@ -322,7 +322,7 @@ what cost points:
 | 4 | Enforcement | Relies on persuasion where a guarantee was available |
 | 5 | Maintenance cost | Adds pieces or indirection without proportional gain |
 | 6 | Precedent in the repo | No similar form already in use; novel design |
-| 7 | Complete propagation | Doesn't close routing, `00-index`, the `export` manifest, `skill_classes`, or the § 9 decision record |
+| 7 | Complete propagation | Doesn't close routing, `00-index`, the `export` manifest, `skill_classes`/`agent_classes`, or the § 9 decision record |
 | 8 | Trust surface | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 | 9 | Cost of always running | Frequency of the event × cost per firing, and whether `if`/`matcher` narrows before a process is spawned. A `PostToolUse` with no filter pays a JVM startup on every edit in the repo; a `SessionStart` pays once. It also loses a point when the hook blocks (exit 2) on a judgment that will sometimes be wrong — there the cost isn't milliseconds, it's a person stuck |
 
@@ -408,7 +408,7 @@ avoiding the same interview again.
    | Skill | `@CLAUDE.md` routing table, **and** a class in `skill_classes` of `@.claude/schemas/extensions.json`: its `skills` list, an `overrides.<skill>.write_allow` when the class default is wrong for it, and the `**Class:** <c>` line in the body. `schema` fails by name on a skill in no class, and enforces the sections that class requires |
    | Development skill (valid inside the generated project) | `export.skills.include` in `@.claude/schemas/extensions.json` — `schema` fails on a skill listed in neither `include` nor `exclude` |
    | Rule | `@.claude/rules/00-index.md` (written-rules table; remove from planned). Every rule travels by default; a rule with a package territory also needs an `export.derived_paths` entry, and `schema` fails without it |
-   | Agent | `@CLAUDE.md` routing table, if invocable by name; `export.agents.include` or `exclude` |
+   | Agent | `@CLAUDE.md` routing table, if invocable by name; `export.agents.include` or `exclude`; **and** a class in `agent_classes` of `@.claude/schemas/extensions.json`: its `agents` list, an `overrides.<agent>.write_allow` when the class default is wrong for it, the `**Class:** <c>` line in the body, and `**Executor:** yes` when the class grants `executor: true`. `schema` enforces the sections and the frontmatter fields that class requires — `model` and `tools` always |
    | `CLAUDE.md` section | Nothing else — but confirm the total stays under ~200 lines |
    | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
    | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example` and its own companion setup doc — both already named in `export.optional_copy`, so nothing else to wire |

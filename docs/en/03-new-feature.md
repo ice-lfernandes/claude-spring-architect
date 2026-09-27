@@ -146,11 +146,13 @@ under `src/`:
 | Logging/masking classes missing | no `commons` folder, or only `package-info.java` in it | `Agent(commons-logging-installer)` — thirteen exemplars from `new-feature/templates/commons/` translated into the real package, plus `AutoConfiguration.imports` and the AOP dependencies |
 
 Each gap found becomes an `AskUserQuestion` (**Install now** / **Skip for this run**);
-no gap, no question. The two never fire in the same turn: `Skill(test-architect)`
-opens a design phase in the `guard` hook and `Agent(commons-logging-installer)` closes
-one — with no ordering guarantee between the two `PreToolUse` hooks, the loser would
-block every write under `src/` by the other agent (it happened: 138k tokens, zero
-files written).
+no gap, no question. The two may fire in the same turn — and could not before:
+`Skill(test-architect)` opened a design phase in the `guard` hook and
+`Agent(commons-logging-installer)` closed one, with no ordering guarantee between the two
+`PreToolUse` hooks, and the loser blocked every write under `src/` by the other agent (it
+happened: 138k tokens, zero files written). `agent_classes` retired it: a subagent's write is
+judged by its own `agent_type`, so no phase reaches it and nothing closes a phase on an
+`Agent` call any more.
 
 ## Spec lifecycle
 

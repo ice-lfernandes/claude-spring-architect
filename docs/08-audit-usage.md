@@ -222,13 +222,13 @@ sequenceDiagram
 
 ## Hook `guard` — as três fronteiras que deixaram de ser prosa
 
-Território é **dado**, em `extensions.json` → `skill_classes`: cada skill pertence a uma
-classe (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), e a classe declara o
-`write_allow`. O bloco `guard` guarda só o resto:
+Território é **dado**, em dois blocos irmãos de `extensions.json`. `skill_classes`: cada skill
+pertence a uma classe (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), e a
+classe declara o `write_allow`. `agent_classes`: o mesmo para cada agent (`driver`,
+`executor`, `installer`), mais os campos de frontmatter que a classe exige e se ele pode
+escrever alguma coisa. O bloco `guard` guarda só o resto:
 
 ```json
-"executor_agents": ["java-spring-boot-developer", "archunit-installer",
-                    "commons-logging-installer", "project-initializer"],
 "use_cases_dir": "docs/use-cases",
 "frozen_statuses": ["approved", "implemented"]
 ```
@@ -236,8 +236,8 @@ classe (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), e a class
 | Fase | Evento | Efeito |
 |---|---|---|
 | `guard prompt` | `UserPromptSubmit` | Fecha a fase anterior; abre uma fase se o prompt é `/<skill>` de qualquer classe |
-| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` abre a fase (nunca troca por outra skill da mesma classe); `Agent(<executor_agent>)` fecha; `Skill` de classe `blocked_during_design` com fase `design_phase` aberta → `exit 2` |
-| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, sem filtro de caminho | Regra 1: fase aberta + caminho **fora** do `write_allow` da skill ativa + chamada não vem de um executor → `exit 2`. Regra 2: pasta `UC-*` cujo spec está em `frozen_statuses` → `exit 2`, exceto a única edição do executor de `status: approved` para `status: implemented` |
+| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` abre a fase (nunca troca por outra skill da mesma classe); `Skill` de classe `blocked_during_design` com fase `design_phase` aberta → `exit 2`. Chamada `Agent` não muda nada |
+| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, sem filtro de caminho | Regra 1: a escrita carrega um `agent_type` com classe → o caminho tem que estar no `write_allow` **daquele agent**, com ou sem fase aberta; caso contrário, fase aberta + caminho **fora** do `write_allow` da skill ativa → `exit 2`. Regra 2: pasta `UC-*` cujo spec está em `frozen_statuses` → `exit 2`, exceto a única edição do executor de `status: approved` para `status: implemented` |
 
 Por que existe: uma skill de design escreveu migrations em `src/`; um caso de uso posterior
 reescreveu os specs de um anterior; e um run de design escreveu um serviço
@@ -248,14 +248,19 @@ que vaza nunca é o que alguém listou. Reabrir um spec nunca implementado conti
 deliberado: `status: draft` à mão.
 
 Sem fase aberta não há restrição — uma pessoa editando um arquivo à mão não é uma skill
-saindo do território. E `schema` valida o outro lado do mesmo dado: toda `SKILL.md` no disco
-tem que estar em exatamente uma classe, declarar `**Class:** <c>` no corpo e trazer as
-seções que a classe exige.
+saindo do território. E `schema` valida o outro lado do mesmo dado: toda `SKILL.md` e todo
+`.claude/agents/*.md` no disco tem que estar em exatamente uma classe, declarar
+`**Class:** <c>` no corpo e trazer as seções que a classe exige — no caso do agent, também os
+campos de frontmatter (`model` e `tools` sempre) e nenhum `permissionMode: bypassPermissions`.
 
-**Armadilha conhecida:** `Skill(test-architect)` abre uma fase e
-`Agent(commons-logging-installer)` fecha uma. Disparadas no mesmo turno, são dois hooks
-`PreToolUse` sem ordem garantida, e o perdedor bloqueia toda escrita em `src/` do outro
-agent pelo resto da execução. `/new-feature` roda as duas em turnos separados por isso.
+**Armadilha encerrada, mantida porque a forma se repete.** `Skill(test-architect)` abria uma
+fase e `Agent(commons-logging-installer)` fechava uma; disparadas no mesmo turno eram dois
+hooks `PreToolUse` sem ordem garantida, e o perdedor bloqueava toda escrita em `src/` do outro
+agent pelo resto da execução (138k tokens, zero arquivos escritos). `agent_classes` removeu o
+mecanismo, não só o sintoma: a escrita de um subagent é julgada pelo `agent_type` dela, então
+nenhuma fase a alcança e nada fecha fase numa chamada `Agent`. A lição que sobrevive é a
+geral — dois processos de hook independentes no mesmo turno não têm ordem, logo nenhuma
+fronteira pode depender de qual deles rodou primeiro.
 
 ## O que `doctor` mostra
 

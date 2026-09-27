@@ -160,9 +160,21 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
 | `commons-logging-installer` | Mesma forma do `archunit-installer`: traduz treze exemplares de logging/máscara para o package real, edita um POM, compila até ficar verde — onze escritas e um log de build que não precisam voltar ao contexto do `/new-feature` que o disparou | `Read, Write, Edit, Bash` — só dentro de `commons.logging` e do POM correspondente | `sonnet`, `effort: medium` |
 
-Os três últimos são **executores** para o hook `guard`: listados em
-`extensions.json` → `guard.executor_agents`, são os únicos que podem escrever em `src/`
-enquanto uma fase de design está aberta (ver [08-audit-usage.md](08-audit-usage.md)).
+Cada um pertence a uma **classe**, em `extensions.json` → `agent_classes`, e é a classe que
+diz qual é a forma do corpo, quais campos de frontmatter ele deve, se ele escreve (`executor`)
+e **quais caminhos**:
+
+| Classe | Agents | Território (`write_allow`) |
+|---|---|---|
+| `driver` | `project-initializer` | `**` — escreve a árvore de um projeto que ainda não existe |
+| `executor` | `java-spring-boot-developer` | `src/**` mais a única linha `status:` do `UC-*-spec.md` que ele fecha |
+| `installer` | `archunit-installer`, `commons-logging-installer` | `overrides` por agent: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` no primeiro; POMs + `**/logging/**` + `META-INF/spring/*.imports` no segundo |
+
+O território vale por `agent_type`, que o payload `PreToolUse` de toda escrita de subagent já
+carrega — então nenhuma fase de skill aberta o alarga nem o estreita. Antes disso os quatro
+tinham bypass irrestrito, e a promessa em prosa de cada arquivo (`**Does not write:**
+docker-compose.yml`) não era verificada por nada (ver
+[08-audit-usage.md](08-audit-usage.md)).
 
 **Quando entra em contexto:** só quando invocado — nunca automaticamente por
 `paths` (agents não têm esse campo). **Não vê** o histórico da conversa principal, nem

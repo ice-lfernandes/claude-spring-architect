@@ -76,6 +76,12 @@ jobs:
       - name: guard keeps each skill inside its class's territory
         run: java .claude/.ci/SkillTerritoryTest.java
 
+      # The same claim one layer lower: each agent used to promise its territory in prose
+      # (`**Does not write:** docker-compose.yml`) while the guard gave it an unconditional
+      # bypass. `agent_classes` turns the promise into data keyed on `agent_type`.
+      - name: guard keeps each agent inside its class's territory
+        run: java .claude/.ci/AgentTerritoryTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest

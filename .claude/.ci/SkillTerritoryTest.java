@@ -51,11 +51,13 @@ public class SkillTerritoryTest {
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
                 2, "src/ outside the territory — blocked");
 
-        // An executor agent writes what it was delegated, phase or no phase.
+        // A subagent's write is judged by its own class, never by the caller's phase.
+        // The territory of each agent is AgentTerritoryTest's subject; here the point is
+        // only that an open skill phase does not reach it.
         failures += run(hook, "write", session,
                 "{\"session_id\":\"%s\",\"agent_type\":\"java-spring-boot-developer\","
                         + "\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
-                0, "executor agent bypasses the territory");
+                0, "agent_type wins over the open phase");
 
         // A build-class skill is unreachable from inside a design run.
         failures += run(hook, "call", session,
@@ -74,11 +76,22 @@ public class SkillTerritoryTest {
                         + "{\"file_path\":\"docs/lessons-learned/notes.md\"}}",
                 2, "the callee's narrower territory is what applies");
 
-        // An executor Agent call closes the phase.
+        // An Agent call leaves the phase alone. It used to delete it, which silently
+        // unrestricted the CALLER for the rest of the turn — the subagent never needed that,
+        // since its own writes carry `agent_type`.
         failures += run(hook, "call", session,
                 "{\"session_id\":\"%s\",\"tool_name\":\"Agent\","
                         + "\"tool_input\":{\"subagent_type\":\"java-spring-boot-developer\"}}",
-                0, "executor Agent call closes the phase");
+                0, "Agent call is not refused");
+
+        failures += run(hook, "write", session,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
+                2, "the caller's own phase survives the Agent call");
+
+        // A new prompt is what ends it.
+        failures += run(hook, "prompt", session,
+                "{\"session_id\":\"%s\",\"prompt\":\"thanks\"}",
+                0, "a plain prompt closes the phase");
 
         failures += run(hook, "write", session,
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
@@ -90,8 +103,8 @@ public class SkillTerritoryTest {
             System.exit(1);
         }
         System.out.println("✅ Skill territory enforced: deny by default while a phase is open,"
-                + " executor agents exempt, build-class calls refused mid-design, and no"
-                + " restriction with no phase open.");
+                + " agent_type judged by its own class, build-class calls refused mid-design,"
+                + " and no restriction with no phase open.");
     }
 
     /** Runs one `guard <phase>` with the given stdin and checks the exit code. */

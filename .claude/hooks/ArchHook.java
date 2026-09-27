@@ -1405,8 +1405,8 @@ public class ArchHook {
         }
 
         if (file == null) {
-            checkExecutorAgents(sch, errors);
             checkSkillClasses(sch, errors);
+            checkAgentClasses(sch, errors);
             checkExportManifest(sch, errors);
             checkSourceBlock(sch, errors);
         }
@@ -1420,56 +1420,6 @@ public class ArchHook {
             err("What each field is for: .claude/skills/claude-code-architect-designer"
                     + "/references/frontmatter-fields.md");
             System.exit(2);
-        }
-    }
-
-    /**
-     * Cross-checks `guard.executor_agents` against every `.claude/agents/*.md` file's own
-     * "**Executor:** yes" marker — both directions. A name in the list with no matching
-     * agent file (or whose file never claims the role) means the guard trusts an
-     * `agent_type` that can never actually arrive; an agent file that claims the role but
-     * is missing from the list means the guard blocks its writes during a design phase.
-     * lessons-learned-006 § 2: commons-logging-installer shipped without either side
-     * agreeing for one full session before the gap was noticed by hand.
-     */
-    static void checkExecutorAgents(Map<String, Object> sch, List<String> errors) throws IOException {
-        List<String> listed = asStrList(get(sch, "guard", "executor_agents"));
-        if (listed.isEmpty()) return;   // no `guard` block: nothing to cross-check
-
-        Path agentsDir = ROOT.resolve(".claude/agents");
-        Set<String> claimed = new HashSet<>();
-        if (Files.isDirectory(agentsDir)) {
-            try (Stream<Path> walk = Files.list(agentsDir)) {
-                for (Path f : walk.filter(p -> p.toString().endsWith(".md")).collect(Collectors.toList())) {
-                    String content = readOrNull(f);
-                    if (content != null && content.contains("**Executor:** yes")) {
-                        String name = f.getFileName().toString().replaceFirst("\\.md$", "");
-                        claimed.add(name);
-                    }
-                }
-            }
-        }
-
-        // `project-initializer` executes `/init-project` and, like the creation skills, does
-        // not travel into a generated project — so "listed but absent" is an error only in the
-        // source repository. See isSourceRepo.
-        boolean here = isSourceRepo(sch);
-        for (String name : listed) {
-            if (!Files.isRegularFile(agentsDir.resolve(name + ".md"))) {
-                if (here) {
-                    errors.add("  guard.executor_agents lists `" + name
-                            + "` — no `.claude/agents/" + name + ".md` file exists");
-                }
-            } else if (!claimed.contains(name)) {
-                errors.add("  guard.executor_agents lists `" + name
-                        + "` — its agent file has no `**Executor:** yes` marker in ## Contract");
-            }
-        }
-        for (String name : claimed) {
-            if (!listed.contains(name)) {
-                errors.add("  .claude/agents/" + name
-                        + ".md claims `**Executor:** yes` — missing from guard.executor_agents");
-            }
         }
     }
 
@@ -1641,6 +1591,227 @@ public class ArchHook {
                 if (!Files.isRegularFile(d.resolve("SKILL.md"))) continue;
                 if (!owner.containsKey(name)) {
                     errors.add("  `.claude/skills/" + name + "` is in no skill_classes class"
+                            + " — add it to one in " + SCHEMA_FILE);
+                }
+            }
+        }
+    }
+
+    // ── agent classes ────────────────────────────────────────────────────────
+    //
+    // The agent-side twin of `skill_classes`, and the same two failures it closes, one layer
+    // lower. Structure: the four agent files shared no shape — `project-initializer` had no
+    // H1 title, called its procedure `## Steps` while the other three called it
+    // `## Procedure`, and carried none of `## Failure mode`, `## Summary format`,
+    // `## References`; `claude plugin validate` does not read `.claude/agents/` at all, and
+    // `schema` looked only at their frontmatter field NAMES. Territory: each agent documented
+    // a prose `**Writes:**` / `**Does not write:**` contract and the guard granted all four an
+    // unconditional bypass, so none of those promises was enforced by anything.
+    //
+    // The territory half is keyed on `agent_type`, which the PreToolUse payload of a
+    // subagent's write already carries — the field the old bypass read. So it needs no phase
+    // file and no SubagentStop bookkeeping, and it is immune by construction to the two-hook
+    // ordering race of lessons-learned-006 § 1: there is nothing to order, the payload names
+    // the agent on every single write.
+    //
+    // Form 7c of `claude-code-architect-designer`, motivated by axis 7 (prose contracts that
+    // nothing enforced) and axis 16 (both checks land on modes that already walk these files
+    // and already read this payload field). The closest rejected form was body shape alone,
+    // leaving the bypass in place — it would have standardized the promise instead of keeping
+    // it. Design: .claude/decisions/0059-agent-classes-territory-schema.md
+
+    /** The class that lists this agent in `agent_classes`, or null when none does. */
+    static String agentClassOf(Map<String, Object> sch, String agent) {
+        Map<String, Object> classes = asMap(get(sch, "agent_classes", "classes"));
+        if (classes == null || agent == null) return null;
+        for (Map.Entry<String, Object> e : classes.entrySet()) {
+            Map<String, Object> c = asMap(e.getValue());
+            if (c != null && asStrList(c.get("agents")).contains(agent)) return e.getKey();
+        }
+        return null;
+    }
+
+    /** The agent's own `overrides` territory when it has one, else its class default. */
+    static List<String> agentWriteAllowOf(Map<String, Object> sch, String agent) {
+        String cls = agentClassOf(sch, agent);
+        if (cls == null) return List.of();
+        Map<String, Object> c = asMap(get(sch, "agent_classes", "classes", cls));
+        Map<String, Object> ov = asMap(get(c, "overrides", agent));
+        if (ov != null && ov.containsKey("write_allow")) return asStrList(ov.get("write_allow"));
+        return asStrList(c == null ? null : c.get("write_allow"));
+    }
+
+    /** `<name>` of `.claude/agents/<name>.md`. */
+    static String agentNameOf(String rel) {
+        Matcher m = Pattern.compile("agents/([^/]+)\\.md$").matcher(rel);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /**
+     * One agent body and its frontmatter against its class: the `**Class:** <c>` line agrees
+     * with the data, every required section is present (matched as a PREFIX of an H2 line, so
+     * `## Input validation (guardrail)` satisfies `## Input validation`), the body opens with
+     * an H1, the fields the class owes are declared, and no forbidden value is set.
+     * `model` and `tools` are universal because they are two of the three reasons an agent is
+     * allowed to exist at all (invariant 5) — an agent that declares neither has documented
+     * none of them, and inherits whatever the caller had.
+     */
+    static void checkAgentBody(Map<String, Object> sch, String rel, String content,
+                               List<String> errors) {
+        Map<String, Object> ac = asMap(sch.get("agent_classes"));
+        if (ac == null) return;
+        String agent = agentNameOf(rel);
+        if (agent == null) return;
+
+        Map<String, Object> classes = asMap(ac.get("classes"));
+        if (classes == null) return;
+        String cls = agentClassOf(sch, agent);
+        if (cls == null) {
+            errors.add("  " + rel + " — `" + agent + "` is in no agent_classes class."
+                    + " Add it to one of " + classes.keySet() + " in " + SCHEMA_FILE);
+            return;
+        }
+
+        String marker = orEmpty(asStr(ac.get("class_marker")));
+        if (!marker.isEmpty()) {
+            Matcher m = Pattern.compile("(?m)^[-*]?[ \\t]*" + Pattern.quote(marker)
+                            + "\\s*`?([a-z][a-z0-9_-]*)`?")
+                    .matcher(content);
+            if (!m.find()) {
+                errors.add("  " + rel + " — no `" + marker + " " + cls + "` line in the body."
+                        + " The class is what the guard enforces; state it in ## Contract");
+            } else if (!cls.equals(m.group(1))) {
+                errors.add("  " + rel + " — body says `" + marker + " " + m.group(1)
+                        + "`, " + SCHEMA_FILE + " lists it under `" + cls + "`");
+            }
+        }
+
+        List<String> required = new ArrayList<>(asStrList(ac.get("universal_sections")));
+        required.addAll(asStrList(get(sch, "agent_classes", "classes", cls, "required_sections")));
+        List<String> headings = content.lines().filter(l -> l.startsWith("## "))
+                .map(String::strip).collect(Collectors.toList());
+        for (String req : required) {
+            if (headings.stream().noneMatch(h -> h.startsWith(req))) {
+                errors.add("  " + rel + " — class `" + cls + "` requires the section `"
+                        + req + "`");
+            }
+        }
+
+        String why = asStr(ac.get("why_section"));
+        if (why != null && !Pattern.compile(why).matcher(content).find()) {
+            errors.add("  " + rel + " — no `## Why …` section. Three sentences: the form,"
+                    + " the interview axis, the closest rejected form");
+        }
+
+        if (Boolean.TRUE.equals(ac.get("require_h1")) && bodyH1(content) == null) {
+            errors.add("  " + rel + " — the body does not open with an H1 title."
+                    + " `# " + agent + " — <role in one line>`");
+        }
+
+        Map<String, String> fm = frontmatter(content);
+        if (fm == null) return;                        // checkFrontmatter already reported it
+        List<String> fields = new ArrayList<>(asStrList(ac.get("universal_fields")));
+        fields.addAll(asStrList(get(sch, "agent_classes", "classes", cls, "required_fields")));
+        for (String f : fields) {
+            if (!fm.containsKey(f)) {
+                errors.add("  " + rel + " — class `" + cls + "` requires the frontmatter field `"
+                        + f + "`");
+            }
+        }
+        Map<String, Object> forbidden = asMap(ac.get("forbidden_values"));
+        if (forbidden == null) return;
+        for (Map.Entry<String, Object> e : forbidden.entrySet()) {
+            String v = fm.get(e.getKey());
+            if (v != null && asStrList(e.getValue()).contains(v.strip())) {
+                errors.add("  " + rel + " — `" + e.getKey() + ": " + v.strip()
+                        + "` is forbidden for an agent (trust surface)");
+            }
+        }
+    }
+
+    /** The first H1 line after the frontmatter, or null when the body opens with anything else. */
+    static String bodyH1(String content) {
+        boolean inFm = false;
+        int seen = 0;
+        for (String raw : content.lines().collect(Collectors.toList())) {
+            String l = raw.strip();
+            if (l.equals("---") && seen < 2) { inFm = !inFm; seen++; continue; }
+            if (inFm || l.isEmpty()) continue;
+            return l.startsWith("# ") ? l : null;
+        }
+        return null;
+    }
+
+    /**
+     * The `agent_classes` block against the agents on disk. Coverage is total by design, both
+     * directions, and it also owns what `guard.executor_agents` used to be cross-checked for:
+     * a class with `executor: true` whose agent file never claims `**Executor:** yes`, or a
+     * file that claims it from a class that does not grant it. lessons-learned-006 § 2:
+     * commons-logging-installer shipped for one full session with the two sides disagreeing
+     * before anyone noticed by hand.
+     */
+    static void checkAgentClasses(Map<String, Object> sch, List<String> errors) throws IOException {
+        Map<String, Object> classes = asMap(get(sch, "agent_classes", "classes"));
+        if (classes == null) return;   // no block: nothing to cross-check
+
+        // `project-initializer` drives `/init-project` and, like the creation skills, does not
+        // travel into a generated project (`export.agents.exclude`) — so "listed but absent" is
+        // an error only in the repository the block was written for. See isSourceRepo.
+        boolean here = isSourceRepo(sch);
+        Path agentsDir = ROOT.resolve(".claude/agents");
+        String marker = orEmpty(asStr(get(sch, "agent_classes", "executor_marker")));
+
+        Map<String, String> owner = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : classes.entrySet()) {
+            Map<String, Object> c = asMap(e.getValue());
+            if (c == null) continue;
+            if (!c.containsKey("write_allow")) {
+                errors.add("  agent_classes." + e.getKey() + " has no `write_allow` key."
+                        + " An empty list is a decision; a missing key is an omission");
+            }
+            boolean executor = Boolean.TRUE.equals(c.get("executor"));
+            for (String a : asStrList(c.get("agents"))) {
+                String previous = owner.put(a, e.getKey());
+                if (previous != null) {
+                    errors.add("  agent_classes lists `" + a + "` in both `" + previous
+                            + "` and `" + e.getKey() + "` — one class per agent");
+                }
+                Path f = agentsDir.resolve(a + ".md");
+                if (!Files.isRegularFile(f)) {
+                    if (here) {
+                        errors.add("  agent_classes." + e.getKey() + " lists `" + a
+                                + "` — no `.claude/agents/" + a + ".md` file exists");
+                    }
+                    continue;
+                }
+                if (marker.isEmpty()) continue;
+                boolean claims = orEmpty(readOrNull(f)).contains(marker);
+                if (executor && !claims) {
+                    errors.add("  agent_classes." + e.getKey() + " grants `executor: true` to `"
+                            + a + "` — its file has no `" + marker + "` marker in ## Contract");
+                } else if (!executor && claims) {
+                    errors.add("  .claude/agents/" + a + ".md claims `" + marker
+                            + "` — class `" + e.getKey() + "` does not grant `executor: true`");
+                }
+            }
+            Map<String, Object> ov = asMap(c.get("overrides"));
+            if (ov != null) {
+                for (String a : ov.keySet()) {
+                    if (!asStrList(c.get("agents")).contains(a)) {
+                        errors.add("  agent_classes." + e.getKey() + ".overrides names `" + a
+                                + "` — not an agent of that class");
+                    }
+                }
+            }
+        }
+
+        if (!Files.isDirectory(agentsDir)) return;
+        try (Stream<Path> walk = Files.list(agentsDir)) {
+            for (Path f : walk.filter(p -> p.getFileName().toString().endsWith(".md"))
+                    .sorted().collect(Collectors.toList())) {
+                String name = f.getFileName().toString().replaceFirst("\\.md$", "");
+                if (!owner.containsKey(name)) {
+                    errors.add("  `.claude/agents/" + name + ".md` is in no agent_classes class"
                             + " — add it to one in " + SCHEMA_FILE);
                 }
             }
@@ -1889,6 +2060,9 @@ public class ArchHook {
         checkArguments(sch, rel, content, errors);    // idem
         if (matches(asStr(get(sch, "skill_classes", "match")), rel)) {
             checkSkillBody(sch, rel, content, errors);   // class marker + required sections
+        }
+        if (matches(asStr(get(sch, "agent_classes", "match")), rel)) {
+            checkAgentBody(sch, rel, content, errors);   // idem, plus the frontmatter a class owes
         }
 
         if (matchesAny(asStrList(get(sch, "settings", "match")), rel)) {
@@ -3641,36 +3815,34 @@ public class ArchHook {
     //
     // Phases (args[1]):
     //   prompt   UserPromptSubmit         a prompt ends any phase; `/<skill>` opens one
-    //   call     PreToolUse Skill|Agent   a skill opens the phase; an executor agent closes
-    //                                     it; a `blocked_during_design` class is refused
+    //   call     PreToolUse Skill|Agent   a skill opens the phase; a `blocked_during_design`
+    //                                     class is refused
     //   write    PreToolUse Write|Edit    blocks (exit 2) what the three boundaries forbid
     //
     // The phase is one file per session in the OS temp dir — never in the project, so it
     // can't be committed. It holds the active skill's NAME; the class, its territory and
-    // which agents execute are data (`skill_classes` and `guard` in extensions.json —
-    // invariants 7, 10). Territory is deny-by-default: while a phase is open, a write is
-    // allowed only where the active skill's `write_allow` says so. No phase open means no
-    // restriction — a person editing a file by hand is not a skill overstepping.
+    // which agents execute are data (`skill_classes`, `agent_classes` and `guard` in
+    // extensions.json — invariants 7, 10). Territory is deny-by-default: while a phase is
+    // open, a write is allowed only where the active skill's `write_allow` says so. No phase
+    // open means no restriction — a person editing a file by hand is not a skill overstepping.
+    //
+    // A write carrying an `agent_type` is judged by that AGENT's class instead, and the phase
+    // is not consulted at all. That is why nothing closes the phase on an Agent call any more:
+    // the main thread's territory is not the subagent's business, and deleting the phase
+    // silently unrestricted the caller for the rest of the turn. It also retires the ordering
+    // race of lessons-learned-006 § 1 for every classed agent — there is nothing left to
+    // order, since the payload names the agent on every single write.
     //
     // Known gap, accepted: a design skill that asks in plain text instead of
     // AskUserQuestion gets its answer as a prompt, and that prompt ends the phase.
     //
-    // Known gap, accepted: a `Skill`(design) call and an `Agent`(executor) call fired in
-    // the SAME turn race — two independent PreToolUse invocations, no ordering guarantee
-    // between them. If the Skill's open lands after the Agent's close, the phase ends up
-    // open and blocks the executor's own writes even though `agent_type` would have let
-    // them through (guardWrite checks `agent_type` first, unconditionally — see below;
-    // that's the real fix whenever it applies, this is only the residual race around it).
-    // lessons-learned-006 § 1. No file-level fix: nothing here can order two separate
-    // hook processes. The workaround is procedural — orchestrators MUST NOT fire
-    // `Skill(<a design_phase class>)` and `Agent(<executor_agents>)` in the same message; do the
-    // Skill call, wait for its turn to end, then the Agent call in a separate turn.
-    // `new-feature/SKILL.md`'s executor-offer pre-flight is the one place in this repo
-    // that can trigger both in one branch — it documents the same rule inline.
+    // Known gap, accepted: an agent no class lists (a generic subagent, a plugin one) falls
+    // back to the caller's phase, because nothing else describes what it may write.
 
     static void guard(String phase, String stdin) throws Exception {
         Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
-        if (sch == null || (sch.get("guard") == null && sch.get("skill_classes") == null)) return;
+        if (sch == null || (sch.get("guard") == null && sch.get("skill_classes") == null
+                && sch.get("agent_classes") == null)) return;
         Object in = Json.parse(stdin);
         Path state = guardState(asStr(get(in, "session_id")));
         switch (phase) {
@@ -3709,12 +3881,9 @@ public class ArchHook {
                 return;
             }
             guardOpen(state, skill);
-        } else if ("Agent".equals(tool) || "Task".equals(tool)) {
-            String agent = asStr(get(in, "tool_input", "subagent_type"));
-            if (asStrList(get(sch, "guard", "executor_agents")).contains(agent)) {
-                Files.deleteIfExists(state);
-            }
         }
+        // An `Agent`/`Task` call changes nothing here. The subagent's own writes carry
+        // `agent_type` and are judged by `agent_classes`; the caller's phase stays as it was.
     }
 
     /**
@@ -3751,13 +3920,25 @@ public class ArchHook {
         String rel = relative(Paths.get(file));
         Map<String, Object> cfg = asMap(sch.get("guard"));
 
-        // 1. A phase is open: the path must be in the active skill's territory. Deny by
-        //    default. `agent_type` is only present when the call comes from a subagent, and
-        //    an executor agent writes whatever it was delegated.
+        // 1. Territory, deny by default. `agent_type` is present only when the call comes from
+        //    a subagent: an agent with a class is judged by ITS OWN territory and the caller's
+        //    phase is irrelevant — no state file is read, so there is nothing to race with. An
+        //    agent no class lists falls back to the phase, which is all that describes it.
         String agent = asStr(get(in, "agent_type"));
-        boolean executor = agent != null
-                && asStrList(get(sch, "guard", "executor_agents")).contains(agent);
-        if (Files.isRegularFile(state) && !executor) {
+        String agentCls = agentClassOf(sch, agent);
+        if (agentCls != null) {
+            List<String> allow = agentWriteAllowOf(sch, agent);
+            if (!matchesAny(allow, rel)) {
+                err("❌ agent `" + agent + "` is class `" + agentCls + "` — " + rel
+                        + " is outside its territory.");
+                err("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
+                        : String.join(", ", allow)));
+                err("Report the path in the summary you return and stop, or hand it to the piece");
+                err("that owns it. If the path is legitimately this agent's, widen");
+                err("agent_classes." + agentCls + " in " + SCHEMA_FILE + " — retrying will not help.");
+                System.exit(2);
+            }
+        } else if (Files.isRegularFile(state)) {
             String active = readOrNull(state);
             String cls = skillClassOf(sch, active);
             List<String> allow = writeAllowOf(sch, active);

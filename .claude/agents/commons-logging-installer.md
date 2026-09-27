@@ -22,9 +22,17 @@ requires only one of the three reasons; this is the one that applies.
 
 ## Contract
 
-**Executor:** yes — writes under `src/` while a design phase may still be open; must be
-listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
-`ArchHook.java schema`.
+**Class:** installer — the territory is
+`agent_classes.installer.overrides.commons-logging-installer` in
+`@.claude/schemas/extensions.json`: the POMs, `**/src/main/java/**/logging/**`, and the
+`META-INF/spring/*.imports` file. The glob matches the leaf segment on purpose — the package
+is `commons.logging` under most blueprints and `shared.logging` under modular-monolith, and no
+blueprint guarantees either name. `ArchHook.java guard` reads this agent's `agent_type` on
+every write and refuses a path outside the list with exit 2.
+
+**Executor:** yes — writes under `src/` while a design phase may still be open. The class
+grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
+that flag in both directions.
 
 **Input (required):** project root. Precondition — the `commons` package/module already
 exists, empty, with its `package-info.java` (written by `project-bootstrap` step 4.7,
