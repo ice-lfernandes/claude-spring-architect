@@ -97,12 +97,25 @@ still transport.
 ## Procedure
 
 1. **Read the specs.** `00-caso-de-uso.md` and `10-dominio.md` from the folder in
-   `$ARGUMENTS`. Without the second, stop. Extract: the event's name, payload fields, the
+   the target above. Without the second, stop. Extract: the event's name, payload fields, the
    consuming use case, and whether that consumer is external (another service, another
    deployable) — that's what makes this skill apply at all.
 
 2. **Survey what already exists.** A topic or consumer group already wired gets reused, not
-   duplicated.
+   duplicated. **The bounded context comes from here too — read it, never ask.** The topic
+   name's first segment (`@.claude/rules/messaging.md` § Topics and serialization) is a
+   project fact with the same standing as the base package: it is declared once, in the
+   project's root `CLAUDE.md`, and every topic of every use case shares it.
+
+   ```bash
+   grep -i "bounded context" CLAUDE.md
+   grep -rhoE "^ *(topic|topics?\.[a-z-]+): *[a-z0-9.-]+" src/main/resources/ 2>/dev/null
+   ```
+
+   Not declared **and** no topic exists yet → stop and say which line is missing from the
+   root `CLAUDE.md`, rather than choosing a prefix inside this use case. A prefix decided
+   per use case is how one system ends up with two namespaces: the next case, designed in
+   another session, has no reason to pick the same one (lessons-learned-012 § 5).
 
    ```bash
    grep -rln "@KafkaListener\|KafkaTemplate" --include='*.java' src/ 2>/dev/null
@@ -124,11 +137,32 @@ still transport.
    | `auto-offset-reset` tolerance (losing vs. reprocessing on redeploy) | `earliest` or `latest` |
    | Ordering requirement across different aggregates | Whether one topic is enough or the event needs to fan out differently |
    | Existing `processed_events`-style dedupe table in this project | Reuse vs. ask `persistence-architect` to model one |
+   | **Serialization** — do both sides need a contract they can validate at build time, and is there a second team on the other end asking for it? | JSON (the rule's default) or a schema registry. **Ask only with the cost in the question**, see below |
 
    Every axis but the first is consumer-side. A use case that only **produces** still has the
    publication timing to settle, so "no axis applies, no `AskUserQuestion` this pass" is never
    the right conclusion for a producing use case: either the domain partial's `Durability`
    column already fixed the form and the partial records which, or this step asks.
+
+   **The serialization axis, and the shape its question must have.**
+   `@.claude/rules/messaging.md` § Topics and serialization fixes JSON as the default and
+   makes a schema registry a deliberate upgrade — "not assumed until a use case actually
+   needs it". So:
+
+   - **No trigger written in `00-caso-de-uso.md` or `10-dominio.md` → don't ask.** Record
+     `JSON` in the partial together with the rule's condition, in one line, and move on. A
+     rule default is not a question, and "the consumer is another team" is not by itself the
+     trigger — the trigger is that both sides need the contract validated **at build time**.
+   - **Trigger written → ask, with the cost inside the question, not after it.** The upgrade
+     is not one line of configuration; the option text names every place it lands:
+
+     | The upgrade buys | The upgrade costs |
+     |---|---|
+     | A contract both sides validate at build time, and compatibility checked by the registry | A `schema-registry` service in `docker-compose.yml` · three dependencies (`org.apache.avro:avro`, `io.confluent:kafka-avro-serializer`, `avro-maven-plugin`) · the `confluent` repository, because the serializer is **not on Maven Central** · a new source directory (`src/main/avro/*.avsc`) and generated code · a JaCoCo exclusion for that generated code · `mock://` in the tests, with subject compatibility not really tested |
+
+   A user who picks the upgrade after reading that row picked it knowingly. One who is
+   offered "JSON (recommended)" versus "Avro + schema registry" with no cost attached is
+   picking a name, and that is how the six items above entered a project in one answer.
 
 4. **Design the producer adapter.** Implements the outbound port `domain-modeling` already
    declared — never a new interface. Payload is the minimum the consumer needs, mapped
@@ -141,20 +175,36 @@ still transport.
    | A — publish after commit (default) | The adapter sends to the broker directly | none | `templates/KafkaProducerAdapter.java.example` |
    | B — transactional outbox + relay | The adapter writes an outbox row inside the caller's transaction | relay component, `OutboxRelayGateway` port, shared `outbox_events` table | `templates/OutboxRelayPublisher.java.example` |
 
-   **4a. Form B's schema, when step 2 found no outbox.** One table for the whole project, not
-   one per event — same nature as `idempotency_keys`. This skill doesn't design tables: name
-   the requirement as a row of the partial's **§ 6 · Schema requirements** and flag that
-   `persistence-architect` has to model it, with the columns the relay needs (claim, attempts,
-   failure reason, dead-letter flag) listed as requirements, not as DDL. Exemplar's header
-   comment carries the same list. § 2 explains the form and why; § 6 is the list the next
-   skill reads — a requirement described only in § 2's prose is one nobody has to find.
+   **4a. Form B's outbox, when step 2 found none. Declare the need, never the columns.**
+   The outbox belongs to `persistence-architect` — the table, its columns, its indexes, its
+   migration, the claim query, and the pacing those columns encode. This skill's § 6 row
+   says three things and stops:
 
-   The receiving end is that skill's **step 4b**, which models the table once from
+   1. that the case needs the project's shared `outbox_events` (one for the whole project,
+      never one per event or per aggregate — same nature as `idempotency_keys`);
+   2. the **delivery guarantee** the relay has to honour: at-least-once, how many attempts
+      before giving up, and the DLQ destination once it does;
+   3. the addressee — that skill's **step 4b**, which models it from
+      `persistence-architect/templates/OutboxEventTable.sql.example`.
+
+   **Never list column names here.** Inventing `next_attempt_at`, `failure_reason`,
+   `created_at` as "requirements" produced three guaranteed divergences in a real run, and
+   one of them silently changed behaviour: the exemplar has no `next_attempt_at`, so
+   per-row exponential backoff became a fixed 2s repoll, decided by a precedence rule
+   written for table shape. The column set has one owner and one canonical source, and
+   neither is this file.
+
+   What this skill keeps is the guarantee, and it keeps it as a **requirement**, not a
+   suggestion: a shape that cannot satisfy the declared backoff and attempt count is a
+   divergence that stops the pipeline (`/new-feature`'s consolidation, § Precedence), not
+   something either skill resolves alone. The port stays declared here too — the pair in
+   step 4b implements `OutboxRelayGateway`, it doesn't re-declare it.
+
+   The receiving end models the table once from
    `persistence-architect/templates/OutboxEventTable.sql.example` and
    `templates/OutboxEventStore.java.example` — the mirror of its own step 4a for
    `idempotency_keys`. Name the step in the partial, so the requirement has an addressee
-   instead of a hope. The port stays declared here: that pair implements
-   `OutboxRelayGateway`, it doesn't re-declare it.
+   instead of a hope.
 
 5. **Design the consumer adapter.** Translates the inbound payload into a call on the target
    use case's inbound port. Dedupe on the event's own identity before calling it; manual
@@ -180,8 +230,15 @@ still transport.
    `templates/messaging-spec.md.example`. Six blocks, all mandatory — § 6 included, written
    as `none` when steps 4a and 5a both found nothing to ask for.
 
-9. **Check Kafka has a container.** `grep -A2 "^services:" docker-compose.yml` for a
-   `kafka` service. Missing → invoke `docker-architect` with this UC's folder, so the
+9. **Check Kafka has a container.** List the keys inside the `services:` block and look
+   for `kafka` — never `grep -A2 "^services:"`, which reads two lines and then reports the
+   children of `volumes:` as services (lessons-learned-012 § 12):
+
+   ```bash
+   awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' docker-compose.yml
+   ```
+
+   Missing → invoke `docker-architect` with this UC's folder, so the
    dev-time broker matches the topic just designed. Don't edit `docker-compose.yml` here —
    that skill is its single owner.
 
@@ -199,11 +256,11 @@ asked.
 | Block | Fixes | Form exemplar |
 |---|---|---|
 | Topic and delivery | Topic name, partition key, serialization, delivery semantics | `@.claude/rules/messaging.md` § Topics and serialization |
-| Producer adapter | The port from `10-dominio.md`, **the publication form (A or B) and why**, the adapter, the payload shape, and — Form B only — the outbox schema requirement for `persistence-architect` | `KafkaProducerAdapter.java.example` (A) · `OutboxRelayPublisher.java.example` (B) |
+| Producer adapter | The port from `10-dominio.md`, **the publication form (A or B) and why**, the adapter, the payload shape, and — Form B only — that the case needs the shared outbox plus the delivery guarantee its relay must honour | `KafkaProducerAdapter.java.example` (A) · `OutboxRelayPublisher.java.example` (B) |
 | Consumer adapter and idempotency | The consuming use case, the listener, the dedupe key and table | `KafkaConsumerAdapter.java.example` |
 | Retry and DLQ | Backoff, DLQ topic, which failures skip retry | `@.claude/rules/messaging.md` § Retry and DLQ |
 | Configuration | Group id, offset reset, ack mode, with the decided value and why | `application-kafka.yml.example` |
-| Schema requirements | Every table or column this transport needs that the domain didn't model — the shared `outbox_events` under Form B (step 4a), the shared dedupe table (step 5a) — one row each with the columns as requirements, never DDL. `none` when there are none | `@.claude/rules/messaging.md` § Publication timing · § Retry and DLQ |
+| Schema requirements | Every table this transport needs that the domain didn't model — the shared `outbox_events` under Form B (step 4a), the shared dedupe table (step 5a) — one row each, stating **which table and which guarantee**, never a column name and never DDL. The outbox's columns and pacing belong to `20-persistencia.md`; a column named here becomes a divergence there. `none` when there are none | `@.claude/rules/messaging.md` § Publication timing · § Retry and DLQ |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.

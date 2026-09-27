@@ -118,6 +118,7 @@ direction above is unchanged.
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level, choosing an observability backend (Jaeger or Grafana+Tempo+Prometheus) behind the OTLP collector | skill `docker-architect` |
+| A versioned file citing a `docs/use-cases/UC-NNN-slug/` folder that was deleted or renamed | `ArchHook.java doctor` — the `UC references` line, so `/arch-doctor` reports it. Reads `doctor.uc_references` from `@.claude/schemas/extensions.json`; silent in this meta-repo, which has no `docs/use-cases/` |
 | A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse` | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison needs no Docker: it reads both files |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
@@ -145,6 +146,29 @@ direction above is unchanged.
   the arguments). A mode that throws — exits 0 through `main`'s catch, looks like it
   passed. `schema` catches the first three, from `settings` in
   `@.claude/schemas/extensions.json`; the fourth only by running the mode by hand.
+- **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim
+  query, and the `app.outbox.*` values that pace the claim. `messaging-architect` declares
+  that the case needs one and which delivery guarantee the relay must honour, and never a
+  column name; it keeps the relay's broker side. A § 6 row naming columns is a divergence,
+  and a column decision that would drop a declared guarantee stops the pipeline instead of
+  being settled by precedence.
+- **The bounded context is a project fact, not a per-use-case answer.** It is the first
+  segment of every topic name, asked with the coordinates in `/init-project` and written
+  into the generated project's root `CLAUDE.md`. Whoever designs messaging reads it; a
+  prefix chosen inside one use case gives one system two namespaces.
+- **`$ARGUMENTS` in the body of a skill is interpolated at every occurrence**, not only
+  under `## Target`. A sentence that talks *about* the argument reaches the model with the
+  real value inside it: `/new-feature`'s "invoke `test-architect` with empty `$ARGUMENTS`
+  (setup mode)" arrived as "with empty `UC-003-initiate-kyc-verification` (setup mode)" —
+  an order to use setup mode, naming the argument that means design mode. Write "the
+  argument" or "the target above"; `ArchHook.java schema` rejects the literal, reading
+  `arguments` from `@.claude/schemas/extensions.json`.
+- **`grep -A2 "^services:" docker-compose.yml` is not the list of services.** It reads two
+  lines and stops, so it drops the services declared further down and reports the children
+  of `volumes:` as services. Every piece that needs that list — `docker-architect`'s
+  injection and step 3, `messaging-architect` step 9, `persistence-architect` step 9 — uses
+  the `awk` one-liner bounded to the `services:` block. A wrong portrait is worse than
+  none: it invites the skill to recreate a service that already exists.
 - **The runtime silently ignores unknown frontmatter.** An invented field is decoration,
   not behavior. List of native fields in `@claude-help.md`.
 - **`AskUserQuestion` rejects a question with fewer than 2 options**, and rejects the

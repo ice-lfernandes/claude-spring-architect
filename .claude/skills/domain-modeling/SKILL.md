@@ -106,13 +106,24 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    a field with a formation rule that stays `String` is a decision to justify in the
    partial, not a default.
 
-   **Flag which fields are sensitive.** The same pass that decides a field's value
-   object (document, phone, email — `@.claude/rules/value-objects.md`'s catalog) is the
-   natural signal for `@.claude/rules/logging.md`'s masking rule: a field with a
-   formation rule that identifies a person (CPF/CNPJ, phone, email, a document number)
-   is a candidate for `@MaskSensitiveData`. List these fields in the aggregate block —
-   `rest-api-architect` reads this to decide which DTO fields implement `LogMask`; it
-   doesn't re-derive sensitivity from field names on its own.
+   **Derive which fields are sensitive — don't decide it.**
+   `@.claude/rules/logging.md` § Masking candidates is the derivation, and it is
+   mechanical: a field matches by **type** (the catalog's personal-data value objects) or
+   by **name** (the list in that section, on the whole name or part of it). Walk every
+   field of the aggregate and of every command and response shape through both halves, and
+   list each match in the aggregate block.
+
+   Two consequences, both from the same real failure — a `String securityNumber` holding a
+   CPF that no partial ever flagged, and that shipped:
+
+   - **A field that matches and is not masked needs a written reason** in the partial. The
+     default is masked; not masking is the decision that has to say why.
+   - **The list is a floor, not a ceiling.** A field carrying personal data whose name is
+     not on the list is still a candidate, and the name goes into the rule — that is the
+     only way the next project inherits it.
+
+   This block is what `rest-api-architect` applies and what the architecture test checks;
+   an empty block on an aggregate with a person in it is the bug, not the absence of one.
 5. **Map each invariant to its exception.** Typed family from
    `@.claude/rules/error-handling.md` and `errorCode` in `UPPER_SNAKE_CASE`. An invariant
    without a named exception is an invariant nobody will implement.

@@ -293,6 +293,18 @@ public class ArchHook {
         try { git = run("git", "rev-parse", "HEAD").exit == 0; } catch (Exception ignored) { }
         report("git HEAD", git, "exists",
                 "no commits — the tests hook does not run (git diff HEAD fails)");
+
+        if (git) {
+            String ucRoot = ucReferenceRoot();
+            if (ucRoot != null && !Files.isDirectory(ROOT.resolve(ucRoot))) {
+                report("UC references", true, "no " + ucRoot + " — nothing to check (optional)", "");
+            } else {
+                List<String> orphans = orphanUseCaseRefs();
+                report("UC references", orphans.isEmpty(), "every cited use-case folder exists",
+                        orphans.size() + " citation(s) point at a folder that is gone");
+                for (String o : orphans) err("    " + o);
+            }
+        }
         err("");
         err(rules > 0 && w != null
                 ? "✅ Setup operational."
@@ -346,6 +358,68 @@ public class ArchHook {
             err("    " + c);
         }
         if (changed.size() > 8) err("    … and " + (changed.size() - 8) + " more");
+    }
+
+    /**
+     * Versioned files citing a `docs/use-cases/UC-NNN-slug/` folder that no longer exists.
+     * Deleting a use case folder leaves its citations behind — a `docker-compose.yml`
+     * comment pointing at `25-mensageria.md` of a case renamed in the next run
+     * (lessons-learned-012 § 14) — and nothing sweeps for them, because each citation is
+     * correct in the commit that wrote it. Reported, never blocking: a stale reference is
+     * a documentation defect, and `doctor` is where a person is already reading.
+     * Pattern, scanned extensions and exemptions are data — `doctor.uc_references` in
+     * .claude/schemas/extensions.json (invariant 10).
+     */
+    static Map<String, Object> ucReferenceSpec() {
+        try {
+            return asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))),
+                    "doctor", "uc_references"));
+        } catch (Exception e) { return null; }
+    }
+
+    /** The directory whose absence means there is nothing to sweep, or null. */
+    static String ucReferenceRoot() {
+        Map<String, Object> spec = ucReferenceSpec();
+        return spec == null ? null : asStr(spec.get("root"));
+    }
+
+    static List<String> orphanUseCaseRefs() {
+        List<String> found = new ArrayList<>();
+        Map<String, Object> spec = ucReferenceSpec();
+        if (spec == null) return found;
+        String pat = asStr(spec.get("pattern"));
+        if (pat == null || pat.isEmpty()) return found;
+        // No use-case directory, nothing a citation can be stale against. That is this
+        // meta-repository: the check belongs to the generated project.
+        String root = asStr(spec.get("root"));
+        if (root != null && !root.isEmpty() && !Files.isDirectory(ROOT.resolve(root))) return found;
+        List<String> exts = asStrList(spec.get("extensions"));
+        List<String> skip = asStrList(spec.get("exempt_paths"));
+
+        List<String> files;
+        try {
+            Proc p = run("git", "ls-files");
+            if (p.exit() != 0) return found;
+            files = p.out();
+        } catch (Exception e) { return found; }
+
+        Pattern re = Pattern.compile(pat);
+        for (String f : files) {
+            if (!exts.isEmpty() && exts.stream().noneMatch(f::endsWith)) continue;
+            if (skip.stream().anyMatch(f::startsWith)) continue;
+            String body = readOrNull(ROOT.resolve(f));
+            if (body == null) continue;
+            Set<String> seen = new LinkedHashSet<>();
+            Matcher m = re.matcher(body);
+            while (m.find()) {
+                String folder = m.group(m.groupCount() >= 1 ? 1 : 0);
+                if (!seen.add(folder)) continue;
+                if (!Files.isDirectory(ROOT.resolve(folder))) {
+                    found.add(f + " cites " + folder + ", which does not exist");
+                }
+            }
+        }
+        return found;
     }
 
     static void report(String label, boolean ok, String yes, String no) {
@@ -1000,13 +1074,32 @@ public class ArchHook {
             // A lead-in is matched across line breaks: the sentence it opens is wrapped
             // at 90 columns like every other, and "Full\nrecord in `@…`." is the common
             // case, not the exception.
+            // A lead-in may open a list of records — "Design: X, Y and Z" — and the
+            // sentence says the same thing about all of them, so the whole list goes with
+            // it. Without the tail, the first citation is cut and the rest survive as an
+            // orphan ", and Z" the next step then turns into prose.
             for (String lead : asStrList(bt.get("sentence_lead_ins"))) {
                 String words = Arrays.stream(lead.trim().split("\\s+")).map(Pattern::quote)
                         .collect(Collectors.joining("\\s+"));
-                body = body.replaceAll("(?s)" + words + "[^.]{0,200}?" + cite + "\\.?[ ]?", "");
+                body = body.replaceAll("(?s)" + words + "[^.]{0,200}?" + cite
+                        + "(?:(?:,|,? and|,? e)[ \n]+" + cite + ")*\\.?[ ]?", "");
             }
-            String clause = asStr(bt.get("clause_pattern"));
-            body = body.replaceAll((clause == null ? "\\s*" : clause) + cite, "");
+            // What survives both shapes above is a citation inside a sentence that says
+            // something else. Deleting it there leaves the sentence mangled — `- **** —`,
+            // `Inherits D15 —.` — which no residue marker looking for a path can see, so
+            // six of them shipped (lessons-learned-012 § 3). The path is replaced by prose
+            // instead: the reader inside a project cannot follow it either way, but the
+            // sentence still says what it was written to say.
+            String replacement = asStr(bt.get("citation_replacement"));
+            body = body.replaceAll(cite, Matcher.quoteReplacement(
+                    replacement == null ? "" : replacement));
+            // Three records cited in a row become the same phrase three times. The list
+            // collapses to one: "Design: X, Y and Z" said the same thing about all three.
+            if (replacement != null && !replacement.isEmpty()) {
+                String r = Pattern.quote(replacement);
+                body = body.replaceAll("(?s)" + r + "(?:(?:,|,? and|,? e)[ \n]+" + r + ")+",
+                        Matcher.quoteReplacement(replacement));
+            }
         }
         for (Object r : asList(bt.get("replace"))) {
             String find = asStr(get(r, "find")), with = asStr(get(r, "with"));
@@ -1611,6 +1704,7 @@ public class ArchHook {
         if (content == null) return;
 
         checkInjections(sch, rel, content, errors);   // every visited file, any type
+        checkArguments(sch, rel, content, errors);    // idem
 
         if (matchesAny(asStrList(get(sch, "settings", "match")), rel)) {
             checkSettings(sch, rel, content, errors);
@@ -1685,6 +1779,61 @@ public class ArchHook {
                     + " cwd. Use \"" + require + ":-.}/<path>\" — a `cd` in an earlier Bash"
                     + " call makes it report a file as absent while it exists."
                     + " Genuinely cwd-independent: add a regex to injections.exempt_patterns");
+        }
+    }
+
+    /**
+     * Rejects the argument marker written in prose. The runtime interpolates every
+     * occurrence, not only the one under `## Target`: a sentence that *talks about* the
+     * argument ("with empty $ARGUMENTS", "$ARGUMENTS empty") arrives at the model with the
+     * real value substituted into it, and reads as the opposite of what it says —
+     * lessons-learned-012 § 2, where `/new-feature` ended up ordering `test-architect`
+     * into setup mode while naming the argument that means design mode. The interpolation
+     * point itself is a line holding nothing but the marker, and that is the only
+     * occurrence allowed. Marker, the field that makes a file eligible, the shape of the
+     * interpolation line and the exemptions are data — `arguments` in
+     * .claude/schemas/extensions.json, never here (invariant 10).
+     */
+    static void checkArguments(Map<String, Object> sch, String rel, String content,
+                               List<String> errors) {
+        Map<String, Object> arg = asMap(sch.get("arguments"));
+        if (arg == null) return;                       // block absent: check is off
+        String marker = asStr(arg.get("marker"));
+        if (marker == null || marker.isEmpty()) return;
+        if (!typedFile(sch, rel)) return;
+
+        String needs = asStr(arg.get("requires_field"));
+        if (needs != null && !needs.isEmpty()) {
+            Map<String, String> fm = frontmatter(content);
+            if (fm == null || !fm.containsKey(needs)) return;
+        }
+
+        List<Pattern> exempt = new ArrayList<>();
+        for (String p : asStrList(arg.get("exempt_patterns"))) {
+            try { exempt.add(Pattern.compile(p)); }
+            catch (PatternSyntaxException e) {
+                errors.add("  " + SCHEMA_FILE + " — arguments.exempt_patterns has an"
+                        + " invalid regex `" + p + "`: " + e.getDescription());
+            }
+        }
+        String point = asStr(arg.get("interpolation_line"));
+        Pattern alone = Pattern.compile(point == null || point.isEmpty()
+                ? "^[ \\t]*" + Pattern.quote(marker) + "[ \\t]*$" : point);
+
+        // Same two escapes `checkInjections` grants, for the same reason: a fenced block
+        // and a double-backtick span are how this repository documents the marker without
+        // the runtime ever interpolating what it wrote.
+        String scanned = TICK_SPAN.matcher(FENCE.matcher(content).replaceAll(""))
+                .replaceAll("");
+        for (String l : scanned.split("\n", -1)) {
+            if (!l.contains(marker) || alone.matcher(l).matches()) continue;
+            if (exempt.stream().anyMatch(p -> p.matcher(l).find())) continue;
+            errors.add("  " + rel + ":" + lineOf(content, l.strip()) + " — `" + marker
+                    + "` written in prose. The runtime substitutes it here too, so the"
+                    + " sentence reaches the model with the real argument inside it."
+                    + " Write \"the argument\" or \"the target above\"; the only allowed"
+                    + " occurrence is a line holding nothing else."
+                    + " Genuinely safe: add a regex to arguments.exempt_patterns");
         }
     }
 
@@ -2777,6 +2926,12 @@ public class ArchHook {
             String failures = String.valueOf(fails.values().stream().mapToInt(Integer::intValue).sum());
             Files.writeString(dir.resolve("history.jsonl"),
                     ev("run", "skill", skill, "kind", kind, "origin", origin, "start", startIso,
+                       // The model is what the report's header showed and the ledger did
+                       // not: two runs of the same pipeline, one on Sonnet and one on Opus,
+                       // differ tenfold in cost, and the comparison had to be rebuilt by
+                       // hand from the reports (lessons-learned-012, header note). A
+                       // comma-separated list when a subagent ran on another model.
+                       "model", all.model(),
                        "duration_ms", String.valueOf(total),
                        "wait_ms", String.valueOf(wait),
                        "status", status,
@@ -2823,6 +2978,7 @@ public class ArchHook {
     static String nodeRow(String run, String parent, String kind, String name, String origin,
                           Usage u, Path dir, long durationMs) {
         return ev("node", "run", run, "parent", parent, "kind", kind, "skill", name, "origin", origin,
+                "model", u == null ? null : u.model(),
                 "tokens_self", u == null ? null : String.valueOf(u.billable()),
                 "cost_usd", u == null ? null : usd(auditUsd(dir, u)),
                 "duration_ms", u == null ? null : String.valueOf(durationMs));
@@ -3065,8 +3221,8 @@ public class ArchHook {
              .append(" · peças distintas: ").append(tok.size()).append("\n\n");
 
             o.append("### Últimas execuções\n\n")
-             .append("| # | 🕐 Quando | 🎯 Peça | 🙋 Origem | Status | ⏱️ Duração | 🧮 Faturável | 💰 Custo | 📁 Arq. | 🔁 Falhas |\n")
-             .append("|---|---|---|---|---|---|---|---|---|---|\n");
+             .append("| # | 🕐 Quando | 🎯 Peça | 🙋 Origem | 🤖 Modelo | Status | ⏱️ Duração | 🧮 Faturável | 💰 Custo | 📁 Arq. | 🔁 Falhas |\n")
+             .append("|---|---|---|---|---|---|---|---|---|---|---|\n");
             int shown = 0;
             for (int i = runs.size() - 1; i >= 0 && shown < 15; i--, shown++) {
                 Map<String, Object> r = runs.get(i);
@@ -3074,6 +3230,9 @@ public class ArchHook {
                 o.append("| ").append(shown + 1).append(" | ").append(orDash(asStr(r.get("start"))))
                  .append(" | `").append(pieceLabel(r)).append("` | ")
                  .append("model".equals(asStr(r.get("origin"))) ? "modelo" : "usuário").append(" | ")
+                 // Absent in every row written before this column existed: a run recorded
+                 // by an older hook shows `—`, not a model it never knew.
+                 .append(orDash(asStr(r.get("model")))).append(" | ")
                  .append(st.isEmpty() ? "—" : st.substring(0, Math.max(1, st.indexOf(' ')))).append(" | ")
                  .append(hms(lnum(r.get("duration_ms")))).append(" | ")
                  .append(n(lnum(r.get("tokens_billable")))).append(" | ")

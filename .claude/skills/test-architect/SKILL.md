@@ -30,8 +30,8 @@ Two things, and the argument decides which:
 
 | Mode | When | Produces |
 |---|---|---|
-| **design** | `$ARGUMENTS` is a `UC-NNN-<slug>` folder | `docs/use-cases/UC-NNN-<slug>/40-testes.md` |
-| **setup** | `$ARGUMENTS` empty | ArchUnit installed in the project (version in the POM, `ArchitectureTest.java` with the translated packages) and the coverage gate wired up (JaCoCo's `check` execution) — done by delegating to the `archunit-installer` agent |
+| **design** | the target above is a `UC-NNN-<slug>` folder | `docs/use-cases/UC-NNN-<slug>/40-testes.md` |
+| **setup** | the target above is empty | ArchUnit installed in the project (version in the POM, `ArchitectureTest.java` with the translated packages) and the coverage gate wired up (JaCoCo's `check` execution) — done by delegating to the `archunit-installer` agent |
 
 They're not two disguised pieces: they share the rule, the vocabulary, and the
 exemplars. Setup mode runs **once per project**; design mode runs once per use case.
@@ -139,12 +139,17 @@ what's left to cover outside of transport.
    (`@.claude/rules/persistence.md` § Boundary). Exemplar:
    `templates/PersistenceIT.java.example`.
 
-   **A DTO field `30-rest.md` marked `@MaskSensitiveData` requires its own masking
-   test.** `@.claude/rules/logging.md`'s "zero raw sensitive data in the log" has no
-   mechanical check anywhere else in the pipeline — a unit test that calls the DTO's
-   masked `toString()` (or serializes it the way `GlobalHttpMethodLogAspect` would) and
-   asserts the raw value is absent is the only place this gets verified other than
-   review. Name it alongside the DTO's own test class, not as a separate file.
+   **A DTO field the masking derivation matches requires its own masking test** — derive
+   it from `@.claude/rules/logging.md` § Masking candidates, don't wait for `30-rest.md` to
+   have marked it. A unit test that calls the DTO's masked `toString()` (or serializes it
+   the way `GlobalHttpMethodLogAspect` would) and asserts the raw value is absent. Name it
+   alongside the DTO's own test class, not as a separate file.
+
+   The architecture test now covers the structural half — a DTO with a matching field
+   implements `LogMask` and marks the field (§ Masking candidates, installed by setup
+   mode). This test covers what the structural one cannot: that the mask actually hides the
+   value. Both, not one: an annotation with the wrong `maskedType` passes ArchUnit and still
+   logs a readable CPF.
 
 5. **Name each test.** Class and method per the rule's naming conventions, with the
    `IT` suffix on integration ones — without it failsafe doesn't run them and `verify`

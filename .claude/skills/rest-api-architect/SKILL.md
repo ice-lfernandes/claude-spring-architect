@@ -89,7 +89,7 @@ chain, this isn't the right skill.
 ## Procedure
 
 1. **Read the specs.** `00-caso-de-uso.md` and `10-dominio.md` from the folder in
-   `$ARGUMENTS`. Without the second, stop. Extract: canonical names, inbound ports and
+   the target above. Without the second, stop. Extract: canonical names, inbound ports and
    signatures, the exception table with `errorCode`, and the rows of the component
    table marked `Detailed by: rest-api-architect`.
 
@@ -141,13 +141,26 @@ chain, this isn't the right skill.
    the public signature, no aggregate serialized. Manual, static mapper
    (`templates/RestMapper.java.example`).
 
-   **Apply masking to the fields `10-dominio.md` flagged sensitive.** Any DTO field
-   that mirrors a field `domain-modeling` listed as a masking candidate gets
-   `@MaskSensitiveData(maskedType = MaskedType.<X>)` (`@.claude/rules/logging.md` §
-   Masking mechanism), and the DTO class implements `LogMask`. This isn't optional
-   because it "looks fine without it": `GlobalHttpMethodLogAspect` logs every request
-   and response DTO by default (opt-out, not opt-in) — a DTO that doesn't implement
-   `LogMask` logs the field raw the moment the endpoint runs.
+   **Apply masking, and re-derive it here instead of trusting the previous partial.**
+   Every DTO field gets walked through `@.claude/rules/logging.md` § Masking candidates —
+   by type and by name — not only the ones `10-dominio.md` listed. A match gets
+   `@MaskSensitiveData(maskedType = MaskedType.<X>)` and the DTO class implements
+   `LogMask`. Where this partial finds a match the domain partial missed, it masks it and
+   says so in the divergence line; where it finds a DTO field with no domain counterpart at
+   all (a transport-only field), the derivation still applies.
+
+   Two links in series is what failed: `10-dominio.md` didn't flag, so nothing was masked,
+   and a CPF was logged raw from the first use case onward. The derivation is cheap and the
+   rule is the same list on both ends — running it twice costs a pass over the field list.
+
+   This isn't optional because it "looks fine without it": `GlobalHttpMethodLogAspect` logs
+   every request and response DTO by default (opt-out, not opt-in) — a DTO that doesn't
+   implement `LogMask` logs the field raw the moment the endpoint runs.
+
+   **Also check the DTOs that already exist.** A use case that touches an endpoint whose
+   DTOs were written before this rule existed inherits their leaks: run the same derivation
+   over them and report each unmasked match in `## Impact on approved use cases`, even when
+   this use case doesn't otherwise change them.
 
 6. **Fix the error map.** Each exception from `10-dominio.md` to its status and its
    `errorCode`, plus the structural errors that don't come from the domain (bean

@@ -4,7 +4,7 @@ description: >
   Initializes a Spring Boot project from scratch with a selectable architecture. Manual
   ritual — interview, validate the blueprint, generate the structure, install the hooks
   and verify the build. Explicit invocation only.
-argument-hint: "[--blueprint <id>] [--build maven|gradle] [--groupId <groupId>] [--name <artifactId>]"
+argument-hint: "[--blueprint <id>] [--build maven|gradle] [--groupId <groupId>] [--name <artifactId>] [--bounded-context <name>]"
 disable-model-invocation: true
 allowed-tools: Agent, Read, Write, Bash, Glob, AskUserQuestion
 ---
