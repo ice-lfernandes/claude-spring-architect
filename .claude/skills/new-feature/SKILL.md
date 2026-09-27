@@ -122,7 +122,13 @@ is `approved` or `implemented`.
 **An approved spec is immutable.** Later cases read approved specs as a read-only
 contract and reuse the aggregate already modeled. A change a new case needs in an
 approved one goes into the `## Impact on approved use cases` section of the **new**
-spec; the executor applies it in code. Don't edit the old spec.
+spec; the executor applies it in code. Don't edit the old spec — write the line in the
+altered case's own `CHANGELOG.md` instead (consolidation step 2).
+
+**A case can be nothing but changes.** Every component `CHANGE`, no new use-case class:
+it still gets its own `UC-NNN`, and its slug names the capability added rather than the
+trigger, which already belongs to the case being changed
+(`@.claude/rules/naming.md` § Use case identifier).
 
 Decide what the current case needs. Don't defer or anticipate a decision "for the future
 case" — the future case decides it, in its own impact section.
@@ -141,6 +147,31 @@ Survey the use cases once:
 ```bash
 find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort | while read -r d; do s=$(find "$d" -maxdepth 1 -name 'UC-*-spec.md' -exec grep -m1 '^status:' {} \;); echo "$d ${s:-status: (no spec)}"; done
 ```
+
+**The disk is not the history.** A folder deleted from the working tree is invisible to
+`find` and still in `HEAD`, so the next number looks free when it isn't:
+
+```bash
+git ls-tree -d --name-only HEAD docs/use-cases 2>/dev/null
+```
+
+A `UC-NNN` that `HEAD` has and the disk doesn't → **stop and report it**, before any
+skill call. Two things can be true, and only the user knows which: the number was
+recycled (the repository would end up with two different `UC-NNN`, and this run's commit
+would delete one while adding the other), or approved work was deleted without being
+committed. Name the folder, say which of the two it looks like, and ask. Don't infer the
+next free number from the disk alone.
+
+Same comparison for the backlog, and for the same reason — the entry of a deleted case
+disappears with its folder, and a run that recreates it from scratch writes different
+text nobody compares:
+
+```bash
+git diff --stat HEAD -- docs/use-cases/BACKLOG.md 2>/dev/null
+```
+
+Non-empty when a `UC-NNN` is missing from the disk → show the diff before
+`use-case-design` writes a new entry.
 
 Classify the argument with the argument in single quotes:
 
@@ -206,6 +237,20 @@ status` that doesn't match the feature just implemented (lessons-learned-006 § 
 `status`). `IGNORED` → note it in the run's context and pass it to `git-publish`'s
 invocation at § End of flow so its own state check (`@.claude/skills/git-publish/SKILL.md`
 step 1) knows to warn instead of assuming the diff matches the feature.
+
+**Fourth case: the index already carries changes from before this run.**
+
+```bash
+git diff --cached --stat 2>/dev/null
+```
+
+Non-empty → staged work that is **not** this run's. Report it here, in full (path count
+and what the paths are), and carry the fact to `git-publish` the same way `IGNORED`
+travels. This is the cheap moment to decide: at the end of the flow the run's own
+deliverable is mixed into the same index, and separating them costs a reset nobody
+planned. lessons-learned-012 § 7: 1.503 staged deletions from before the run only surfaced
+at `git-publish`, and the handling was improvised because no state in either skill
+described it.
 
 ### 3 · Project
 
@@ -333,7 +378,8 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    |---|---|
    | HTTP path, verb, status, body shape | `30-rest.md` |
    | Table, column, key, index, migration | `20-persistencia.md` — including every table or column another partial *asked for*: the requirement is born in `30-rest.md` block 4 or `25-mensageria.md` § 6, the final form (name, type, nullability, index, migration) is always this one's |
-   | Topic, delivery guarantee, retry/DLQ | `25-mensageria.md` |
+   | Topic, serialization, delivery guarantee, consumer retry and DLQ | `25-mensageria.md` |
+   | Outbox table, its columns, the claim query, and the pacing they encode (poll interval, backoff, attempt ceiling, retention) | `20-persistencia.md` — the whole outbox is its territory. `25-mensageria.md` declares the **guarantee** the pacing has to deliver, never the columns; a § 6 row naming columns is reported as a divergence and the guarantee is what carries over |
    | Aggregate name, value object, port, event | `10-dominio.md` |
    | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
@@ -349,6 +395,14 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    business-rule contradiction — **stops the pipeline** and asks. Don't invent it or
    stack it.
 
+   **And one shape the table resolves only in appearance:** a column decision that changes
+   behaviour. `20-persistencia.md` wins on the column, always — but when dropping a column
+   also drops a guarantee `25-mensageria.md` declared (no `next_attempt_at`, so per-row
+   exponential backoff becomes a fixed repoll), the winner is not the answer. That is a
+   divergence the table doesn't resolve: **stop and ask**, and record which guarantee the
+   chosen shape delivers. A precedence rule written for table shape must never be what
+   settles a behaviour.
+
 2. Consolidate into a single file: `UC-NNN-spec.md`, with `status: draft`, **by reference**
    - Each block holds only the final decisions — one value per fact — and the path of the
      partial that details it. Never copy a partial's tables, SQL, or code: a copied
@@ -357,6 +411,14 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      (messaging) only when step 4 wasn't skipped
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
+   - **Every case named in that section gets a line in its own `CHANGELOG.md`**, at
+     `docs/use-cases/UC-XXX-<slug>/CHANGELOG.md` — created on the first change, appended
+     afterwards. One line: date, the `UC-NNN` making the change, and what changed
+     (`2026-09-27 · UC-003 · RegisterCustomerUseCase now emits CustomerRegistered`). The
+     approved spec stays untouched, which is exactly why the log is a separate file
+     (`@.claude/rules/naming.md` § Use case identifier). Without it, nobody reading the
+     altered case ever learns it changed — immutability keeps the text and loses the
+     history
    - Order: implementation order (depends-on)
    - Recipient: `java-spring-boot-developer` agent — a spec with § 6 runs the executor's
      conditional Block M (steps M1-M4, between REST and Tests), which generates the Kafka
@@ -414,8 +476,8 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     has nothing but `package-info.java` → commons-logging classes not installed yet.
     Either gap found → `AskUserQuestion`, one option per gap found: **Install now** /
     **Skip for this run**.
-    - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with empty
-      `$ARGUMENTS` (setup mode) — same route step 3 already names, never invoke
+    - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with **no
+      argument at all** (setup mode) — same route step 3 already names, never invoke
       `archunit-installer` directly, it stays `test-architect`'s alone.
     - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
       the `Agent` tool. No owning per-feature skill to route through: this orchestrator

@@ -60,7 +60,11 @@ Use `AskUserQuestion`, maximum 4 questions, all at once:
 1. **Architecture** — dynamic list from `.claude/blueprints/*/*.yaml`, each option with
    its own `when_to_choose` and a `trade_off` from the YAML itself. Don't write the
    list by hand.
-2. **Coordinates** — groupId, artifactId, project name.
+2. **Coordinates** — groupId, artifactId, project name, and **bounded context** (default:
+   the artifactId). The bounded context is the first segment of every topic name and
+   nothing else in the generated project declares it; asked here, it is one field in a
+   question that already exists, and `messaging-architect` reads it later instead of
+   choosing a prefix inside one use case.
 3. **Build** — Maven or Gradle.
 4. **Features** — REST, JPA + Flyway, Kafka, SQS, OpenAPI, Testcontainers, Actuator
    (multi-select). An active feature is a dependency in the POM and its configuration, not

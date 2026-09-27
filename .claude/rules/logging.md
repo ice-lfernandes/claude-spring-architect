@@ -78,6 +78,45 @@ or not anyone remembered to think about it. A DTO with a PII field masks it befo
 ever reaches a controller — this is the point in the pipeline where the "zero raw
 sensitive data" line above stops being a promise and starts being what actually happens.
 
+## Masking candidates — derived, never remembered
+
+Which fields the mechanism above applies to is **not** a judgment call made once per
+field. It is derived, and this section is the single owner of the derivation.
+
+A field is a masking candidate when **either** holds:
+
+1. Its type is one of `@.claude/rules/value-objects.md`'s catalog entries for personal
+   data — `Email`, `PhoneNumber`, `Cpf`, `Cnpj`, `Document` — or the field is the
+   primitive that stands in for one of them.
+2. Its name matches the list below, case-insensitive, on the whole name or as a part of
+   it.
+
+| Kind | Names |
+|---|---|
+| National id | `cpf`, `cnpj`, `rg`, `ssn`, `taxId`, `nationalId`, `securityNumber`, `socialSecurity` |
+| Generic document | `document`, `documento`, `documentNumber`, `passport`, `driverLicense` |
+| Contact | `email`, `phone`, `telefone`, `celular`, `mobile`, `whatsapp` |
+| Address | `address`, `endereco`, `street`, `logradouro`, `zipCode`, `cep`, `postalCode` |
+| Birth | `birthDate`, `dataNascimento`, `dateOfBirth` |
+| Payment | `card`, `cardNumber`, `cvv`, `cvc`, `iban`, `pix`, `accountNumber`, `agency` |
+| Credential | `password`, `senha`, `secret`, `token`, `apiKey`, `accessKey`, `privateKey` |
+
+The name list is what the type test cannot reach: a `String securityNumber` carrying a
+CPF is a leak no type-based check sees, and it is exactly the field that crossed design,
+implementation, review and a green build in a real project. The list trails reality by
+one field, always — a field whose name is not here and whose content is personal data is
+still a candidate, and whoever notices adds the name.
+
+**The burden is inverted.** A field that matches is masked unless someone writes why it
+is not. Not masking is the decision that needs a reason; masking is the default. A name
+on the list that is genuinely not personal data (`accountNumber` of an internal ledger,
+say) is declared as such where the field is designed, in one line, not left implicit.
+
+Counter-list, so the derivation does not turn into masking everything: `name`,
+`description`, `comments`, `title`, `status`, `type`, `id` of an aggregate, `createdAt`,
+`version`, `amount`, `price`. A value that is not personal data and not a credential is
+not a candidate, however long it is.
+
 ## Per class type
 
 What each layer logs, so "log something" doesn't turn into copy-pasted judgment calls
@@ -107,7 +146,13 @@ identifier comes from is `observability.md`'s decision, not this file's.
 
 ## How to verify
 
-No mechanical check today — this is a `Review`-verified rule, same class as
-`naming.md` and `value-objects.md`. The one part that's structurally checkable — no
-`org.slf4j.Logger` field in the domain package — isn't enforced by an ArchUnit rule yet;
-adding one is `test-architect`'s call, not this file's.
+§ Masking candidates is checked by an architecture test: a DTO in the inbound REST
+adapter's DTO package with a field matching the derivation implements the masking
+interface and marks the field. The test is guarded by the presence of that interface —
+where the `commons` package was never installed there is nothing to implement, and the
+rule evaluates vacuously instead of failing.
+
+The rest of this file has no mechanical check: the format, the levels and the per-class
+content are `Review`-verified, same class as `naming.md` and `value-objects.md`. The one
+other structurally checkable part — no `org.slf4j.Logger` field in the domain package —
+is not enforced yet.

@@ -59,6 +59,11 @@ What the block's vocabulary means:
   agents are not recorded.
 - **Origem** — `usuário` typed `/<skill>`; `modelo` invoked the piece on its own, with no
   run open.
+- **Modelo** — the model the run billed on, or a comma-separated list when a subagent ran
+  on another one. `—` means the run was recorded before the column existed, not that the
+  model is unknown. It is the first thing to read before comparing two runs of the same
+  pipeline: the same skills over the same use case cost tenfold more on a larger model,
+  and that difference is not a regression of the pipeline.
 - **raiz · aninhada · pré-carregada** — the piece opened its own run; it was chained
   inside another run; or it was loaded through an agent's `skills:` frontmatter (no
   tokens of its own — they are its agent's).

@@ -18,7 +18,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 
 ## Current compose state
 
-!`R="${CLAUDE_PROJECT_DIR:-.}"; if test ! -d "$R"; then echo "(could not look: project root '$R' is not a readable directory — this is not an answer about docker-compose.yml)"; elif test -f "$R/docker-compose.yml"; then grep -E "^\s{2}\S+:$" "$R/docker-compose.yml" || echo "(docker-compose.yml exists but declares no service at two-space indent)"; else echo "(no docker-compose.yml at project root — run project-bootstrap first)"; fi`
+!`R="${CLAUDE_PROJECT_DIR:-.}"; F="$R/docker-compose.yml"; if test ! -d "$R"; then echo "(could not look: project root '$R' is not a readable directory — this is not an answer about docker-compose.yml)"; elif test -f "$F"; then S=$(awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' "$F"); if test -n "$S"; then echo "$S"; else echo "(docker-compose.yml exists, and the services: block declares nothing)"; fi; else echo "(no docker-compose.yml at project root — run project-bootstrap first)"; fi`
 
 ## Target
 
@@ -100,7 +100,7 @@ this table is where it lives.
    `project-bootstrap`.
 
 2. **Find out what's needed.**
-   - If `$ARGUMENTS` names a `UC-NNN-<slug>` folder: read `20-persistencia.md` for the
+   - If the target above names a `UC-NNN-<slug>` folder: read `20-persistencia.md` for the
      engine and version, `25-mensageria.md` for the broker and topic, and `40-testes.md`
      for whether `testcontainers` is active and which image tag `test-architect` already
      pinned in `TestcontainersConfiguration.java`
@@ -132,9 +132,20 @@ this table is where it lives.
    already present in `docker-compose.yml` is never replaced by this step — removing one
    is a hand edit the user asks for explicitly.
 
-3. **Check what's already there.** `grep -A2 "^services:" docker-compose.yml` and the
-   service names under it. A service already present gets left alone — this step never
-   duplicates or silently overwrites a hand-edited block.
+3. **Check what's already there.** The portrait injected at the top of this file is the
+   answer; it lists the keys **inside** the `services:` block and nothing else. When it
+   needs to be taken again — the file was edited earlier in the run — take it the same way:
+
+   ```bash
+   awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' docker-compose.yml
+   ```
+
+   **Never `grep -A2 "^services:"`.** It reads two lines and stops, so it drops the
+   services declared further down and reports the children of `volumes:` as services —
+   lessons-learned-012 § 12, where the portrait listed `postgres-data` as a service and
+   omitted `kafka` and `otel-collector`. A service already present gets left alone, and
+   that decision is only as good as this list: a wrong portrait invites this step to
+   recreate what already exists.
 
 4. **Merge the service block.** From the matching `templates/<engine>-service.yml.example`,
    append under `services:` — indentation matched to the file's own, never reformatting
@@ -143,6 +154,30 @@ this table is where it lives.
    software. If none is pinned yet, use the tag the engine's template ships with and say
    so in the report — `test-architect`'s setup mode is what should pick it up from here,
    not the other way around.
+
+   **A tag that no template ships is verified in the registry, never inferred.** Writing a
+   service by hand (§ Service catalog's last paragraph) means choosing a tag, and the same
+   discipline invariant 8 applies to a Spring version applies here — a version is not
+   written from memory, and "the serializer resolved 8.3.2, so the image is 8.3.2" is
+   memory with an extra step:
+
+   ```bash
+   docker manifest inspect <repository>:<tag> >/dev/null 2>&1 && echo EXISTS || echo NOT_FOUND
+   curl -fsS "https://hub.docker.com/v2/repositories/<repository>/tags/<tag>/" >/dev/null 2>&1 && echo EXISTS || echo NOT_FOUND
+   ```
+
+   The first needs a Docker daemon, the second doesn't — run the second when the first
+   can't run. `NOT_FOUND` from both, or no network at all → **don't write the tag**: say
+   which tag couldn't be confirmed and let the user supply it. A tag that doesn't exist
+   fails at `docker compose up`, long after the spec was approved.
+
+   **The healthcheck's binary gets the same treatment.** `curl` or `wget` in a
+   healthcheck is an assumption about the image's base. Confirm it, or omit the healthcheck
+   and say so in the report — a healthcheck that can never pass marks the service unhealthy
+   forever, and every `depends_on: service_healthy` waiting on it hangs.
+
+   **Then give the image a catalog row**, in § Service catalog, before reporting. An image
+   used once and never catalogued is an image the next run improvises again, differently.
 
    Which half leads depends on execution order, and that is why the match isn't only
    promised here: `ArchHook.java compose` compares every `image:` of the compose file with
@@ -195,10 +230,18 @@ this table is where it lives.
    otel-collector` to pick the file up — a mounted config is read once, at start.
 
 7. **Report and stop.** Service added, image tag used (and whether it matches
-   `test-architect`'s pin), files changed, and — when step 2.5 merged a backend — the UI
-   URL with the variable that moves it (`http://localhost:16686`, `JAEGER_UI_PORT`).
+   `test-architect`'s pin), **how the tag was confirmed** — `docker manifest inspect`, the
+   registry's HTTP API, or a template that already shipped it — whether the healthcheck's
+   binary was confirmed or the healthcheck omitted, files changed, the catalog row added,
+   and — when step 2.5 merged a backend — the UI URL with the variable that moves it
+   (`http://localhost:16686`, `JAEGER_UI_PORT`).
 
-   End the report with the one command that verifies the result, and say what it
+   A report that doesn't say how the tag was confirmed is a report that inferred it. Same
+   for the healthcheck: a real run wrote both from inference, and neither was mentioned
+   (lessons-learned-012 § 13).
+
+   **End the report with the one command that verifies the result** — not optional, and the
+   step a real run skipped — and say what it
    catches: `java .claude/hooks/ArchHook.java compose` — every service actually
    `running` rather than `created`, and no container from another project holding a host
    port this one publishes. `docker compose up -d` exits 0 in both of those failures.
@@ -214,6 +257,7 @@ this table is where it lives.
 | PostgreSQL | `templates/postgres-service.yml.example` | Engine chosen in `20-persistencia.md` isn't Postgres — or, at bootstrap time, when `persistence-jpa` isn't active in the blueprint |
 | MySQL | `templates/mysql-service.yml.example` | Engine chosen in `20-persistencia.md` isn't MySQL |
 | Kafka | `templates/kafka-service.yml.example` | Broker chosen in `25-mensageria.md` isn't Kafka, or there is none |
+| Schema Registry (Confluent) | `templates/schema-registry-service.yml.example` | `25-mensageria.md` kept the JSON default — which is the rule's default, so this is the common case. Only when the partial recorded the Avro/Protobuf upgrade **and** its trigger. Needs `kafka` in the file, has no volume on purpose (state lives in the `_schemas` topic), and its tag has to match the `kafka-avro-serializer` the POM resolves — verified in the registry, per step 4 |
 | OpenTelemetry Collector | `templates/otel-collector-service.yml.example` + init script `templates/otel-collector-config.yml.example` | `observability` isn't active in the blueprint. No engine choice for the collector itself — one vendor-neutral ingest point, always the same shape. Where it *exports* to is a real choice, and it's the next two rows |
 | Jaeger | `templates/jaeger-service.yml.example` | No `otel-collector` in the file yet, a backend is already there, or the project wants metrics too — Jaeger stores traces only |
 | Grafana + Tempo + Prometheus | `templates/grafana-stack-service.yml.example` + three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`) | No `otel-collector` yet, a backend is already there, or three containers is too much for what the project needs — Jaeger is the one-container answer |

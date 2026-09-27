@@ -1,0 +1,42 @@
+# EXEMPLAR — Confluent Schema Registry, for a project that chose Avro/Protobuf over the
+# JSON default (`@.claude/rules/messaging.md` § Topics and serialization — a deliberate
+# upgrade, never assumed). Merge under `services:`, indentation matched to the file's own.
+#
+# THREE THINGS TO VERIFY BEFORE WRITING THIS BLOCK, none of them from memory:
+#
+#   1. The tag. It must match the `kafka-avro-serializer` version the POM resolves —
+#      registry and serializer of different majors disagree about the wire format — and it
+#      must EXIST. Check the registry, don't infer it from the serializer's version:
+#        docker manifest inspect confluentinc/cp-schema-registry:<tag> >/dev/null && echo ok
+#      No Docker daemon on the machine:
+#        curl -fsS "https://hub.docker.com/v2/repositories/confluentinc/cp-schema-registry/tags/<tag>/" >/dev/null && echo ok
+#      A tag that doesn't exist fails at `docker compose up`, long after the spec was
+#      approved — same discipline as CLAUDE.md invariant 8 for a Spring version.
+#   2. The healthcheck binary. `curl` is present in this image; a slimmer base may not have
+#      it. If it cannot be confirmed, omit the healthcheck and say so in the report —
+#      a healthcheck that always fails marks the service unhealthy forever, which reads as
+#      a broken container.
+#   3. No volume, deliberately. The registry's state lives in the `_schemas` Kafka topic,
+#      so the container is stateless and `kafka`'s own volume already persists it. Adding
+#      one here is harmless and misleading.
+#
+# Requires the `kafka` service (templates/kafka-service.yml.example) in the same file.
+schema-registry:
+  image: confluentinc/cp-schema-registry:7.7.1
+  depends_on:
+    kafka:
+      condition: service_healthy
+  ports:
+    - "8081:8081"
+  environment:
+    SCHEMA_REGISTRY_HOST_NAME: schema-registry
+    SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    # BACKWARD is the registry's own default, written out because it is a contract
+    # decision: a new schema must be readable by consumers built against the previous one.
+    SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: BACKWARD
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+    interval: 10s
+    timeout: 5s
+    retries: 5

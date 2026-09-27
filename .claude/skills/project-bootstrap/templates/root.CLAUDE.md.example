@@ -11,6 +11,10 @@ that doesn't exist is worse than not routing at all.
 
 Spring Boot · Java {{javaVersion}} · Build: {{buildTool}} · Architecture: **{{blueprint.name}}**
 
+**Bounded context: `{{boundedContext}}`.** First segment of every topic name, for every use
+case, forever — renaming it is a migration of every topic, not a refactor. Whoever designs
+messaging reads this line; nobody decides the prefix inside a use case.
+
 ## Commands
 
 | Action | Command |

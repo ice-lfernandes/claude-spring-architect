@@ -67,6 +67,25 @@
     "exempt_patterns": []
   },
 
+  "arguments": {
+    "$comment": "Read by ArchHook.java `schema`, same scope and same two escapes as `injections` above. The runtime interpolates the marker at EVERY occurrence, not only at the interpolation point, so a sentence that talks about the argument arrives with the real value inside it: lessons-learned-012 § 2 caught `/new-feature` telling the model to invoke test-architect `with empty $ARGUMENTS (setup mode)` and the model reading `with empty UC-003-initiate-kyc-verification (setup mode)` — setup mode named by the argument that means design mode. Seven occurrences across six skills, every one of them a sentence about the argument. `requires_field` limits the check to a file that actually receives one; `interpolation_line` is the single allowed shape, a line holding nothing but the marker; `exempt_patterns` is the escape hatch, one regex per line, empty on purpose. Why a hook and not a review item: CLAUDE.md invariant 6 — the defect is invisible in the source and only appears in what the model receives. Design: .claude/decisions/0056-lessons-learned-012-remediation.md",
+    "marker": "$ARGUMENTS",
+    "requires_field": "argument-hint",
+    "interpolation_line": "^[ \\t]*\\$ARGUMENTS[ \\t]*$",
+    "exempt_patterns": []
+  },
+
+  "doctor": {
+    "$comment": "Read by ArchHook.java `doctor`. `uc_references` sweeps the versioned files for a citation of a `docs/use-cases/UC-NNN-slug/` folder that no longer exists on disk: deleting or renaming a use case folder leaves its citations behind, and each one was correct in the commit that wrote it, so nothing else ever revisits them — lessons-learned-012 § 14 found a `docker-compose.yml` comment pointing at the `25-mensageria.md` of a folder deleted in the run before. Reported, never blocking: a stale citation is a documentation defect and `doctor` is where a person is already reading. Group 1 of `pattern` is the folder path. `root` gates the whole sweep: where that directory does not exist there are no use cases to be stale against, which is the case in this meta-repository — the check belongs to the generated project. `extensions` keeps the sweep off binaries and lockfiles; `exempt_paths` is a prefix match for files that name a folder as illustration rather than reference — a skill body, an agent, a decision record, a lessons-learned.",
+    "uc_references": {
+      "root": "docs/use-cases",
+      "pattern": "(docs/use-cases/UC-[0-9]{3}-[a-z0-9]+(?:-[a-z0-9]+)*)",
+      "extensions": [".md", ".yml", ".yaml", ".java", ".json", ".xml", ".sql", ".txt"],
+      "$comment_exempt": "Prefixes, matched with startsWith, and written WITHOUT a trailing slash on purpose: a directory prefix spelled with one IS an export residue marker, so this file would report itself as carrying a dead citation on every run. These paths are data, not citations.",
+      "exempt_paths": [".claude/decisions", ".claude/lessons-learned", ".claude/skills", ".claude/agents"]
+    }
+  },
+
   "settings": {
     "$comment": "Single owner of what a hook registration may contain. Read by ArchHook.java `schema`, which is also what writes the errors — the runtime itself accepts an unknown event name, a `matcher` on an event that ignores it, and a `type` it has no handler for, all without a word. `match` is a list for the same reason `mcp.match` is: the generated project's hooks live in project-bootstrap's template, and a typo there only surfaces after the project exists. `hook_events` is transcribed from claude-help.md § 8, which ends in \"among others\" — an incomplete list here would block a legitimate event, so `hook_events_extra` is the escape hatch, one event name per entry, and an entry added to it needs a reason in the commit (same discipline as `injections.exempt_patterns`). `matcher_events` holds the events that actually read a `matcher`; on the rest it is dead configuration that reads as a filter. `entry_types` is repo policy, not a runtime limit: the runtime also serves http/mcp/prompt/agent hooks, and this repo runs commands only. `command_forbidden_chars` enforces exec form — a metacharacter in `command` means a shell string was written where the executable goes, and it silently becomes an argument. Design: .claude/decisions/0053-hooks-in-architect-designer.md",
     "match": [
@@ -161,7 +180,8 @@
     "blueprint_copy": ".claude/blueprints/{id}/{id}.yaml",
 
     "ensure_dirs": [".claude/audit-usage"],
-    "gitignore_lines": [".claude/audit-usage/.state/"],
+    "$comment_gitignore": "Two lines, opposite decisions, both deliberate. `.claude/audit-usage/` itself is VERSIONED — `history.jsonl`, `nodes.jsonl` and each report belong to the commit of the run that produced them, and `git-publish` stages that directory by default; only the hook's scratch state under `.state/` is ignored. `docs/lessons-learned/` is NOT versioned: those are local notes taken while running the pipeline, not project documentation, and a run that recreates a deleted one writes different text nobody compares. Oscillating between the two is what makes every later diff start dirty — lessons-learned-012 § 15 and § 16.",
+    "gitignore_lines": [".claude/audit-usage/.state/", "docs/lessons-learned/"],
 
     "rules": {
       "$comment": "Every rule travels; `exclude` is empty on purpose and an entry added to it needs a reason in the commit. `00-index.md` is listed in `body_transforms.rewrite` because its paragraph about architecture_paths cites blueprints/, which the project does not have.",
@@ -234,14 +254,16 @@
       "citation_pattern": "`?@?\\.claude/decisions/[0-9]{4}-[^`\\s)]+\\.md`?",
       "cut_shapes": [
         "\\s*\\((?:see\\s+|cf\\.\\s+|ver\\s+)?{cite}\\)",
-        "(?m)^[ \\t]*[-*][ \\t]*{cite}[^\\n]*\\n"
+        "(?m)^[ \\t]*[-*][ \\t]*{cite}[^\\n]*\\n",
+        "(?<=[.!?:])[ \\t\\n]+{cite}\\.(?=[ \\n]|$)"
       ],
       "sentence_lead_ins": [
         "Full record", "Decision recorded", "Decision", "Record", "Rationale and design",
         "Design", "Registro", "Decisão registrada", "Desenho"
       ],
-      "clause_pattern": ",?\\s*(?:in|em|see|ver|cf\\.)?\\s*",
-      "residue_markers": [".claude/decisions/", ".claude/blueprints/"],
+      "$comment_replacement": "What neither `cut_shapes` nor `sentence_lead_ins` recognizes is a citation inside a sentence that says something else. Deleting the path there leaves the sentence mangled — `- **** —`, `Inherits D15 —.` — and no `residue_markers` entry looking for a path can see what removing the path left behind, so six of them shipped into every exported tree (lessons-learned-012 § 3). The path becomes prose instead: a reader inside a project cannot follow it either way, and the sentence still says what it was written to say. The three shape markers below are the net for the next sentence this does not cover.",
+      "citation_replacement": "a decision recorded in the meta-repository",
+      "residue_markers": [".claude/decisions/", ".claude/blueprints/", "****", "— —", "—."],
       "$comment_exempt": "Two files name these directories on purpose and are not dead paths. `ArchHook.java`'s `export` mode prints them in its own usage and errors, and that mode refuses to run inside a project anyway (no `export` block there). `arch-adopt` talks about the tree it FETCHES, under /tmp, where blueprints/ does exist — cutting those sentences would delete the instructions instead of a citation.",
       "residue_exempt": [".claude/hooks/ArchHook.java", ".claude/skills/arch-adopt/SKILL.md"],
       "replace": [

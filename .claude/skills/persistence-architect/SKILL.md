@@ -94,7 +94,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 ## Procedure
 
 1. **Read the specs.** `00-caso-de-uso.md` and `10-dominio.md` from the folder in
-   `$ARGUMENTS`. Without the second, stop. Extract: aggregate root, fields and types,
+   the target above. Without the second, stop. Extract: aggregate root, fields and types,
    value objects, declared output ports, and the component table with NEW/CHANGE/REUSE
    state. Also read `30-rest.md` when the use case has an HTTP trigger — in `/new-feature` it
    always exists by now, because REST runs first. Its block 4 `Schema requirements` list
@@ -170,17 +170,38 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    outbox per aggregate or per event type. Shape in
    `templates/OutboxEventTable.sql.example` (schema, partial index, retry columns, and the
    prune as a commented `DELETE`) and `templates/OutboxEventStore.java.example` (entity,
-   Spring Data repository, and the adapter implementing `OutboxRelayGateway`). The column
-   set is the requirement row `25-mensageria.md` § 6 states; the criterion that made Form
-   B apply is `@.claude/rules/messaging.md` § Publication timing, and it isn't re-litigated
-   here — `messaging-architect` owns it.
+   Spring Data repository, and the adapter implementing `OutboxRelayGateway`). The criterion
+   that made Form B apply is `@.claude/rules/messaging.md` § Publication timing, and it
+   isn't re-litigated here — `messaging-architect` owns it.
+
+   **The column set is this step's, and the exemplar is its only source** — `event_id`,
+   `aggregate_id`, `event_type`, `payload`, `occurred_at`, `published_at`, `attempts`,
+   `last_error`, `dead_lettered`, plus the partial index. So is **the pacing those columns
+   encode**: whether the relay re-polls on a fixed interval or backs off per row is decided
+   here, together with the claim query, because the column set is what makes either
+   possible. A `25-mensageria.md` § 6 row naming columns instead of a guarantee is a
+   requirement written in the wrong vocabulary — take the guarantee from it (at-least-once,
+   attempt count, DLQ destination) and report the column names as a divergence.
+
+   **Read that guarantee before choosing the shape.** If it cannot hold with the exemplar's
+   columns — per-row exponential backoff has nowhere to record the next attempt — that is
+   not a shape decision to make quietly: stop the pipeline and ask, the same way
+   `/new-feature`'s consolidation requires for a divergence its precedence table doesn't
+   resolve. Behaviour settled by whoever owns table shape is the exact failure this split
+   exists to prevent.
 
    Two boundaries this step does **not** cross. `OutboxRelayGateway` and
    `PendingOutboxEvent` are declared in `messaging-architect`'s
    `templates/OutboxRelayPublisher.java.example`, which owns the relay consuming them: this
-   step implements the port, it doesn't re-declare it. And the relay itself, the appender,
-   and `app.outbox.*` are that skill's too — what lands in `20-persistencia.md` is the
-   table, its mapping, and the adapter.
+   step implements the port, it doesn't re-declare it. And the relay component itself, the
+   appender, and its broker side — serialization, topic, DLQ routing — are that skill's.
+
+   The line between the two, written once so neither run has to guess it: **this step owns
+   the table, its mapping, the claim query, and the `app.outbox.*` values that pace the
+   claim** (poll interval, backoff, attempt ceiling, retention). **That skill owns the relay
+   that reads them and everything that touches the broker**, and it states the guarantee
+   those values have to deliver. What lands in `20-persistencia.md` is the table, its
+   mapping, the adapter, and the pacing values.
 
    **Retention is the one open value, and it gets asked.** The exemplar's `7 days` (matching
    `app.outbox.prune-after: P7D`) is a starting point, not a default to adopt in silence:
@@ -209,8 +230,16 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, from
    `templates/persistence-spec.md.example`. Five blocks, all mandatory.
 
-9. **Check the engine has a container.** `grep -A2 "^services:" docker-compose.yml`
-   for the engine chosen in step 3. Missing (and the engine isn't H2) → invoke
+9. **Check the engine has a container.** List the keys inside the `services:` block and
+   look for the engine chosen in step 3 — never `grep -A2 "^services:"`, which reads two
+   lines and then reports the children of `volumes:` as services
+   (lessons-learned-012 § 12):
+
+   ```bash
+   awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' docker-compose.yml
+   ```
+
+   Missing (and the engine isn't H2) → invoke
    `docker-architect` with this UC's folder, so the dev-time container matches the
    schema just designed. Don't edit `docker-compose.yml` here — that skill is its
    single owner.

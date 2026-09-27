@@ -908,6 +908,12 @@ Every `{{...}}` placeholder resolves from data this procedure already computed �
   versions, the same ones already in the Output contract below. Never re-resolve, never
   restate from memory.
 - `{{featuresList}}` — the active features from step 3/4.7, one bullet each.
+- `{{boundedContext}}` — step 3's input, defaulting to `{{artifactId}}` when the caller
+  gave none. It is the first segment of every topic name
+  (`@.claude/rules/messaging.md` § Topics and serialization) and nothing else in the
+  project declares it, so it is written into the root `CLAUDE.md` even when messaging is
+  not an active feature: the case that adds Kafka later reads the line instead of choosing
+  a prefix inside one use case.
 - `{{skillsList}}`, `{{agentsList}}` — one bullet per entry actually written into the
   project (`ls .claude/skills/`, `ls .claude/agents/` — read the disk, not the `export`
   manifest: the manifest lists what *can* travel, not what a given blueprint's feature

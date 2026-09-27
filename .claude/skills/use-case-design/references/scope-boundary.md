@@ -28,6 +28,37 @@ Email, push, queue publication, and external service calls **never** meet condit
 they aren't transactional with the database. So they always split off into another use
 case, connected by a domain event.
 
+### The one exception: a broker publication the case cannot afford to lose
+
+`@.claude/rules/messaging.md` § Publication timing has two forms, and the sentence above
+is true of only one of them.
+
+- **Form A — publish after commit.** The send is outside the transaction. The rule above
+  applies unchanged: publication is a second effect and splits.
+- **Form B — transactional outbox.** What the use case does is **insert a row**, in the
+  same transaction as the state change. That meets condition 1 literally, and condition 2
+  as well — a state change whose intent-to-publish was lost is invalid from the domain's
+  point of view, which is the whole reason Form B exists. So the append does **not** split
+  the use case: it is part of it, and the relay that later sends the row is
+  infrastructure, not a use case.
+
+**Which form, decided here and not later.** The technical choice belongs to
+`messaging-architect`, but the boundary needs the answer now, so apply Form B's
+**business** criteria — they are knowable at boundary time and none of them is technical:
+
+| Ask | Form B when |
+|---|---|
+| Does losing the announcement corrupt state a human then has to reconcile? | money moved, an external ledger, a regulatory record |
+| Is the consumer external, with an effect that is irreversible once it runs? | a payment, a shipment, a notification to a third party |
+| Would nobody notice the loss until the reconciliation? | there is no periodic sweep that would catch it |
+
+Any yes → the case includes the append, and `00-caso-de-uso.md` records "publication:
+Form B (outbox), append inside the transaction" as a boundary fact. All no → Form A, and
+the publication splits like any other external effect.
+
+**What never merges, in either form:** the **consumer**. Reading the event is a trigger,
+not an effect (see the table above), so the reactive case is always its own `UC-NNN`.
+
 ### Applying it to the original request's examples
 
 | Request | Effects | Verdict |
@@ -153,3 +184,13 @@ way to derive them from the trigger, so the partial specs don't reinvent them:
 
 The use case's verb is the trigger's, never a generic one: `confirm`, `expire`,
 `import` — never `process`, `handle`, or `execute`.
+
+**The case that creates no use-case class.** When every component of the case is `CHANGE`
+on already-approved cases — new fields, a new port, a new event, a gate added to an
+existing rule — the row "Use case class(es)" reads `none — extension of UC-XXX, UC-YYY`
+and the slug names the **capability added**, not the trigger:
+`@.claude/rules/naming.md` § Use case identifier owns both halves of that. It is still one
+`UC-NNN` with its own folder and its own spec; what changes is where its content lands —
+`## Impact on approved use cases` carries almost all of it, and each altered case's own
+`CHANGELOG.md` gets a line. Say so explicitly in the parent spec, in one line, so the
+layer skills don't look for a class that was never meant to exist.

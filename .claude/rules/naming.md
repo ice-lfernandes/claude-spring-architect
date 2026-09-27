@@ -44,6 +44,31 @@ convention and the table above disagree, the convention wins.
 <!-- Written at generation time: the active blueprint's naming convention, verbatim.
      Empty in any copy that isn't a generated project. -->
 
+## Use case identifier
+
+`UC-NNN-<slug-kebab>`, where `NNN` is sequential across the whole project and never
+reused — a number that existed in the history belongs to the case that had it, even after
+that case's folder is deleted.
+
+The slug names the **trigger's verb and object**: `UC-001-register-customer` for a case
+triggered by "register a customer". Never a generic verb — no `process`, `handle`,
+`execute`, `manage`.
+
+**The case that creates no use-case class.** A case can be entirely an extension of
+already-approved cases: it changes their behavior, adds fields, ports or events, and
+introduces no new class of its own. It still gets its own sequential `UC-NNN` — the change
+has a spec, a review and a decision date, and those need an identifier. Its slug is the
+exception to the paragraph above: **it names the capability being added**, not the trigger,
+because the trigger already belongs to the case being changed and two cases cannot carry
+the same slug. `initiate-kyc-verification` over a case whose trigger is still "register
+customer" is right; `register-customer-v2` and `change-register-customer` are not.
+
+Each altered case records the change in a `CHANGELOG.md` in **its own** folder, one line
+per change: date, the `UC-NNN` that made it, and what changed. The approved spec itself is
+immutable and is never edited to record it — that is why the log is a separate file.
+Without it, immutability protects the text and loses the history: whoever reads
+`UC-001-register-customer/` has no way to learn its behavior changed elsewhere.
+
 ## Methods
 
 - Use case: a specific verb — `ConfirmOrderUseCase.confirm(...)`.
