@@ -157,6 +157,9 @@
     "$comment_marker": "The cross-check `schema` runs over this block only makes sense in the repository the block describes. `source_marker` is how the mode tells: a directory that exists here and travels nowhere. Without it the check fires in a throwaway tree that merely copied extensions.json — the CI injection sandbox is one — and reports every rule and skill as missing when what is actually missing is the repository.",
     "source_marker": ".claude/blueprints",
 
+    "$comment_blueprint": "The active blueprint travels with the project, the catalog does not. Without this the yaml that defines a project's architecture can live only in the fetched tree, which is a temporary directory: the stamp records the id, the next update reads that id, the source does not have it, and the export fails at a point where nobody was ever told to keep a file (lessons-learned-011 § 4). Copied for every blueprint, official or not, because at this layer the mode cannot tell one from the other — the fetched tree holds both by then. `{id}` is the blueprint's id.",
+    "blueprint_copy": ".claude/blueprints/{id}/{id}.yaml",
+
     "ensure_dirs": [".claude/audit-usage"],
     "gitignore_lines": [".claude/audit-usage/.state/"],
 

@@ -71,8 +71,11 @@ direction above is unchanged.
    project: norms, development skills, agents, `ArchHook.java` and
    `schemas/extensions.json`. `ArchHook.java export` writes all of it (step 6.6 of
    `project-bootstrap`), and **what travels is data, in the `export` block of
-   `@.claude/schemas/extensions.json`** — creation skills and `blueprints/` excluded on
-   purpose, they only serve before the project exists. A new norm, skill or agent is
+   `@.claude/schemas/extensions.json`** — creation skills excluded on purpose, and the
+   blueprint **catalog** too, with one exception the manifest names: the **active**
+   blueprint travels (`export.blueprint_copy`), because the stamp records its id, an
+   update has to resolve it, and a blueprint written during adoption exists nowhere
+   else. A new norm, skill or agent is
    complete once that block lists it: every skill and agent on disk in `include` or
    `exclude`, a `derived_paths` entry for a rule with a package territory, and
    `ArchHook.java schema` failing by name on either gap.
@@ -198,6 +201,10 @@ direction above is unchanged.
   their own. Invoking one still *closes* the run in progress — which it already did, and
   which is the only way, inside a live session, to get a report that isn't stamped
   `⏳ em andamento`. Why: `@.claude/decisions/0036-skill-audit-usage.md`.
+- **Only the hook-protocol modes of `ArchHook.java` read stdin** — `check`, `format`,
+  `tests`, `schema`, `audit`, `guard`. Invoking one of those by hand without `</dev/null`
+  blocks until something closes stdin, with no output: a command that looks hung, not
+  failed. `export`, `doctor` and `compose` are invoked by people and read nothing.
 - **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or
   editing a server mid-session has no effect until `claude` is restarted.
 - **A project-scoped server in `.mcp.json` needs one-time human approval** the first
