@@ -182,6 +182,10 @@ Record: `@.claude/decisions/0011-bootstrap-without-business-code.md`.
 
 ## Contract
 
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. Writes inside the
+use case folder and nothing else; a write anywhere outside is refused with exit 2.
+
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` (mandatory — stops without
 it), `@.claude/rules/architecture-ddd.md` (Domain and Application sections),
 `@.claude/rules/value-objects.md` (criterion for which field becomes a value object),

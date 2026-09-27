@@ -256,7 +256,7 @@ the same interview again.
 
    | You created | Also update |
    |---|---|
-   | Skill | `@CLAUDE.md` routing table |
+   | Skill | `@CLAUDE.md` routing table, **and** a class in `skill_classes` of `@.claude/schemas/extensions.json` — its `skills` list, an `overrides.<skill>.write_allow` when the class default is wrong for it, and the `**Class:** <c>` line in the body. `ArchHook.java schema` fails by name on a skill in no class, and the body must carry every section that class requires |
    | Development skill (valid inside the generated project) | `export.skills.include` in `@.claude/schemas/extensions.json` — `ArchHook.java schema` fails on a skill listed in neither `include` nor `exclude` |
    | Rule | `@.claude/rules/00-index.md` (written-rules table; remove from planned). Every rule travels by default; a rule with a package territory also needs an `export.derived_paths` entry, and `schema` fails without it |
    | Agent | `@CLAUDE.md` routing table, if it's invocable by name |
@@ -344,6 +344,14 @@ concern — it only writes what the team shares.
 repo's invariants. Don't reintroduce it to work around this skill.
 
 ## Contract
+
+**Class:** meta — the territory is `skill_classes.meta` in
+`@.claude/schemas/extensions.json`: the `.claude/` tree, the root `CLAUDE.md`, `.mcp.json`,
+the MCP setup doc, and the two derived places a new piece propagates into — `docs/**` (the
+reference pages that describe a hook or a class) and `.github/**` (the workflow step that
+runs a new check). `ArchHook.java guard` enforces it, which is the reason the guard is
+registered in this meta-repository at all. A new skill is **incomplete** until a class in
+`skill_classes` lists it — `schema` fails by name otherwise (Phase 4, step 8).
 
 **Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants),
 `@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision touches

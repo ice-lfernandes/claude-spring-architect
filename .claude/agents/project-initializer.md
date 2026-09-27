@@ -33,6 +33,11 @@ drives.
 
 ## Contract
 
+**Executor:** yes — writes the whole tree of the project being generated while the
+`/init-project` phase is open, and `init-project`'s own territory is empty on purpose. The
+guard bypasses an `agent_type` listed in `guard.executor_agents`; without that marker and
+that entry, every file of a fresh project would be refused with exit 2.
+
 **Input** — optional, via command arguments: `groupId`, `artifactId`,
 `projectName`, `blueprint`, `buildTool` (`maven|gradle`), `features[]`. Any missing
 field is obtained through the interview.

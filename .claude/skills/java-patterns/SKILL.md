@@ -11,8 +11,12 @@ allowed-tools: Read, Write, Edit, Glob, Grep
 
 # Java Patterns
 
+## Why this is a skill and not a rule
+
 A pattern is not a rule. A rule says *always*; a pattern says *when*. That's why this is
-a skill and not `rules/` — it only costs context when invoked.
+a skill and not `rules/` — it only costs context when invoked. Form 2 (manual invocation)
+and not Form 1, because a catalog the model reaches on its own turns into a pattern applied
+without the symptom that justifies it, which is what the entry rule below exists to stop.
 
 **Entry rule: no pattern without an observed symptom in the code.** Applying a pattern
 preemptively is overengineering — a Factory for two lines, a Strategy for a single `if`,
@@ -69,6 +73,11 @@ is not permission to apply it without a real symptom.
   the JDK-idiomatic word for this role," the pattern name stays.
 
 ## Contract
+
+**Class:** build — the territory is `skill_classes.build`'s override for this skill in
+`@.claude/schemas/extensions.json`: the `src/` tree, nothing else. It sits in `build` rather
+than with the design skills because it materializes Java code, and `ArchHook.java guard`
+therefore also makes it unreachable from inside a design run.
 
 **Reads** `.claude/rules/code-quality.md`, `.claude/rules/naming.md`,
 `.claude/rules/architecture-ddd.md`, the active blueprint's `packages.map`, and

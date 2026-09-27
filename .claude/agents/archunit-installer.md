@@ -52,8 +52,9 @@ image tag — one line — in the Initializr-generated `TestcontainersConfigurat
 under `src/test/**` besides `ArchitectureTest.java`, any file under `docs/use-cases/**`.
 
 **Does not invoke other agents or skills — no `Agent` tool.** If the Testcontainers tag
-doesn't match `docker-compose.yml`, report the mismatch in the summary and stop there.
-The caller runs with full tool access and is the one that invokes `docker-architect`.
+doesn't match `docker-compose.yml`, report the mismatch in the summary and stop there. The
+caller reports it too, with the `/docker-architect` command that resolves it: nobody chains
+that skill from inside a design run, and the guard refuses the call if anybody tries.
 
 **Returns:** one structured summary (shape at the bottom). Not the raw `curl` or
 `./mvnw` output — that output does its job by making this run correct, not by traveling

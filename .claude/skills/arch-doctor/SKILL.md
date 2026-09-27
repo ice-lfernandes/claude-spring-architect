@@ -29,3 +29,28 @@ edited locally, say which ones and that an update would overwrite them. Don't of
 run the update — losing a hand-edited norm is the user's call, not a fix to apply.
 
 Don't fix anything without the user asking.
+
+## Why this is a manually-invoked skill
+
+Form 2: the whole body is two `` !`…` `` injections plus how to read them, so it is a
+procedure (axis 5) fired by a person who wants a verdict (axis 2 — `/arch-doctor`). Form 1
+was rejected because a diagnostic the model reaches on its own runs a JVM and a `find` on
+every session that mentions a hook; Form 3 was rejected because there is nothing to isolate —
+the output is the report, and it is what the user asked to see.
+
+The name is not `doctor`: `/doctor` is a native command, and a skill folder with that name
+shadows it silently — `@CLAUDE.md` § Known pitfalls.
+
+## Contract
+
+**Class:** observer — the territory is `skill_classes.observer` in
+`@.claude/schemas/extensions.json`, and it is **empty**: this skill writes no file. It
+reports, and the fix is the user's call. `ArchHook.java guard` enforces it.
+
+**Reads** the output of `ArchHook.java doctor` (which folds in `compose`) and the listing of
+`.claude/`, both injected above. Nothing else: an injection that lied about the setup would
+be worse than no report.
+
+**Writes** nothing, ever. Leaves no audit report either — it is listed in
+`audit.exclude_skills` of `@.claude/schemas/extensions.json`, because an observer that
+records its own observation makes the trail mostly about reading it.

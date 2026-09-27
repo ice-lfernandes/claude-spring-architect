@@ -187,8 +187,10 @@ needs an interview. Reasoning and full procedure:
 `@.claude/decisions/0030-archunit-installer-split.md`.
 
 Read the agent's returned summary and report it as-is. If it flags a Testcontainers
-tag mismatch against `docker-compose.yml`, invoke `docker-architect` next — the
-installer agent deliberately doesn't touch that file, single owner rule.
+tag mismatch against `docker-compose.yml`, **report it with the `/docker-architect`
+invocation that fixes it** and stop — don't invoke that skill from here. The installer agent
+deliberately doesn't touch that file (single owner), and `ArchHook.java guard` refuses a
+`build`-class call while this skill's phase is open.
 
 The mismatch is also checked mechanically, so it doesn't depend on the agent noticing:
 `java .claude/hooks/ArchHook.java compose` compares every `image:` of the compose file
@@ -222,6 +224,12 @@ reads it and writes the real file, once per project.
 
 ## Contract
 
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. That covers both
+modes: design mode writes inside the use case folder, and setup mode writes nothing itself —
+every file `ArchUnit` needs is written by the `archunit-installer` agent, which the guard
+bypasses as an executor.
+
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
 (mandatory in design mode — stops without the second), `20-persistencia.md` and
 `30-rest.md` when they exist, `@.claude/rules/testing.md`,
@@ -238,9 +246,10 @@ line, not a file — the pinned image tag in the Initializr-generated
 `TestcontainersConfiguration.java`. Nothing else in `src/test/**`. Contract of that
 agent's own reads and writes: `@.claude/agents/archunit-installer.md`.
 
-**Does not edit `docker-compose.yml`**, neither directly nor through the agent. A tag
-mismatch against the compose-side service comes back in the agent's summary and this
-skill invokes `docker-architect` — single owner of that file, see its Contract.
+**Does not edit `docker-compose.yml`**, neither directly nor through the agent, and does not
+invoke `docker-architect` either. A tag mismatch against the compose-side service comes back
+in the agent's summary, and this skill reports it with the `/docker-architect` command that
+resolves it — single owner of that file, see its Contract.
 
 **Owns the coverage gate**, since
 `@.claude/decisions/0011-bootstrap-without-business-code.md`. `project-bootstrap`

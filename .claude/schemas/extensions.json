@@ -133,14 +133,76 @@
     }
   },
 
+  "skill_classes": {
+    "$comment": "Single owner of what class each skill belongs to, what shape its body has, and what it is allowed to write. Read by ArchHook.java in two modes: `schema` validates the body of every .claude/skills/*/SKILL.md, `guard` enforces `write_allow` at PreToolUse. The class is the standardization unit the bodies never had: nine skills said `## Contract`, project-bootstrap said `## Skill contract`, and arch-doctor and init-project said nothing at all, with `claude plugin validate` printing `✔ Validation passed` over all of it. Coverage is total by design — a skill on disk that no class lists is the bug, and `schema` says so by name, the same discipline `export.skills.include`/`exclude` already uses. `write_allow` is a class DEFAULT and `overrides.<skill>.write_allow` replaces it: `build` holds four skills whose real territories differ by an order of magnitude (project-bootstrap writes the whole tree, java-patterns writes one Java class), so the class groups their STRUCTURE and only defaults their TERRITORY. An empty list is a decision, not an omission — an observer that writes is a bug, and `ops`'s effect is `git` over Bash, which the guard does not cover. `required_sections` is matched as a PREFIX of an H2 line, which is what lets `## Procedure — design mode` satisfy `## Procedure`; order is not checked, because order changes nothing the model obeys and a reorder would become a blocking change. `design_phase` marks the classes whose open phase restricts writes; `blocked_during_design` marks the classes a Skill call cannot reach from inside one — that pair is what makes the pipeline docs-only in the mechanism instead of in prose. Design: .claude/decisions/0058-skill-classes-territory-schema.md",
+    "match": ".claude/skills/*/SKILL.md",
+    "class_marker": "**Class:**",
+    "universal_sections": ["## Contract"],
+    "why_section": "(?m)^##\\s+Why\\b",
+    "classes": {
+      "design": {
+        "$comment": "Emits one partial of one use case folder and nothing else. Six skills, one shape.",
+        "design_phase": true,
+        "write_allow": ["docs/use-cases/UC-*/**", "docs/use-cases/BACKLOG.md"],
+        "required_sections": ["## Target", "## How it's invoked", "## Procedure"],
+        "skills": [
+          "use-case-design", "domain-modeling", "persistence-architect",
+          "rest-api-architect", "messaging-architect", "test-architect"
+        ]
+      },
+      "orchestrator": {
+        "$comment": "Chains other skills and owns the consolidated artifact. init-project overrides to an empty territory: everything it does is delegated to the project-initializer agent, which the guard bypasses as an executor.",
+        "design_phase": true,
+        "write_allow": ["docs/use-cases/**", "docs/lessons-learned/**"],
+        "required_sections": ["## Procedure"],
+        "skills": ["new-feature", "init-project"],
+        "overrides": {
+          "init-project": { "write_allow": [] }
+        }
+      },
+      "build": {
+        "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and java-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs.",
+        "blocked_during_design": true,
+        "write_allow": [],
+        "required_sections": ["## Procedure"],
+        "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "java-patterns"],
+        "overrides": {
+          "project-bootstrap": { "write_allow": ["**"] },
+          "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**"] },
+          "arch-adopt": { "write_allow": [".claude/**", ".gitignore"] },
+          "java-patterns": { "write_allow": ["src/**", "**/src/**"] }
+        }
+      },
+      "observer": {
+        "$comment": "Reads the setup or the trail and writes nothing. The reports under .claude/audit-usage/ are written by the `audit` hook, not by the skill that reads them.",
+        "write_allow": [],
+        "required_sections": [],
+        "skills": ["arch-doctor", "audit-usage"]
+      },
+      "meta": {
+        "$comment": "Writes the extensions themselves. The only class whose territory is .claude/ — and the reason the guard is registered in this meta-repository at all. `docs/**` and `.github/**` are in the list because they are DERIVED from the extensions: a change to a hook mode or a class rewrites docs/08-audit-usage.md and its English twin, and a new enforcement adds a step to the workflow that runs it. Leaving them out would block the propagation step of the very skill this class holds, which is what the first run of this block did.",
+        "write_allow": [
+          ".claude/**", "CLAUDE.md", ".mcp.json", "MCP-SETUP.md",
+          "docs/**", ".github/**"
+        ],
+        "required_sections": ["## Procedure", "## Out of scope"],
+        "skills": ["claude-code-architect-designer"]
+      },
+      "ops": {
+        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive.",
+        "write_allow": [],
+        "required_sections": ["## Procedure", "## Failure modes"],
+        "skills": ["git-publish"]
+      }
+    }
+  },
+
   "guard": {
-    "$comment": "Read by ArchHook.java `guard` mode, wired only into project-bootstrap/templates/settings.json.example. While a design skill runs (opened by `/<skill>` or a Skill call to one of `design_skills`, closed by the next prompt or by an `executor_agents` Agent call), Write/Edit on `design_forbidden_paths` is blocked unless the call comes from inside an executor agent. Independently, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Why: a design skill once wrote migrations under src/, and a later use case rewrote the specs of an earlier one — both while the skills forbade it in prose.",
-    "design_skills": [
-      "new-feature", "use-case-design", "domain-modeling", "rest-api-architect",
-      "persistence-architect", "messaging-architect", "test-architect"
+    "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt or on an `executor_agents` Agent call. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute and what each class may write are NOT here: they are `skill_classes` above, single owner. Design: .claude/decisions/0058-skill-classes-territory-schema.md",
+    "executor_agents": [
+      "java-spring-boot-developer", "archunit-installer", "commons-logging-installer",
+      "project-initializer"
     ],
-    "executor_agents": ["java-spring-boot-developer", "archunit-installer", "commons-logging-installer"],
-    "design_forbidden_paths": ["src/**", "**/src/**"],
     "use_cases_dir": "docs/use-cases",
     "frozen_statuses": ["approved", "implemented"]
   },

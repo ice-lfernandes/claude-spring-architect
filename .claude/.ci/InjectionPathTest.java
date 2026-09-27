@@ -31,6 +31,15 @@ public class InjectionPathTest {
                 ## State
 
                 !`test -f docker-compose.yml && echo yes || echo no`
+
+                ## Why this is a fixture
+
+                It exists only inside this test's throwaway project. The class marker and this
+                section are what `skill_classes` requires of every skill body.
+
+                ## Contract
+
+                **Class:** ci_probe
                 """;
         String absolute = relative.replace(
                 "test -f docker-compose.yml",
@@ -48,6 +57,14 @@ public class InjectionPathTest {
                 ```markdown
                 !`test -f docker-compose.yml && echo yes`
                 ```
+
+                ## Why this is a fixture
+
+                It exists only inside this test's throwaway project.
+
+                ## Contract
+
+                **Class:** ci_probe
                 """;
 
         // Prose that mentions an injection writes it as an inline code span containing a
@@ -63,6 +80,14 @@ public class InjectionPathTest {
                 ## Note
 
                 Every `` !`test -f docker-compose.yml` `` injection is cwd-dependent.
+
+                ## Why this is a fixture
+
+                It exists only inside this test's throwaway project.
+
+                ## Contract
+
+                **Class:** ci_probe
                 """;
 
         int failures = 0;
@@ -97,6 +122,7 @@ public class InjectionPathTest {
         Files.copy(schema, tmp.resolve(".claude/schemas/extensions.json"));
         Files.writeString(tmp.resolve(".claude/skills/probe-skill/SKILL.md"), skill);
         stubExecutorAgents(schema, tmp);
+        stubSkillClass(tmp);
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
@@ -177,5 +203,28 @@ public class InjectionPathTest {
                     **Executor:** yes
                     """.formatted(name.group(1)));
         }
+    }
+
+    /**
+     * `schema` also requires every skill on disk to belong to a `skill_classes` class, and
+     * `probe-skill` is synthetic — it exists only inside this test's throwaway project, so it
+     * cannot be listed in the repository's own data. The copy of the schema gets one extra
+     * class whose only member is the probe, with an empty territory and no required section
+     * beyond the universal ones, which the fixtures above carry. Everything else in the copy
+     * stays verbatim: what is under test is the injection lint, and it must be the production
+     * one.
+     */
+    static void stubSkillClass(Path tmp) throws IOException {
+        Path copy = tmp.resolve(".claude/schemas/extensions.json");
+        String json = Files.readString(copy, StandardCharsets.UTF_8);
+        String probe = """
+                "classes": {
+                    "ci_probe": {
+                      "write_allow": [],
+                      "required_sections": [],
+                      "skills": ["probe-skill"]
+                    },""";
+        Files.writeString(copy, json.replaceFirst("\"classes\"\\s*:\\s*\\{", probe),
+                StandardCharsets.UTF_8);
     }
 }

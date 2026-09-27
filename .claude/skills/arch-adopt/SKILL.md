@@ -202,6 +202,10 @@ produce the same tree.
 
 ## Contract
 
+**Class:** build — the territory is `skill_classes.build`'s override for this skill in
+`@.claude/schemas/extensions.json`: the target project's `.claude/` tree and its
+`.gitignore`, nothing else. `ArchHook.java guard` enforces it.
+
 **Reads** `.claude/schemas/extensions.json` (the `source` block — never a URL from
 memory), `.claude/.arch-provenance.json` when it exists, `src/main/java/**` to detect the
 layout, and the fetched source's `.claude/blueprints/*/*.yaml`.

@@ -21,6 +21,11 @@ of running it, print the exact command for the user to type — don't attempt th
 
 ## Contract
 
+**Class:** orchestrator — the territory is `skill_classes.orchestrator` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. A run writes under
+`docs/` only, and `ArchHook.java guard` also refuses a `Skill` call to a `build`-class skill
+while this run is open: a design run does not materialize files, it records what is missing.
+
 **Ownership:** Feature zero→spec orchestrator. Owns the sequence, the input table, the
 spec lifecycle (`status:`), and the final output (`UC-NNN-spec.md`). Does **not** own the
 use case number or slug — `use-case-design` does.
@@ -42,13 +47,16 @@ use case number or slug — `use-case-design` does.
 - `docs/use-cases/UC-NNN-<slug>/30-rest.md` — via `rest-api-architect`
 - `docs/use-cases/UC-NNN-<slug>/40-testes.md` — via `test-architect`
 
-**Writes (indirectly, outside `docs/`):**
-- `docker-compose.yml` and `docker/init/**` — via `docker-architect`, when
-  `persistence-architect` step 9 or `messaging-architect` step 9 chains it because a
-  partial named a service the compose file doesn't declare yet. The design phase is not
-  confined to `docs/`: these are the two territories it reaches, they belong to
-  `docker-architect` alone, and the "Not now" branch (§ End of flow) stages them for the
-  same reason it stages the spec
+**Writes outside `docs/`: none.** A run is docs-only, and that is enforced, not promised:
+`ArchHook.java guard` refuses a `Skill` call to a `build`-class skill — `docker-architect`
+included — while this orchestrator's phase is open, and refuses a write outside
+`skill_classes.orchestrator`'s territory. A partial that needs a service the compose file
+doesn't declare **records** it (`persistence-architect` step 9, `messaging-architect`
+step 9); the consolidated spec carries the list, and the user runs `/docker-architect` from a
+prompt of its own afterwards. Why: a design run once hand-wrote a `schema-registry` block
+into `docker-compose.yml`, with no template, no tag verification and no healthcheck
+(`lessons-learned-012.md` §§ 4, 12, 13), and the review was of a spec nobody read that file
+through. Record: `@.claude/decisions/0058-skill-classes-territory-schema.md`
 
 **Writes (directly):**
 - `docs/use-cases/UC-NNN-<slug>/UC-NNN-spec.md` — implementation plan (executor-ready),
@@ -501,19 +509,16 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     `feat(UC-NNN-<slug>): <one-line summary>` as context.
   - **Failure** → report the executor's failure and stop. No git.
 - **Not now** → **invoke** `git-publish` via the `Skill` tool, with context
-  `docs(UC-NNN-<slug>): approved spec` and these paths to stage:
-  - `docs/use-cases/UC-NNN-<slug>/` and `docs/use-cases/BACKLOG.md` — always;
-  - `docker-compose.yml` and `docker/init/**` — **when `docker-architect` ran in this
-    execution**, chained by `persistence-architect` step 9 or `messaging-architect`
-    step 9.
+  `docs(UC-NNN-<slug>): approved spec` and `docs/use-cases/UC-NNN-<slug>/` plus
+  `docs/use-cases/BACKLOG.md` as the paths to stage. Nothing else: a design-only run writes
+  nothing outside `docs/`, and the guard is what makes that true rather than intended.
 
-  Design-only does **not** mean "nothing outside `docs/` changed". `docker-architect` is
-  the legitimate owner of those two territories and the pipeline chains it as soon as a
-  partial names a service the compose file doesn't have yet — a Kafka broker, a database
-  engine, an observability backend. Staging only `docs/` leaves that change uncommitted
-  and unmentioned, which is how a `kafka` service went orphan once
-  (`lessons-learned-010.md` § 7). List the extra paths in the `git-publish` context so
-  the diff the user confirms is the whole run, and name them in the final report.
+  What used to be staged here — `docker-compose.yml` and `docker/init/**`, when the pipeline
+  chained `docker-architect` — is no longer written during the run at all. The service the
+  spec names is **pending**: say so in the final report, with the `/docker-architect`
+  invocation the user should run next. An unmentioned pending service is how a `kafka`
+  service went orphan once (`lessons-learned-010.md` § 7), and the fix is naming it, not
+  writing the file mid-design.
 
 `git-publish`'s two confirmation gates decide whether anything is committed or pushed —
 this orchestrator only triggers the offer.
@@ -521,8 +526,9 @@ this orchestrator only triggers the offer.
 ### Final report
 
 Last message of the run, and the only report: the spec path and status, the backlog
-entries left for later (if any), **every file written outside `docs/`** (today only
-`docker-architect`'s two territories — "none" when it didn't run), what `git-publish`
+entries left for later (if any), **every follow-up the run left pending outside `docs/`** —
+each compose service or `docker/init` file a partial named, with the `/docker-architect`
+command that materializes it, or "none" — what `git-publish`
 did, and a recommendation to run
 `/clear` before the next `/new-feature` — a clean context per use case keeps cost
 measurable per case.

@@ -87,6 +87,9 @@ direction above is unchanged.
    **A hook, the same:** the registration is per file (`.claude/settings.json`,
    `project-bootstrap/templates/settings.json.example`); a mode inside `ArchHook.java`
    needs nothing, the `export` mode copies that file whole.
+   **A skill has a second obligation on top of `export`:** a class in `skill_classes`,
+   which is what gives it a body shape and a write territory. A skill in no class has no
+   territory — `schema` fails by name on it, in this repo and inside a generated project.
 10. **Recognized frontmatter fields, `.mcp.json`'s server fields, and `settings.json`'s
     hook events and entry fields are data with a single owner.** The list lives in
     `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
@@ -126,6 +129,7 @@ direction above is unchanged.
 | Auditing what any skill or agent run in a **generated project** cost and what it chained — invoked by `/command` or by the model | `ArchHook.java audit` — hook, not skill; wired only into `project-bootstrap/templates/settings.json.example`, installed by step 6.6 |
 | Reading that trail back — spend per skill and agent across runs, which report to open | skill `audit-usage` — aggregation by `ArchHook.java audit summary`, the skill renders; runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
+| Which class a skill is, what it may write, and what sections its body must carry | `skill_classes` in `@.claude/schemas/extensions.json` — `ArchHook.java schema` validates the body, `guard` enforces the territory |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
 | Contract every blueprint fulfills | `@.claude/blueprints/_schema.md` |
@@ -146,6 +150,13 @@ direction above is unchanged.
   the arguments). A mode that throws — exits 0 through `main`'s catch, looks like it
   passed. `schema` catches the first three, from `settings` in
   `@.claude/schemas/extensions.json`; the fourth only by running the mode by hand.
+- **A skill writes only its class's territory, and `guard` blocks the rest with exit 2.**
+  Deny by default: the message names the class and its `write_allow`, and the fix is the
+  data (`skill_classes` in `@.claude/schemas/extensions.json`), never a retry. A design run
+  is docs-only and cannot even *call* a `build`-class skill — `docker-architect` included:
+  the missing compose service is recorded in the partial and materialized afterwards by
+  `/docker-architect`. Territory is unrestricted while no skill phase is open, which is why
+  editing a file by hand is never blocked.
 - **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim
   query, and the `app.outbox.*` values that pace the claim. `messaging-architect` declares
   that the case needs one and which delivery guarantee the relay must honour, and never a

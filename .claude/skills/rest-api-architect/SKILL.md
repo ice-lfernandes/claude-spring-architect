@@ -248,6 +248,11 @@ verifies them is at
 
 ## Contract
 
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. Writes inside the
+use case folder and nothing else; a controller or DTO written under `src/` is refused with
+exit 2.
+
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
 (mandatory — stops without the second), `@.claude/rules/api-rest.md`,
 `@.claude/rules/architecture-ddd.md` (Adapters and Composition sections),
