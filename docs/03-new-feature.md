@@ -12,15 +12,22 @@ pronto para o agent executor implementar depois que o usuário aprovar. **Este c
 existe dentro de um projeto já gerado** por `/init-project`: lê `pom.xml`,
 `.claude/forbidden-imports.txt` e descobre o package de domínio no projeto real.
 
-Três fronteiras valem em toda execução:
+Quatro fronteiras valem em toda execução, e nenhuma delas é prosa — o hook `guard`
+bloqueia com `exit 2`:
 
-- **Design escreve só em `docs/`.** O SQL da migration fica dentro de
-  `20-persistencia.md`; todo arquivo em `src/` vem do executor. O hook `guard` bloqueia o
-  resto.
+- **Um run escreve só em `docs/`.** Território é allowlist, deny por default: cada skill
+  do pipeline só escreve o `write_allow` da classe dela (`skill_classes` em
+  `.claude/schemas/extensions.json`). O SQL da migration fica dentro de
+  `20-persistencia.md`; todo arquivo em `src/` vem do executor.
+- **Um run de design não materializa arquivo nenhum fora de `docs/`.** O `guard` recusa a
+  própria *chamada* a uma skill de classe `build` — `docker-architect` incluída — enquanto
+  o run está aberto. Serviço de compose que falta é **registrado** na parcial, com o
+  comando que o cria.
 - **Git só via `git-publish`**, atrás das duas confirmações — em todo fim de fluxo,
   inclusive o sem executor. `git push` é sempre `ask`.
 - **Spec aprovado é imutável.** Um caso posterior registra a mudança necessária na
-  própria seção `## Impact on approved use cases`. O hook `guard` congela os arquivos.
+  própria seção `## Impact on approved use cases`, e uma linha no `CHANGELOG.md` da pasta
+  de cada caso alterado. O `guard` congela os arquivos.
 
 ## Por que é uma skill manual, não um agent
 
@@ -118,8 +125,13 @@ sequenceDiagram
 requisito de REST. Na ordem antiga a tabela era descoberta depois do partial de
 persistência escrito, e persistência rodava duas vezes.
 
-`docker-architect` é encadeada sob demanda por `persistence-architect`, `test-architect`
-ou `messaging-architect`. `java-patterns` viaja pré-carregado dentro do executor.
+`docker-architect` **não** é encadeada pelo pipeline. Um run de design é docs-only: quando
+`persistence-architect`, `messaging-architect` ou `test-architect` detecta um serviço que
+falta no `docker-compose.yml`, registra a pendência na parcial e reporta o comando
+`/docker-architect`, que o usuário roda depois em um prompt próprio. O modo `guard` do
+`ArchHook.java` recusa a chamada enquanto a fase de design está aberta —
+`.claude/decisions/0058-skill-classes-territory-schema.md`. `java-patterns` viaja
+pré-carregado dentro do executor.
 
 ## Pre-flight — infraestrutura instalada uma vez, no primeiro "implementar agora"
 
@@ -148,6 +160,14 @@ sem ordem garantida entre os dois `PreToolUse`, o perdedor bloquearia toda escri
 Defeito de spec encontrado pelo executor num spec aprovado: o usuário muda `status:
 draft` à mão, e `/new-feature UC-NNN-slug` retoma e reaprova.
 
+**Um spec aprovado nunca é editado para registrar que outro caso mudou o comportamento
+dele.** O caso que altera casos já aprovados — inclusive o que não cria classe de use case
+nenhuma, e ainda assim ganha seu próprio `UC-NNN` — escreve uma linha no `CHANGELOG.md`
+**da pasta de cada caso alterado**: data, o `UC-NNN` que alterou, e o que mudou. Sem isso, a
+imutabilidade protege o texto e perde a história: quem abre `UC-001-register-customer/` não
+tem como saber que o comportamento dela mudou em outro lugar. O `guard` congela a pasta; o
+changelog é o arquivo separado que registra a mudança sem violar o congelamento.
+
 ## Caminho curto
 
 Quando o caso reusa um agregado aprovado, não precisa de tabela, coluna ou migration
@@ -160,7 +180,8 @@ escreve um spec único em que cada linha cita a fonte — um spec aprovado ou um
 |---|---|
 | Path, verbo, status HTTP, formato do corpo | `30-rest.md` |
 | Tabela, coluna, chave, índice, migration | `20-persistencia.md` |
-| Tópico, garantia de entrega, retry/DLQ | `25-mensageria.md` |
+| Tópico, serialização, garantia de entrega, retry/DLQ do consumidor | `25-mensageria.md` |
+| Tabela outbox, suas colunas, query de claim e o backoff que essas colunas codificam | `20-persistencia.md` — a mensageria **declara** que o caso precisa de outbox e qual garantia o relay tem de honrar, e nunca um nome de coluna. Uma linha de § 6 nomeando colunas é divergência, e uma decisão de coluna que derrubaria a garantia declarada **para** o pipeline em vez de ser resolvida por precedência |
 | Nome do agregado, value object, port, evento | `10-dominio.md` |
 | Classe de exceção e `errorCode` | `10-dominio.md` |
 | Fronteira do caso de uso, invariantes, situações de erro | `00-caso-de-uso.md` |

@@ -17,7 +17,7 @@ metáfora — é a regra real de quem pode citar quem (`CLAUDE.md` § Invariants
 flowchart TB
     subgraph L0["Enforcement — determinístico"]
         SETTINGS["settings.json"]:::hook
-        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor)"]:::hook
+        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor · export)"]:::hook
     end
 
     subgraph L1["Procedimento — skills"]
@@ -37,6 +37,7 @@ flowchart TB
         SK_MSG["skill: messaging-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
         SK_GIT["skill: git-publish"]:::skill
+        SK_ADOPT["skill: arch-adopt\n(instala/atualiza este .claude/ num projeto)"]:::skill
     end
 
     subgraph L2["Execução isolada — agents"]
@@ -56,6 +57,7 @@ flowchart TB
     CLAUDEMD -->|roteia por tabela| SK_DOCTOR
     CLAUDEMD -->|roteia por tabela| SK_DESIGNER
     CLAUDEMD -->|roteia por tabela| SK_AUDIT
+    CLAUDEMD -->|roteia por tabela| SK_ADOPT
 
     SK_INIT -->|Agent tool: contexto + tools restritos + model opus| AG_INITZR
     AG_INITZR -->|segue o procedimento de| SK_BOOT
@@ -63,7 +65,8 @@ flowchart TB
     SK_BOOT -->|lê e copia para o projeto gerado| RULES
     SK_BOOT -->|instala, com guard + audit ligados| SETTINGS
     SK_BOOT -->|copia verbatim| HOOK
-    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT
+    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT
+    SK_ADOPT -->|escreve tudo via modo export| HOOK
     SK_BOOT -->|copia| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|propõe e escreve, após aprovação| SK_UC & AG_DEV & RULES
     AG_DEV -.->|skills: pré-carregada| SK_PAT
@@ -76,9 +79,9 @@ flowchart TB
     SK_DOM --> SK_PERS
     SK_DOM --> SK_REST
     SK_DOM -.->|se evento pede entrega externa| SK_MSG
-    SK_PERS -.->|encadeia, sob demanda| SK_DOCKER
-    SK_MSG -.->|encadeia, sob demanda| SK_DOCKER
-    SK_TEST -.->|encadeia, sob demanda| SK_DOCKER
+    SK_PERS -.->|registra pendência; nunca encadeia| SK_DOCKER
+    SK_MSG -.->|registra pendência; nunca encadeia| SK_DOCKER
+    SK_TEST -.->|registra pendência; nunca encadeia| SK_DOCKER
     SK_PERS --> SK_TEST
     SK_MSG --> SK_TEST
     SK_REST --> SK_TEST
@@ -141,10 +144,21 @@ Invariant 5. Cada agent documenta o próprio motivo na seção `## Why this is a
 
 O hook é a única peça fora desse grafo de citações: `settings.json` o dispara em
 eventos do ciclo de vida, e o que ele lê (`forbidden-imports.txt`, `extensions.json`)
-é dado, não prosa. No projeto gerado ele ganha dois modos que aqui ficam inertes —
-`guard`, que bloqueia uma skill de design de escrever em `src/` e congela specs
-aprovados, e `audit`, que grava a trilha de execução de toda skill e agent. Ver
-[08-audit-usage.md](08-audit-usage.md).
+é dado, não prosa.
+
+Dois modos dependem de onde estão registrados. `guard` roda **aqui e no projeto
+gerado**: ele mantém cada skill dentro do território que a classe dela declara em
+`skill_classes` (deny por default), congela specs aprovados, e recusa uma chamada a
+skill de classe `build` enquanto um run de design está aberto. `audit` só roda no
+projeto gerado, porque se liga pela presença de `.claude/audit-usage/`, e este
+meta-repo não cria o diretório — auditar o *desenho* da ferramenta em vez do uso dela
+não é a trilha que interessa. Ver [08-audit-usage.md](08-audit-usage.md).
+
+A mesma `skill_classes` é o que padroniza o **corpo** de cada skill: `ArchHook.java
+schema` exige que toda `SKILL.md` no disco esteja em exatamente uma classe, declare
+`**Class:** <c>` no corpo, e traga as seções que a classe pede. Antes disso, nove
+skills diziam `## Contract`, uma dizia `## Skill contract`, e duas não tinham contrato
+nenhum — com `claude plugin validate` imprimindo `✔ Validation passed` sobre tudo.
 
 ## Os comandos, em uma frase cada
 
@@ -154,7 +168,8 @@ aprovados, e `audit`, que grava a trilha de execução de toda skill e agent. Ve
 | `/new-feature <descrição>` | Desenha um caso de uso por execução (caso de uso → domínio → REST → persistência → testes) num spec único, pede aprovação e oferece o executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema, trilha de auditoria, serviços do compose | [04-arch-doctor.md](04-arch-doctor.md) |
 | `/audit-usage` | Lê a trilha de auditoria do projeto gerado: gasto por skill e agent entre execuções, taxa de falha, qual relatório abrir. Aqui reporta que a trilha está desligada | [08-audit-usage.md](08-audit-usage.md) |
-| `/claude-code-architect-designer` | Decide qual forma (skill, agent, rule, seção do `CLAUDE.md`, MCP — ou nada) resolve um cenário, e escreve o arquivo após aprovação. Só neste meta-repo | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
+| `/claude-code-architect-designer` | Decide qual das oito formas (skill auto-invocável, skill manual, agent, rule, seção do `CLAUDE.md`, servidor MCP, hook, regra de `permissions` — ou nada) resolve um cenário, e escreve o arquivo após aprovação. Só neste meta-repo | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
+| `/arch-adopt` | Instala este `.claude/` num projeto que nunca foi gerado aqui, ou atualiza um que está atrasado. Recusa worktree suja, escreve pelo modo `export`, e deixa o diff pronto para revisão | [10-arch-adopt.md](10-arch-adopt.md) |
 
 `git-publish` não é um quarto comando de topo — é uma skill Forma 1 (sem
 `disable-model-invocation`) encadeada automaticamente por `project-initializer` (fim do

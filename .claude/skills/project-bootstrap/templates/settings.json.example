@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spinning up the process: without it, every edit to any file would pay for a JVM startup. The `audit` entries record the execution trail of every skill and agent of this project into .claude/audit-usage/ — opened by a `/command` or by the model's own Skill/Agent call; plugin skills and runtime agents are not recorded. Each entry returns immediately when that directory does not exist or no run is open, so the JVM cost outside a run is a process start and nothing more. Delete the directory to switch the trail off. The `guard` entries block design skills from writing under src/ and freeze the specs of approved use cases; the Write|Edit entries spawn a JVM only for paths their `if` filters match. Permissions: the pipeline skills are pre-authorized so nobody approves them one by one mid-run — that is where broad rules like `Bash(git *)` slipped in. `git push` is always `ask`; never widen it to an allow.",
+  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spinning up the process: without it, every edit to any file would pay for a JVM startup. The `audit` entries record the execution trail of every skill and agent of this project into .claude/audit-usage/ — opened by a `/command` or by the model's own Skill/Agent call; plugin skills and runtime agents are not recorded. Each entry returns immediately when that directory does not exist or no run is open, so the JVM cost outside a run is a process start and nothing more. Delete the directory to switch the trail off. The `guard` entries keep each skill inside the territory its class declares in .claude/schemas/extensions.json (`skill_classes`), freeze the specs of approved use cases, and refuse a Skill call to a build-class skill while a design run is open. The Write|Edit entry carries no `if` on purpose: territory is deny-by-default, so a path filter would recreate the hole it closes — a design run once wrote a service block into docker-compose.yml, a file no forbidden-path list named. It returns immediately when no phase is open, which is every write outside a skill invocation. Permissions: the pipeline skills are pre-authorized so nobody approves them one by one mid-run — that is where broad rules like `Bash(git *)` slipped in. `git push` is always `ask`; never widen it to an allow.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -63,32 +63,10 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "if": "Write(**/src/**)",
-            "command": "java",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "write"],
-            "timeout": 20
-          },
-          {
-            "type": "command",
-            "if": "Edit(**/src/**)",
-            "command": "java",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "write"],
-            "timeout": 20
-          },
-          {
-            "type": "command",
-            "if": "Write(docs/use-cases/**)",
-            "command": "java",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "write"],
-            "timeout": 20
-          },
-          {
-            "type": "command",
-            "if": "Edit(docs/use-cases/**)",
             "command": "java",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "write"],
             "timeout": 20

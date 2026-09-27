@@ -239,14 +239,17 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' docker-compose.yml
    ```
 
-   Missing (and the engine isn't H2) → invoke
-   `docker-architect` with this UC's folder, so the dev-time container matches the
-   schema just designed. Don't edit `docker-compose.yml` here — that skill is its
-   single owner.
+   Missing (and the engine isn't H2) → **record it** in the partial's § 6 as a pending
+   service: the engine, the image tag the spec assumes, and the one-line
+   `/docker-architect` invocation that materializes it. Do **not** invoke
+   `docker-architect` and do not edit `docker-compose.yml`: that skill is the file's single
+   owner, it is class `build`, and `ArchHook.java guard` refuses the call while a design run
+   is open — a design run produces a spec, never a container.
 
-10. **Report and stop.** Path of the partial written, divergences from `10-dominio.md`,
-    whether `docker-architect` ran, and what's missing for the folder to be complete
-    (`30-rest.md`, `40-testes.md`). Don't invoke anyone else.
+10. **Report and stop.** Path of the partial written, divergences from `10-dominio.md`, the
+    pending compose service if step 9 found one (and the command that fixes it), and what's
+    missing for the folder to be complete (`30-rest.md`, `40-testes.md`). Don't invoke anyone
+    else.
 
 ## What the partial contains
 
@@ -267,6 +270,11 @@ The exemplars in `templates/` are **reference for form**, not files to copy. It'
 executor agent that reads them when generating code.
 
 ## Contract
+
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. Writes inside the
+use case folder and nothing else: no migration under `src/`, no service in the compose file,
+both refused with exit 2.
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
 (mandatory — stops without the second), `@.claude/rules/persistence.md`,
@@ -291,9 +299,11 @@ executor materializes every file there from this partial.
 **Does not write Java code.** The entities, adapters, and repositories come from the
 executor agent.
 
-**Does not edit `docker-compose.yml`.** When step 9 finds the chosen engine has no
-container yet, it invokes `docker-architect` instead of writing the service block
-itself — single owner, see that skill's Contract.
+**Does not edit `docker-compose.yml`, and does not invoke `docker-architect` either.** When
+step 9 finds the chosen engine has no container yet, it records the pending service in the
+partial's § 6 with the `/docker-architect` command that creates it. The guard enforces both
+halves: the file is outside this class's territory, and a `build`-class skill is unreachable
+from inside a design run.
 
 **Does not decide** the use case boundary (`00-caso-de-uso.md`), the domain model
 (`10-dominio.md`), the transport (`30-rest.md`), or the tests (`40-testes.md`). Doesn't

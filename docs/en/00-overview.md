@@ -17,7 +17,7 @@ metaphor — it's the real rule of who may cite whom (`CLAUDE.md` § Invariants 
 flowchart TB
     subgraph L0["Enforcement — deterministic"]
         SETTINGS["settings.json"]:::hook
-        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor)"]:::hook
+        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor · export)"]:::hook
     end
 
     subgraph L1["Procedure — skills"]
@@ -37,6 +37,7 @@ flowchart TB
         SK_MSG["skill: messaging-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
         SK_GIT["skill: git-publish"]:::skill
+        SK_ADOPT["skill: arch-adopt\n(installs/updates this .claude/ in a project)"]:::skill
     end
 
     subgraph L2["Isolated execution — agents"]
@@ -56,6 +57,7 @@ flowchart TB
     CLAUDEMD -->|routes via table| SK_DOCTOR
     CLAUDEMD -->|routes via table| SK_DESIGNER
     CLAUDEMD -->|routes via table| SK_AUDIT
+    CLAUDEMD -->|routes via table| SK_ADOPT
 
     SK_INIT -->|Agent tool: context + restricted tools + model opus| AG_INITZR
     AG_INITZR -->|follows the procedure of| SK_BOOT
@@ -63,7 +65,8 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs, with guard + audit wired| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT
+    SK_ADOPT -->|writes everything through the export mode| HOOK
     SK_BOOT -->|copies| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|proposes and writes, after approval| SK_UC & AG_DEV & RULES
     AG_DEV -.->|skills: preloaded| SK_PAT
@@ -76,9 +79,9 @@ flowchart TB
     SK_DOM --> SK_PERS
     SK_DOM --> SK_REST
     SK_DOM -.->|if the event needs external delivery| SK_MSG
-    SK_PERS -.->|chains, on demand| SK_DOCKER
-    SK_MSG -.->|chains, on demand| SK_DOCKER
-    SK_TEST -.->|chains, on demand| SK_DOCKER
+    SK_PERS -.->|records the pending service; never chains| SK_DOCKER
+    SK_MSG -.->|records the pending service; never chains| SK_DOCKER
+    SK_TEST -.->|records the pending service; never chains| SK_DOCKER
     SK_PERS --> SK_TEST
     SK_MSG --> SK_TEST
     SK_REST --> SK_TEST
@@ -141,10 +144,22 @@ agent` (or `## Why this is Form 3`) section.
 
 The hook is the only piece outside that citation graph: `settings.json` fires it on
 lifecycle events, and what it reads (`forbidden-imports.txt`, `extensions.json`) is
-data, not prose. In the generated project it gains two modes that stay inert here —
-`guard`, which blocks a design skill from writing under `src/` and freezes approved
-specs, and `audit`, which records the execution trail of every skill and agent. See
-[08-audit-usage.md](08-audit-usage.md).
+data, not prose.
+
+Two modes depend on where they are registered. `guard` runs **here and in the generated
+project**: it keeps every skill inside the territory its class declares in
+`skill_classes` (deny by default), freezes approved specs, and refuses a call to a
+`build`-class skill while a design run is open. `audit` runs only in the generated
+project, because it switches itself on by the presence of `.claude/audit-usage/` and
+this meta-repo doesn't create the directory — auditing the *design* of the tool instead
+of its use is not the trail anyone wants. See [08-audit-usage.md](08-audit-usage.md).
+
+That same `skill_classes` is what standardizes each skill's **body**: `ArchHook.java
+schema` requires every `SKILL.md` on disk to sit in exactly one class, declare
+`**Class:** <c>` in its body, and carry the sections that class asks for. Before it,
+nine skills said `## Contract`, one said `## Skill contract`, and two had no contract
+section at all — with `claude plugin validate` printing `✔ Validation passed` over all
+of it.
 
 ## The commands, in one line each
 
@@ -154,7 +169,8 @@ specs, and `audit`, which records the execution trail of every skill and agent. 
 | `/new-feature <description>` | Designs one use case per run (use case → domain → REST → persistence → tests) into a single spec, asks approval, and offers the executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnoses active hooks, loaded boundaries, Maven wrapper, `java` on PATH, schema, audit trail, compose services | [04-arch-doctor.md](04-arch-doctor.md) |
 | `/audit-usage` | Reads the generated project's audit trail: spend per skill and agent across runs, failure rate, which report to open. Here it reports the trail is off | [08-audit-usage.md](08-audit-usage.md) |
-| `/claude-code-architect-designer` | Decides which form (skill, agent, rule, `CLAUDE.md` section, MCP — or nothing) solves a scenario, and writes the file after approval. Meta-repo only | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
+| `/claude-code-architect-designer` | Decides which of the eight forms (auto-invocable skill, manual skill, agent, rule, `CLAUDE.md` section, MCP server, hook, `permissions` rule — or nothing) solves a scenario, and writes the file after approval. Meta-repo only | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
+| `/arch-adopt` | Installs this `.claude/` into a project never generated here, or updates one that is behind. Refuses a dirty worktree, writes through the `export` mode, and leaves the diff ready for review | [10-arch-adopt.md](10-arch-adopt.md) |
 
 `git-publish` isn't a fourth top-level command — it's a Form 1 skill (no
 `disable-model-invocation`) chained automatically by `project-initializer` (end of

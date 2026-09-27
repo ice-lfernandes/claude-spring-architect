@@ -220,29 +220,37 @@ sequenceDiagram
     AU-->>U: leitura + saúde + relatório a abrir
 ```
 
-## Hook `guard` — as duas fronteiras que deixaram de ser prosa
+## Hook `guard` — as três fronteiras que deixaram de ser prosa
 
-Configuração em `extensions.json` → `guard`:
+Território é **dado**, em `extensions.json` → `skill_classes`: cada skill pertence a uma
+classe (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), e a classe declara o
+`write_allow`. O bloco `guard` guarda só o resto:
 
 ```json
-"design_skills": ["new-feature", "use-case-design", "domain-modeling", "rest-api-architect",
-                  "persistence-architect", "messaging-architect", "test-architect"],
-"executor_agents": ["java-spring-boot-developer", "archunit-installer", "commons-logging-installer"],
-"design_forbidden_paths": ["src/**", "**/src/**"],
+"executor_agents": ["java-spring-boot-developer", "archunit-installer",
+                    "commons-logging-installer", "project-initializer"],
 "use_cases_dir": "docs/use-cases",
 "frozen_statuses": ["approved", "implemented"]
 ```
 
 | Fase | Evento | Efeito |
 |---|---|---|
-| `guard prompt` | `UserPromptSubmit` | Fecha a fase anterior; abre uma fase de design se o prompt é `/<design_skill>` |
-| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<design_skill>)` abre a fase; `Agent(<executor_agent>)` fecha |
-| `guard write` | `PreToolUse` `Write\|Edit` em `**/src/**` ou `docs/use-cases/**` | Regra 1: fase aberta + caminho em `design_forbidden_paths` + chamada não vem de um executor → `exit 2`. Regra 2: pasta `UC-*` cujo spec está em `frozen_statuses` → `exit 2`, exceto a única edição do executor de `status: approved` para `status: implemented` |
+| `guard prompt` | `UserPromptSubmit` | Fecha a fase anterior; abre uma fase se o prompt é `/<skill>` de qualquer classe |
+| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` abre a fase (nunca troca por outra skill da mesma classe); `Agent(<executor_agent>)` fecha; `Skill` de classe `blocked_during_design` com fase `design_phase` aberta → `exit 2` |
+| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, sem filtro de caminho | Regra 1: fase aberta + caminho **fora** do `write_allow` da skill ativa + chamada não vem de um executor → `exit 2`. Regra 2: pasta `UC-*` cujo spec está em `frozen_statuses` → `exit 2`, exceto a única edição do executor de `status: approved` para `status: implemented` |
 
-Por que existe: uma skill de design escreveu migrations em `src/`, e um caso de uso
-posterior reescreveu os specs de um anterior — as duas coisas enquanto as skills
-proibiam em prosa (`lessons-learned-005`). Reabrir um spec nunca implementado é
+Por que existe: uma skill de design escreveu migrations em `src/`; um caso de uso posterior
+reescreveu os specs de um anterior; e um run de design escreveu um serviço
+`schema-registry` no `docker-compose.yml` — as três coisas enquanto as skills proibiam em
+prosa (`lessons-learned-005`, `lessons-learned-012` §§ 12, 13). A terceira é a razão de o
+modelo ser allowlist e não denylist: `docker-compose.yml` não está em `src/**`, e o arquivo
+que vaza nunca é o que alguém listou. Reabrir um spec nunca implementado continua
 deliberado: `status: draft` à mão.
+
+Sem fase aberta não há restrição — uma pessoa editando um arquivo à mão não é uma skill
+saindo do território. E `schema` valida o outro lado do mesmo dado: toda `SKILL.md` no disco
+tem que estar em exatamente uma classe, declarar `**Class:** <c>` no corpo e trazer as
+seções que a classe exige.
 
 **Armadilha conhecida:** `Skill(test-architect)` abre uma fase e
 `Agent(commons-logging-installer)` fecha uma. Disparadas no mesmo turno, são dois hooks

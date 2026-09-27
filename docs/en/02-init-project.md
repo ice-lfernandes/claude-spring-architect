@@ -99,14 +99,20 @@ bootstrap that delivers a red build isn't finished.
 ## Example invocation (fictional)
 
 ```
-/init-project --blueprint hexagonal --groupId com.acme --name pedidos-api --build maven
+/init-project --blueprint hexagonal --groupId com.acme --name pedidos-api --build maven --bounded-context orders
 ```
 
-Since `--blueprint`, `--groupId`, and `--name` are already in the arguments,
-`project-initializer` doesn't ask about them again — it only interviews what's
+Since `--blueprint`, `--groupId`, `--name`, and `--bounded-context` are already in the
+arguments, `project-initializer` doesn't ask about them again — it only interviews what's
 missing: build (already given, also skipped) and **features** (REST, JPA+Flyway,
 Kafka, SQS, OpenAPI, Testcontainers, Actuator). Suppose the user answers: REST,
 JPA+Flyway, OpenAPI, Testcontainers, Actuator (no Kafka/SQS).
+
+The **bounded context** (`--bounded-context`) is a field of the same coordinates question,
+defaulting to the artifactId. It is a project fact, not a per-use-case answer: it is the
+first segment of every Kafka topic name, and choosing it inside one use case would give a
+system two namespaces. That is why it is asked once here and written into the generated
+project's root `CLAUDE.md`, even when there is no messaging.
 
 ## Output report (example, fixed format from `project-bootstrap/SKILL.md`)
 
@@ -129,7 +135,7 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, v
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 12 rules + 12 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Self-contained: 12 rules + 13 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
 Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus

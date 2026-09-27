@@ -11,9 +11,10 @@
 //   check   PostToolUse — forbidden imports + incremental compile     (blocks)
 //   format  PostToolUse — spotless on the touched module              (never blocks)
 //   tests   Stop        — tests of the changed modules                (blocks)
-//   schema  Pre/PostToolUse + Stop — frontmatter + injection paths     (blocks)
+//   schema  Pre/PostToolUse + Stop — frontmatter, injection paths, skill bodies (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
-//   guard   PreToolUse  — design never writes src/, approved specs frozen (blocks)
+//   guard   PreToolUse  — a skill writes only its class's territory, approved specs
+//                         frozen, build skills unreachable mid-design       (blocks)
 //   compose manual      — every compose service up, no foreign container on our ports,
 //                         compose image tags equal to the ones src/test pins (never blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
@@ -1405,6 +1406,7 @@ public class ArchHook {
 
         if (file == null) {
             checkExecutorAgents(sch, errors);
+            checkSkillClasses(sch, errors);
             checkExportManifest(sch, errors);
             checkSourceBlock(sch, errors);
         }
@@ -1448,10 +1450,16 @@ public class ArchHook {
             }
         }
 
+        // `project-initializer` executes `/init-project` and, like the creation skills, does
+        // not travel into a generated project — so "listed but absent" is an error only in the
+        // source repository. See isSourceRepo.
+        boolean here = isSourceRepo(sch);
         for (String name : listed) {
             if (!Files.isRegularFile(agentsDir.resolve(name + ".md"))) {
-                errors.add("  guard.executor_agents lists `" + name
-                        + "` — no `.claude/agents/" + name + ".md` file exists");
+                if (here) {
+                    errors.add("  guard.executor_agents lists `" + name
+                            + "` — no `.claude/agents/" + name + ".md` file exists");
+                }
             } else if (!claimed.contains(name)) {
                 errors.add("  guard.executor_agents lists `" + name
                         + "` — its agent file has no `**Executor:** yes` marker in ## Contract");
@@ -1461,6 +1469,180 @@ public class ArchHook {
             if (!listed.contains(name)) {
                 errors.add("  .claude/agents/" + name
                         + ".md claims `**Executor:** yes` — missing from guard.executor_agents");
+            }
+        }
+    }
+
+    // ── skill classes ────────────────────────────────────────────────────────
+    //
+    // The class of a skill is data (`skill_classes` in extensions.json) and it decides two
+    // separate things: the sections its body must carry, checked here, and the paths it may
+    // write, enforced by the `guard` mode. Both failures used to be silent — nine skills
+    // said `## Contract`, project-bootstrap said `## Skill contract`, arch-doctor and
+    // init-project said nothing, and `claude plugin validate` printed `✔ Validation passed`
+    // over all of it; the territory half let a design run write a service block into
+    // docker-compose.yml while every skill involved forbade it in prose.
+    //
+    // Form 7c of `claude-code-architect-designer`, motivated by axis 7 (prose had already
+    // failed) and axis 16 (both checks land on modes that already walk these files). The
+    // closest rejected form was a frontmatter field per skill — silently ignored by the
+    // runtime, so it would have been decoration.
+    // Design: .claude/decisions/0058-skill-classes-territory-schema.md
+
+    /**
+     * Whether this tree is the repository `extensions.json`'s lists were written for. Two
+     * conditions, and both are needed: the `export` block is present at all — the exported
+     * copy drops it, which is the cheapest tell — and `export.source_marker` still resolves
+     * to a directory here, which is what separates the source from a tree that merely copied
+     * the manifest (the CI sandbox). A list naming a skill or an agent that deliberately does
+     * not travel (`export.skills.exclude`, `export.agents.exclude`) is an error only where it
+     * should exist; reporting it inside a generated project says nothing but "this is not that
+     * repository".
+     */
+    static boolean isSourceRepo(Map<String, Object> sch) {
+        Map<String, Object> exp = asMap(sch.get("export"));
+        if (exp == null) return false;
+        String marker = asStr(exp.get("source_marker"));
+        return marker == null || Files.isDirectory(ROOT.resolve(marker));
+    }
+
+    /** The class that lists this skill in `skill_classes`, or null when none does. */
+    static String skillClassOf(Map<String, Object> sch, String skill) {
+        Map<String, Object> classes = asMap(get(sch, "skill_classes", "classes"));
+        if (classes == null || skill == null) return null;
+        for (Map.Entry<String, Object> e : classes.entrySet()) {
+            Map<String, Object> c = asMap(e.getValue());
+            if (c != null && asStrList(c.get("skills")).contains(skill)) return e.getKey();
+        }
+        return null;
+    }
+
+    /** The skill's own `overrides` territory when it has one, else its class default. */
+    static List<String> writeAllowOf(Map<String, Object> sch, String skill) {
+        String cls = skillClassOf(sch, skill);
+        if (cls == null) return List.of();
+        Map<String, Object> c = asMap(get(sch, "skill_classes", "classes", cls));
+        Map<String, Object> ov = asMap(get(c, "overrides", skill));
+        if (ov != null && ov.containsKey("write_allow")) return asStrList(ov.get("write_allow"));
+        return asStrList(c == null ? null : c.get("write_allow"));
+    }
+
+    /** `<name>` of `.claude/skills/<name>/SKILL.md`. */
+    static String skillNameOf(String rel) {
+        Matcher m = Pattern.compile("skills/([^/]+)/SKILL\\.md$").matcher(rel);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /**
+     * One skill body against its class: the `**Class:** <c>` line agrees with the data, and
+     * every required section is present. A section is matched as a PREFIX of an H2 line, so
+     * `## Procedure — design mode` satisfies `## Procedure`; order is not checked.
+     */
+    static void checkSkillBody(Map<String, Object> sch, String rel, String content,
+                               List<String> errors) {
+        Map<String, Object> sc = asMap(sch.get("skill_classes"));
+        if (sc == null) return;
+        String skill = skillNameOf(rel);
+        if (skill == null) return;
+
+        Map<String, Object> classes = asMap(sc.get("classes"));
+        if (classes == null) return;
+        String cls = skillClassOf(sch, skill);
+        if (cls == null) {
+            errors.add("  " + rel + " — `" + skill + "` is in no skill_classes class."
+                    + " Add it to one of " + classes.keySet() + " in " + SCHEMA_FILE);
+            return;
+        }
+
+        String marker = orEmpty(asStr(sc.get("class_marker")));
+        if (!marker.isEmpty()) {
+            // `- ` prefix allowed: audit-usage writes its whole contract as a bullet list.
+            Matcher m = Pattern.compile("(?m)^[-*]?[ \\t]*" + Pattern.quote(marker)
+                            + "\\s*`?([a-z][a-z0-9_-]*)`?")
+                    .matcher(content);
+            if (!m.find()) {
+                errors.add("  " + rel + " — no `" + marker + " " + cls + "` line in the body."
+                        + " The class is what the guard enforces; state it in ## Contract");
+            } else if (!cls.equals(m.group(1))) {
+                errors.add("  " + rel + " — body says `" + marker + " " + m.group(1)
+                        + "`, " + SCHEMA_FILE + " lists it under `" + cls + "`");
+            }
+        }
+
+        List<String> required = new ArrayList<>(asStrList(sc.get("universal_sections")));
+        required.addAll(asStrList(get(sch, "skill_classes", "classes", cls, "required_sections")));
+        List<String> headings = content.lines().filter(l -> l.startsWith("## "))
+                .map(String::strip).collect(Collectors.toList());
+        for (String req : required) {
+            if (headings.stream().noneMatch(h -> h.startsWith(req))) {
+                errors.add("  " + rel + " — class `" + cls + "` requires the section `"
+                        + req + "`");
+            }
+        }
+
+        String why = asStr(sc.get("why_section"));
+        if (why != null && !Pattern.compile(why).matcher(content).find()) {
+            errors.add("  " + rel + " — no `## Why …` section. Three sentences: the form,"
+                    + " the interview axis, the closest rejected form");
+        }
+    }
+
+    /**
+     * The `skill_classes` block against the skills on disk. Coverage is total by design:
+     * a skill no class lists has no territory, so the guard would let it write anything.
+     * Runs only at sweep time (Stop, or a manual `schema`) — it lists a directory.
+     */
+    static void checkSkillClasses(Map<String, Object> sch, List<String> errors) throws IOException {
+        Map<String, Object> classes = asMap(get(sch, "skill_classes", "classes"));
+        if (classes == null) return;   // no block: nothing to cross-check
+
+        // The block travels whole into every generated project, and three creation skills
+        // deliberately do not (`export.skills.exclude`). So "listed but absent" is only an
+        // error in the repository the block was written for. Coverage in the other direction
+        // (a skill on disk that no class lists) is checked everywhere: a project that adds a
+        // skill of its own needs a class for it just as much.
+        boolean here = isSourceRepo(sch);
+
+        Map<String, String> owner = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : classes.entrySet()) {
+            Map<String, Object> c = asMap(e.getValue());
+            if (c == null) continue;
+            if (!c.containsKey("write_allow")) {
+                errors.add("  skill_classes." + e.getKey() + " has no `write_allow` key."
+                        + " An empty list is a decision; a missing key is an omission");
+            }
+            for (String s : asStrList(c.get("skills"))) {
+                String previous = owner.put(s, e.getKey());
+                if (previous != null) {
+                    errors.add("  skill_classes lists `" + s + "` in both `" + previous
+                            + "` and `" + e.getKey() + "` — one class per skill");
+                }
+                if (here && !Files.isRegularFile(ROOT.resolve(".claude/skills/" + s + "/SKILL.md"))) {
+                    errors.add("  skill_classes." + e.getKey() + " lists `" + s
+                            + "` — no `.claude/skills/" + s + "/SKILL.md` file exists");
+                }
+            }
+            Map<String, Object> ov = asMap(c.get("overrides"));
+            if (ov != null) {
+                for (String s : ov.keySet()) {
+                    if (!asStrList(c.get("skills")).contains(s)) {
+                        errors.add("  skill_classes." + e.getKey() + ".overrides names `" + s
+                                + "` — not a skill of that class");
+                    }
+                }
+            }
+        }
+
+        Path skillsDir = ROOT.resolve(".claude/skills");
+        if (!Files.isDirectory(skillsDir)) return;
+        try (Stream<Path> walk = Files.list(skillsDir)) {
+            for (Path d : walk.filter(Files::isDirectory).sorted().collect(Collectors.toList())) {
+                String name = d.getFileName().toString();
+                if (!Files.isRegularFile(d.resolve("SKILL.md"))) continue;
+                if (!owner.containsKey(name)) {
+                    errors.add("  `.claude/skills/" + name + "` is in no skill_classes class"
+                            + " — add it to one in " + SCHEMA_FILE);
+                }
             }
         }
     }
@@ -1705,6 +1887,9 @@ public class ArchHook {
 
         checkInjections(sch, rel, content, errors);   // every visited file, any type
         checkArguments(sch, rel, content, errors);    // idem
+        if (matches(asStr(get(sch, "skill_classes", "match")), rel)) {
+            checkSkillBody(sch, rel, content, errors);   // class marker + required sections
+        }
 
         if (matchesAny(asStrList(get(sch, "settings", "match")), rel)) {
             checkSettings(sch, rel, content, errors);
@@ -3446,20 +3631,26 @@ public class ArchHook {
 
     // ── guard ────────────────────────────────────────────────────────────────
     //
-    // Two boundaries the design pipeline broke in a real run, while its skills said the
-    // opposite in prose:
+    // Three boundaries the pipeline broke in real runs, while its skills said the opposite
+    // in prose:
     //   1. a design skill wrote a migration under src/ — src/ belongs to the executor;
-    //   2. a later use case edited the specs of an earlier, already-decided one.
+    //   2. a later use case edited the specs of an earlier, already-decided one;
+    //   3. a design run wrote a service block into docker-compose.yml — which the denylist
+    //      this mode used to carry (`src/**`) could not see, because the leaked file is
+    //      never the one somebody thought to forbid. Hence the allowlist below.
     //
     // Phases (args[1]):
-    //   prompt   UserPromptSubmit         a prompt ends any design phase; `/<design skill>` opens one
-    //   call     PreToolUse Skill|Agent   a design skill opens the phase; an executor agent closes it
-    //   write    PreToolUse Write|Edit    blocks (exit 2) what the two boundaries forbid
+    //   prompt   UserPromptSubmit         a prompt ends any phase; `/<skill>` opens one
+    //   call     PreToolUse Skill|Agent   a skill opens the phase; an executor agent closes
+    //                                     it; a `blocked_during_design` class is refused
+    //   write    PreToolUse Write|Edit    blocks (exit 2) what the three boundaries forbid
     //
     // The phase is one file per session in the OS temp dir — never in the project, so it
-    // can't be committed. Which skills design, which agents execute, and which paths
-    // design can't write are data in extensions.json's `guard` block (invariants 7, 10).
-    // No `guard` block, no guard: this meta-repository has none to protect.
+    // can't be committed. It holds the active skill's NAME; the class, its territory and
+    // which agents execute are data (`skill_classes` and `guard` in extensions.json —
+    // invariants 7, 10). Territory is deny-by-default: while a phase is open, a write is
+    // allowed only where the active skill's `write_allow` says so. No phase open means no
+    // restriction — a person editing a file by hand is not a skill overstepping.
     //
     // Known gap, accepted: a design skill that asks in plain text instead of
     // AskUserQuestion gets its answer as a prompt, and that prompt ends the phase.
@@ -3472,20 +3663,20 @@ public class ArchHook {
     // that's the real fix whenever it applies, this is only the residual race around it).
     // lessons-learned-006 § 1. No file-level fix: nothing here can order two separate
     // hook processes. The workaround is procedural — orchestrators MUST NOT fire
-    // `Skill(<design_skills>)` and `Agent(<executor_agents>)` in the same message; do the
+    // `Skill(<a design_phase class>)` and `Agent(<executor_agents>)` in the same message; do the
     // Skill call, wait for its turn to end, then the Agent call in a separate turn.
     // `new-feature/SKILL.md`'s executor-offer pre-flight is the one place in this repo
     // that can trigger both in one branch — it documents the same rule inline.
 
     static void guard(String phase, String stdin) throws Exception {
-        Map<String, Object> cfg = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "guard"));
-        if (cfg == null) return;
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        if (sch == null || (sch.get("guard") == null && sch.get("skill_classes") == null)) return;
         Object in = Json.parse(stdin);
         Path state = guardState(asStr(get(in, "session_id")));
         switch (phase) {
-            case "prompt" -> guardPrompt(cfg, state, in);
-            case "call"   -> guardCall(cfg, state, in);
-            case "write"  -> guardWrite(cfg, state, in);
+            case "prompt" -> guardPrompt(sch, state, in);
+            case "call"   -> guardCall(sch, state, in);
+            case "write"  -> guardWrite(sch, state, in);
             default       -> { }
         }
     }
@@ -3496,23 +3687,57 @@ public class ArchHook {
         return Paths.get(System.getProperty("java.io.tmpdir"), "archhook-guard", s);
     }
 
-    static void guardPrompt(Map<String, Object> cfg, Path state, Object in) throws IOException {
+    static void guardPrompt(Map<String, Object> sch, Path state, Object in) throws IOException {
         Files.deleteIfExists(state);
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)").matcher(orEmpty(asStr(get(in, "prompt"))));
-        if (m.find() && asStrList(cfg.get("design_skills")).contains(m.group(1))) {
-            guardOpen(state, m.group(1));
-        }
+        if (m.find() && skillClassOf(sch, m.group(1)) != null) guardOpen(state, m.group(1));
     }
 
-    static void guardCall(Map<String, Object> cfg, Path state, Object in) throws IOException {
+    static void guardCall(Map<String, Object> sch, Path state, Object in) throws IOException {
         String tool = asStr(get(in, "tool_name"));
         if ("Skill".equals(tool)) {
             String skill = asStr(get(in, "tool_input", "skill"));
-            if (asStrList(cfg.get("design_skills")).contains(skill)) guardOpen(state, skill);
+            String cls = skillClassOf(sch, skill);
+            if (cls == null) return;                       // plugin skill: not our territory
+            guardRefuseBuildCall(sch, state, skill, cls);
+            // A phase is never replaced by a skill of its own class. Two skills of one class
+            // share a territory, so narrowing to the callee buys nothing — and it would
+            // silently shrink the caller's territory for the rest of the turn, which is what
+            // happens when project-bootstrap chains docker-architect in its step 4.10 and
+            // then keeps writing src/.
+            if (Files.isRegularFile(state) && cls.equals(skillClassOf(sch, readOrNull(state)))) {
+                return;
+            }
+            guardOpen(state, skill);
         } else if ("Agent".equals(tool) || "Task".equals(tool)) {
             String agent = asStr(get(in, "tool_input", "subagent_type"));
-            if (asStrList(cfg.get("executor_agents")).contains(agent)) Files.deleteIfExists(state);
+            if (asStrList(get(sch, "guard", "executor_agents")).contains(agent)) {
+                Files.deleteIfExists(state);
+            }
         }
+    }
+
+    /**
+     * A `blocked_during_design` class cannot be reached from inside an open `design_phase`
+     * one. This is what makes the design pipeline docs-only in the mechanism rather than in
+     * prose: `docker-architect` owns docker-compose.yml, and a `/new-feature` run reaches it
+     * by reporting the missing service, not by writing the file mid-design.
+     */
+    static void guardRefuseBuildCall(Map<String, Object> sch, Path state, String skill, String cls)
+            throws IOException {
+        if (!Boolean.TRUE.equals(get(sch, "skill_classes", "classes", cls, "blocked_during_design"))) return;
+        if (!Files.isRegularFile(state)) return;
+        String active = readOrNull(state);
+        String activeCls = skillClassOf(sch, active);
+        if (activeCls == null
+                || !Boolean.TRUE.equals(get(sch, "skill_classes", "classes", activeCls, "design_phase"))) {
+            return;
+        }
+        err("❌ `" + skill + "` is class `" + cls + "` and `" + active + "` (class `"
+                + activeCls + "`) is open — a design run does not materialize files.");
+        err("Record what is missing in the partial and in the consolidated spec, finish the run,");
+        err("then invoke `/" + skill + "` from a prompt of its own.");
+        System.exit(2);
     }
 
     static void guardOpen(Path state, String skill) throws IOException {
@@ -3520,24 +3745,36 @@ public class ArchHook {
         Files.writeString(state, skill, StandardCharsets.UTF_8);
     }
 
-    static void guardWrite(Map<String, Object> cfg, Path state, Object in) throws IOException {
+    static void guardWrite(Map<String, Object> sch, Path state, Object in) throws IOException {
         String file = asStr(get(in, "tool_input", "file_path"));
         if (file == null) return;
         String rel = relative(Paths.get(file));
+        Map<String, Object> cfg = asMap(sch.get("guard"));
 
-        // 1. Design phase open, a write under src/, not from inside an executor agent.
-        //    `agent_type` is only present when the call comes from a subagent.
+        // 1. A phase is open: the path must be in the active skill's territory. Deny by
+        //    default. `agent_type` is only present when the call comes from a subagent, and
+        //    an executor agent writes whatever it was delegated.
         String agent = asStr(get(in, "agent_type"));
-        boolean executor = agent != null && asStrList(cfg.get("executor_agents")).contains(agent);
-        if (Files.isRegularFile(state) && !executor
-                && matchesAny(asStrList(cfg.get("design_forbidden_paths")), rel)) {
-            err("❌ Design phase open (" + orDash(readOrNull(state)) + ") — " + rel + " is not a design output.");
-            err("Design writes only under docs/. Put the SQL or code in the partial as a code block;");
-            err("the executor agent materializes every file under src/.");
-            System.exit(2);
+        boolean executor = agent != null
+                && asStrList(get(sch, "guard", "executor_agents")).contains(agent);
+        if (Files.isRegularFile(state) && !executor) {
+            String active = readOrNull(state);
+            String cls = skillClassOf(sch, active);
+            List<String> allow = writeAllowOf(sch, active);
+            if (cls != null && !matchesAny(allow, rel)) {
+                err("❌ `" + active + "` is class `" + cls + "` — " + rel
+                        + " is outside its territory.");
+                err("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
+                        : String.join(", ", allow)));
+                err("Put the content in the spec as a code block, or finish the run and invoke the");
+                err("skill that owns this path. If the path is legitimately this skill's, widen");
+                err("skill_classes." + cls + " in " + SCHEMA_FILE + " — retrying will not help.");
+                System.exit(2);
+            }
         }
 
         // 2. A folder whose consolidated spec is approved or implemented is frozen.
+        if (cfg == null) return;
         Matcher m = Pattern.compile("^" + Pattern.quote(orEmpty(asStr(cfg.get("use_cases_dir")))) + "/(UC-[^/]+)/")
                 .matcher(rel);
         if (!m.find()) return;

@@ -33,6 +33,11 @@ Decision record: `@.claude/decisions/0034-git-publish-skill.md`.
 
 ## Contract
 
+**Class:** ops — the territory is `skill_classes.ops` in
+`@.claude/schemas/extensions.json`, and it is **empty**: this skill writes no file. Its whole
+effect is `git` over `Bash`, which the guard deliberately does not cover — a commit is not a
+file write, and the two confirmations below are what gate it.
+
 **Input (optional, from the invoking context):** a short description of what was just
 done — e.g. "initial scaffold, blueprint hexagonal, maven, features: rest,jpa" or
 "UC-001-order: order management feature". Used to build the commit message. No input →

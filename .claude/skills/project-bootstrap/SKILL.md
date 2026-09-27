@@ -544,8 +544,9 @@ blueprint** and needs one to run. A container is not business code: provisioning
 Postgres that `application.yml`'s own datasource URL already points at (or the OTLP
 collector its tracing endpoint already points at) invents nothing — the config from
 step 4.7.b already committed to that dependency existing. What *does* stay deferred to
-`docker-architect`, invoked later by hand or chained from `persistence-architect` /
-`messaging-architect` / `test-architect`, is anything a **use case** decides that isn't
+`docker-architect`, invoked later by hand — a design skill records the need and never chains
+that skill, `@.claude/decisions/0058-skill-classes-territory-schema.md` — is anything a
+**use case** decides that isn't
 already implied by an active `features:` flag: a non-default engine, a broker, an
 extra datastore. `@.claude/decisions/0011-bootstrap-without-business-code.md` governs
 that second category — a made-up aggregate competing with a real spec — not this one.
@@ -1033,7 +1034,20 @@ Lombok: `@.claude/rules/lombok.md` — the mechanical half (forbidding `@Data` a
 Don't reproduce these rules here. If you need one that doesn't exist in `rules/`,
 create the rule file first — don't write it inside this skill.
 
-## Skill contract
+## Why this is a skill and not an agent
+
+Form 1 (auto-invocable skill): it is a long generation procedure with no interview of its
+own, and `/init-project` already isolates the verbose part inside the `project-initializer`
+agent. Form 3 was rejected for this file because the three reasons for an agent (preserve
+context, restrict tools, change model) are satisfied by that caller, not by this procedure —
+two nested agents would only add a second boundary to pass the blueprint across.
+
+## Contract
+
+**Class:** build — the territory is `skill_classes.build`'s override for this skill in
+`@.claude/schemas/extensions.json`: the whole tree of the project being generated. It is the
+only skill with that reach, and it has it because the tree does not exist yet when it runs.
+`ArchHook.java guard` enforces it.
 
 **Reads before generating** — none of these auto-load at this point: the directory
 doesn't have any `.java` files touched yet, so `naming.md` and `error-handling.md`'s

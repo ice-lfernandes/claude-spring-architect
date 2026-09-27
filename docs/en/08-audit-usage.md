@@ -221,29 +221,37 @@ sequenceDiagram
     AU-->>U: reading + health + report to open
 ```
 
-## The `guard` hook — the two boundaries that stopped being prose
+## The `guard` hook — the three boundaries that stopped being prose
 
-Configuration in `extensions.json` → `guard`:
+Territory is **data**, in `extensions.json` → `skill_classes`: every skill belongs to one
+class (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), and the class declares
+the `write_allow`. The `guard` block keeps only the rest:
 
 ```json
-"design_skills": ["new-feature", "use-case-design", "domain-modeling", "rest-api-architect",
-                  "persistence-architect", "messaging-architect", "test-architect"],
-"executor_agents": ["java-spring-boot-developer", "archunit-installer", "commons-logging-installer"],
-"design_forbidden_paths": ["src/**", "**/src/**"],
+"executor_agents": ["java-spring-boot-developer", "archunit-installer",
+                    "commons-logging-installer", "project-initializer"],
 "use_cases_dir": "docs/use-cases",
 "frozen_statuses": ["approved", "implemented"]
 ```
 
 | Phase | Event | Effect |
 |---|---|---|
-| `guard prompt` | `UserPromptSubmit` | Closes the previous phase; opens a design phase if the prompt is `/<design_skill>` |
-| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<design_skill>)` opens the phase; `Agent(<executor_agent>)` closes it |
-| `guard write` | `PreToolUse` `Write\|Edit` under `**/src/**` or `docs/use-cases/**` | Rule 1: phase open + path in `design_forbidden_paths` + call not from an executor → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except the executor's single edit of `status: approved` to `status: implemented` |
+| `guard prompt` | `UserPromptSubmit` | Closes the previous phase; opens one if the prompt is `/<skill>` of any class |
+| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` opens the phase (never replaced by a skill of the same class); `Agent(<executor_agent>)` closes it; a `Skill` of a `blocked_during_design` class with a `design_phase` open → `exit 2` |
+| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, with no path filter | Rule 1: phase open + path **outside** the active skill's `write_allow` + call not from an executor → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except the executor's single edit of `status: approved` to `status: implemented` |
 
-Why it exists: a design skill once wrote migrations under `src/`, and a later use case
-rewrote the specs of an earlier one — both while the skills forbade it in prose
-(`lessons-learned-005`). Reopening a spec that was never implemented is deliberate:
-`status: draft` by hand.
+Why it exists: a design skill once wrote migrations under `src/`; a later use case rewrote
+the specs of an earlier one; and a design run wrote a `schema-registry` service into
+`docker-compose.yml` — all three while the skills forbade it in prose (`lessons-learned-005`,
+`lessons-learned-012` §§ 12, 13). The third is why the model is an allowlist and not a
+denylist: `docker-compose.yml` is not under `src/**`, and the file that leaks is never the one
+somebody listed. Reopening a spec that was never implemented stays deliberate: `status: draft`
+by hand.
+
+No phase open means no restriction — a person editing a file by hand is not a skill
+overstepping. And `schema` validates the other side of the same data: every `SKILL.md` on disk
+must sit in exactly one class, carry a `**Class:** <c>` line in its body, and have the
+sections its class requires.
 
 **Known pitfall:** `Skill(test-architect)` opens a phase and
 `Agent(commons-logging-installer)` closes one. Fired in the same turn, they are two

@@ -70,6 +70,12 @@ jobs:
       - name: hook reports a compose image tag that disagrees with src/test
         run: java .claude/.ci/ComposeTagTest.java
 
+      # lessons-learned-012 §§ 12, 13: a design run wrote a service into docker-compose.yml,
+      # which the old denylist (`src/**`) could not see. Territory is deny-by-default now,
+      # and that claim rots silently the first time a `write_allow` is widened by accident.
+      - name: guard keeps each skill inside its class's territory
+        run: java .claude/.ci/SkillTerritoryTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest

@@ -141,6 +141,10 @@ asking for the report is what finalizes it.
 
 ## Contract
 
+- **Class:** observer — the territory is `skill_classes.observer` in
+  `@.claude/schemas/extensions.json`, and it is **empty**: this skill writes no file. The
+  reports under `.claude/audit-usage/` are written by the `audit` hook, not by whoever reads
+  them. `ArchHook.java guard` enforces it.
 - **Reads** — the output of `ArchHook.java audit summary`; `.claude/audit-usage/*.md`;
   `.claude/audit-usage/nodes.jsonl` only to find the report of a chained piece
 - **Writes** — nothing

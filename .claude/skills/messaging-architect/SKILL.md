@@ -238,13 +238,16 @@ still transport.
    awk '/^services:[[:space:]]*$/{s=1;next} /^[^[:space:]#]/{s=0} s&&/^  [A-Za-z0-9_.-]+:[[:space:]]*(#.*)?$/{sub(/[[:space:]]*#.*$/,"");print}' docker-compose.yml
    ```
 
-   Missing → invoke `docker-architect` with this UC's folder, so the
-   dev-time broker matches the topic just designed. Don't edit `docker-compose.yml` here —
-   that skill is its single owner.
+   Missing → **record it** in the partial's § 6 as a pending service: the broker, the image
+   tag the spec assumes, and the one-line `/docker-architect` invocation that materializes it.
+   Do **not** invoke `docker-architect` and do not edit `docker-compose.yml`: that skill is
+   the file's single owner, it is class `build`, and `ArchHook.java guard` refuses the call
+   while a design run is open.
 
 10. **Report and stop.** Path of the file written, **the content of § 6** (each schema
-    requirement handed to `persistence-architect`, or "none"), whether `docker-architect`
-    ran, and what's missing for the folder to be complete (`20-persistencia.md`,
+    requirement handed to `persistence-architect`, or "none"), the pending broker service if
+    step 9 found one (and the command that fixes it),
+    and what's missing for the folder to be complete (`20-persistencia.md`,
     `40-testes.md`). Don't invoke anyone else — `persistence-architect` runs next in the
     pipeline and reads § 6 in its first pass.
 
@@ -267,6 +270,11 @@ executor agent that reads them when generating code.
 
 ## Contract
 
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. Writes inside the
+use case folder and nothing else: the broker service belongs to `docker-architect`, and a
+write to the compose file is refused with exit 2.
+
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md` (mandatory —
 stops without the second, or without its Events block naming external delivery),
 `@.claude/rules/messaging.md`, `@.claude/rules/architecture-ddd.md` (Adapters section),
@@ -278,9 +286,11 @@ and the active blueprint's `packages.map`.
 **Does not write Java code.** The publisher, listener, and payload classes come from the
 executor agent.
 
-**Does not edit `docker-compose.yml`.** When step 9 finds no `kafka` service, it invokes
-`docker-architect` instead of writing the service block itself — single owner, see that
-skill's Contract.
+**Does not edit `docker-compose.yml`, and does not invoke `docker-architect` either.** When
+step 9 finds no `kafka` service, it records the pending service in the partial's § 6 with the
+`/docker-architect` command that creates it. The guard enforces both halves: the file is
+outside this class's territory, and a `build`-class skill is unreachable from inside a design
+run.
 
 **Does not model the dedupe table, nor the outbox table.** When step 5a or step 4a finds
 none, it names the need as a row of § 6 for `persistence-architect` to pick up — this skill

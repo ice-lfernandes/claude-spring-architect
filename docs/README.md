@@ -3,8 +3,9 @@
 English version: [`docs/en/`](en/README.md).
 
 Esta pasta documenta como as peças do `.claude/` deste repositório colaboram para
-executar os comandos principais — `/init-project`, `/new-feature`, `/arch-doctor` e
-`/audit-usage` — e o que este projeto faz que os repositórios semelhantes não fazem.
+executar os comandos principais — `/init-project`, `/new-feature`, `/arch-doctor`,
+`/audit-usage` e `/arch-adopt` — e o que este projeto faz que os repositórios
+semelhantes não fazem.
 Quem chega pela primeira vez deve começar por
 [09-diferenciais.md](09-diferenciais.md).
 
@@ -26,14 +27,17 @@ os outros.
 | [05-blueprints.md](05-blueprints.md) | Contrato `_schema.md`, o que cada blueprint declara, como criar um blueprint customizado |
 | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) | Workflow de `/claude-code-architect-designer`: as 5 fases, matriz de decisão, campos de frontmatter, exemplo completo |
 | [07-ci-validate.md](07-ci-validate.md) | `validate.yml`: por que existe, o que cada job/passo verifica, o que ainda falta cobrir |
-| [08-audit-usage.md](08-audit-usage.md) | Trilha de auditoria: hook `audit` (relatório por execução, tokens e custo por peça), hook `guard` (design não escreve `src/`, spec aprovado congelado), skill `/audit-usage` |
+| [08-audit-usage.md](08-audit-usage.md) | Trilha de auditoria: hook `audit` (relatório por execução, tokens e custo por peça), hook `guard` (cada skill escreve só o território da própria classe, spec aprovado congelado), skill `/audit-usage` |
 | [09-diferenciais.md](09-diferenciais.md) | O que este repositório faz que templates, pacotes de skills e bundles de agents no GitHub não fazem — tabela comparativa, fontes, e o que não é diferencial |
+| [10-arch-adopt.md](10-arch-adopt.md) | Workflow de `/arch-adopt`: instalar este `.claude/` num projeto que nunca foi gerado aqui, ou atualizar um que está atrasado — modo `export`, manifesto de cópia, stamp de proveniência |
 
 ## Como este repositório está organizado (referência rápida)
 
 ```
 .claude/
 ├── hooks/ + settings.json   infra de enforcement — determinístico
+├── schemas/                 o que o hook lê: campos válidos, classes de skill,
+│                            território de escrita, manifesto de export
 ├── skills/                  procedimento + exemplares
 ├── agents/                  execução isolada
 ├── rules/ + blueprints/     normas e dados (folhas — não chamam ninguém)

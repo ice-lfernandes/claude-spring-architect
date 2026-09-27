@@ -10,8 +10,8 @@ description: >
   containerizing a new dependency, configuring Testcontainers at the compose level,
   "docker-compose is missing the database", or wanting a dashboard, a trace UI, or
   somewhere to actually look at spans and metrics instead of the collector's `debug`
-  stdout — also fires when persistence-architect or test-architect detect a service
-  their spec needs isn't in docker-compose.yml yet.
+  stdout — or when a use case spec reports a pending service that persistence-architect,
+  messaging-architect or test-architect recorded and did not write.
 argument-hint: "[path of the UC-NNN-<slug> folder, or empty for a manual service add]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -50,15 +50,23 @@ second one arms that rule:
 
 ## How it's invoked
 
-Three paths, all real: `/docker-architect` by hand, when the user wants a service added
-or checked; chained by `persistence-architect`, `messaging-architect`, or
-`test-architect`, mid-procedure, when their spec names a dependency
-`docker-compose.yml` doesn't have yet; and chained by `project-bootstrap` itself,
-right after it writes the base pair in its own step 4.10, once per blueprint feature
-that's already active and needs a container (`persistence-jpa` → Postgres,
-`observability` → the OTLP collector) — see `project-bootstrap/SKILL.md` step 4.10.
-That's why it carries no `disable-model-invocation` — a skill the model can't see is a
-skill a sibling skill can't call.
+Two paths, both real: `/docker-architect` by hand — when the user wants a service added or
+checked, and that is how a pending service recorded by a use case spec gets materialized; and
+chained by `project-bootstrap` itself, right after it writes the base pair in its own
+step 4.10, once per blueprint feature that's already active and needs a container
+(`persistence-jpa` → Postgres, `observability` → the OTLP collector) — see
+`project-bootstrap/SKILL.md` step 4.10. That's why it carries no
+`disable-model-invocation` — a skill the model can't see is a skill a sibling skill can't
+call.
+
+**No longer chained mid-design.** `persistence-architect`, `messaging-architect` and
+`test-architect` used to invoke this skill the moment their spec named a missing service;
+they now record it in the partial and report the `/docker-architect` command instead.
+`ArchHook.java guard` enforces it: this skill is class `build`, and a `build`-class call is
+refused while a design run is open. Why it changed: a design run hand-wrote a
+`schema-registry` service with no template, no tag verification and no healthcheck, inside a
+diff everybody reviewed as a spec (`lessons-learned-012.md` §§ 12, 13). Record:
+`@.claude/decisions/0058-skill-classes-territory-schema.md`.
 
 The guard against firing on an unborn project isn't the frontmatter: it's the entry rule
 above.
@@ -276,6 +284,12 @@ from that shape; don't wait for a template to exist before extending a project t
 one today.
 
 ## Contract
+
+**Class:** build — the territory is `skill_classes.build`'s override for this skill in
+`@.claude/schemas/extensions.json`: the compose file and the `docker/` tree, nothing else.
+`ArchHook.java guard` enforces it, and it also makes this skill **unreachable from inside a
+design run** — `/new-feature` and the layer skills record the missing service in the spec,
+and the user invokes `/docker-architect` from a prompt of its own afterwards.
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, `25-mensageria.md`, and
 `40-testes.md` when a folder is given; the active blueprint's `features:` (`persistence-jpa`,

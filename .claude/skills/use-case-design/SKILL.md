@@ -18,7 +18,7 @@ allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
 Empty above → none yet, this will be `UC-001`. (`find`, not an `ls` glob: under zsh an unmatched glob
 aborts the command before any fallback runs.)
 
-## Request
+## Target
 
 $ARGUMENTS
 
@@ -192,6 +192,11 @@ table, this section, and the final report — which prints the command the user 
 next, with the spec's path as the argument.
 
 ## Contract
+
+**Class:** design — the territory is `skill_classes.design` in
+`@.claude/schemas/extensions.json` and `ArchHook.java guard` enforces it. Writes inside the
+use case folder and the backlog, nothing else; a write anywhere outside is refused with exit
+2, not reported.
 
 **Reads** `@.claude/rules/architecture-ddd.md` (Application section — where the
 transaction opens, what doesn't go in the signatures), `@.claude/rules/naming.md`,
