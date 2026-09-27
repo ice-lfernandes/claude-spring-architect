@@ -90,6 +90,11 @@ direction above is unchanged.
    **A skill has a second obligation on top of `export`:** a class in `skill_classes`,
    which is what gives it a body shape and a write territory. A skill in no class has no
    territory — `schema` fails by name on it, in this repo and inside a generated project.
+   **An agent has the same second obligation**, in `agent_classes`: its class fixes the
+   sections its body carries, the frontmatter fields it must declare (`model` and `tools`
+   always — two of the three reasons it is allowed to exist), whether it may write at all
+   (`executor`), and the paths it may write. Territory there is keyed on `agent_type`, so it
+   holds no matter which skill phase the caller left open.
 10. **Recognized frontmatter fields, `.mcp.json`'s server fields, and `settings.json`'s
     hook events and entry fields are data with a single owner.** The list lives in
     `.claude/schemas/extensions.json`, `ArchHook.java schema` is what reads it, and any
@@ -130,6 +135,7 @@ direction above is unchanged.
 | Reading that trail back — spend per skill and agent across runs, which report to open | skill `audit-usage` — aggregation by `ArchHook.java audit summary`, the skill renders; runs in the **generated project**, where the trail exists; here it reports the trail is off. An observer: the hook leaves it no report, via `audit.exclude_skills` in `@.claude/schemas/extensions.json` |
 | Which norm covers what | `@.claude/rules/00-index.md` |
 | Which class a skill is, what it may write, and what sections its body must carry | `skill_classes` in `@.claude/schemas/extensions.json` — `ArchHook.java schema` validates the body, `guard` enforces the territory |
+| The same for an agent — plus which frontmatter fields it owes and whether it may write at all | `agent_classes` in `@.claude/schemas/extensions.json`. Three classes: `driver` (interviews and delegates, writes a tree that doesn't exist yet), `executor` (implements an approved spec), `installer` (one-shot setup, narrow fixed paths). `executor: true` is the single owner of who may write — the old `guard.executor_agents` list is gone |
 | Which frontmatter fields are valid in each file type | `@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` |
 | Why a skill, norm, or agent exists in the form it's in | `@.claude/decisions/README.md` |
 | Contract every blueprint fulfills | `@.claude/blueprints/_schema.md` |
@@ -157,6 +163,12 @@ direction above is unchanged.
   the missing compose service is recorded in the partial and materialized afterwards by
   `/docker-architect`. Territory is unrestricted while no skill phase is open, which is why
   editing a file by hand is never blocked.
+- **A subagent's write is judged by `agent_classes`, not by the caller's phase.** Every write
+  a subagent makes carries its `agent_type`, and `guard` checks that path against the agent's
+  own `write_allow` — so an open design phase neither widens nor narrows it, and nothing
+  closes the phase on an `Agent` call any more (it used to, which silently unrestricted the
+  *caller* for the rest of the turn). An agent no class lists falls back to the caller's
+  phase, because nothing else describes what it may write.
 - **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim
   query, and the `app.outbox.*` values that pace the claim. `messaging-architect` declares
   that the case needs one and which delivery guarantee the relay must honour, and never a

@@ -162,6 +162,13 @@ An agent exists for one of these:
 3. **Control cost or capability** — `model: haiku` for triage, `opus` where failure is
    expensive.
 
+Two of them are frontmatter, and `agent_classes.universal_fields` requires both on every
+agent: `tools` (reason 2) and `model` (reason 3). An agent that declares neither has
+documented none of its reasons and inherits whatever the caller had — which changes in
+silence when the default changes. A class also fixes the sections its body carries and the
+paths it may write; `permissionMode: bypassPermissions` is forbidden outright (criterion 8,
+trust surface).
+
 None applies → it's a skill. This is anti-pattern #1, and the most expensive one: one
 more piece to maintain, no gain.
 
@@ -255,6 +262,7 @@ their reasoning. Specific always beats vague.
 | 17 | New Java mode where a registration would do | A Form 7c proposed while `check`, `format`, `schema`, `tests`, `guard`, `audit`, or `compose` already runs the check | Form 7a alone, reusing the mode |
 | 18 | Hook that blocks without saying how to proceed | Exit `2` with a bare "not allowed" on stderr | Name the rule, the file, and the alternative. That text is all the blocked person sees |
 | 19 | Shell string in `command` | A pipe, `&&`, or redirect inside `"command"` instead of exec form | `command` = binary, `args` = arguments. Rejected by `ArchHook.java schema` |
+| 20 | Skill or agent with no class | Created without an entry in `skill_classes` / `agent_classes`, so nothing describes its body or its territory | Add it to a class. `ArchHook.java schema` fails by name; for an agent, `model` and `tools` are required too, since they are two of the three reasons in § 5 |
 
 ---
 
@@ -271,7 +279,7 @@ nearest integer and show what cost points.
 | 4 | **Enforcement** | Relies on persuasion where a guarantee was available |
 | 5 | **Maintenance cost** | Adds pieces or indirection without proportional gain |
 | 6 | **Precedent in the repo** | No similar form already in use; novel design |
-| 7 | **Complete propagation** | Doesn't close routing, `00-index`, the `export` manifest, or the § 9 decision record |
+| 7 | **Complete propagation** | Doesn't close routing, `00-index`, the `export` manifest, the class block a new skill or agent needs (`skill_classes` / `agent_classes`), or the § 9 decision record |
 | 8 | **Trust surface** | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 | 9 | **Cost of always running** | Frequency of the event × cost per firing, and whether `if`/`matcher` narrows before a process is spawned. A `PostToolUse` hook with no filter pays a JVM startup on every edit in the repo; a `SessionStart` hook pays once. Also loses a point when the hook blocks (exit `2`) on a judgment call that will sometimes be wrong — the cost there isn't milliseconds, it's a person stuck |
 

@@ -223,13 +223,13 @@ sequenceDiagram
 
 ## The `guard` hook — the three boundaries that stopped being prose
 
-Territory is **data**, in `extensions.json` → `skill_classes`: every skill belongs to one
-class (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), and the class declares
-the `write_allow`. The `guard` block keeps only the rest:
+Territory is **data**, in two sibling blocks of `extensions.json`. `skill_classes`: every
+skill belongs to one class (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), and
+the class declares the `write_allow`. `agent_classes`: the same for every agent (`driver`,
+`executor`, `installer`), plus the frontmatter fields its class owes and whether it may write
+at all. The `guard` block keeps only the rest:
 
 ```json
-"executor_agents": ["java-spring-boot-developer", "archunit-installer",
-                    "commons-logging-installer", "project-initializer"],
 "use_cases_dir": "docs/use-cases",
 "frozen_statuses": ["approved", "implemented"]
 ```
@@ -237,8 +237,8 @@ the `write_allow`. The `guard` block keeps only the rest:
 | Phase | Event | Effect |
 |---|---|---|
 | `guard prompt` | `UserPromptSubmit` | Closes the previous phase; opens one if the prompt is `/<skill>` of any class |
-| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` opens the phase (never replaced by a skill of the same class); `Agent(<executor_agent>)` closes it; a `Skill` of a `blocked_during_design` class with a `design_phase` open → `exit 2` |
-| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, with no path filter | Rule 1: phase open + path **outside** the active skill's `write_allow` + call not from an executor → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except the executor's single edit of `status: approved` to `status: implemented` |
+| `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` opens the phase (never replaced by a skill of the same class); a `Skill` of a `blocked_during_design` class with a `design_phase` open → `exit 2`. An `Agent` call changes nothing |
+| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, with no path filter | Rule 1: the write carries an `agent_type` with a class → the path must be in **that agent's** `write_allow`, phase or no phase; otherwise, phase open + path **outside** the active skill's `write_allow` → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except the executor's single edit of `status: approved` to `status: implemented` |
 
 Why it exists: a design skill once wrote migrations under `src/`; a later use case rewrote
 the specs of an earlier one; and a design run wrote a `schema-registry` service into
@@ -249,15 +249,19 @@ somebody listed. Reopening a spec that was never implemented stays deliberate: `
 by hand.
 
 No phase open means no restriction — a person editing a file by hand is not a skill
-overstepping. And `schema` validates the other side of the same data: every `SKILL.md` on disk
-must sit in exactly one class, carry a `**Class:** <c>` line in its body, and have the
-sections its class requires.
+overstepping. And `schema` validates the other side of the same data: every `SKILL.md` and
+every `.claude/agents/*.md` on disk must sit in exactly one class, carry a `**Class:** <c>`
+line in its body, and have the sections its class requires — an agent also the frontmatter
+fields (`model` and `tools` always) and no `permissionMode: bypassPermissions`.
 
-**Known pitfall:** `Skill(test-architect)` opens a phase and
-`Agent(commons-logging-installer)` closes one. Fired in the same turn, they are two
-`PreToolUse` hooks with no ordering guarantee, and the loser blocks every write under
-`src/` by the other agent for the rest of the run. That's why `/new-feature` runs the
-two in separate turns.
+**Retired pitfall, kept because the shape recurs.** `Skill(test-architect)` opened a phase
+and `Agent(commons-logging-installer)` closed one; fired in the same turn they were two
+`PreToolUse` hooks with no ordering guarantee, and the loser blocked every write under `src/`
+by the other agent for the rest of the run (138k tokens, zero files written).
+`agent_classes` removed the mechanism, not the symptom: a subagent's write is judged by its
+own `agent_type`, so no phase reaches it and nothing closes a phase on an `Agent` call. The
+lesson that survives is the general one — two independent hook processes in one turn have no
+order, so no boundary may depend on which of them ran first.
 
 ## What `doctor` shows
 

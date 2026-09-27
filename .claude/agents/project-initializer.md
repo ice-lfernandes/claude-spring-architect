@@ -9,6 +9,8 @@ tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill
 model: opus
 ---
 
+# `project-initializer` — driver of a project's first generation
+
 You are responsible for turning an empty directory into a Spring Boot project ready for
 AI-assisted development.
 
@@ -33,10 +35,16 @@ drives.
 
 ## Contract
 
-**Executor:** yes — writes the whole tree of the project being generated while the
-`/init-project` phase is open, and `init-project`'s own territory is empty on purpose. The
-guard bypasses an `agent_type` listed in `guard.executor_agents`; without that marker and
-that entry, every file of a fresh project would be refused with exit 2.
+**Class:** driver — the territory is `agent_classes.driver` in
+`@.claude/schemas/extensions.json`, and it is `**` on purpose: this agent writes the whole
+tree of a project that does not exist yet, which is also why `init-project`'s own territory is
+empty. `ArchHook.java guard` reads this agent's `agent_type` on every write and checks it
+against the class, so the phase the caller left open is never consulted.
+
+**Executor:** yes — writes while the `/init-project` phase is open. The class grants it
+(`executor: true`), and `ArchHook.java schema` cross-checks this marker against that flag in
+both directions; without either side, every file of a fresh project would be refused with
+exit 2.
 
 **Input** — optional, via command arguments: `groupId`, `artifactId`,
 `projectName`, `blueprint`, `buildTool` (`maven|gradle`), `features[]`. Any missing
@@ -54,7 +62,7 @@ field is obtained through the interview.
 
 <!-- > **Hands off to** `feature-builder`. uncomment when feature-builder is created -->
 
-## Steps
+## Procedure
 
 Follow `.claude/skills/project-bootstrap/SKILL.md` in the defined order.
 

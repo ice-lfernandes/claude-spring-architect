@@ -26,6 +26,7 @@ flowchart TD
         H3[InjectionPathTest.java — injection relativa ao cwd → exit 2]
         H4[ComposeTagTest.java — tag de image divergente de src/test → reportada]
         H5[SkillTerritoryTest.java — escrita fora do write_allow da classe → exit 2]
+        H6[AgentTerritoryTest.java — agent_type fora do write_allow da classe → exit 2]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -57,8 +58,9 @@ flowchart TD
 
 | Job / passo | Verifica | Contra o quê |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest` e `SkillTerritoryTest` nas três OSes | Decisão D8 — "cross-platform" como fato, não alegação |
-| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` roda o modo `guard` sobre o `extensions.json` real em 11 casos: sem fase aberta nada restringe, dentro e fora do `write_allow`, o bypass do agent executor, a recusa de `Skill(<build>)` com fase de design aberta, o território mais estreito do callee, e o fechamento da fase no `Agent` executor | O território ser allowlist é o tipo de alegação que apodrece em silêncio: vale até alguém alargar uma entrada de `write_allow` sem perceber. O caso que motivou tudo — um run de design escrevendo `docker-compose.yml`, arquivo que nenhuma denylist nomeava — é um dos 11 |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest`, `SkillTerritoryTest` e `AgentTerritoryTest` nas três OSes | Decisão D8 — "cross-platform" como fato, não alegação |
+| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` roda o modo `guard` sobre o `extensions.json` real em 13 casos: sem fase aberta nada restringe, dentro e fora do `write_allow`, o `agent_type` prevalecendo sobre a fase aberta, a recusa de `Skill(<build>)` com fase de design aberta, o território mais estreito do callee, e a fase sobrevivendo a uma chamada `Agent` até o próximo prompt | O território ser allowlist é o tipo de alegação que apodrece em silêncio: vale até alguém alargar uma entrada de `write_allow` sem perceber. O caso que motivou tudo — um run de design escrevendo `docker-compose.yml`, arquivo que nenhuma denylist nomeava — é um dos 13 |
+| `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` roda o mesmo modo sobre `agent_classes` em 18 casos: cada installer dentro e fora da sua lista estreita, as grafias single- e multi-module do mesmo caminho, o executor alcançando a única linha de spec que ele fecha, o driver escrevendo qualquer coisa, e um agent sem classe caindo na fase do chamador | Cada agent prometia o próprio território em prosa (`**Does not write:** docker-compose.yml`) enquanto o guard dava bypass irrestrito aos quatro. A promessa agora é dado, e os dois bloqueios que mais importam — `archunit-installer` recusado no `docker-compose.yml`, e recusado no source principal — são casos deste arquivo |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` monta um projeto descartável com `docker-compose.yml` e um `DockerImageName.parse(...)` em `src/test`, e exige que `ArchHook.java compose` reporte a divergência, expanda `${VAR:-default}` e fique calado quando as tags batem | A suíte passar contra uma versão de engine que ninguém roda. Roda nas três OSes porque a pergunta 3 do modo `compose` compara dois arquivos e não precisa de Docker — o que também prova que o casamento de `src/test/` sobrevive ao separador do Windows |
 | `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariante 10 — `extensions.json` é o dono único do frontmatter reconhecido; campo inventado ou `metadata:` falha alto em vez de ser ignorado em silêncio pelo runtime. O mesmo modo exige que toda injection `` !`command` `` resolva caminho a partir de `${CLAUDE_PROJECT_DIR}` — uma relativa reporta arquivo ausente sempre que o cwd do shell derivou |
 | `skill name doesn't shadow a native slash command` | nome de pasta de skill contra uma denylist (`doctor`, `init`, `context`, `memory`, …) | Uma skill substituir um comando nativo em silêncio, sem erro |
@@ -131,6 +133,7 @@ java .claude/.ci/BoundaryTest.java
 java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/ComposeTagTest.java
 java .claude/.ci/SkillTerritoryTest.java
+java .claude/.ci/AgentTerritoryTest.java
 ```
 
 Um `git push` sem rodar isso antes ainda passa pelo hook local (`settings.json`), mas

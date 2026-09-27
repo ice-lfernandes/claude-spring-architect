@@ -144,10 +144,13 @@ dois gaps que só importam quando o primeiro `.java` vai ser escrito em `src/`:
 | Classes de logging/máscara ausentes | pasta `commons` inexistente ou só com `package-info.java` | `Agent(commons-logging-installer)` — treze exemplares de `new-feature/templates/commons/` traduzidos para o package real, mais `AutoConfiguration.imports` e as dependências AOP |
 
 Cada gap encontrado vira um `AskUserQuestion` (**Install now** / **Skip for this run**);
-nenhum gap, nenhuma pergunta. Os dois nunca disparam no mesmo turno: `Skill(test-architect)`
-abre uma fase de design no hook `guard` e `Agent(commons-logging-installer)` fecha uma —
-sem ordem garantida entre os dois `PreToolUse`, o perdedor bloquearia toda escrita em
-`src/` do outro agent (aconteceu: 138k tokens, zero arquivos escritos).
+nenhum gap, nenhuma pergunta. Os dois podem disparar no mesmo turno — e não podiam antes:
+`Skill(test-architect)` abria uma fase de design no hook `guard` e
+`Agent(commons-logging-installer)` fechava uma, sem ordem garantida entre os dois
+`PreToolUse`, e o perdedor bloqueava toda escrita em `src/` do outro agent (aconteceu: 138k
+tokens, zero arquivos escritos). `agent_classes` encerrou o problema: a escrita de um
+subagent é julgada pelo `agent_type` dela, então nenhuma fase a alcança e nada mais fecha
+fase numa chamada `Agent`.
 
 ## Ciclo de vida do spec
 

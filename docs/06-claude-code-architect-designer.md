@@ -133,7 +133,7 @@ sequenceDiagram
     CMD->>FM: confirma campos nativos do frontmatter
     CMD->>FS: gera a partir de templates/*.example
     CMD->>FS: seção "## Why this is <form>" no corpo
-    CMD->>FS: propaga — CLAUDE.md, 00-index.md, extensions.json (skill_classes/export), settings.json, conforme a forma
+    CMD->>FS: propaga — CLAUDE.md, 00-index.md, extensions.json (skill_classes/agent_classes/export), settings.json, conforme a forma
     CMD->>FS: java claude plugin validate .claude/skills
     end
     CMD-->>U: Fase 5 · relatório — arquivos criados/alterados, decisão, validate, aviso de restart
@@ -317,7 +317,7 @@ mostra o que custou pontos:
 | 4 | Enforcement | Depende de persuasão onde garantia estava disponível |
 | 5 | Custo de manutenção | Adiciona peça ou indireção sem ganho proporcional |
 | 6 | Precedente no repo | Nenhuma forma similar já em uso; design novo |
-| 7 | Propagação completa | Não fecha routing, `00-index`, o manifesto `export`, `skill_classes`, ou registro de decisão da § 9 |
+| 7 | Propagação completa | Não fecha routing, `00-index`, o manifesto `export`, `skill_classes`/`agent_classes`, ou registro de decisão da § 9 |
 | 8 | Superfície de confiança | Concede capacidade maior do que a tarefa precisa — servidor MCP que lê arquivos e chama API arbitrária, agent com `permissionMode: bypassPermissions`, skill com `allowed-tools` sem escopo onde uma regra mais estreita bastaria |
 | 9 | Custo de rodar sempre | Frequência do evento × custo por disparo, e se `if`/`matcher` estreita antes de subir processo. Um `PostToolUse` sem filtro paga uma JVM em toda edição do repo; um `SessionStart` paga uma vez. Perde ponto também quando o hook bloqueia (exit 2) num julgamento que às vezes vai estar errado — aí o custo não é milissegundo, é uma pessoa travada |
 
@@ -399,7 +399,7 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
    | Skill | Tabela de routing do `@CLAUDE.md`, **e** uma classe em `skill_classes` de `@.claude/schemas/extensions.json`: a lista `skills`, um `overrides.<skill>.write_allow` quando o default da classe não serve, e a linha `**Class:** <c>` no corpo. O `schema` falha pelo nome de uma skill sem classe, e cobra as seções que a classe exige |
    | Skill de desenvolvimento (válida dentro do projeto gerado) | `export.skills.include` de `@.claude/schemas/extensions.json` — o `schema` falha numa skill que não está nem em `include` nem em `exclude` |
    | Rule | `@.claude/rules/00-index.md` (tabela de rules escritas; remove de "planned"). Toda rule viaja por default; uma rule com território de pacote precisa também de entrada em `export.derived_paths`, e o `schema` falha sem ela |
-   | Agent | Tabela de routing do `@CLAUDE.md`, se invocável por nome; `export.agents.include` ou `exclude` |
+   | Agent | Tabela de routing do `@CLAUDE.md`, se invocável por nome; `export.agents.include` ou `exclude`; **e** uma classe em `agent_classes` de `@.claude/schemas/extensions.json`: a lista `agents`, um `overrides.<agent>.write_allow` quando o default da classe não serve, a linha `**Class:** <c>` no corpo, e `**Executor:** yes` quando a classe concede `executor: true`. O `schema` cobra as seções e os campos de frontmatter que a classe exige — `model` e `tools` sempre |
    | Seção do `CLAUDE.md` | Nada mais — mas confirma que o total continua abaixo de ~200 linhas |
    | Servidor MCP, só este repo (eixo 13 = "meta-repo") | `.mcp.json` na raiz; o doc de setup; linha de routing do `@CLAUDE.md`, se nenhuma já cobre |
    | Servidor MCP, também o projeto gerado (eixo 13 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/mcp.json.example` e seu próprio doc de setup — ambos já nomeados em `export.optional_copy`, então não há mais nada a ligar |

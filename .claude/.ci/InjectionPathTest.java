@@ -11,6 +11,7 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.*;
 import java.util.regex.*;
 
 public class InjectionPathTest {
@@ -121,7 +122,7 @@ public class InjectionPathTest {
         Files.createDirectories(tmp.resolve(".claude/agents"));
         Files.copy(schema, tmp.resolve(".claude/schemas/extensions.json"));
         Files.writeString(tmp.resolve(".claude/skills/probe-skill/SKILL.md"), skill);
-        stubExecutorAgents(schema, tmp);
+        stubAgents(schema, tmp);
         stubSkillClass(tmp);
 
         ProcessBuilder pb = new ProcessBuilder(
@@ -182,26 +183,35 @@ public class InjectionPathTest {
     }
 
     /**
-     * `schema` also cross-checks `guard.executor_agents` against the agent files on disk,
-     * and the throwaway project has none. The names come from the real schema rather than
-     * a copy here, so adding an executor agent doesn't break this test.
+     * `schema` also requires every agent named in `agent_classes` to exist on disk, with the
+     * body, sections and frontmatter its class asks for — and the throwaway project has no
+     * agents at all. The stub is generated from the real schema rather than from a copy here,
+     * so adding an agent or a required section doesn't break this test. Only the classes that
+     * grant `executor: true` get the marker; a class that doesn't would fail on its presence.
      */
-    static void stubExecutorAgents(Path schema, Path tmp) throws IOException {
+    static void stubAgents(Path schema, Path tmp) throws IOException {
         String json = Files.readString(schema, StandardCharsets.UTF_8);
-        Matcher block = Pattern.compile("\"executor_agents\"\\s*:\\s*\\[([^]]*)]").matcher(json);
-        if (!block.find()) return;
-        Matcher name = Pattern.compile("\"([^\"]+)\"").matcher(block.group(1));
-        while (name.find()) {
-            Files.writeString(tmp.resolve(".claude/agents/" + name.group(1) + ".md"), """
-                    ---
-                    name: %s
-                    description: CI stub, exists only so the executor cross-check passes.
-                    ---
-
-                    ## Contract
-
-                    **Executor:** yes
-                    """.formatted(name.group(1)));
+        Matcher cls = Pattern.compile("\"([a-z][a-z0-9_-]*)\"\\s*:\\s*\\{([^{]*?)"
+                + "\"agents\"\\s*:\\s*\\[([^]]*)]", Pattern.DOTALL).matcher(json);
+        while (cls.find()) {
+            boolean executor = cls.group(2).contains("\"executor\": true");
+            List<String> sections = new ArrayList<>();
+            Matcher sec = Pattern.compile("\"(## [^\"]+)\"").matcher(cls.group(2));
+            while (sec.find()) sections.add(sec.group(1));
+            Matcher name = Pattern.compile("\"([^\"]+)\"").matcher(cls.group(3));
+            while (name.find()) {
+                StringBuilder b = new StringBuilder();
+                b.append("---\nname: ").append(name.group(1))
+                        .append("\ndescription: CI stub, exists only so the agent_classes"
+                                + " cross-check passes.\nmodel: sonnet\ntools: Read, Write\n"
+                                + "effort: medium\n---\n\n# `").append(name.group(1))
+                        .append("` — CI stub\n\n## Why this is an agent (Form 3)\n\nStub.\n\n"
+                                + "## Contract\n\n**Class:** ").append(cls.group(1)).append("\n");
+                if (executor) b.append("\n**Executor:** yes\n");
+                b.append("\n## Procedure\n\nStub.\n");
+                for (String s : sections) b.append("\n").append(s).append("\n\nStub.\n");
+                Files.writeString(tmp.resolve(".claude/agents/" + name.group(1) + ".md"), b);
+            }
         }
     }
 

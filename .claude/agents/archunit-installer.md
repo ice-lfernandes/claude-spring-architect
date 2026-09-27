@@ -27,9 +27,15 @@ in this repo (`java-spring-boot-developer`).
 
 ## Contract
 
-**Executor:** yes — writes under `src/` while a design phase may still be open; must be
-listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
-`ArchHook.java schema`.
+**Class:** installer — the territory is `agent_classes.installer.overrides.archunit-installer`
+in `@.claude/schemas/extensions.json`: the POMs, `ArchitectureTest.java`, and
+`TestcontainersConfiguration.java`. Nothing else. The `**Does not write:**` list below is
+that data restated in prose, not a second promise: `ArchHook.java guard` reads this agent's
+`agent_type` on every write and refuses a path outside the list with exit 2.
+
+**Executor:** yes — writes under `src/` while a design phase may still be open. The class
+grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
+that flag in both directions.
 
 **Input (required):** project root. Precondition — business classes already exist — is
 the caller's (`test-architect`'s) to check before invoking; this agent doesn't re-verify

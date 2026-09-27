@@ -26,6 +26,7 @@ flowchart TD
         H3[InjectionPathTest.java — cwd-relative injection → exit 2]
         H4[ComposeTagTest.java — image tag disagreeing with src/test → reported]
         H5[SkillTerritoryTest.java — write outside the class's write_allow → exit 2]
+        H6[AgentTerritoryTest.java — agent_type outside its class's write_allow → exit 2]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -57,8 +58,9 @@ flowchart TD
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest` and `SkillTerritoryTest` on all three OSes | Decision D8 — "cross-platform" as a fact, not a claim |
-| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` runs the `guard` mode over the real `extensions.json` across 11 cases: no phase open restricts nothing, inside and outside the `write_allow`, the executor-agent bypass, the refusal of `Skill(<build>)` while a design phase is open, the callee's narrower territory, and the phase closing on an executor `Agent` call | "Deny by default" is the kind of claim that rots in silence: it holds until one `write_allow` entry is widened by accident. The case that motivated the whole thing — a design run writing `docker-compose.yml`, a file no denylist named — is one of the 11 |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest`, `SkillTerritoryTest` and `AgentTerritoryTest` on all three OSes | Decision D8 — "cross-platform" as a fact, not a claim |
+| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` runs the `guard` mode over the real `extensions.json` across 13 cases: no phase open restricts nothing, inside and outside the `write_allow`, `agent_type` winning over the open phase, the refusal of `Skill(<build>)` while a design phase is open, the callee's narrower territory, and the phase surviving an `Agent` call until the next prompt | "Deny by default" is the kind of claim that rots in silence: it holds until one `write_allow` entry is widened by accident. The case that motivated the whole thing — a design run writing `docker-compose.yml`, a file no denylist named — is one of the 13 |
+| `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` runs the same mode over `agent_classes` across 18 cases: each installer inside and outside its narrow list, the single- and multi-module spellings of the same path, the executor reaching the one spec line it closes, the driver writing anything, and an unclassed agent falling back to the caller's phase | Each agent used to promise its territory in prose (`**Does not write:** docker-compose.yml`) while the guard gave all four an unconditional bypass. The promise is data now, and the two blocks that matter most — `archunit-installer` refused `docker-compose.yml`, and refused main source — are cases in this file |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` builds a throwaway project holding a `docker-compose.yml` and a `DockerImageName.parse(...)` under `src/test`, and requires `ArchHook.java compose` to report the divergence, expand `${VAR:-default}`, and stay quiet when the tags agree | The suite passing against an engine version nobody runs. It runs on all three OSes because question 3 of the `compose` mode compares two files and needs no Docker — which also proves the `src/test/` path match survives Windows' separator |
 | `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored by the runtime. The same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
 | `skill name doesn't shadow a native slash command` | skill folder name against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
@@ -134,6 +136,7 @@ java .claude/.ci/BoundaryTest.java
 java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/ComposeTagTest.java
 java .claude/.ci/SkillTerritoryTest.java
+java .claude/.ci/AgentTerritoryTest.java
 ```
 
 A `git push` without running this first still goes through the local hook

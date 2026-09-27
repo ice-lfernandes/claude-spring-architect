@@ -23,9 +23,15 @@ All three reasons from invariant 6 apply.
 
 ## Contract
 
-**Executor:** yes — writes under `src/` while a design phase may still be open; must be
-listed in `guard.executor_agents` (`.claude/schemas/extensions.json`), checked by
-`ArchHook.java schema`.
+**Class:** executor — the territory is `agent_classes.executor` in
+`@.claude/schemas/extensions.json`: `src/**` plus the one `UC-*-spec.md` line below. Every
+write this agent makes carries its `agent_type`, and `ArchHook.java guard` checks that path
+against the class instead of against whatever skill phase the caller left open. A path
+outside it is exit 2, and the fix is the data, never a retry.
+
+**Executor:** yes — writes under `src/` while a design phase may still be open. The class
+grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
+that flag in both directions.
 
 **Ownership:** owns `src/**` and `src/test/**` — generated code.
 
