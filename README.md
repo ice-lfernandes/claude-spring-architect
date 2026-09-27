@@ -140,11 +140,13 @@ This repository is a **generator with enforcement**:
 | Boundary derived from the blueprint and blocked by a hook at write time | ✅ | ❌ | ❌ | ❌ generic hooks |
 | Hook as one Java file, exec form, tested on Linux/macOS/Windows in CI | ✅ | ❌ | — | ❌ bash |
 | Deterministic audit trail: cost per skill/agent, chain, files, failures | ✅ | ❌ | ❌ | ❌ |
-| Spec-first pipeline; design can't write `src/`, approved specs frozen by hook | ✅ | ❌ | ❌ | partial |
+| Spec-first pipeline; a design run can only write `docs/`, approved specs frozen by hook | ✅ | ❌ | ❌ | partial |
 | The `.claude/`'s own design invariants gated in CI | ✅ | ❌ | ❌ | ❌ |
 | Frontmatter schema that fails on a field the runtime would ignore silently | ✅ | ❌ | ❌ | ❌ |
+| Every skill's body structure and write territory validated as data by a hook | ✅ | ❌ | ❌ | ❌ |
 | Code exemplars compiled against a real Initializr classpath in CI | ✅ | ❌ | ❌ | ❌ |
 | Generated project self-contained, generator not needed afterwards | ✅ | ✅ | — | ✅ |
+| Project installs/updates its own `.claude/` from a manifest, with provenance | ✅ | ❌ merge by hand | partial | ❌ |
 
 Full analysis, sources, and what is deliberately *not* a differentiator:
 [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
@@ -160,10 +162,16 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
 - **Three levels of instruction** — global constitution (`CLAUDE.md` under 200 lines),
   per-module context, detailed norms loaded on demand via `paths` rewritten from the
   blueprint's `packages.map`.
-- **Hook-based enforcement, one Java file, eight modes** — forbidden imports and
-  incremental compile on post-edit, tests of changed modules on stop, frontmatter and
-  `.mcp.json` schema with secret scan, design/`src/` guard, audit trail, compose health,
-  doctor.
+- **Hook-based enforcement, one Java file, nine modes** — forbidden imports and
+  incremental compile on post-edit, tests of changed modules on stop, schema validation
+  (frontmatter, skill bodies, `.mcp.json` with secret scan, hook registrations, the export
+  manifest), the write-territory guard, audit trail, compose health, doctor, and the
+  deterministic `export` of a project's `.claude/`.
+- **Every skill has a class, and the class is data** — each skill sits in exactly one of
+  six classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`) in
+  `schemas/extensions.json`, and the class declares the sections its body must carry **and**
+  the paths it may write. `schema` enforces the structure, `guard` the territory: a write
+  outside it is `exit 2`, deny by default. A skill in no class fails validation by name.
 - **Boundaries derived from the blueprint** — one `forbidden_imports` declaration feeds
   the module's `CLAUDE.md`, `.claude/forbidden-imports.txt`, and the POM graph; ArchUnit
   and a JaCoCo gate (80% lines / 70% branches) are installed by an agent when code
@@ -182,6 +190,13 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
 - **Git offer, behind two confirmations** — after a green bootstrap build or a
   successful feature implementation, `git-publish` offers to `git init`/commit and
   `gh repo create`+push. `git push` is always `ask`, `--force` is denied.
+- **Adoption and update of the AI layer** — `/arch-adopt` installs this `.claude/` into a
+  project that was never generated here, or pulls a newer version into one that is behind.
+  It refuses a dirty worktree, writes through the deterministic `export` mode (a data
+  manifest, not a prose copy table), and stamps `.claude/.arch-provenance.json` so
+  `/arch-doctor` can name every locally edited file *before* the next update overwrites it.
+  The only creation skill that travels into the generated project — that is how a project
+  updates itself once the plugin that delivered it is gone.
 
 ---
 
@@ -197,7 +212,9 @@ claude-spring-architect/
 └── .claude/
     ├── settings.json              # hooks + permissions (versioned)
     ├── settings.local.json        # (gitignored) personal overrides
-    ├── schemas/extensions.json    # single owner of recognized frontmatter, .mcp.json fields, audit/guard config
+    ├── schemas/extensions.json    # single owner of: recognized frontmatter, skill classes and their
+    │                               #   write territory, .mcp.json fields, hook registrations,
+    │                               #   audit/guard config, and the export manifest
     ├── rules/                     # norms, on-demand (leaves of the graph)
     │   ├── 00-index.md            #   map of norm → file → paths → who verifies
     │   ├── architecture-ddd.md    #   paths come from the blueprint at generation time
@@ -222,6 +239,7 @@ claude-spring-architect/
     │   │   ├── references/        #   blueprint selection, dependency catalog
     │   │   └── templates/         #   real, compilable exemplars (*.example): POMs, CLAUDE.md, settings.json, CI, Docker…
     │   ├── claude-code-architect-designer/     #   decides skill vs agent vs rule vs MCP — stays in this repo
+    │   ├── arch-adopt/            #   /arch-adopt — installs/updates this .claude/ in a project — copied
     │   ├── arch-doctor/           #   /arch-doctor — copied into the generated project
     │   ├── use-case-design/       #   pipeline 1 — copied
     │   ├── domain-modeling/       #   pipeline 2 — copied
@@ -240,11 +258,12 @@ claude-spring-architect/
     │   ├── archunit-installer.md          #   test-architect's setup mode — copied
     │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
     ├── hooks/
-    │   └── ArchHook.java          # enforcement, one file, eight modes
+    │   └── ArchHook.java          # enforcement, one file, nine modes
     └── .ci/
-        ├── BoundaryTest.java      # CI: injects a forbidden import, requires exit 2
-        ├── InjectionPathTest.java # CI: injects a cwd-relative `!`…``, requires exit 2
-        └── ComposeTagTest.java    # CI: compose image tag vs. the one src/test pins
+        ├── BoundaryTest.java        # CI: injects a forbidden import, requires exit 2
+        ├── InjectionPathTest.java   # CI: injects a cwd-relative `!`…``, requires exit 2
+        ├── ComposeTagTest.java      # CI: compose image tag vs. the one src/test pins
+        └── SkillTerritoryTest.java  # CI: a write outside the active class's territory, requires exit 2
 ```
 
 There is no `commands/`: slash commands live as skills with
@@ -256,13 +275,18 @@ history, not norms, and `CLAUDE.md` cites them only as the "why" behind a piece.
 
 **The generated project is self-contained.** Whoever clones it does not need this
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
-skills (`arch-doctor`, `use-case-design`, `domain-modeling`, `rest-api-architect`,
-`persistence-architect`, `messaging-architect`, `test-architect`, `new-feature`,
-`java-patterns`, `docker-architect`, `git-publish`, `audit-usage`), the executor
-agents (`java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`),
-`ArchHook.java`, and `schemas/extensions.json`. Only `project-bootstrap`,
-`init-project`, `claude-code-architect-designer`, `project-initializer`, and
-`blueprints/` are left out — they serve before the project exists. The project also
+skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
+`rest-api-architect`, `persistence-architect`, `messaging-architect`, `test-architect`,
+`new-feature`, `java-patterns`, `docker-architect`, `git-publish`, `audit-usage`), the
+executor agents (`java-spring-boot-developer`, `archunit-installer`,
+`commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
+travels is **data**, the `export` block of `schemas/extensions.json`, checked against disk
+by `ArchHook.java schema`. Only `project-bootstrap`, `init-project`,
+`claude-code-architect-designer`, `project-initializer`, and the blueprint **catalog** are
+left out — they serve before the project exists; the **active** blueprint does travel,
+because the next update has to resolve the id the provenance stamp records. `arch-adopt` is
+the one creation skill that travels: it is how the project pulls a newer `.claude/`
+afterwards. The project also
 gets its own `README.md`, `README.pt-br.md`, and `.claude/audit-usage/GENESIS.md`
 recording the run that created it.
 
@@ -277,6 +301,7 @@ recording the run that created it.
 | "The domain doesn't import Spring" | `rules/architecture-ddd.md` + `blueprints/*.yaml` | Norm + verifiable data |
 | "Run spotless after editing" | `hooks/ArchHook.java` + `settings.json` | Verifiable by command |
 | "Never read `application-prod.yml`" | `settings.json` → `permissions.deny` | Compliance isn't requested, it's enforced |
+| "This skill may only write under `docs/use-cases/`" | `schemas/extensions.json` → `skill_classes` | Territory is data one hook reads, not a promise in prose |
 | "This project uses Maven and Java 21" | `CLAUDE.md` | Always true, always relevant |
 | A ritual you trigger by hand (`/release`) | `skills/release/SKILL.md` + `disable-model-invocation: true` | No new `commands/` are created |
 
@@ -314,6 +339,14 @@ with `mvnw.cmd` in place of `./mvnw` once the project is generated.
 
 Inside the session, `/arch-doctor` tells you whether enforcement is actually active on
 this machine.
+
+**Already have a project?** Step 2 above is the manual route, and it is also the one you
+never have to repeat: from inside the session, `/arch-adopt` installs this `.claude/` into a
+project that was never generated here, and later pulls a newer version into it — refusing a
+dirty worktree, writing through the deterministic `export` mode, and leaving the diff ready
+for `git diff` / `git checkout`. It stamps `.claude/.arch-provenance.json`, so the next
+update can tell you which files you edited by hand before it overwrites them. See
+[`docs/en/10-arch-adopt.md`](docs/en/10-arch-adopt.md).
 
 Then, **inside** the session:
 
@@ -415,7 +448,8 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      use-case-design → domain-modeling → rest-api-architect → persistence-architect
         → messaging-architect (conditional) → test-architect
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
-     │  design skills write only under docs/ — never src/, never git
+     │  design skills write only their class's territory — docs/ only, never src/,
+     │  never docker-compose.yml, never git; a build-class skill can't even be called
      │
      ▼  consolidates into UC-NNN-spec.md (status: draft)
      │
@@ -439,9 +473,11 @@ next one's `input-contract`.
 ```
 Write/Edit
      │
-     ├─ ArchHook guard    design skill open + path under src/ → blocked      (PreToolUse, exit 2)
+     ├─ ArchHook guard    path outside the active skill's class territory → blocked
+     │                    (PreToolUse, exit 2 — allowlist, deny by default)
      │                    spec folder approved/implemented → blocked
-     ├─ ArchHook schema   frontmatter of .claude/**/*.md, .mcp.json           (PreToolUse, exit 2)
+     │                    Skill(build-class) during a design run → blocked
+     ├─ ArchHook schema   frontmatter + body of .claude/**/*.md, .mcp.json    (PreToolUse, exit 2)
      ├─ ArchHook format   spotless on the touched module                      (never blocks)
      ├─ ArchHook check    forbidden imports + incremental compilation         (blocks: exit 2)
      │                    └─ reads .claude/forbidden-imports.txt
@@ -454,9 +490,10 @@ end of task (Stop)
                           └─ respects stop_hook_active, doesn't loop
 ```
 
-In this meta-repo only `schema`, `format`, `check`, and `tests` are wired: there is no
-`src/` to guard and no `.claude/audit-usage/`, so `guard` and `audit` return
-immediately.
+In this meta-repo `schema`, `format`, `check`, `tests` **and `guard`** are wired — `guard`
+because the `meta` class has a territory here too (`.claude/**`, `CLAUDE.md`, `.mcp.json`,
+`docs/**`, `.github/**`). Only `audit` stays off: there is no `.claude/audit-usage/`, and
+auditing the design of the tool instead of its use is not the trail anyone wants.
 
 ### Audit trail — what every run cost
 
@@ -651,7 +688,11 @@ instruction.
 `enforced-by` and `status` survive in `rules/*.md`, alongside the native `paths`, as
 review annotation.
 
-Everything the model must obey goes in the file's **body**, never in the frontmatter.
+Everything the model must obey goes in the file's **body**, never in the frontmatter. The
+skill's **class** follows the same rule and for the same reason: it is a `**Class:** <c>`
+line in the `## Contract` section, cross-checked by `ArchHook.java schema` against
+`schemas/extensions.json` — not a frontmatter field, which the runtime would ignore
+without a word.
 
 ## Anti-patterns
 
@@ -665,6 +706,8 @@ Everything the model must obey goes in the file's **body**, never in the frontma
 | Fixed versions | Issue on day 30 of a public template | Resolve at runtime |
 | Slow hook | Someone comments out the hook | `-o -q -pl <module> -am` |
 | Hardcoded architecture in the agent | Adding "Onion" requires editing prompts | Declarative blueprint |
+| Skill with no class | `schema` fails by its name; without a class it would have no write territory | Add it to a `skill_classes` class and state `**Class:** <c>` in the body |
+| Territory promised in prose | A `## Contract` says "writes only under `docs/`" and a run writes `docker-compose.yml` | Territory is `write_allow` data the `guard` hook enforces |
 
 ---
 
@@ -728,15 +771,17 @@ The same file carries every mode, so there is one place to read and one to test:
 | `check` | `PostToolUse` Write\|Edit | yes | forbidden imports + incremental `test-compile` of the touched module |
 | `format` | `PostToolUse` Write\|Edit | no | `spotless:apply` on the module |
 | `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
-| `schema` | `PreToolUse` / `PostToolUse` / `Stop` | yes | frontmatter of skills, agents, rules, and `.mcp.json` against `schemas/extensions.json`; secret scan |
-| `guard` | `UserPromptSubmit`, `PreToolUse` | yes | design skills never write `src/`; approved specs are immutable (generated project only) |
+| `schema` | `PreToolUse` / `PostToolUse` / `Stop` | yes | frontmatter **and body** of skills, agents, rules; `.mcp.json` with a secret scan; hook registrations; the export manifest — all against `schemas/extensions.json` |
+| `guard` | `UserPromptSubmit`, `PreToolUse` | yes | every skill writes only its class's territory (allowlist, deny by default); a `build`-class skill is unreachable during a design run; approved specs are immutable |
 | `audit` | ten lifecycle events | no | execution trail of every skill and agent (generated project only) |
-| `compose` | manual; folded into `doctor` | no | every compose service `running`, no foreign container on this project's ports |
+| `compose` | manual; folded into `doctor` | no | every compose service `running`, no foreign container on this project's ports, no `image:` tag disagreeing with the one `src/test` pins |
 | `doctor` | manual (`/arch-doctor`) | no | diagnoses the setup on this machine |
+| `export` | manual (invoked by `/arch-adopt`) | no | writes a target project's `.claude/` from the `export` manifest, transformed for the active blueprint, plus the provenance stamp |
 
-Every list the hook reads — recognized fields, audited skills' exclusions, redaction
-patterns, guard paths — is data in `schemas/extensions.json`, never a constant in the
-Java. A new skill is audited, and a new field validated, without touching the hook.
+Every list the hook reads — recognized fields, skill classes and their write territory,
+audited skills' exclusions, redaction patterns, the export manifest — is data in
+`schemas/extensions.json`, never a constant in the Java. A new skill is audited, its body
+validated and its territory enforced without touching the hook: it is one entry in a class.
 
 Assumed cost: ~1s of JVM startup per invocation, in single-file source mode. In a hook
 that's already waiting on a `test-compile`, it's not noticeable.
@@ -749,10 +794,12 @@ Verification on this machine:
 
 In CI, `validate.yml` runs `ArchHook doctor`, a `BoundaryTest` that injects a
 forbidden import and requires exit 2, an `InjectionPathTest` that injects a
-cwd-relative `` !`command` `` and requires exit 2, and a `ComposeTagTest` that requires a
-compose `image:` tag disagreeing with the one `src/test` pins to be reported — on
-`ubuntu-latest`, `macos-latest`, and `windows-latest`. Without the OS matrix,
-"cross-platform" would be a claim; with it, it's a fact verified on every push.
+cwd-relative `` !`command` `` and requires exit 2, a `ComposeTagTest` that requires a
+compose `image:` tag disagreeing with the one `src/test` pins to be reported, and a
+`SkillTerritoryTest` that drives the `guard` mode across 11 cases and requires exit 2 for
+every write outside the active skill class's territory — on `ubuntu-latest`,
+`macos-latest`, and `windows-latest`. Without the OS matrix, "cross-platform" would be a
+claim; with it, it's a fact verified on every push.
 
 ## CI (`validate.yml`)
 
@@ -765,9 +812,11 @@ holds only as long as whoever writes the next skill remembers it.
 
 | Job / step | Verifies | Guards against |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest` and `ComposeTagTest` on `ubuntu-latest`, `macos-latest`, `windows-latest` | Decision D8 — "cross-platform" as a fact, not a claim |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest` and `SkillTerritoryTest` on `ubuntu-latest`, `macos-latest`, `windows-latest` | Decision D8 — "cross-platform" as a fact, not a claim |
+| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` drives the `guard` mode over the real `extensions.json` across 11 cases: no phase open restricts nothing, inside and outside the `write_allow`, the executor-agent bypass, the refusal of a `build`-class `Skill` call during a design run, the callee's narrower territory, and the phase closing on an executor `Agent` call | "Deny by default" rotting silently — it holds until one `write_allow` entry is widened by accident. The case that motivated it (a design run writing `docker-compose.yml`, a file no denylist named) is one of the 11 |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` builds a throwaway project holding a `docker-compose.yml` and a `DockerImageName.parse(...)` under `src/test`, and requires `ArchHook.java compose` to report the divergence, expand `${VAR:-default}`, and stay quiet when the tags agree | The suite passing against an engine version nobody runs. Runs on all three OSes because that comparison reads two files and needs no Docker |
 | `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored at runtime. Same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
+| `skill body matches its class` | the same `schema` mode: every `SKILL.md` on disk sits in exactly one `skill_classes` class, declares `**Class:** <c>` in its body, and carries the sections that class requires | Structure by review. Nine skills said `## Contract`, one said `## Skill contract`, two had none at all — and `claude plugin validate` printed `✔ Validation passed` over all of it |
 | `skill name doesn't shadow a native slash command` | skill folder names against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
 | `new blueprint doesn't touch prompts` | adding a blueprint leaves `.claude/skills` and `.claude/agents` untouched | Invariant 7 — architectures are data |
 | `rules is a leaf of the graph` | no rule mentions "skill", "agent", "subagent" | Invariant 1 |
@@ -777,8 +826,8 @@ holds only as long as whoever writes the next skill remembers it.
 | `blueprint-declared templates exist on disk` | every `templates.<role>` in a blueprint resolves to a real file | A blueprint pointing at a template that was renamed or deleted |
 | `each norm has a single owner` | a fixed list of known terms appears in at most one file under `rules/` | Invariant 2 — narrow by construction, see note below |
 | `no dependencies outside the Java ecosystem` | no `pip install`, `npm install`, `node `, bare `python` in `.claude/` | Decision D7 |
-| `every norm paths matches some blueprint` / `norm is in the bootstrap's derivation table` | a rule's `paths` glob names a package some blueprint declares, and step 6.6 of `project-bootstrap` knows to rewrite it | Gap 8 of `decisions/0024-lessons-learned-001-remediation.md` — a rule that silently never auto-loads |
-| `every rule, skill and agent has a row in the bootstrap copy list` | every file in `rules/` has a row in §6.6 of `project-bootstrap/SKILL.md`, and every skill and agent has a row marked ✅ or ❌ in §§6.7/6.8 | Invariant 9 — those tables **are** the copy lists that make the generated project self-contained. A new norm missing from §6.6 breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
+| `every norm paths matches some blueprint` / `norm is in the derivation table` | a rule's `paths` glob names a package some blueprint declares, and `export.derived_paths` knows to rewrite it | Gap 8 of `decisions/0024-lessons-learned-001-remediation.md` — a rule that silently never auto-loads |
+| `the export manifest matches disk` | every file the `export` block names exists; every skill and agent is in `include` **or** `exclude`; every rule with a package territory has a `derived_paths` entry | Invariant 9 — that manifest **is** the copy list that makes the generated project self-contained. A new norm missing from it breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
 | `decisions/ doesn't grow paths or enter 00-index.md` | no file in `decisions/` declares `paths:`; none is listed in `rules/00-index.md` | `decisions/` is history, not a rule — see Known pitfalls |
 | `no hardcoded Spring/Java version outside decisions/` | no `Spring Boot X.Y` / `Java NN` written as fact in `rules/`, `skills/`, `blueprints/`, `CLAUDE.md` | Invariant 8 — versions are resolved via Spring Initializr, never written from memory. Excludes the `JDK 21+` minimum-requirement line and dated "Tested to compile" notes in exemplars, which record a past verification, not a version to use |
 | `exemplar-imports` job | every `import` in a `.java.example` resolves against JARs from a real `start.spring.io` request, and none uses a name denylisted as deprecated | Gaps 4, 5, 9 of `decisions/0024-lessons-learned-001-remediation.md` — an exemplar that "compiles in the head of whoever wrote it" |
@@ -798,7 +847,7 @@ writes), a `concurrency` group with `cancel-in-progress` (`push: [main]` and
 Not yet in `validate.yml`, known gaps:
 
 - Invariant 9 (the generated project is self-contained) is **half** covered: the copy-list
-  step above proves §§6.6/6.7/6.8 cover the disk, which is the part whose failure mode was
+  step above proves the `export` manifest covers the disk, which is the part whose failure mode was
   silent. That the generated project actually compiles and holds no dead path is still
   checked by hand, via the command block at `project-bootstrap/SKILL.md` §8 ("Verify") —
   it requires generating a real project against the Initializr and hasn't been automated
@@ -815,9 +864,11 @@ Not yet in `validate.yml`, known gaps:
 | [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md) | What this repository does that similar ones don't, with sources and the honest non-differentiators |
 | [`docs/en/00-overview.md`](docs/en/00-overview.md) | The full graph of skills, agents, rules, hooks, and who calls whom |
 | [`docs/en/01-file-types.md`](docs/en/01-file-types.md) | How each piece behaves in the Claude Code runtime |
-| [`docs/en/02-init-project.md`](docs/en/02-init-project.md) · [`03-new-feature.md`](docs/en/03-new-feature.md) · [`04-arch-doctor.md`](docs/en/04-arch-doctor.md) | The three commands, step by step, with example output |
+| [`docs/en/02-init-project.md`](docs/en/02-init-project.md) · [`03-new-feature.md`](docs/en/03-new-feature.md) · [`04-arch-doctor.md`](docs/en/04-arch-doctor.md) | The three main commands, step by step, with example output |
 | [`docs/en/05-blueprints.md`](docs/en/05-blueprints.md) · [`.claude/blueprints/README.md`](.claude/blueprints/README.md) | The blueprint contract, and pros/cons of each architecture |
-| [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md) | The audit trail, the guard hook, and `/audit-usage` |
+| [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md) | The audit trail, the guard hook (skill classes and write territory), and `/audit-usage` |
+| [`docs/en/10-arch-adopt.md`](docs/en/10-arch-adopt.md) | `/arch-adopt`: installing or updating this `.claude/` in an existing project, the `export` manifest, the provenance stamp |
+| [`docs/en/06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The eight forms an extension can take, the decision matrix, and how a new piece propagates |
 | [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
 | [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
 

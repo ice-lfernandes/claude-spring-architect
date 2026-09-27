@@ -71,6 +71,26 @@ conversation history — the skill's body becomes the subagent's prompt
 today: skills here prefer to explicitly delegate via the `Agent tool` to a named
 `.claude/agents/*.md` when isolation is needed (see § Agent below).
 
+**The skill's class — the part the runtime knows nothing about.** The runtime has no
+notion of "which files this skill may write" or "which sections its body must carry".
+Here that is data, in the `skill_classes` block of `.claude/schemas/extensions.json`:
+every skill belongs to exactly one of six classes, and the class declares both.
+
+| Class | Skills | Write territory |
+|---|---|---|
+| `design` | the 6 that write use-case partials | the UC folder + `BACKLOG.md` |
+| `orchestrator` | `new-feature`; `init-project` | the use case's `docs/**`; `init-project` writes nothing (it delegates) |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `java-patterns` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only |
+| `observer` | `arch-doctor`, `audit-usage` | nothing |
+| `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
+| `ops` | `git-publish` | nothing — its effect is `git`, over Bash |
+
+`ArchHook.java schema` enforces the structure (the class declared in the body as
+`**Class:** <c>`, every required section present) and `guard` enforces the territory,
+with exit 2 on any write outside it. A skill in no class has no territory — and `schema`
+fails by its name. Details in
+[08-audit-usage.md § The `guard` hook](08-audit-usage.md).
+
 ---
 
 ## Rule
@@ -234,18 +254,19 @@ system the model **cannot** opt to skip.
 
 **Purpose:** everything that must always hold, without depending on the model
 remembering — `CLAUDE.md` § Invariant 6: *"if a rule must always hold, it's a hook or
-`permissions.deny` — not prose in markdown."* `ArchHook.java` has eight modes:
+`permissions.deny` — not prose in markdown."* `ArchHook.java` has nine modes:
 
 | Mode | Event | Blocks? | What it does | Wired here? |
 |---|---|---|---|---|
 | `check` | `PostToolUse` (Write\|Edit) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module | Yes |
 | `format` | `PostToolUse` (Write\|Edit) | Never | `spotless:apply` on the touched module | Yes |
 | `tests` | `Stop` | Yes (exit 2) | Runs tests of the modules changed since `HEAD` | Yes |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter and `.mcp.json` fields against `.claude/schemas/extensions.json`, with a secret scan over `headers`/`env` | Yes |
-| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Yes (exit 2) | An open design skill never writes under `src/`; a spec folder that is `approved`/`implemented` is immutable | Generated project only |
+| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter, each `SKILL.md`'s **body** against its class (`skill_classes`), `.mcp.json` fields with a secret scan over `headers`/`env`, `settings.json`'s hook entries, and the `export` manifest against disk | Yes |
+| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Yes (exit 2) | Every skill writes only its own class's territory (allowlist, deny by default); a `build`-class skill is unreachable during a design run; a spec folder that is `approved`/`implemented` is immutable | Yes, in both |
 | `audit` | 10 lifecycle events | Never | Execution trail of every skill and agent: one Markdown report per invocation + ledgers | Generated project only — switched on by the existence of `.claude/audit-usage/` |
-| `compose` | Manual; folded into `doctor` | Never | Every compose service is `running`; no foreign container publishes a port this project declares | Yes |
+| `compose` | Manual; folded into `doctor` | Never | Every compose service is `running`; no foreign container publishes a port this project declares; no `image:` tag disagrees with the one `src/test` pins | Yes |
 | `doctor` | Manual (`/arch-doctor`) | Never | Diagnoses the setup on this machine | Yes |
+| `export` | Manual (invoked by `/arch-adopt`) | Never | Writes a target project's `.claude/` from the `export` manifest, transformed for the active blueprint, and writes the provenance stamp | Yes — see [10-arch-adopt.md](10-arch-adopt.md) |
 
 The `guard` and `audit` modes are detailed in [08-audit-usage.md](08-audit-usage.md).
 Every list the hook reads — recognized fields, skills excluded from auditing, redaction

@@ -72,8 +72,11 @@ sequenceDiagram
 | `Audit` | N execuções registradas em `.claude/audit-usage/` (avisa se `pricing.json` falta) | ⚪ sem o diretório — trilha OFF (opcional; é o caso deste meta-repo) |
 | `Audit rule inference` | a inferência de regras renderiza sem erro para um `.java` sintético | ❌ `auditRules()` lança — todo relatório congelaria assim que uma execução tocasse `src/**` |
 | `MCP` | N servidores declarados em `.mcp.json`, todos válidos | ❌ N problemas — rodar `java ArchHook.java schema`; ou "no .mcp.json" (opcional) |
-| `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio | ❌ serviço em `created`/`exited`, ou porta publicada por outro projeto — detalhe linha a linha; sem compose ou sem `docker`, "not checked (optional)" |
+| `Hooks` | N registros válidos em M eventos | ❌ evento desconhecido, `matcher` em evento que não lê um, ou string de shell no `command` — os quatro modos de falhar silenciosamente de um hook |
+| `Provenance` | nenhum arquivo do `.claude/` editado depois do stamp `.claude/.arch-provenance.json` | ⚠️ lista os arquivos editados localmente — um `arch-adopt` sobrescreveria cada um. No repositório de origem: `⚪ origin repository — writes stamps, carries none` |
+| `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio, e nenhuma tag de `image:` divergindo da que `src/test` fixa em `DockerImageName.parse` | ❌ serviço em `created`/`exited`, porta publicada por outro projeto, ou tag divergente — detalhe linha a linha. A comparação de tags não precisa de Docker: lê os dois arquivos |
 | `git HEAD` | existe pelo menos 1 commit | ❌ sem commits — o hook `tests` não roda (`git diff HEAD` falha) |
+| `UC references` | toda pasta `docs/use-cases/UC-NNN-slug/` citada por um arquivo versionado existe no disco | ❌ citação órfã, com arquivo e linha — apagar ou renomear um caso de uso deixa as citações para trás, e cada uma estava correta no commit que a escreveu. Sem `docs/use-cases/`, "nothing to check (optional)" — é o caso deste meta-repo |
 
 A linha final resume: `✅ Setup operational.` só aparece quando **ao mesmo tempo**
 `Boundaries` tem regras > 0 **e** o wrapper do Maven foi encontrado. Qualquer outra

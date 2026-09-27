@@ -70,6 +70,26 @@ conversa — o corpo da skill vira o prompt do subagent (`claude-help.md` §
 preferem delegar via `Agent tool` explicitamente para um `.claude/agents/*.md` nomeado,
 quando isolamento é necessário (ver § Agent abaixo).
 
+**Classe da skill — a parte que o runtime não conhece.** O runtime não tem nenhuma noção
+de "que arquivos esta skill pode escrever" nem de "que seções o corpo dela precisa ter".
+Aqui isso é dado, no bloco `skill_classes` de `.claude/schemas/extensions.json`: cada
+skill pertence a exatamente uma das seis classes, e a classe declara duas coisas.
+
+| Classe | Skills | Território de escrita |
+|---|---|---|
+| `design` | as 6 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
+| `orchestrator` | `new-feature`; `init-project` | `docs/**` do caso de uso; `init-project` não escreve nada (delega) |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `java-patterns` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/` |
+| `observer` | `arch-doctor`, `audit-usage` | nada |
+| `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
+| `ops` | `git-publish` | nada — o efeito é `git`, via Bash |
+
+`ArchHook.java schema` cobra a estrutura (classe declarada no corpo com `**Class:** <c>`,
+seções obrigatórias presentes) e `guard` cobra o território, com exit 2 em qualquer
+escrita fora dele. Uma skill que não está em nenhuma classe não tem território — e o
+`schema` falha pelo nome dela. Detalhes em
+[08-audit-usage.md § Hook `guard`](08-audit-usage.md).
+
 ---
 
 ## Rule
@@ -229,18 +249,19 @@ modelo **não pode** optar por pular.
 
 **Propósito:** tudo que precisa valer sempre, sem depender de o modelo lembrar —
 `CLAUDE.md` § Invariant 6: *"se uma regra precisa valer sempre, é um hook ou
-`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem oito modos:
+`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem nove modos:
 
 | Modo | Evento | Bloqueia? | O que faz | Ligado aqui? |
 |---|---|---|---|---|
 | `check` | `PostToolUse` (Write\|Edit) | Sim (exit 2) | Imports proibidos (via `.claude/forbidden-imports.txt`) + compilação incremental do módulo tocado | Sim |
 | `format` | `PostToolUse` (Write\|Edit) | Nunca | `spotless:apply` no módulo tocado | Sim |
 | `tests` | `Stop` | Sim (exit 2) | Roda testes dos módulos alterados desde `HEAD` | Sim |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules e os campos de `.mcp.json` contra `.claude/schemas/extensions.json`, com scan de segredos em `headers`/`env` | Sim |
-| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Sim (exit 2) | Skill de design aberta não escreve em `src/`; pasta de spec `approved`/`implemented` é imutável | Só no projeto gerado |
+| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules, o **corpo** de cada `SKILL.md` contra a classe dela (`skill_classes`), os campos de `.mcp.json` com scan de segredos em `headers`/`env`, as entradas de hook de `settings.json`, e o manifesto `export` contra o disco | Sim |
+| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Sim (exit 2) | Cada skill escreve só o território da própria classe (allowlist, deny por default); skill de classe `build` é inalcançável durante um run de design; pasta de spec `approved`/`implemented` é imutável | Sim, nos dois |
 | `audit` | 10 eventos do ciclo de vida | Nunca | Trilha de execução de toda skill e agent: relatório Markdown por invocação + ledgers | Só no projeto gerado — liga pela existência de `.claude/audit-usage/` |
-| `compose` | Manual; dobrado em `doctor` | Nunca | Todo serviço do compose está `running`; nenhum container alheio publica uma porta que este projeto declara | Sim |
+| `compose` | Manual; dobrado em `doctor` | Nunca | Todo serviço do compose está `running`; nenhum container alheio publica uma porta que este projeto declara; nenhuma tag de `image:` divergindo da que `src/test` fixa | Sim |
 | `doctor` | Manual (`/arch-doctor`) | Nunca | Diagnóstico do setup na máquina | Sim |
+| `export` | Manual (invocado por `/arch-adopt`) | Nunca | Escreve o `.claude/` de um projeto-alvo a partir do manifesto `export`, transformado para o blueprint ativo, e grava o stamp de proveniência | Sim — ver [10-arch-adopt.md](10-arch-adopt.md) |
 
 Os modos `guard` e `audit` estão detalhados em [08-audit-usage.md](08-audit-usage.md).
 Toda lista que o hook lê — campos reconhecidos, skills excluídas da auditoria, padrões

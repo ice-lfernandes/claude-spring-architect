@@ -13,14 +13,21 @@ only makes sense inside an already-generated project**, created by `/init-projec
 reads `pom.xml`, `.claude/forbidden-imports.txt`, and discovers the domain package in the
 real project.
 
-Three boundaries hold on every run:
+Four boundaries hold on every run, and none of them is prose — the `guard` hook blocks with
+`exit 2`:
 
-- **Design writes only under `docs/`.** Migration SQL lives inside `20-persistencia.md`;
-  every file under `src/` comes from the executor. The `guard` hook blocks the rest.
+- **A run writes only under `docs/`.** Territory is an allowlist, deny by default: each
+  pipeline skill writes only its class's `write_allow` (`skill_classes` in
+  `.claude/schemas/extensions.json`). Migration SQL lives inside `20-persistencia.md`;
+  every file under `src/` comes from the executor.
+- **A design run materializes no file outside `docs/`.** `guard` refuses the *call* itself
+  to a `build`-class skill — `docker-architect` included — while the run is open. A missing
+  compose service is **recorded** in the partial, with the command that creates it.
 - **Git goes only through `git-publish`**, behind its two confirmations — on every end
   of the flow, including the one without the executor. `git push` is always `ask`.
 - **An approved spec is immutable.** A later case records the change it needs in its
-  own `## Impact on approved use cases` section. The `guard` hook freezes the files.
+  own `## Impact on approved use cases` section, plus one line in the `CHANGELOG.md` of
+  every altered case's folder. `guard` freezes the files.
 
 ## Why it's a manual skill, not an agent
 
@@ -119,8 +126,13 @@ needs the shared key table); persistence generates none for REST. In the old ord
 table was discovered after the persistence partial was written, and persistence ran
 twice.
 
-`docker-architect` is chained on demand by `persistence-architect`, `test-architect`, or
-`messaging-architect`. `java-patterns` travels preloaded inside the executor.
+`docker-architect` is **not** chained by the pipeline. A design run is docs-only: when
+`persistence-architect`, `messaging-architect` or `test-architect` finds a service missing
+from `docker-compose.yml`, it records the pending service in the partial and reports the
+`/docker-architect` command, which the user runs afterwards in a prompt of its own.
+`ArchHook.java`'s `guard` mode refuses the call while a design phase is open —
+`.claude/decisions/0058-skill-classes-territory-schema.md`. `java-patterns` travels preloaded
+inside the executor.
 
 ## Pre-flight — infrastructure installed once, on the first "implement now"
 
@@ -151,6 +163,15 @@ files written).
 A spec defect found by the executor in an approved spec: the user sets `status: draft`
 by hand, then `/new-feature UC-NNN-slug` resumes and re-approves.
 
+**An approved spec is never edited to record that another case changed its behavior.** The
+case that alters already-approved cases — including the one that creates no use-case class
+at all, and still gets its own `UC-NNN` — writes one line in the `CHANGELOG.md` **of every
+altered case's folder**: the date, the `UC-NNN` that changed it, and what changed. Without
+it, immutability protects the text and loses the history: whoever opens
+`UC-001-register-customer/` has no way to learn its behavior changed elsewhere. `guard`
+freezes the folder; the changelog is the separate file that records the change without
+breaking the freeze.
+
 ## Short path
 
 When the case reuses an approved aggregate, needs no new table, column, or migration,
@@ -163,7 +184,8 @@ writes one spec where every row names its source — an approved spec or a rule.
 |---|---|
 | HTTP path, verb, status, body shape | `30-rest.md` |
 | Table, column, key, index, migration | `20-persistencia.md` |
-| Topic, delivery guarantee, retry/DLQ | `25-mensageria.md` |
+| Topic, serialization, delivery guarantee, consumer retry/DLQ | `25-mensageria.md` |
+| The outbox table, its columns, the claim query and the backoff those columns encode | `20-persistencia.md` — messaging **declares** that the case needs an outbox and which guarantee the relay must honour, and never a column name. A § 6 row naming columns is a divergence, and a column decision that would drop the declared guarantee **stops** the pipeline instead of being settled by precedence |
 | Aggregate name, value object, port, event | `10-dominio.md` |
 | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |

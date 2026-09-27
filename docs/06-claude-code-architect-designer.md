@@ -7,13 +7,14 @@ Fonte primária: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 
 ## O que faz
 
-Decide **qual das seis formas** de extensão do Claude Code resolve um cenário
-concreto — skill auto-invocável, skill manual, subagent, rule, seção do `CLAUDE.md`, ou
-servidor MCP (compartilhado ou por agent) — e só escreve o arquivo depois de aprovação
-explícita. Uma sétima resposta, legítima e a mais barata, é **não criar nada**: ou já
+Decide **qual das oito formas** de extensão do Claude Code resolve um cenário
+concreto — skill auto-invocável, skill manual, subagent, rule, seção do `CLAUDE.md`,
+servidor MCP (compartilhado ou por agent), hook (registro ou modo novo do
+`ArchHook.java`), ou regra de `permissions` — e só escreve o arquivo depois de aprovação
+explícita. Uma nona resposta, legítima e a mais barata, é **não criar nada**: ou já
 existe peça cobrindo o cenário, ou um CLI já resolve (`gh`, `psql`, `aws` — § 2.1 da
-matriz de decisão), ou o problema é de compliance e pertence a um hook/`permissions.deny`,
-que esta skill propõe mas nunca escreve.
+matriz de decisão), ou um modo que o `ArchHook.java` já tem roda a checagem e só falta
+registrá-lo.
 
 Invocação manual apenas (`disable-model-invocation: true`) — o modelo nunca decide
 sozinho criar uma nova skill, agent ou rule.
@@ -29,7 +30,7 @@ rule quebraria o invariante 1 do `@CLAUDE.md` (`rules/` é folha: uma rule nunca
 skill, agent ou comando). Uma rule que explicasse quando criar skills e agents estaria
 citando skills e agents dentro de si mesma.
 
-## As seis formas
+## As oito formas
 
 | # | Forma | Arquivo |
 |---|---|---|
@@ -40,17 +41,39 @@ citando skills e agents dentro de si mesma.
 | 5 | Seção do `CLAUDE.md` | `CLAUDE.md` na raiz |
 | 6a | Servidor MCP, compartilhado | `.mcp.json` |
 | 6b | Servidor MCP, só um agent | `mcpServers:` no frontmatter daquele agent |
+| 7a | Hook para a sessão inteira | bloco `hooks` de `.claude/settings.json` |
+| 7b | Hook só enquanto uma skill ou agent roda | `hooks:` no frontmatter daquele arquivo |
+| 7c | O executável por trás de 7a/7b | modo novo em `.claude/hooks/ArchHook.java` |
+| 8 | Proibição dura ou permissão permanente | `permissions.deny` / `permissions.allow` |
 
 6b não é um quarto motivo pra existir agent — é o motivo 2 da § 5 da matriz de decisão
 (restringir tools) aplicado a uma conexão externa em vez de uma tool nativa. Um agent só
 existe pelos três motivos já em `references/decision-matrix.md` § 5; 6b só responde
 quais tools ele ganha depois que isso já foi decidido.
 
-## Fora de escopo — propõe, não escreve
+7c não é um gatilho — é o que a 7a ou a 7b invoca, e só existe quando **nenhum** modo que
+o hook já tem cobre a checagem. Uma 7a que reusa `check`, `format`, `schema`, `tests`,
+`guard`, `audit` ou `compose` é o caso comum e não escreve uma linha de Java.
 
-- **Hooks e `permissions.deny`.** Se a interview conclui no eixo 7 que a regra precisa
-  valer sempre, a resposta é hook — enforcement deste repo está concentrado em
-  `ArchHook.java`, mudar isso é infraestrutura com teste e commit próprios.
+As formas 7 e 8 são o lado **garantia** da § 1 da matriz: executam independentemente do
+que o modelo decide. Isso as torna a resposta sempre que a regra precisa valer sempre
+(invariante 6 do `@CLAUDE.md`) e, ao mesmo tempo, a coisa mais cara desta lista de se
+errar — um hook que bloqueia dispara em todo evento que casa, para todo mundo, inclusive
+quando está errado. Por isso as duas exigem aprovação **e** registro em `decisions/`,
+sem exceção, e o relatório final avisa que `settings.json` só é lido no startup da
+sessão: um hook que se acredita ativo e está silenciosamente ausente é pior que hook
+nenhum.
+
+## Fora de escopo
+
+- **`~/.claude/settings.json` e `.claude/settings.local.json`.** Configuração pessoal e
+  de máquina: não é versionada, não é compartilhada, não é preocupação desta skill. Um
+  hook que o time não recebe não é enforcement, é hábito de uma pessoa.
+- **Um segundo arquivo de hook.** A Forma 7c é um modo dentro de `ArchHook.java`, nunca
+  `.claude/hooks/<Outro>.java`. O enforcement fica num único executável que o projeto
+  gerado recebe inteiro pelo modo `export`; um segundo arquivo teria de ser copiado,
+  registrado e mantido em sincronia à parte — e o primeiro a sair de sincronia falha em
+  silêncio.
 - **`.claude/commands/`.** Nunca — invariante 4, comandos viraram skills com
   `disable-model-invocation`.
 - **Blueprints.** Arquitetura é dado, não extensão (`@.claude/blueprints/_schema.md`).
@@ -84,7 +107,7 @@ sequenceDiagram
     Note over CMD,U: Fase 1 · Interview
     CMD->>DM: lê matriz antes de perguntar
     CMD->>U: AskUserQuestion — até 4 perguntas por chamada, 2-3 chamadas
-    U-->>CMD: respostas dos 10 eixos
+    U-->>CMD: respostas dos eixos aplicáveis (16 no total; 11-13 só para MCP, 14-16 só para hook)
     end
 
     rect rgb(235,245,235)
@@ -110,7 +133,7 @@ sequenceDiagram
     CMD->>FM: confirma campos nativos do frontmatter
     CMD->>FS: gera a partir de templates/*.example
     CMD->>FS: seção "## Why this is <form>" no corpo
-    CMD->>FS: propaga — CLAUDE.md, 00-index.md, project-bootstrap, conforme a forma
+    CMD->>FS: propaga — CLAUDE.md, 00-index.md, extensions.json (skill_classes/export), settings.json, conforme a forma
     CMD->>FS: java claude plugin validate .claude/skills
     end
     CMD-->>U: Fase 5 · relatório — arquivos criados/alterados, decisão, validate, aviso de restart
@@ -122,8 +145,8 @@ sequenceDiagram
 produz a peça errada, e peça errada custa mais que nenhuma peça — fica em contexto toda
 sessão, ou nunca dispara.
 
-Treze eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão está
-adivinhando:
+Dezesseis eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão
+está adivinhando:
 
 | # | Eixo | O que decide |
 |---|---|---|
@@ -133,13 +156,16 @@ adivinhando:
 | 4 | Território — quais globs de arquivo, ou nenhum | `paths` na forma 4; `paths` na forma 1 |
 | 5 | Natureza — fato declarativo ou sequência de passos | Formas 4/5 vs 1/2/3 |
 | 6 | Isolamento — saída verbosa, tools a restringir, modelo diferente | Forma 3, e só ela |
-| 7 | Obrigatoriedade — pode falhar às vezes, ou é build/segurança/compliance | Fora de escopo (hook) |
-| 8 | Destino — só este repo, também o projeto gerado, ou ambos | Passos 6.6/6.7/7 do `project-bootstrap` |
+| 7 | Obrigatoriedade — pode falhar às vezes, ou é build/segurança/compliance | Formas 7 · 8 vs todo o resto |
+| 8 | Destino — só este repo, também o projeto gerado, ou ambos | O bloco `export` de `@.claude/schemas/extensions.json` |
 | 9 | Integração — o que lê, o que escreve, com qual peça existente colide | Conflito de ownership |
 | 10 | Custo de errar | minutos ou dias | Peso no score |
 | 11 | Um CLI já resolve (`gh`, `psql`, `aws`, `kubectl`, `sentry-cli`)? | Elimina a Forma 6 antes mesmo dela ser considerada — matriz de decisão § 2.1 |
 | 12 | Formato da credencial — OAuth, token estático, script de header dinâmico, ou nenhuma; só leitura ou leitura/escrita | Forma 6a vs 6b vs `permissions.deny`; se precisa de `oauth`/`headersHelper` |
 | 13 | Destino — só o `.mcp.json` deste repo, só o template do projeto gerado, ou ambos | Qual(is) arquivo(s) a Forma 6a escreve; propagação na Fase 4 passo 7 |
+| 14 | Evento do ciclo de vida — o que exatamente acabou de acontecer: uma tool call, um prompt, o fim de um turno, o início da sessão | A chave de evento da Forma 7, e se aquele evento sequer **lê** um `matcher` — `references/hook-events.md` |
+| 15 | Reação — observar e reportar, injetar contexto, ou bloquear | O exit code, e Forma 7 vs Forma 8: uma chamada que **nunca** pode acontecer é `permissions.deny`, mais barato que um hook que sobe um processo pra recusar |
+| 16 | Modo existente — o `ArchHook.java` já roda essa checagem? | Forma 7a sozinha vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lista os modos em uso |
 
 O eixo 9 é checado contra o inventário injetado no topo da skill (`ls .claude/skills`,
 `.claude/agents`, `.claude/rules`, `.claude/decisions`), nunca de memória. Duas peças
@@ -177,8 +203,9 @@ num `/compact` — inclusive se ele chama ou não uma tool MCP disponível. Tudo
 executa independente do que o modelo decidir. `.mcp.json` fica do lado da persuasão por
 isso: conectar um servidor não garante que o modelo o usa bem, motivo pelo qual MCP e
 skill se combinam (`@claude-help.md` § 9) em vez de MCP substituir a skill.
-Consequência: se quebrar a regra é bug de compliance/segurança/build, a resposta não
-está entre as seis formas.
+Consequência: se quebrar a regra é bug de compliance/segurança/build, a resposta está
+**abaixo** da linha — Forma 7 (hook) ou Forma 8 (`permissions`), as duas que executam, e
+não nenhuma das seis de cima.
 
 ### Tabela de decisão (primeira linha que casa decide)
 
@@ -290,8 +317,9 @@ mostra o que custou pontos:
 | 4 | Enforcement | Depende de persuasão onde garantia estava disponível |
 | 5 | Custo de manutenção | Adiciona peça ou indireção sem ganho proporcional |
 | 6 | Precedente no repo | Nenhuma forma similar já em uso; design novo |
-| 7 | Propagação completa | Não fecha routing, `00-index`, passos 6.6/6.7/7.5, ou registro de decisão da § 9 |
+| 7 | Propagação completa | Não fecha routing, `00-index`, o manifesto `export`, `skill_classes`, ou registro de decisão da § 9 |
 | 8 | Superfície de confiança | Concede capacidade maior do que a tarefa precisa — servidor MCP que lê arquivos e chama API arbitrária, agent com `permissionMode: bypassPermissions`, skill com `allowed-tools` sem escopo onde uma regra mais estreita bastaria |
+| 9 | Custo de rodar sempre | Frequência do evento × custo por disparo, e se `if`/`matcher` estreita antes de subir processo. Um `PostToolUse` sem filtro paga uma JVM em toda edição do repo; um `SessionStart` paga uma vez. Perde ponto também quando o hook bloqueia (exit 2) num julgamento que às vezes vai estar errado — aí o custo não é milissegundo, é uma pessoa travada |
 
 Violar invariante trava o score em **≤ 4**, independente do resto. Score **≥ 8** é
 recomendação; **5 a 7** é viável com ressalva escrita; **≤ 4** só aparece pra registrar
@@ -300,7 +328,7 @@ por que foi rejeitado.
 ## Fase 3.5 · Salva o rascunho da decisão
 
 O que a Fase 3 produziu — opções, scores, alternativas rejeitadas, tabela de
-referências — evapora no fim da sessão. Sem registro, a mesma interview de treze eixos
+referências — evapora no fim da sessão. Sem registro, a mesma interview de dezesseis eixos
 recomeça do zero daqui a seis meses.
 
 **Quando salvar arquivo.** Só se pelo menos um for verdade:
@@ -311,6 +339,12 @@ recomeça do zero daqui a seis meses.
 - Eixo 13 respondeu "ambos" — o servidor MCP é declarado no `.mcp.json` deste repo e no
   template do `project-bootstrap`. A duplicação é deliberada (invariante 9), e sem
   registro ninguém daqui a seis meses distingue isso de drift.
+- A opção aprovada é Forma 7c ou Forma 8 — **sempre**, sem exceção. Um modo novo no
+  `ArchHook.java` é infraestrutura: não tem corpo markdown pra carregar uma seção
+  `## Why this is <form>`, muda o que toda sessão passa a exigir, e quem ler depois sem
+  conseguir reconstruir por que bloqueia vai apagá-lo na primeira vez que ele incomodar.
+  Uma linha de `permissions.deny` é uma linha de JSON com o mesmo problema e nenhum lugar
+  pra se explicar.
 
 Nenhum desses → nenhum arquivo é salvo. A justificativa vive na seção `## Why this is
 <form>` do arquivo que a Fase 4 cria, e isso basta.
@@ -362,25 +396,32 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
 
    | Você criou | Também atualiza |
    |---|---|
-   | Skill | Tabela de routing do `@CLAUDE.md` |
-   | Skill de desenvolvimento (válida dentro do projeto gerado) | Tabela do passo 6.7 de `project-bootstrap/SKILL.md` e a lista `## Skill contract` |
-   | Rule | `@.claude/rules/00-index.md` (tabela de rules escritas; remove de "planned") **e** a tabela do passo 6.6 de `project-bootstrap/SKILL.md` |
-   | Agent | Tabela de routing do `@CLAUDE.md`, se invocável por nome |
+   | Skill | Tabela de routing do `@CLAUDE.md`, **e** uma classe em `skill_classes` de `@.claude/schemas/extensions.json`: a lista `skills`, um `overrides.<skill>.write_allow` quando o default da classe não serve, e a linha `**Class:** <c>` no corpo. O `schema` falha pelo nome de uma skill sem classe, e cobra as seções que a classe exige |
+   | Skill de desenvolvimento (válida dentro do projeto gerado) | `export.skills.include` de `@.claude/schemas/extensions.json` — o `schema` falha numa skill que não está nem em `include` nem em `exclude` |
+   | Rule | `@.claude/rules/00-index.md` (tabela de rules escritas; remove de "planned"). Toda rule viaja por default; uma rule com território de pacote precisa também de entrada em `export.derived_paths`, e o `schema` falha sem ela |
+   | Agent | Tabela de routing do `@CLAUDE.md`, se invocável por nome; `export.agents.include` ou `exclude` |
    | Seção do `CLAUDE.md` | Nada mais — mas confirma que o total continua abaixo de ~200 linhas |
    | Servidor MCP, só este repo (eixo 13 = "meta-repo") | `.mcp.json` na raiz; o doc de setup; linha de routing do `@CLAUDE.md`, se nenhuma já cobre |
-   | Servidor MCP, também o projeto gerado (eixo 13 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/mcp.json.example`, seu próprio doc de setup, e a tabela de cópia do passo 7.5 de `project-bootstrap/SKILL.md` |
+   | Servidor MCP, também o projeto gerado (eixo 13 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/mcp.json.example` e seu próprio doc de setup — ambos já nomeados em `export.optional_copy`, então não há mais nada a ligar |
+   | Hook, só este repo (eixo 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, se o hook bloqueia algo que um leitor chamaria de bug |
+   | Hook, também o projeto gerado (eixo 8 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/settings.json.example`. Um modo Forma 7c não precisa de nada além: o modo `export` copia `ArchHook.java` e `schemas/extensions.json` inteiros |
+   | Modo de hook (Forma 7c) | A tabela de modos do `@CLAUDE.md` § Commands, e o relatório do `doctor` se o modo tem estado que vale reportar |
+   | Regra de `permissions` (Forma 8) | `.claude/settings.json`; o template do projeto gerado quando o eixo 8 = "ambos". Um `deny` também entra em `@CLAUDE.md` § Known pitfalls — uma tool que recusa em silêncio parece tool quebrada |
 
-   Skill de criação (só útil antes do projeto existir) fica **fora** do passo 6.7,
+   Skill de criação (só útil antes do projeto existir) vai em `export.skills.exclude`,
    como `project-bootstrap` e `init-project`. Isso é declarado explicitamente no
    relatório.
 
    **Delegação, e só neste caso.** Se o eixo 8 ou o eixo 13 respondeu "ambos", a
-   propagação cresce — passos 6.6/6.7/7/7.5 do `project-bootstrap`, mais seu
-   `templates/`. Aí, delega **só este passo 7, nenhum outro** pro agent genérico com
+   propagação cresce — o bloco `export` mais o `templates/` de `project-bootstrap`.
+   Aí, delega **só este passo 7, nenhum outro** pro agent genérico com
    `model: sonnet`, passando o caminho do registro da Fase 3.5 e a lista exata de
    arquivos a tocar. São edições mecânicas de tabela com destino fixado por escrito.
    Sem registro salvo, não delega: o subagent não vê a conversa, e a interview é o que
-   justifica cada linha.
+   justifica cada linha. **Nunca delega propagação de Forma 7 ou Forma 8**, mesmo com
+   eixo 8 "ambos": o segundo arquivo é um registro de hook que executa, e um `if` ou
+   `matcher` errado copiado pro template do projeto gerado embarca em todo projeto criado
+   depois.
 
    Passos 1 a 6 **nunca** são delegados. Escrever a `description` decide se a skill
    dispara, e o `## Contract` decide ownership — isso é design, não transcrição. Pra MCP

@@ -72,8 +72,11 @@ sequenceDiagram
 | `Audit` | N runs recorded in `.claude/audit-usage/` (warns if `pricing.json` is missing) | ⚪ no directory — trail OFF (optional; the case in this meta-repo) |
 | `Audit rule inference` | rule inference renders without error for a synthetic `.java` | ❌ `auditRules()` throws — every report would freeze once a run touched `src/**` |
 | `MCP` | N servers declared in `.mcp.json`, all valid | ❌ N problems — run `java ArchHook.java schema`; or "no .mcp.json" (optional) |
-| `Compose` | every compose service `running`, no declared port held by a foreign container | ❌ a service in `created`/`exited`, or a port published by another project — detail line by line; no compose file or no `docker`, "not checked (optional)" |
+| `Hooks` | N valid registrations across M events | ❌ an unknown event, a `matcher` on an event that reads none, or a shell string in `command` — the four ways a hook fails in silence |
+| `Provenance` | no file under `.claude/` edited after the `.claude/.arch-provenance.json` stamp | ⚠️ lists the locally edited files — an `arch-adopt` update would overwrite each one. In the origin repository: `⚪ origin repository — writes stamps, carries none` |
+| `Compose` | every compose service `running`, no declared port held by a foreign container, and no `image:` tag disagreeing with the one `src/test` pins in `DockerImageName.parse` | ❌ a service in `created`/`exited`, a port published by another project, or a divergent tag — detail line by line. The tag comparison needs no Docker: it reads both files |
 | `git HEAD` | at least 1 commit exists | ❌ no commits — the `tests` hook doesn't run (`git diff HEAD` fails) |
+| `UC references` | every `docs/use-cases/UC-NNN-slug/` folder cited by a versioned file exists on disk | ❌ an orphan citation, with file and line — deleting or renaming a use case leaves its citations behind, and each was correct in the commit that wrote it. With no `docs/use-cases/`, "nothing to check (optional)" — the case in this meta-repo |
 
 The final line summarizes: `✅ Setup operational.` only appears when **both**
 `Boundaries` has rules > 0 **and** the Maven wrapper was found. Any other combination
