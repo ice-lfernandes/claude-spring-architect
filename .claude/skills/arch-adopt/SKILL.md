@@ -37,12 +37,35 @@ or commit/stash what is pending). Don't offer to commit for them.
 
 ### 2 · Resolve the source
 
-Read `base_url`, `git_url`, `auth_env` and `default_ref` from the `source` block of
-`.claude/schemas/extensions.json` — this project's copy if it has one, otherwise from the
-plugin's. Never write any of those four values into a command from memory.
+Everything this procedure downloads goes in one directory, named once here and used by
+every step below — an environment that hands out its own temporary directory needs to
+change this line and no other:
 
-With `--source <path>`, skip this step and the next: that path is the source tree, which
-is how an unreleased change is tested.
+```bash
+SRC=${SRC:-/tmp/arch-src}
+```
+
+`base_url`, `git_url`, `auth_env` and `default_ref` come from the `source` block of
+`.claude/schemas/extensions.json`. **Never write any of those four values into a command
+from memory** — that is the whole reason they are data. Three places to look, in order,
+and the third is not a fallback but the normal case on a first install:
+
+1. **This project's copy**, when it has one with a `source` block.
+2. **The plugin's copy** — but the published plugin ships only its `SKILL.md`, so this
+   path usually finds nothing. Not a bug: the architecture is fetched, not vendored.
+3. **The source's copy, fetched.** The plugin's `.plugin-source.json` carries `raw_url`
+   and `ref`, which is enough:
+
+   ```bash
+   curl -sS --fail -L "<raw_url, {ref} and {path} replaced for .claude/schemas/extensions.json>" \
+     -o "$SRC-extensions.json"
+   ```
+
+   A project generated before the `source` block existed has a `.claude/schemas/extensions.json`
+   without one — `grep '"source"'` comes back empty. That is case 3, not a broken project.
+
+With `--source <path>`, skip the rest of this step and the next: that path is `$SRC`,
+which is how an unreleased change is tested.
 
 ```bash
 git ls-remote --tags --refs --sort=-v:refname <git_url> | head -1
@@ -58,8 +81,8 @@ stating that the stamp will record a moving ref.
 AUTH=()
 [ -n "${GH_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
 curl -sS --fail --retry 3 --retry-all-errors --max-time 120 -L "${AUTH[@]}" \
-  "<base_url, {ref} replaced>" -o /tmp/arch-src.tgz
-mkdir -p /tmp/arch-src && tar xzf /tmp/arch-src.tgz --strip-components=1 -C /tmp/arch-src
+  "<base_url, {ref} replaced>" -o "$SRC.tgz"
+mkdir -p "$SRC" && tar xzf "$SRC.tgz" --strip-components=1 -C "$SRC"
 ```
 
 `$GH_TOKEN` is the variable `source.auth_env` names — read the name from the file, and
@@ -69,16 +92,28 @@ page lands in the tarball and `tar` fails with something that says nothing about
 
 ### 4 · Decide the blueprint
 
+Three states, not two. Read them in this order.
+
 **Update** — `.claude/.arch-provenance.json` exists: read `blueprint` from it and use it.
 Don't re-ask; a project doesn't change architecture by updating. `--blueprint` overrides,
-and then say plainly that this rewrites every rule's territory.
+and then say plainly that this rewrites every rule's territory. When the id names a
+blueprint the source does not have, the project's own copy at
+`.claude/blueprints/<id>/<id>.yaml` is the one to use — that is why the export wrote it
+there.
 
-**Install** — no stamp. Read the project's package layout and compare it with the
-blueprints in the fetched source:
+**Adopted before the stamp existed** — no `.arch-provenance.json`, but
+`.claude/rules/00-index.md` is present. The project already has an architecture and is not
+a fresh install: `00-index.md`'s own paragraph names the blueprint it was generated from.
+Read it, show it, and ask for confirmation in one question — never re-run the detection
+below and never re-ask from a blank slate. Every project generated before D54 is in this
+state, and asking it to pick an architecture it already has is how it ends up with two.
+
+**Install** — no stamp and no `00-index.md`. Read the project's package layout and compare
+it with the blueprints in the fetched source:
 
 ```bash
 find src/main/java -type d -mindepth 3 | sed 's|src/main/java/||' | tr '/' '.' | sort
-ls /tmp/arch-src/.claude/blueprints
+ls "$SRC/.claude/blueprints"
 ```
 
 Match those packages against each blueprint's `packages.map` **values**, and offer the
@@ -91,16 +126,27 @@ closest one first. Then use `AskUserQuestion` — the choice is the user's, not 
    from it, and a wrong `packages.map` leaves norms silently unloaded. Offer it, don't
    steer to it.
 
-Option 3 chosen: copy `/tmp/arch-src/.claude/blueprints/custom-template/custom.template.yaml`
-to `/tmp/arch-src/.claude/blueprints/<name>/<name>.yaml`, fill `packages.map` and
-`architecture_paths` from the layout you just read, and use `<name>` as the id. It lives
-in the fetched tree, not in the project: what the project keeps is the result.
+**Near-match is its own case, and it is the dangerous one.** When the layout matches every
+package of a blueprint except one or two, say so before anything else: name the packages
+that differ, on both sides, and ask whether they are the same role under two names. A
+blueprint that gained a key after this project was generated looks exactly like this —
+`application.shared` versus an `application/service/` the executor once invented — and
+accepting the blueprint as-is rewrites every norm to a package the code does not have.
+Nothing breaks that day; the next `/new-feature` creates the second package. Options:
+adopt the blueprint and rename the code, or build a variant of it (option 3) that keeps
+the project's own names.
+
+Option 3 chosen: copy `$SRC/.claude/blueprints/custom-template/custom.template.yaml`
+to `$SRC/.claude/blueprints/<name>/<name>.yaml`, fill `packages.map` and
+`architecture_paths` from the layout you just read, and use `<name>` as the id. The export
+copies the blueprint it used into `.claude/blueprints/<id>/<id>.yaml` inside the project,
+so the variant survives the temporary directory and the next update can resolve it.
 
 ### 5 · Write
 
 ```bash
-CLAUDE_PROJECT_DIR=/tmp/arch-src \
-  java /tmp/arch-src/.claude/hooks/ArchHook.java export . --blueprint <id> --ref <ref>
+CLAUDE_PROJECT_DIR="$SRC" java "$SRC/.claude/hooks/ArchHook.java" export . \
+  --blueprint <id> --ref <ref>
 ```
 
 Add `--dry-run` first whenever the project already has files at those paths, and show the
@@ -112,9 +158,13 @@ project, and it belongs in the report, not in silence.
 
 ```bash
 java .claude/hooks/ArchHook.java schema </dev/null
-java .claude/hooks/ArchHook.java doctor </dev/null
+java .claude/hooks/ArchHook.java doctor
 git status --short
 ```
+
+`schema` keeps the `</dev/null`: it is one of the modes the runtime invokes as a hook, so
+it reads a JSON payload from stdin and waits for one when nothing closes it. `export`,
+`doctor` and `compose` do not read stdin at all.
 
 `schema` must exit 0. `doctor`'s `Provenance` line should read "unchanged since" — it
 compares the stamp's per-file digests, so anything it lists right after an export is
@@ -158,7 +208,7 @@ layout, and the fetched source's `.claude/blueprints/*/*.yaml`.
 
 **Writes** nothing directly in the project: `ArchHook.java export` does, and the list of
 what it writes is the `export` block of the fetched `extensions.json`. May write
-`/tmp/arch-src/**` — the fetched tree, including a `custom.template.yaml` built in step 4.
+`$SRC/**` — the fetched tree, including a `custom.template.yaml` built in step 4.
 
 **Refuses** a dirty worktree, a directory that is not a git repository, and a fetch it
 cannot authenticate. Never prints the value of `source.auth_env`, and never commits.

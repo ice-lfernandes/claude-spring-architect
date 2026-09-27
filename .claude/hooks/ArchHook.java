@@ -42,7 +42,16 @@ public class ArchHook {
 
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 ? args[0] : "check";
-        String stdin = readAll(System.in);
+        // Only the modes the runtime invokes as hooks are handed a JSON payload on
+        // stdin. Reading it for every mode made `export`, `doctor` and `compose` block
+        // forever whenever stdin was neither a closed pipe nor a TTY — a command that
+        // hangs with no output, which is how lessons-learned-011 § 2 found it. The list
+        // is here and not in extensions.json on purpose: it is the dispatch itself, the
+        // same place the mode names already live.
+        String stdin = switch (mode) {
+            case "check", "format", "tests", "schema", "audit", "guard" -> readAll(System.in);
+            default -> "";
+        };
         try {
             switch (mode) {
                 case "check"  -> check(filePath(stdin));
@@ -767,6 +776,7 @@ public class ArchHook {
 
         Map<String, String> out = new TreeMap<>();
         List<String> notes = new ArrayList<>();
+        exportBlueprint(exp, bp, out);
         exportRules(exp, bp, out);
         exportTree(exp, "skills", out);
         exportTree(exp, "agents", out);
@@ -780,7 +790,9 @@ public class ArchHook {
         List<String> exempt = asStrList(get(exp, "body_transforms", "residue_exempt"));
         for (String marker : asStrList(get(exp, "body_transforms", "residue_markers"))) {
             for (Map.Entry<String, String> e : out.entrySet()) {
-                if (exempt.contains(e.getKey())) continue;
+                // The stamp is a list of the paths just written, one of which is now the
+                // blueprint's — a path, not a citation, and this mode wrote it.
+                if (e.getKey().equals(stampFile) || exempt.contains(e.getKey())) continue;
                 if (e.getValue().contains(marker)) residue.add(e.getKey() + " still carries `" + marker + "`");
             }
         }
@@ -885,6 +897,26 @@ public class ArchHook {
                 out.put(to + "/" + name, body);
             }
         }
+    }
+
+    /**
+     * Writes the active blueprint into the project. The catalog stays here — a project
+     * chooses an architecture once — but the yaml it chose has to travel: the stamp
+     * records the id, and an update resolves that id against the source, which for a
+     * blueprint written during adoption never had it. Its `references/` citations are
+     * dropped on the way: they point at files that do not travel.
+     */
+    static void exportBlueprint(Map<String, Object> exp, Blueprint bp, Map<String, String> out)
+            throws IOException {
+        String tpl = asStr(exp.get("blueprint_copy"));
+        if (tpl == null || bp == null) return;
+        String srcTpl = asStr(get(exp, "blueprint", "path"));
+        Path src = ROOT.resolve((srcTpl == null ? ".claude/blueprints/{id}/{id}.yaml" : srcTpl)
+                .replace("{id}", bp.id()));
+        if (!Files.isRegularFile(src)) return;
+        String body = Files.readString(src, StandardCharsets.UTF_8)
+                .replaceAll("(?m)^#[ \\t]*@?\\.claude/blueprints/[^\\n]*\\n", "");
+        out.put(tpl.replace("{id}", bp.id()), body);
     }
 
     /** Copies `keep` entries of each included skill, or the single file of each agent. */

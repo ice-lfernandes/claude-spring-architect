@@ -340,7 +340,7 @@ jobs:
           OUT=/tmp/exp-clean-architecture-single-module-1
           FAIL=0
           for forbidden in \
-            .claude/decisions .claude/blueprints \
+            .claude/decisions \
             .claude/skills/project-bootstrap .claude/skills/init-project \
             .claude/skills/claude-code-architect-designer \
             .claude/skills/use-case-design/examples \
@@ -359,7 +359,19 @@ jobs:
               FAIL=1
             fi
           done
-          [ "$FAIL" -eq 0 ] && echo "✅ The exported tree is what a project needs, and only that."
+          # The catalog does not travel; the ONE blueprint the project was written from
+          # does — invariant 9, amended by D55. A project whose stamp names a blueprint it
+          # does not carry cannot be updated, which is the failure that amendment closes.
+          COUNT=$(find "$OUT/.claude/blueprints" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
+          ID=$(python3 -c 'import json;print(json.load(open("'"$OUT"'/.claude/.arch-provenance.json"))["blueprint"])')
+          if [ "$COUNT" != "1" ]; then
+            echo "❌ the exported tree carries $COUNT blueprint yaml(s) — it must carry exactly the active one."
+            FAIL=1
+          elif [ ! -f "$OUT/.claude/blueprints/$ID/$ID.yaml" ]; then
+            echo "❌ the stamp names blueprint '$ID' and the tree does not carry it."
+            FAIL=1
+          fi
+          [ "$FAIL" -eq 0 ] && echo "✅ The exported tree is what a project needs, and only that — active blueprint '$ID' included."
           exit $FAIL
 
       # The exported `extensions.json` is what the project's own hook reads. If it no
