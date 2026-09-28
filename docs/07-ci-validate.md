@@ -109,6 +109,44 @@ Os jobs `design` e `exemplar-imports` declaram `defaults.run.shell: bash` para g
 workflow: a matriz `hooks-cross-platform` tem uma perna `windows-latest` cujo shell
 default é pwsh.
 
+## O workflow vizinho: `release.yml`
+
+Fonte primária: `.github/workflows/release.yml`, `.github/PULL_REQUEST_TEMPLATE.md`
+§ Release bump.
+
+`validate.yml` prova que o que entrou em `main` está correto. `release.yml` responde a
+outra pergunta: **com que nome esse estado passa a ser citável**. Todo merge em `main`
+ganha uma tag anotada, porque quem adota a arquitetura fixa um ref — o
+`.plugin-source.json` do marketplace e o selo de procedência de cada projeto gerado
+guardam exatamente isso. Um merge sem tag é um estado que ninguém consegue apontar.
+
+| Job | Quando roda | O que faz |
+|---|---|---|
+| `bump-declared` | todo evento de PR (`opened`, `edited`, `synchronize`, …) | Lê § Release bump do corpo do PR e exige **exatamente um** nível marcado: `major`, `minor` ou `patch`. Publica o nível como output |
+| `tag` | uma vez, no `closed` de um PR **merged** com base `main` | Roda `schema` e `doctor` no commit de merge, calcula o próximo semver a partir da última tag e cria e empurra a tag anotada |
+
+Três decisões que não são óbvias no arquivo:
+
+- **O nível vive no corpo do PR, não numa label nem num commit.** O campo é obrigatório
+  no template e o job `bump-declared` falha enquanto o PR está aberto — a decisão
+  acontece na revisão, não depois do merge, quando já não há onde registrá-la.
+- **Um parser, um arquivo.** A checagem de PR e a criação da tag leem o mesmo corpo; duas
+  regex em dois workflows divergem silenciosamente. Por isso são dois jobs do mesmo
+  `release.yml`, e o segundo consome o output do primeiro.
+- **A tag nasce do `merge_commit_sha`, não de `main`.** `main` pode já carregar o merge
+  seguinte quando o job roda. E o job revalida esse commit: `validate.yml` passou na head
+  do PR, que é outra árvore sempre que `main` andou por baixo — um conflito semântico em
+  `extensions.json` falha ali em vez de virar um ref que o marketplace pode fixar.
+
+Duas coisas continuam manuais, de propósito: o GitHub Release, quando um ref merece mais
+prosa do que a mensagem que o workflow escreve (a mensagem aponta para o PR), e o
+marketplace, que fixa o ref com `./sync.sh vX.Y.Z` — publicar é uma decisão, não
+consequência de um merge.
+
+**O que torna o campo obrigatório não está no arquivo:** é `bump-declared` como *required
+status check* na branch protection de `main`. Sem isso, o job falha e o merge acontece
+de todo jeito.
+
 ## O que ainda não está aqui
 
 - Invariante 9 (o projeto gerado é self-contained) está coberto **pela metade**: o passo

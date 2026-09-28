@@ -110,6 +110,45 @@ The `design` and `exemplar-imports` jobs declare `defaults.run.shell: bash` to g
 level: the `hooks-cross-platform` matrix has a `windows-latest` leg whose default shell
 is pwsh.
 
+## The neighbouring workflow: `release.yml`
+
+Primary source: `.github/workflows/release.yml`, `.github/PULL_REQUEST_TEMPLATE.md`
+§ Release bump.
+
+`validate.yml` proves that what landed on `main` is correct. `release.yml` answers a
+different question: **under what name that state becomes citable**. Every merge into
+`main` gets an annotated tag, because whoever adopts the architecture pins a ref — the
+marketplace's `.plugin-source.json` and every generated project's provenance stamp hold
+exactly that. A merge with no tag is a state nobody can point at.
+
+| Job | When it runs | What it does |
+|---|---|---|
+| `bump-declared` | every PR event (`opened`, `edited`, `synchronize`, …) | Reads § Release bump from the PR body and requires **exactly one** level ticked: `major`, `minor` or `patch`. Publishes the level as an output |
+| `tag` | once, on the `closed` event of a **merged** PR whose base is `main` | Runs `schema` and `doctor` on the merge commit, computes the next semver from the latest tag, then creates and pushes the annotated tag |
+
+Three decisions the file doesn't make obvious:
+
+- **The level lives in the PR body, not in a label or a commit.** The field is mandatory
+  in the template and `bump-declared` fails while the PR is open — the decision happens
+  at review time, not after the merge, when there is nowhere left to record it.
+- **One parser, one file.** The PR check and the tag creation read the same body; two
+  regexes in two workflows diverge silently. Hence two jobs of the same `release.yml`,
+  the second consuming the first's output.
+- **The tag comes from `merge_commit_sha`, not from `main`.** `main` may already carry the
+  next merge by the time the job runs. And the job revalidates that commit:
+  `validate.yml` passed on the PR head, which is a different tree whenever `main` moved
+  underneath — a semantic conflict in `extensions.json` fails there instead of shipping as
+  a ref the marketplace can pin.
+
+Two things stay manual on purpose: the GitHub Release, for a ref that deserves more prose
+than the message the workflow writes (that message points at the PR), and the
+marketplace, which pins the ref with `./sync.sh vX.Y.Z` — publishing is a decision, not a
+consequence of merging.
+
+**What makes the field mandatory isn't in the file:** it's `bump-declared` as a required
+status check in the branch protection of `main`. Without that, the job fails and the merge
+happens anyway.
+
 ## What's not here yet
 
 - Invariant 9 (the generated project is self-contained) is now **half** covered: the
