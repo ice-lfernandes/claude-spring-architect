@@ -30,6 +30,7 @@ os outros.
 | [08-audit-usage.md](08-audit-usage.md) | Trilha de auditoria: hook `audit` (relatório por execução, tokens e custo por peça), hook `guard` (cada skill escreve só o território da própria classe, spec aprovado congelado), skill `/audit-usage` |
 | [09-diferenciais.md](09-diferenciais.md) | O que este repositório faz que templates, pacotes de skills e bundles de agents no GitHub não fazem — tabela comparativa, fontes, e o que não é diferencial |
 | [10-arch-adopt.md](10-arch-adopt.md) | Workflow de `/arch-adopt`: instalar este `.claude/` num projeto que nunca foi gerado aqui, ou atualizar um que está atrasado — modo `export`, manifesto de cópia, stamp de proveniência |
+| [11-pitfalls.md](11-pitfalls.md) | Armadilhas do runtime do Claude Code, todas silenciosas: skill com nome de comando nativo, `$ARGUMENTS` interpolado em prosa, segmentos de pipe em `allowed-tools`, cwd de injeção, frontmatter desconhecido, as quatro falhas mudas de um hook, `AskUserQuestion`, e os quatro pitfalls de `.mcp.json` |
 
 ## Como este repositório está organizado (referência rápida)
 

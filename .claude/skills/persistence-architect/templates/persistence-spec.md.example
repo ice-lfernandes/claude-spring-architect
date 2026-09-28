@@ -39,6 +39,32 @@
 No index on `name`: no query filters by it. An index without a query is write cost with
 no return.
 
+**Personal data at rest** — `@.claude/rules/security.md` § At rest. Written for every table
+this partial designs, `none` included; a serialized `payload` column is the case schema review
+cannot see into, so it is named explicitly with its retention.
+
+| Column | Holds | Retention | Why it is stored at all |
+|---|---|---|---|
+| `email` | e-mail, personal data | life of the account | Business key of the aggregate; no reduced form can serve a unique lookup by e-mail |
+| — | no other column holds personal data | — | — |
+
+**Claim strategy — `outbox_events` only** (omit this block when the case has no outbox). Three
+answers, one of them chosen out loud, because the exemplar's unlocked read is correct for
+exactly one deployment shape:
+
+| Decision | Value |
+|---|---|
+| Strategy | Documented single instance — the exemplar's unlocked `SELECT`, no lease column |
+| Why | One relay instance by deployment constraint: the application runs as a single replica, stated here so the next deployment change has something to contradict |
+| What it costs if the constraint breaks | Two instances publish the whole batch twice per pass. The consumer's dedupe absorbs it, and this is the paragraph to revisit before scaling out |
+| Who absorbs the duplicate | `processed_events` in this project — or, where the consumer is external, `25-mensageria.md` § 3 names it and says whether the guarantee is contracted, assumed or unknown |
+
+The other two answers are a **lease column** (`claimed_at`, one `UPDATE … WHERE event_id IN
+(SELECT … FOR UPDATE SKIP LOCKED) RETURNING …`) and **`FOR UPDATE SKIP LOCKED` at claim time**
+(native query, no extra column). Both are schema or query changes and belong in this partial,
+never in a comment in the relay. Whichever is chosen, the gateway method's name says what it
+does: `claimPending` that does not claim is renamed or made true.
+
 ## 2 · Mapping
 
 Aggregate `User` → entity `UserEntity` in `adapter/out/persistence/user`. Explicit
@@ -125,6 +151,23 @@ re-discussed here — `@.claude/rules/persistence.md` § Configuration.
 | `spring.jpa.open-in-view` | `false` | Rule. Repeated here only because Spring Boot's default is the opposite |
 
 Full shape in `templates/application-persistence.yml.example`.
+
+## 6 · Declared dependencies
+
+none
+
+Build dependencies this layer needs and the project does not declare yet, one row each — the
+same block `25-mensageria.md` § 7 carries, and for the same reason: the executor may write
+`pom.xml` **only** for a dependency a spec names here (`agent_classes.executor`), so a
+requirement that never reaches this block leaves the run stuck at a missing type with nobody
+entitled to fix it.
+
+Version column stays empty whenever the Boot parent manages it — never a version from memory
+(`@CLAUDE.md` invariant 8).
+
+| Dependency | Version | Why |
+|---|---|---|
+| — | — | Postgres driver and `spring-boot-starter-data-jpa` already came from the blueprint |
 
 ## Impact on approved use cases
 

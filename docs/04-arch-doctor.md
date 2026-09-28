@@ -9,7 +9,7 @@ Diagnostica se o enforcement de arquitetura está realmente funcionando na máqu
 atual: hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema de
 frontmatter válido, trilha de auditoria, servidores MCP declarados, e se todo serviço
 do `docker-compose.yml` está de fato `running` sem um container de outro projeto nas
-mesmas portas. Não corrige nada por conta própria — só relata, e sugere o comando
+mesmas portas — e se cada porta publicada no host é alcançável de lá. Não corrige nada por conta própria — só relata, e sugere o comando
 exato para corrigir cada item marcado com ❌.
 
 ## Por que é a skill mais simples das três
@@ -74,7 +74,7 @@ sequenceDiagram
 | `MCP` | N servidores declarados em `.mcp.json`, todos válidos | ❌ N problemas — rodar `java ArchHook.java schema`; ou "no .mcp.json" (opcional) |
 | `Hooks` | N registros válidos em M eventos | ❌ evento desconhecido, `matcher` em evento que não lê um, ou string de shell no `command` — os quatro modos de falhar silenciosamente de um hook |
 | `Provenance` | nenhum arquivo do `.claude/` editado depois do stamp `.claude/.arch-provenance.json` | ⚠️ lista os arquivos editados localmente — um `arch-adopt` sobrescreveria cada um. No repositório de origem: `⚪ origin repository — writes stamps, carries none` |
-| `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio, e nenhuma tag de `image:` divergindo da que `src/test` fixa em `DockerImageName.parse` | ❌ serviço em `created`/`exited`, porta publicada por outro projeto, ou tag divergente — detalhe linha a linha. A comparação de tags não precisa de Docker: lê os dois arquivos |
+| `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio, nenhuma tag de `image:` divergindo da que `src/test` fixa em `DockerImageName.parse`, e toda porta publicada no host anunciada em um endereço que o host resolve | ❌ serviço em `created`/`exited`, porta publicada por outro projeto, tag divergente, ou serviço que publica porta anunciando só o hostname da rede do compose — detalhe linha a linha. A comparação de tags e a checagem de endereço anunciado não precisam de Docker: leem os arquivos |
 | `git HEAD` | existe pelo menos 1 commit | ❌ sem commits — o hook `tests` não roda (`git diff HEAD` falha) |
 | `UC references` | toda pasta `docs/use-cases/UC-NNN-slug/` citada por um arquivo versionado existe no disco | ❌ citação órfã, com arquivo e linha — apagar ou renomear um caso de uso deixa as citações para trás, e cada uma estava correta no commit que a escreveu. Sem `docs/use-cases/`, "nothing to check (optional)" — é o caso deste meta-repo |
 

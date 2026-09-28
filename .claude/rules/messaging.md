@@ -27,6 +27,17 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
   inbound port. It never touches the target aggregate directly
 - No Kafka type (`ProducerRecord`, `ConsumerRecord`, `@KafkaListener`) in a domain or
   application signature
+- **Framework wiring for the broker lives in this package too, `@Configuration` included.**
+  A class that builds a `ProducerFactory`, a `KafkaTemplate`, a `DefaultErrorHandler`, or
+  enables the scheduling a relay depends on is adapter-local wiring: it carries broker types,
+  so it sits with the adapter and not in a project-wide configuration package. This is the
+  explicit exception to a module layout that assigns Spring wiring to a configuration package
+  — stated here because the two readings contradict each other otherwise, and a real run
+  resolved it by failing the grep below and moving the class, which is the right answer
+  arrived at the wrong way. Two consequences, both deliberate: the grep stays absolute (no
+  `@Configuration` escape hatch, or it stops verifying the boundary), and a coverage
+  exclusion written for configuration classes must select them by what they are, not by which
+  package they happen to live in
 
 ## Delivery semantics
 
@@ -35,6 +46,19 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
 - Every consumer is idempotent: dedupe on the event's own identity (its id, or aggregate id +
   event type + occurred-at), not on offset. A redelivered message must produce the same
   end state as the first delivery, not a duplicate side effect
+- **At-least-once is a claim about two parties, so the design names both.** Who publishes is
+  obvious; who absorbs the duplicate is not, and where the consumer belongs to another team or
+  another company the guarantee is being delegated across an organizational boundary. The
+  design that publishes says which receiver dedupes and whether that is **contracted** (written
+  where both sides can point at it), **assumed**, or **unknown** — and the last two are
+  reported as findings, not settled by a comment in the producer. "Duplicates are absorbed by
+  the idempotent consumer" is true only while a consumer exists that does it
+- **A duplicate has more than one source, and they need different answers.** A failed mark
+  after a successful send duplicates one message, and the consumer's dedupe is the answer. Two
+  sweepers reading the same unlocked rows duplicate the whole batch on every pass, and the
+  answer there is the claim itself — a lease, `FOR UPDATE SKIP LOCKED`, or a stated
+  single-instance constraint. A method named for claiming that only reads is the shape to look
+  for: the name promises the guarantee the query does not provide
 - Producer: `acks=all` and `enable.idempotence=true`. Without idempotence, a producer retry
   after a transient broker error can duplicate the message before it even reaches the
   consumer

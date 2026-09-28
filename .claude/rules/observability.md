@@ -3,6 +3,8 @@ paths:
   - "**/adapter/in/rest/**"
   - "**/infrastructure/rest/**"
   - "**/infrastructure/config/**"
+  - "**/adapter/out/messaging/**"
+  - "**/infrastructure/messaging/**"
 status: active
 ---
 
@@ -62,6 +64,14 @@ line's format.
   span annotation) is the only place this rule reaches into application code — never a
   hand-rolled metric that duplicates what the vendor's annotation already gives for
   free.
+- **A delivery the design declared must not be lost carries two metrics, and they are not
+  optional.** Whenever a component defers an effect to be retried later — a stored intent
+  swept by a background pass — the point at which it gives up is a counter, and the age of
+  the oldest not-yet-delivered item is a gauge. A give-up path that writes only a log line
+  makes the loss silent and permanent, which is precisely the property the deferral was
+  bought to avoid; and the counter alone still cannot say delivery is falling behind before
+  something is lost. Both belong to the sweeping component, which is the only place that
+  knows either number.
 
 ## How to verify
 

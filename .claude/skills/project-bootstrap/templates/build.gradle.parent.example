@@ -112,7 +112,8 @@ subprojects {
         dependsOn tasks.named('test')
         classDirectories.setFrom(
             files(classDirectories.files.collect {
-                fileTree(dir: it, exclude: ['**/*Application.class', '**/config/**'])
+                fileTree(dir: it, exclude: ['**/*Application.class', '**/config/**',
+                                           '**/*Config.class', '**/*Configuration.class'])
             })
         )
     }

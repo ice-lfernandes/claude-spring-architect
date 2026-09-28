@@ -216,10 +216,10 @@
         "agents": ["project-initializer"]
       },
       "executor": {
-        "$comment": "Implements an approved spec: the spec replaces the interview, so the body carries an input guardrail instead of questions. The one path outside src/ is the single Edit that closes `status: approved` to `status: implemented` — the frozen-folder check in `guard` allows that line and only that line, and the allowlist has to let the file through before that check is even reached.",
+        "$comment": "Implements an approved spec: the spec replaces the interview, so the body carries an input guardrail instead of questions. The one path outside src/ is the single Edit that closes `status: approved` to `status: implemented` — the frozen-folder check in `guard` allows that line and only that line, and the allowlist has to let the file through before that check is even reached. `pom.xml` is here since lessons-learned-013 § 10: Form B needed `spring-kafka`, no participant in the feature pipeline owned the file (the design skills are docs-only, `/new-feature` writes the spec, the two installers have nothing to do with a feature's dependencies) and the run unblocked only because a human edited it outside every territory. The territory is file-level and cannot say `dependency blocks only` — what bounds it is the agent's own body: a dependency the spec's § 3 or § 6 names as a declared requirement, nothing else, and any other change to the file is reported instead of written.",
         "executor": true,
         "required_fields": ["effort"],
-        "write_allow": ["src/**", "**/src/**", "docs/use-cases/UC-*/UC-*-spec.md"],
+        "write_allow": ["src/**", "**/src/**", "docs/use-cases/UC-*/UC-*-spec.md", "pom.xml", "**/pom.xml"],
         "required_sections": ["## Input validation", "## Failure mode", "## References"],
         "agents": ["java-spring-boot-developer"]
       },
@@ -255,10 +255,23 @@
     }
   },
 
+  "compose": {
+    "$comment": "Read by ArchHook.java `compose`, and through it by `doctor`. A service that publishes a port to the host is claiming the host can reach it; when it ALSO advertises its own address to clients — a broker, a registry, anything that answers a bootstrap with `talk to me there instead` — the two claims have to agree. docker-architect's Kafka exemplar published 9092:9092 and advertised only `kafka:9092`, so every host-side publish died on `UnknownHostException: kafka` while the broker's healthcheck (run INSIDE the container, where localhost IS the broker) passed and Testcontainers' own correctly-wired listeners kept the integration tests green: lessons-learned-013 § 11. Every mechanism that could have caught it looked somewhere else, which is why this one reads the file instead of the runtime and answers with the daemon down. `advertised_env_suffixes` are matched with endsWith against each environment key, not as globs — one less pattern language in a check whose whole value is being unambiguous; a new advertising service adds a suffix here, never a condition in the Java, invariant 10. `host_addresses` is what counts as reachable from the host, and its first entry is the one the error message tells the reader to advertise. Design: .claude/decisions/0060-lessons-learned-013-shipping-defects.md",
+    "advertised_env_suffixes": [
+      "_ADVERTISED_LISTENERS",
+      "_ADVERTISED_HOST_NAME",
+      "_ADVERTISED_ADDRESS",
+      "_ADVERTISED_URL",
+      "_EXTERNAL_URL"
+    ],
+    "host_addresses": ["localhost", "127.0.0.1"]
+  },
+
   "guard": {
-    "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A write that carries an `agent_type` is judged by that agent's own class instead, `agent_classes` above — no phase involved, which is also why an Agent call no longer closes the open phase: the main thread's territory is not the subagent's business. A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute, and what each class may write are NOT here: they are `skill_classes` and `agent_classes` above, single owner each. Design: .claude/decisions/0058-skill-classes-territory-schema.md and .claude/decisions/0059-agent-classes-territory-schema.md",
+    "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A write that carries an `agent_type` is judged by that agent's own class instead, `agent_classes` above — no phase involved, which is also why an Agent call no longer closes the open phase: the main thread's territory is not the subagent's business. A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute, and what each class may write are NOT here: they are `skill_classes` and `agent_classes` above, single owner each. Design: .claude/decisions/0058-skill-classes-territory-schema.md and .claude/decisions/0059-agent-classes-territory-schema.md `frozen_exempt_basenames` is the third write a frozen folder admits, and the only one that is not an edit of the spec: a file with one of these basenames sitting DIRECTLY under the UC-NNN folder is always writable, whatever tool, phase or agent produces it. /new-feature's consolidation requires one CHANGELOG.md line per change an impact row makes to an already-approved case — the write that keeps the approved spec itself untouched — and the guard blocked exactly that, advising `status: draft` on an implemented spec to get past it (lessons-learned-013 § 1). Matched on the basename, never on content: knowing an append is really an append would mean reimplementing Edit's semantics inside the hook, and a changelog is a log the guard has no reason to read. Design: .claude/decisions/0060-lessons-learned-013-shipping-defects.md",
     "use_cases_dir": "docs/use-cases",
-    "frozen_statuses": ["approved", "implemented"]
+    "frozen_statuses": ["approved", "implemented"],
+    "frozen_exempt_basenames": ["CHANGELOG.md"]
   },
 
   "source": {
@@ -352,7 +365,7 @@
         "extra": ["**/db/migration/**"]
       },
       "value-objects.md": { "key": ["domain.model", "domain"], "glob": "**/{}/**/*.java" },
-      "observability.md": { "suffix": [".rest", ".config"], "glob": "**/{}/**" },
+      "observability.md": { "suffix": [".rest", ".config", ".messaging"], "glob": "**/{}/**" },
       "messaging.md": { "suffix": [".messaging"], "glob": "**/{}/**", "optional": true },
       "architecture-ddd.md": { "from_blueprint": "architecture_paths" }
     },

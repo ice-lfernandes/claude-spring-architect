@@ -35,6 +35,20 @@ Port declared in `10-dominio.md`: `PublishOrderConfirmedPort`.
 |---|---|---|---|
 | `PublishOrderConfirmedPort` | `void publish(OrderConfirmed event)` | `OrderConfirmedPublisher` | `OrderConfirmedPayload(orderId, customerId, occurredAt)` |
 
+**Personal data in the payload** — `@.claude/rules/security.md` § In transit. Never omitted:
+`none` is the answer when no field qualifies, and an absent line is an unasked question.
+
+| Field | Qualifies as personal data | What crosses | Receiver | Why this form |
+|---|---|---|---|---|
+| `customerId` | no — internal surrogate id, resolves to a person only inside this system | full value | `inventory-service` (this project) | Nothing about the person travels |
+| — | none other | — | — | — |
+
+The example that needs the other answer: a field holding a national identifier
+(`securityNumber` carrying a CPF) crossing to an external verification service whose whole
+purpose is verifying it. That is a legitimate `full value`, and it is recorded here with the
+receiver's name — not left to a Javadoc sentence. Masking it for the logs is a different rule
+(`@.claude/rules/logging.md`) and does not cover the serialized copy.
+
 Under **Form B** this block carries one more thing, and the partial is incomplete without it:
 the relay (`OutboxRelay` + the application-layer `OutboxRelayGateway`, shape in
 `templates/OutboxRelayPublisher.java.example`). The `outbox_events` table it needs is not
@@ -50,6 +64,20 @@ One outbox for the whole project, reused by every later event.
 Dedupe table: reuses `processed_events`, created by `persistence-architect` for another
 consumer in this project. Shared across consumers, not per use case, same pattern as
 `idempotency_keys`. Had it not existed yet, it would be a row of § 6 instead.
+
+**Who absorbs the duplicate** — at-least-once is only safe because someone does, so this line
+is mandatory even when there is no consumer here:
+
+| Consumer | Where it lives | Idempotency | Evidence |
+|---|---|---|---|
+| `ReserveStockUseCase` | this project | guaranteed | `processed_events` checked before the use case is called, § 3 above |
+
+When the consumer is **not** in this project, the row says the receiver's name and one of
+three words — **contracted** (written down somewhere both sides can point at, and the
+`Evidence` column names it), **assumed**, or **unknown** — and the last two are reported as
+findings at the end of the run. A guarantee delegated across an organizational boundary with
+no contract on this side is a real state of the system; what is not acceptable is it being
+invisible.
 
 ## 4 · Retry and DLQ
 
@@ -69,6 +97,7 @@ re-discussed here — `@.claude/rules/messaging.md` § Configuration.
 | `spring.kafka.consumer.group-id` | `inventory-service` | One stable id per logical consumer |
 | `spring.kafka.consumer.auto-offset-reset` | `earliest` | Losing an unprocessed order-confirmed event is worse than reprocessing one |
 | `spring.kafka.listener.ack-mode` | `manual` | Offset commits only after `reserve()` returns |
+| `spring.kafka.bootstrap-servers` | `${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}` | Default has to be the address the HOST resolves — `./mvnw spring-boot:run` runs there. The compose `app` service overrides it with the internal listener, and the port matches the EXTERNAL listener `docker-architect` publishes |
 
 Full shape in `templates/application-kafka.yml.example`.
 
@@ -90,6 +119,23 @@ table instead:
 | `outbox_events` — shared, one per project | Form B: the event is written inside the caller's transaction and published by the relay | event id, aggregate id, topic, payload, occurred at, published at, claim marker, attempts, last error, dead-letter flag | `persistence-architect` step 4b |
 | `processed_events` — shared, one per project | Idempotent consumer: the dedupe key is checked before the use case is called | dedupe key, consumed at | `persistence-architect` |
 
+## 7 · Declared dependencies
+
+none
+
+Build dependencies this transport needs and the project does not declare yet, one row each.
+The executor applies exactly these and nothing else — `pom.xml` is in its territory only for
+a dependency named here (`agent_classes.executor`), so a requirement that never reaches this
+block leaves the run stuck at a missing type with nobody entitled to fix it
+(lessons-learned-013 § 10).
+
+Version column stays empty whenever the Boot parent manages it: a version written from
+memory is what `@CLAUDE.md` invariant 8 forbids.
+
+| Dependency | Version | Why |
+|---|---|---|
+| `org.springframework.boot:spring-boot-starter-kafka` | (managed by the Boot parent) | Spring Boot 4 moved Kafka autoconfiguration out of `spring-boot-autoconfigure`; without this starter `spring-kafka` alone wires no `KafkaTemplate` and every `spring.kafka.*` property is inert |
+
 ## Impact on approved use cases
 
 none
@@ -100,9 +146,10 @@ consolidation collects this section into `UC-NNN-spec.md`.
 
 ## Implementation order
 
-1. `OrderConfirmedPayload` (producer side) + `OrderConfirmedPublisher`
-2. `OrderConfirmedPayload` (consumer side) + `OrderConfirmedListener`
-3. `ProcessedEventStore` port + adapter (or reuse, if `persistence-architect` already built one)
-4. Properties in `application.yml`
-5. `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` bean, once per consumer group
-6. Integration test against a real broker (Testcontainers) — `40-testes.md`
+1. The dependencies of § 7, if any — nothing below compiles without them
+2. `OrderConfirmedPayload` (producer side) + `OrderConfirmedPublisher`
+3. `OrderConfirmedPayload` (consumer side) + `OrderConfirmedListener`
+4. `ProcessedEventStore` port + adapter (or reuse, if `persistence-architect` already built one)
+5. Properties in `application.yml`
+6. `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` bean, once per consumer group
+7. Integration test against a real broker (Testcontainers) — `40-testes.md`

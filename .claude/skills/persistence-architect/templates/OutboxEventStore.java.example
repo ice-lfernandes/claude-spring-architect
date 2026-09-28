@@ -8,7 +8,7 @@
  * WHAT THIS EXEMPLAR SHOWS: the table `outbox_events` mapped, and the read/mark side of it
  * served through `OutboxRelayGateway`. Table itself: `templates/OutboxEventTable.sql.example`.
  *
- * WHAT IT DOES NOT DECLARE, ON PURPOSE. `OutboxRelayGateway` and `PendingOutboxEvent` are
+ * WHAT IT DOES NOT DECLARE, ON PURPOSE. `OutboxRelayGateway` and `OutboxEventRecord` are
  * declared in `.claude/skills/messaging-architect/templates/OutboxRelayPublisher.java.example`,
  * which owns the relay that consumes them. This exemplar only implements the port — one
  * interface, one owning file, the same discipline `IdempotencyKeyPort` follows. If the
@@ -30,8 +30,10 @@
  * output port of any aggregate. `domain-modeling` declares the port that *publishes the event*;
  * this one serves the relay's own view of outbox state, and exists once for the whole project.
  *
- * TRANSACTIONS. Zero `@Transactional` here (`.claude/rules/persistence.md` § Boundary): each
- * call below runs in the transaction Spring Data opens for the repository method itself. That
+ * TRANSACTIONS. The three marks carry `@Transactional` and nothing else does
+ * (`.claude/rules/persistence.md` § Boundary): a `@Modifying` statement needs a transaction,
+ * and the relay is the one caller that opens none. The claim reads and needs no transaction of
+ * its own. That
  * is what the relay needs — a claim, a send, and a mark are three separate units, and holding
  * one transaction across the broker call would keep a database transaction open for the length
  * of a network round trip. The write side is the opposite case and is the whole point of Form
@@ -142,17 +144,9 @@ class OutboxEventEntity implements Persistable<UUID> {
         this.occurredAt = occurredAt;
     }
 
-    // No setter. These are the only two state changes a row ever makes.
-    void markPublished(Instant now) {
-        this.publishedAt = now;
-        this.lastError = null;
-    }
-
-    void markFailed(String reason, int maxAttempts) {
-        this.attempts = (short) (this.attempts + 1);
-        this.lastError = reason;
-        this.deadLettered = this.attempts >= maxAttempts;
-    }
+    // No setter, and no mutator either: every state change a row makes after the insert is a
+    // single UPDATE in the repository above. A `markPublished(Instant)` here would be the
+    // load-mutate-save shape those statements exist to replace.
 
     @Override
     public UUID getId() {
@@ -179,6 +173,8 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID> {
 
@@ -192,6 +188,63 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
      */
     List<OutboxEventEntity> findByPublishedAtIsNullAndDeadLetteredIsFalseOrderByOccurredAtAsc(Limit limit);
 
+    /*
+     * The marks, as single statements. Loading the row and saving it back costs two
+     * round-trips per event in two separate transactions, with the entity detached in
+     * between: a batch of 100 pays ~201 where ~101 does the same work
+     * (lessons-learned-013 § 8.2). Nothing here needs the entity — each mark is a set of
+     * columns and a predicate, which is exactly what an UPDATE is.
+     *
+     * `clearAutomatically` is deliberately absent: this adapter never loads the entity it
+     * updates, so there is no stale copy in the persistence context to evict.
+     */
+    @Modifying
+    @Query("""
+            update OutboxEventEntity e
+               set e.publishedAt = :now, e.lastError = null
+             where e.eventId = :eventId""")
+    int markPublished(UUID eventId, Instant now);
+
+    /*
+     * Dead-lettering by exhaustion, attempted FIRST so its row count is the answer to "did
+     * this attempt exhaust the row": 1 means it did. Zero means the row has attempts left and
+     * `recordAttempt` below records one. Two statements in the failure path, one in the
+     * success path — the hot path is the one that succeeds.
+     */
+    @Modifying
+    @Query("""
+            update OutboxEventEntity e
+               set e.attempts = e.attempts + 1, e.lastError = :reason, e.deadLettered = true
+             where e.eventId = :eventId
+               and e.deadLettered = false
+               and e.attempts + 1 >= :maxAttempts""")
+    int deadLetterIfExhausted(UUID eventId, String reason, int maxAttempts);
+
+    @Modifying
+    @Query("""
+            update OutboxEventEntity e
+               set e.attempts = e.attempts + 1, e.lastError = :reason
+             where e.eventId = :eventId
+               and e.deadLettered = false""")
+    int recordAttempt(UUID eventId, String reason);
+
+    /* Dead-lettering by decision, not by exhaustion: an event type no topic maps. */
+    @Modifying
+    @Query("""
+            update OutboxEventEntity e
+               set e.deadLettered = true, e.lastError = :reason
+             where e.eventId = :eventId""")
+    int markDeadLettered(UUID eventId, String reason);
+
+    /*
+     * Feeds the relay's pending-age gauge. A scalar `min`, served by the same partial index as
+     * the claim query, so a scrape costs an index lookup and not a row.
+     */
+    @Query("""
+            select min(e.occurredAt) from OutboxEventEntity e
+             where e.publishedAt is null and e.deadLettered = false""")
+    Instant oldestPendingOccurredAt();
+
     // Read by the pruning job (the commented DELETE in
     // `templates/OutboxEventTable.sql.example`, or a scheduled equivalent). Never on the
     // relay path. A dead-lettered row is not pruned — it has no `published_at`.
@@ -201,14 +254,16 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
 // --- outbox/OutboxEventStore.java
 package com.example.demo.adapter.out.persistence.outbox;
 
+import com.example.demo.application.port.out.OutboxEventRecord;
 import com.example.demo.application.port.out.OutboxRelayGateway;
-import com.example.demo.application.port.out.PendingOutboxEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 class OutboxEventStore implements OutboxRelayGateway {
@@ -229,36 +284,56 @@ class OutboxEventStore implements OutboxRelayGateway {
     }
 
     @Override
-    public List<PendingOutboxEvent> claimPending(int batchSize) {
+    public List<OutboxEventRecord> claimPending(int batchSize) {
         return repository
                 .findByPublishedAtIsNullAndDeadLetteredIsFalseOrderByOccurredAtAsc(Limit.of(batchSize))
                 .stream()
-                .map(OutboxEventStore::toPending)
+                .map(OutboxEventStore::toRecord)
                 .toList();
     }
 
+    /*
+     * `@Transactional` on the three marks, and ONLY on them: a `@Modifying` statement needs a
+     * transaction of its own, and this is the one place in this adapter that writes without
+     * the caller providing one — the relay's claim, send and mark are three separate units by
+     * design (see the TRANSACTIONS note at the head of this file). The use-case path is
+     * untouched: the appender's INSERT still joins the transaction the application layer
+     * opened.
+     */
     @Override
+    @Transactional
     public void markPublished(UUID eventId) {
-        // Loaded and saved in two repository transactions: the entity is detached in between,
-        // and `save` on a detached row with `isNew == false` is an UPDATE, not a merge-insert.
-        // A row that vanished between the claim and the mark was pruned, which cannot happen
-        // to a pending row — so `orElseThrow` here is a real defect, not a race.
-        OutboxEventEntity event = repository.findById(eventId).orElseThrow();
-        event.markPublished(clock.instant());
-        repository.save(event);
+        repository.markPublished(eventId, clock.instant());
     }
 
     @Override
-    public void markFailed(UUID eventId, String reason, int maxAttempts) {
-        OutboxEventEntity event = repository.findById(eventId).orElseThrow();
-        event.markFailed(truncate(reason), maxAttempts);
-        repository.save(event);
+    @Transactional
+    public boolean markFailed(UUID eventId, String reason, int maxAttempts) {
+        String message = truncate(reason);
+        if (repository.deadLetterIfExhausted(eventId, message, maxAttempts) == 1) {
+            return true;
+        }
+        repository.recordAttempt(eventId, message);
+        return false;
+    }
+
+    @Override
+    @Transactional
+    public void markDeadLettered(UUID eventId, String reason) {
+        repository.markDeadLettered(eventId, truncate(reason));
+    }
+
+    @Override
+    public Optional<Instant> oldestPendingOccurredAt() {
+        return Optional.ofNullable(repository.oldestPendingOccurredAt());
     }
 
     // The port's type, not the entity: nothing outside this subpackage sees a JPA class
-    // (`.claude/rules/persistence.md` § Boundary).
-    private static PendingOutboxEvent toPending(OutboxEventEntity event) {
-        return new PendingOutboxEvent(
+    // (`.claude/rules/persistence.md` § Boundary). One carrier serves both directions — the
+    // appender writes it, the relay reads it; a second record with the same components is the
+    // same type written twice (lessons-learned-013 § 8.3).
+    private static OutboxEventRecord toRecord(OutboxEventEntity event) {
+        return new OutboxEventRecord(
                 event.getEventId(),
                 event.getAggregateId(),
                 event.getEventType(),

@@ -41,6 +41,22 @@ it.
 All `record`, immutable, with validation in the compact constructor and a non-public
 constructor. Shape: `templates/ValueObject.java.example`.
 
+**State reachability** — written whenever a field's type admits more than one value; `none`
+when the aggregate has no state field. Every value some use case will need is reachable
+through the aggregate's own API, or a named case is on the hook for it.
+
+| State field | Value | Reached by | Status |
+|---|---|---|---|
+| `status` | `PENDING_EMAIL_CONFIRMATION` | `User.register(...)` — the creation factory | this case |
+| `status` | `ACTIVE` | `User.confirmEmail(token, clock)` | this case |
+| `status` | `DEACTIVATED` | nothing yet — `UC-007-deactivate-user` (backlog) | named future case |
+
+The reidratation path is **not** a row here. A factory that rebuilds persisted state
+(`rehydrate`, the constructor the mapper calls) is not a transition, and a value reachable only
+through it is reachable in tests and unreachable in production — which is how a later case's
+precondition on `ACTIVE` turned every real request into a 422 while the build stayed green. A
+value with no method and no named case is the gap this block exists to prevent.
+
 ## 2 · Invariants
 
 | # | Invariant | Where it's enforced | Exception | `errorCode` |

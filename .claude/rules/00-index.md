@@ -41,9 +41,16 @@ Declare `paths` whenever the rule has an identifiable file territory.
 | `observability.md` | Vendor integration for tracing (correlation identifier origin) and metrics (cardinality, health endpoint, vendor annotations) | Contract tests + context startup |
 | `logging.md` | `logback.xml` default pattern, log format and level semantics, sensitive data masked or kept out of logs, per-class-type log content | Review |
 | `messaging.md` | Kafka producer/consumer boundary, delivery semantics (at-least-once, idempotent consumer), topic naming and serialization, retry/DLQ, consumer configuration | `grep` from § How to verify + integration tests |
+| `security.md` | Personal data at rest and in transit: what counts as personal data, payload columns and retention, the minimum a receiver needs, the recorded decision when a value must cross in clear | `grep` from § How to verify + the design record it requires |
 
-`architecture-ddd.md` is the only one without its own `paths`, by design: the globs come
-from the active blueprint's `architecture_paths` and are written into the file that
+`security.md` has no `paths` either, and for a different reason: personal data is decided at
+the boundary that writes a payload, and that boundary is a different package in every
+architecture, so the rule is always cited by path instead of auto-loaded. Its first version
+covers personal data only — secrets and authn/authz stay planned below, unwritten, because no
+case has demanded them yet.
+
+`architecture-ddd.md` is the only one without its own `paths` for a third reason: its globs
+come from the active blueprint's `architecture_paths` and are written into the file that
 bootstrap copies into the generated project. See `@.claude/blueprints/_schema.md`.
 
 The rules whose territory is a package — `api-rest.md`, `persistence.md`,
@@ -60,7 +67,6 @@ using it; don't improvise it inside another file.
 
 | File | Will cover | Expected `paths` |
 |---|---|---|
-| `security.md` | Authn/authz, secrets, sensitive data, PII | — (no `paths`: always loaded) |
 | `git-workflow.md` | Branches, commit messages, PRs | — (cited) |
 
 ## States

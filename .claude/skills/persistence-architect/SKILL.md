@@ -183,6 +183,25 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    requirement written in the wrong vocabulary — take the guarantee from it (at-least-once,
    attempt count, DLQ destination) and report the column names as a divergence.
 
+   **The claim strategy is an explicit decision of this step, and it gets written down.** The
+   exemplar's `claimPending` is an unlocked `SELECT`, which is correct for exactly one
+   deployment shape and for no other: two relay instances polling at once read the same rows
+   and publish the whole batch twice, every pass. Its own Javadoc says so — "SINGLE RELAY
+   INSTANCE IS ASSUMED" — and a real run copied the method, kept the name, and recorded the
+   assumption nowhere, so the name promised a claim the query never made. Decide between three,
+   and write the choice plus its reason into the partial's § 1 as **Claim strategy**:
+
+   | Strategy | Shape | When it is the answer |
+   |---|---|---|
+   | Documented single instance | the exemplar as it stands, unlocked read | one relay by deployment constraint, and the constraint is stated — not hoped for |
+   | Lease column | `claimed_at` (+ optional owner id), one `UPDATE … WHERE event_id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING …` | more than one instance, and the duplicate rate matters. Same shape `idempotency_keys` already uses for its IN_PROGRESS rows |
+   | `FOR UPDATE SKIP LOCKED` at claim time | native query, no extra column, rows locked for the transaction that sends | more than one instance, and a lease column is not wanted |
+
+   The two locking answers are **schema or query changes**, so they belong here and nowhere
+   else — a comment in the relay is not a decision. And whichever is chosen, the partial says
+   what the method name promises: a method called `claimPending` that does not claim is renamed
+   or made true, never left to be read as a guarantee.
+
    **Read that guarantee before choosing the shape.** If it cannot hold with the exemplar's
    columns — per-row exponential backoff has nowhere to record the next attempt — that is
    not a shape decision to make quietly: stop the pipeline and ask, the same way
@@ -191,7 +210,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    exists to prevent.
 
    Two boundaries this step does **not** cross. `OutboxRelayGateway` and
-   `PendingOutboxEvent` are declared in `messaging-architect`'s
+   `OutboxEventRecord` are declared in `messaging-architect`'s
    `templates/OutboxRelayPublisher.java.example`, which owns the relay consuming them: this
    step implements the port, it doesn't re-declare it. And the relay component itself, the
    appender, and its broker side — serialization, topic, DLQ routing — are that skill's.
@@ -208,6 +227,13 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    put it to the user with `AskUserQuestion` — the default first, plus real alternatives —
    and write the chosen window and its reason into the partial's § 1. Never a single-option
    question: with nothing to choose between, decide and record instead of asking.
+
+   **The retention property ships only with the job that reads it.** Pruning out of scope for
+   this run means `app.outbox.prune-after` is a property nothing reads: it drifts from the
+   window the index and the table comment assume, and a reader takes it for a guarantee the
+   project does not make (lessons-learned-013 § 8.6). Either the partial designs the pruning
+   pass in the same run, or § 1 records the retention as a decision and the property stays
+   out of `application.yml` until its reader exists.
 
 5. **Fix the migration in the partial.** Name per `@.claude/rules/persistence.md`
    § Migrations, with `<N>` following the highest one found in step 2, and the target
@@ -228,7 +254,8 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    — pool size, timeouts, `batch_size` — based on the volume answered in step 3.
 
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, from
-   `templates/persistence-spec.md.example`. Five blocks, all mandatory.
+   `templates/persistence-spec.md.example`. Six blocks, all mandatory — § 6 · Declared
+   dependencies written as `none` when this layer needs nothing the project lacks.
 
 9. **Check the engine has a container.** List the keys inside the `services:` block and
    look for the engine chosen in step 3 — never `grep -A2 "^services:"`, which reads two
@@ -253,7 +280,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 
 ## What the partial contains
 
-Five blocks. An empty block is written as "none" — deleting it hides a question nobody
+Six blocks. An empty block is written as "none" — deleting it hides a question nobody
 asked.
 
 | Block | Fixes | Form exemplar |
@@ -264,7 +291,8 @@ asked.
 | Migrations | New files, order, and the expand/contract pair when the table already exists | `V1__create_table.sql.example` |
 | Configuration | Datasource and JPA properties, with the decided value and why | `application-persistence.yml.example` |
 | Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, adapter, and application component — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` · `IdempotentExecution.java.example` |
-| Outbox (only when `25-mensageria.md` fixes publication Form B) | The shared `outbox_events` table, its mapping, the adapter implementing `OutboxRelayGateway`, and the retention chosen for the prune — modeled once, reused by every later event | `OutboxEventTable.sql.example` · `OutboxEventStore.java.example` |
+| Outbox (only when `25-mensageria.md` fixes publication Form B) | The shared `outbox_events` table, its mapping, the adapter implementing `OutboxRelayGateway`, the **claim strategy** chosen out loud, and the retention chosen for the prune — modeled once, reused by every later event | `OutboxEventTable.sql.example` · `OutboxEventStore.java.example` |
+| Declared dependencies | Build dependencies this layer needs and the project does not declare — the only list the executor may act on when it writes `pom.xml` | — |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.
@@ -311,7 +339,7 @@ touch `.claude/rules/**`.
 
 **Does not collide with `messaging-architect`**: that one decides the publication form and
 owns the relay, the appender, `app.outbox.*`, and the declaration of `OutboxRelayGateway` /
-`PendingOutboxEvent`. This one owns the `outbox_events` table, its mapping, and the adapter
+`OutboxEventRecord`. This one owns the `outbox_events` table, its mapping, and the adapter
 implementing that port. A form choice is never made here — an outbox requirement that
 contradicts `25-mensageria.md` is a divergence to report.
 

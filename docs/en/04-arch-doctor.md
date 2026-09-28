@@ -9,7 +9,7 @@ Diagnoses whether architecture enforcement is actually working on the current
 machine: active hooks, loaded boundaries, Maven wrapper, `java` on PATH, valid
 frontmatter schema, the audit trail, declared MCP servers, and whether every service in
 `docker-compose.yml` is actually `running` with no container from another project on
-the same ports. It doesn't fix anything on its own — it only reports, and suggests the
+the same ports — and whether each host-published port is reachable from there. It doesn't fix anything on its own — it only reports, and suggests the
 exact command to fix each item marked ❌.
 
 ## Why it's the simplest of the three skills
@@ -74,7 +74,7 @@ sequenceDiagram
 | `MCP` | N servers declared in `.mcp.json`, all valid | ❌ N problems — run `java ArchHook.java schema`; or "no .mcp.json" (optional) |
 | `Hooks` | N valid registrations across M events | ❌ an unknown event, a `matcher` on an event that reads none, or a shell string in `command` — the four ways a hook fails in silence |
 | `Provenance` | no file under `.claude/` edited after the `.claude/.arch-provenance.json` stamp | ⚠️ lists the locally edited files — an `arch-adopt` update would overwrite each one. In the origin repository: `⚪ origin repository — writes stamps, carries none` |
-| `Compose` | every compose service `running`, no declared port held by a foreign container, and no `image:` tag disagreeing with the one `src/test` pins in `DockerImageName.parse` | ❌ a service in `created`/`exited`, a port published by another project, or a divergent tag — detail line by line. The tag comparison needs no Docker: it reads both files |
+| `Compose` | every compose service `running`, no declared port held by a foreign container, no `image:` tag disagreeing with the one `src/test` pins in `DockerImageName.parse`, and every host-published port advertised at an address the host resolves | ❌ a service in `created`/`exited`, a port published by another project, a divergent tag, or a service that publishes a port while advertising only its compose-network hostname — detail line by line. The tag comparison and the advertised-address check need no Docker: they read files |
 | `git HEAD` | at least 1 commit exists | ❌ no commits — the `tests` hook doesn't run (`git diff HEAD` fails) |
 | `UC references` | every `docs/use-cases/UC-NNN-slug/` folder cited by a versioned file exists on disk | ❌ an orphan citation, with file and line — deleting or renaming a use case leaves its citations behind, and each was correct in the commit that wrote it. With no `docs/use-cases/`, "nothing to check (optional)" — the case in this meta-repo |
 

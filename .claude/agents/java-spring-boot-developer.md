@@ -24,7 +24,8 @@ All three reasons from invariant 6 apply.
 ## Contract
 
 **Class:** executor — the territory is `agent_classes.executor` in
-`@.claude/schemas/extensions.json`: `src/**` plus the one `UC-*-spec.md` line below. Every
+`@.claude/schemas/extensions.json`: `src/**`, the one `UC-*-spec.md` line below, and `pom.xml`
+for the dependencies the spec declares — and nothing else in it. Every
 write this agent makes carries its `agent_type`, and `ArchHook.java guard` checks that path
 against the class instead of against whatever skill phase the caller left open. A path
 outside it is exit 2, and the fix is the data, never a retry.
@@ -52,8 +53,15 @@ that flag in both directions.
   every block, every class
 - `.claude/rules/value-objects.md`, `.claude/rules/error-handling.md` — Block 1
 - `.claude/rules/persistence.md` — Block 2
+- `.claude/rules/security.md` — Block 2 and Block M, whenever the spec's personal-data lines
+  say a field is stored or published: it owns personal data at rest and in transit, where
+  `logging.md` stops at the log line. The design already decided what crosses and in what form;
+  this agent implements that and reports a field crossing in clear that no line authorizes
 - `.claude/rules/api-rest.md`, `.claude/rules/observability.md` — Block 3
-- `.claude/rules/messaging.md` — Block M, only when `25-mensageria.md` exists
+- `.claude/rules/messaging.md`, `.claude/rules/observability.md` — Block M, only when
+  `25-mensageria.md` exists. `observability.md` is cited here as well as in Block 3 on
+  purpose: a Form B relay that dead-letters with nothing but a `log.warn` makes loss silent
+  and permanent, which is the property Form B was chosen to avoid (lessons-learned-013 § 6)
 - `.claude/rules/logging.md` — per class type, per its own table; nothing in Block 1,
   domain logs nothing
 - `.claude/rules/testing.md` — Block 4
@@ -84,12 +92,23 @@ from the destination map surveyed in the guardrail, never from a path written he
   SQL blocks in the spec's persistence block; name per `.claude/rules/persistence.md`
   § Migrations
 - `src/main/resources/` — application-[feature].yml
+- `pom.xml` — **only** a dependency the spec declares as a requirement (the messaging
+  partial's § 7, or the persistence one's equivalent), one `<dependency>` element per row,
+  with no version when the Boot parent manages it. Nothing else in the file: not a plugin,
+  not a property, not a version bump. Until lessons-learned-013 § 10 no participant in the
+  pipeline owned this file — the design skills are docs-only, `/new-feature` writes the spec,
+  the two installers have nothing to do with a feature's dependencies — so a Form B run that
+  needed `spring-boot-starter-kafka` could only be unblocked by a human editing the file
+  outside every territory. A dependency the spec does **not** declare is still reported, not
+  written: the spec is what bounds this, `agent_classes.executor.write_allow` only makes the
+  file reachable
 
 **Does not write:**
 - Outside `src/` (except the migration subdir)
 - Specs, norms, CLAUDE.md, structural configs — except one line: the spec's `status:`,
   from `approved` to `implemented`, with a green build (Edit, that line only)
-- Pom.xml (schema already exists)
+- `pom.xml` beyond the dependencies the spec declares — see above. A needed dependency
+  missing from the spec is a spec defect: stop and report it
 
 **Integration:**
 - Called by `/new-feature` only for an approved spec, when the user answers "Implement now"
@@ -364,7 +383,12 @@ skipped and `25-mensageria.md` exists. Check with `grep -m1 '^## 6' <spec>`; no 
 skip straight to Block 4. Don't fabricate a messaging block a spec without § 6 never
 asked for.
 
-Read § 6 of spec.md, then `25-mensageria.md`. Generates:
+Read § 6 of spec.md, then `25-mensageria.md`. Which publication form § 6 chose decides what is
+generated: **Form A** (publish after commit) plus any consumer is the list immediately below;
+**Form B** (transactional outbox + relay) is the sub-block after it, and the two are not
+variants of one shape.
+
+Form A and the consumer generate:
 - `[Event]Payload.java` (`adapter/out/messaging`) — adapter-local record, mapped
   explicitly from the domain event; the event itself never serializes directly
 - `[Event]Publisher.java` — implements the outbound port `domain-modeling` already
@@ -388,9 +412,60 @@ candidate), and `.claude/rules/logging.md`: `[Event]Listener` logs event type +
 correlation identifier + outcome, `INFO`; the publisher logs outcome and latency, never
 the payload, `INFO` on success / `WARN` on a recovered failure.
 
-Validation: payload is never the domain event, partition key is the aggregate id, the
-offset commits only after the use case returns, a business rejection routes to the DLQ
-without retrying, and the dedupe check runs before the use case is called, not after.
+Validation — **Form A and the consumer**: payload is never the domain event, partition key is
+the aggregate id, the offset commits only after the use case returns, a business rejection
+routes to the DLQ without retrying, and the dedupe check runs before the use case is called,
+not after. Under Form B with no consumer in this project, four of those five are `n/a`, and a
+block whose whole validation list is `n/a` validated nothing — use the Form B list below
+instead.
+
+#### Form B — outbox and relay (when § 6 chose it)
+
+`25-mensageria.md` chooses Form B when the event must not be lost between the commit and the
+publish. It is a **different set of classes**, not the Form A publisher with a table added, and
+everything below has a shape exemplar: nothing here is for the executor to infer
+(lessons-learned-013 § 2, where an unsupervised run invented all of it).
+
+Read § 6 and the partial, then generate — shapes in
+`.claude/skills/messaging-architect/templates/OutboxRelayPublisher.java.example` (the relay
+side) and `.claude/skills/persistence-architect/templates/OutboxEventStore.java.example` (the
+table side, Block 2's business):
+
+- `[Event]Payload.java` + the outbound port's implementation — writes an outbox row **inside
+  the caller's transaction** instead of sending. No `@Transactional` of its own: the use case
+  owns the transaction, and a new one here reopens the gap Form B closes
+- `OutboxRelay.java` — the **only** class in the project that imports `KafkaTemplate`. Claims
+  a batch through the application-layer gateway, sends, marks. Never inside the appending
+  transaction, and never through the persistence adapter's entity or repository
+- `SchedulingConfig.java` — `@EnableScheduling`, adapter-local, next to the relay. **Without
+  it every `@Scheduled` in the project is inert and Form B silently delivers nothing**
+- `OutboxProperties.java` — binds `app.outbox.*`. `poll-interval` stays a placeholder read by
+  the annotation (`@Scheduled(fixedDelayString = "${app.outbox.poll-interval:PT1S}")`), never a
+  bound field: the annotation resolves before any bean exists
+- The dependency of § 7 in `pom.xml` — `spring-boot-starter-kafka`, because Spring Boot 4
+  autoconfigures no Kafka from `spring-kafka` alone. One `<dependency>`, no version when the
+  parent manages it, and only what § 7 names
+- `src/test/resources/application-test.yml` — `app.outbox.enabled: false`
+
+Validation — **Form B**, each item checkable and none of them optional:
+
+- the relay is the only class importing `KafkaTemplate`, and it does not run inside the
+  transaction that appends the row;
+- `@EnableScheduling` exists, and the test profile sets `app.outbox.enabled: false` — every
+  `*IT` is a `@SpringBootTest` and boots the relay too, where it polls the test database and
+  blocks on a broker no test starts (lessons-learned-013 § 3);
+- a dead-lettered row increments a counter and the oldest pending row's age is a gauge —
+  `.claude/rules/observability.md` § Metrics. An event declared "must not be lost" whose
+  failure path only logs has made loss silent and permanent;
+- the relay has a unit test with a mocked `KafkaTemplate` and no broker, covering the success
+  path, the send-failure path, and the unmapped-event-type path. Relay coverage that comes
+  only from the scheduler having run during the integration tests is accidental, and it is the
+  proof the class is running where it should not;
+- dead-lettering is a named operation (`markDeadLettered`), never `markFailed(…, maxAttempts =
+  0)` arriving at the same state by arithmetic;
+- the claim strategy is the one `20-persistencia.md` states — that partial owns it. A claim
+  whose name promises a lock the query does not take is a divergence to report, not to fix
+  here.
 
 Compilation: `./mvnw -q -pl <messaging-adapter-module> test-compile` in multi-module,
 `./mvnw -q test-compile` in single-module ✅
@@ -429,6 +504,11 @@ Read § 5 of spec.md, then the partial it cites for the step at hand. Generates:
 - When Block M ran: `[Event]PublisherIT.java` / `[Event]ListenerIT.java` — dedupe on
   redelivery, manual ack timing, business rejection routed to DLQ, per
   `.claude/rules/messaging.md` § How to verify
+- When Block M ran **Form B**: `OutboxRelayTest.java` — unit, mocked `KafkaTemplate`, no
+  broker. Success path, send failure, and the unmapped-event-type dead-letter path. The
+  broker-level test may be deferred by `40-testes.md`; these three are not deferrable, and
+  their absence is what left the class carrying the durability guarantee as the project's
+  largest coverage hole (lessons-learned-013 § 8.1)
 
 Rules: `.claude/rules/naming.md` (test class/method names and shape),
 `.claude/rules/testing.md` (pyramid, doubles, test data).
@@ -503,6 +583,35 @@ Expected 409 Conflict, got 200 OK
 
 Spec § 4 (idempotency) policy unclear — spec defect, see above.
 ```
+
+**An approved use case left unreachable — stop, do not route around it.** The trigger: a change
+from § Impact on approved use cases adds a precondition, and no code path in `src/main` can
+produce the state that satisfies it. Test it the cheap way, on the state the precondition reads:
+
+```bash
+# Every assignment of the required state outside tests. A single hit that is only the enum
+# constant, the comparison itself, or a comment means nothing produces it.
+grep -rn "CustomerStatus.ACTIVE" --include=*.java src/main
+```
+
+```
+❌ UC-002-create-account is unreachable end to end after this change
+§ Impact requires Customer.status() == ACTIVE. Nothing in src/main assigns ACTIVE:
+Customer.register() produces KYC_IN_PROGRESS and the aggregate has no transition.
+Only rehydrate() can produce it, which is a persistence concern, not a use case.
+
+Every real POST /api/v1/accounts now returns 422 CUSTOMER_NOT_ACTIVE.
+The spec's `Satisfied by` column names UC-004, which is in the backlog — so this is
+expected and temporary, and it is stated here rather than discovered in production.
+Blocks 1-3 are on disk and compile; the spec stays `approved`.
+```
+
+Two things this agent must **not** do here. It must not add the missing transition — that is
+domain design, and the spec did not ask for it. And it must not manufacture the state in a
+fixture and carry on: a fixture that builds a state no production path can build is the
+signature of this defect, not a workaround for it. A real run wrote exactly that comment in a
+`CustomerFixtures` and shipped green (lessons-learned-013 § 5). Report it where the person who
+asked for the feature reads it.
 
 **Rollback:** No automatic rollback. The user fixes the spec, re-invokes the agent.
 

@@ -29,6 +29,7 @@ the others.
 | [08-audit-usage.md](08-audit-usage.md) | Audit trail: the `audit` hook (one report per run, tokens and cost per piece), the `guard` hook (every skill writes only its class's territory, approved specs frozen), the `/audit-usage` skill |
 | [09-differentiators.md](09-differentiators.md) | What this repository does that templates, skills packs, and agent bundles on GitHub don't — comparison table, sources, and what is not a differentiator |
 | [10-arch-adopt.md](10-arch-adopt.md) | `/arch-adopt` workflow: installing this `.claude/` into a project never generated here, or updating one that is behind — the `export` mode, the copy manifest, the provenance stamp |
+| [11-pitfalls.md](11-pitfalls.md) | Claude Code runtime traps, every one of them silent: a skill named after a native command, `$ARGUMENTS` interpolated in prose, pipe segments in `allowed-tools`, an injection's cwd, unknown frontmatter, a hook's four mute failures, `AskUserQuestion`, and the four `.mcp.json` ones |
 
 ## How this repository is organized (quick reference)
 

@@ -343,11 +343,15 @@ If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, 
 Read `10-dominio.md`'s Events block. If it names external (Kafka) delivery for the
 event and `25-mensageria.md` is missing: **invoke** `/messaging-architect UC-NNN`. If
 the event is absent or stays in-process, skip this step — not every use case needs it.
-If `25-mensageria.md` exists: read, validate (six blocks: topic and delivery, producer,
-consumer and idempotency, retry/DLQ, configuration, schema requirements).
+If `25-mensageria.md` exists: read, validate (seven blocks: topic and delivery, producer,
+consumer and idempotency, retry/DLQ, configuration, schema requirements, declared
+dependencies).
 
 A missing § 6 is a gap, not an omission: it's the list step 5 reads. `none` is a valid
-value there and means publication Form A with no consumer dedupe table to build.
+value there and means publication Form A with no consumer dedupe table to build. § 7 is
+the same shape for build dependencies: it is the only list the executor may act on when it
+writes `pom.xml`, so a missing one leaves a needed dependency with no owner
+(lessons-learned-013 § 10).
 
 **Output:** "✅ Messaging ready", "— skipped (no external delivery)", or gaps.
 
@@ -356,8 +360,9 @@ value there and means publication Form A with no consumer dedupe table to build.
 If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
 both schema requirement lists in the same pass — `30-rest.md` block 4 (the idempotency
 table among them) and, when step 4 ran, `25-mensageria.md` § 6 (the shared outbox table,
-the dedupe table). If it exists: read, validate (three blocks: mapping, migrations,
-transactions).
+the dedupe table). If it exists: read, validate (six blocks: schema, mapping, adapter and ports, migrations,
+configuration, declared dependencies). § 6 is the persistence twin of `25-mensageria.md` § 7,
+and the same rule holds: it is the only list that entitles the executor to touch `pom.xml`.
 
 **Output:** "✅ Persistence ready" or gaps.
 
@@ -419,6 +424,15 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      (messaging) only when step 4 wasn't skipped
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
+   - **A row that adds a precondition must name its satisfier, or consolidation stops.** Any
+     row making an earlier case require a state it did not require before — a status, a flag, a
+     related record — carries the `Satisfied by` column `00-caso-de-uso.md` already asks for:
+     an approved `UC-NNN`, this case, or a **named** backlog case. Missing or vague, the
+     pipeline stops and asks; it is not filled in by inference. Where the satisfier is a
+     backlog case, the consolidated spec says outright that the earlier case is unreachable end
+     to end until that one ships, and the final report repeats it — a use case that answers 422
+     on every real call is not a detail the reader should have to find in a test fixture
+     (lessons-learned-013 § 5)
    - **Every case named in that section gets a line in its own `CHANGELOG.md`**, at
      `docs/use-cases/UC-XXX-<slug>/CHANGELOG.md` — created on the first change, appended
      afterwards. One line: date, the `UC-NNN` making the change, and what changed
@@ -529,7 +543,12 @@ this orchestrator only triggers the offer.
 Last message of the run, and the only report: the spec path and status, the backlog
 entries left for later (if any), **every follow-up the run left pending outside `docs/`** —
 each compose service or `docker/init` file a partial named, with the `/docker-architect`
-command that materializes it, or "none" — what `git-publish`
+command that materializes it, or "none" —
+**every approved use case this run left unreachable end to end**, with the backlog case that
+restores it (or "none"), **every guarantee delegated to a consumer outside this project whose
+idempotency is assumed or unknown** (or "none"), and **every personal-data field that crosses
+a boundary in clear, with its receiver** (or "none") — three findings a reader must not have to
+reconstruct from a fixture comment or a Javadoc sentence — what `git-publish`
 did, and a recommendation to run
 `/clear` before the next `/new-feature` — a clean context per use case keeps cost
 measurable per case.

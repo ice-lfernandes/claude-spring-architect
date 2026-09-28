@@ -186,10 +186,17 @@
         <version>${jacoco.version}</version>
         <configuration>
           <excludes>
-            <!-- Startup and configuration class: structure with no branches. Including them
-                 makes the number go up without testing anything. DTOs and entities stay in the calculation. -->
+            <!-- Startup and configuration classes: structure with no branches. Including them
+                 makes the number go up without testing anything. DTOs and entities stay in the calculation.
+                 Selected by WHAT THE CLASS IS, not by the package it sits in: adapter-local wiring
+                 lives with its adapter (`.claude/rules/messaging.md` § Boundary requires a Kafka-typed
+                 `@Configuration` to sit under the messaging package), so a path-only exclusion counted
+                 that one class toward the ratio while every other configuration class was exempt —
+                 arbitrary either way, and it moved the number for a reason nobody chose. -->
             <exclude>**/*Application.class</exclude>
             <exclude>**/config/**</exclude>
+            <exclude>**/*Config.class</exclude>
+            <exclude>**/*Configuration.class</exclude>
           </excludes>
         </configuration>
         <executions>

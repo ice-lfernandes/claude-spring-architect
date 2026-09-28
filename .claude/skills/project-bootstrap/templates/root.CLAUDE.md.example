@@ -84,3 +84,12 @@ of truth for its topic and is cited, never copied.
 
 Each module with restrictions has its own local `CLAUDE.md`, generated from the
 blueprint. If the restriction changes, change the blueprint — not the markdown.
+
+**One exception to where Spring wiring goes: adapter-local wiring stays with its adapter.**
+A `@Configuration` that builds a `ProducerFactory`, a `KafkaTemplate`, a `DefaultErrorHandler`,
+or enables the scheduling a relay depends on carries broker types, and
+`.claude/rules/messaging.md` § Boundary requires every such type to sit under the messaging
+package. It is wiring, and it still does not go to the configuration package. The coverage
+exclusion follows the same logic — configuration classes are excluded by what they are
+(`**/*Config.class`, `**/*Configuration.class`), not only by the package they sit in, so this
+exception does not silently move the coverage number.

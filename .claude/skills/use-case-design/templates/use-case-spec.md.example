@@ -134,7 +134,14 @@ partial carries this same section for the changes its owner decides — an excep
 promoted in `10-dominio.md`, a column added in `20-persistencia.md` — and consolidation
 collects them all:
 
-`| Approved case | Change | Why |` — e.g. `| UC-001-create-user | the `User` aggregate gains a rename operation | this case renames; UC-001 only created |`
+`| Approved case | Change | Why | Satisfied by |` — e.g. `| UC-001-create-user | the `User` aggregate gains a rename operation | this case renames; UC-001 only created | this case |`
+
+The fourth column is only ever empty when the change adds **no** precondition. A row that
+makes an earlier case require a state — a status, a flag, a related record — says which use
+case produces that state: an approved `UC-NNN`, this case itself, or a named backlog case. In
+the last situation the row spells out the consequence, because it is real and temporary:
+`| UC-002-create-account | rejects a customer whose status is not ACTIVE | KYC must pass before
+an account exists | UC-004 (backlog) — until it ships, UC-002 returns 422 on every real call |`.
 
 ## Implementation order
 
