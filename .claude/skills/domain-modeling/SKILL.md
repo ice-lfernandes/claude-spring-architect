@@ -124,6 +124,30 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
 
    This block is what `rest-api-architect` applies and what the architecture test checks;
    an empty block on an aggregate with a person in it is the bug, not the absence of one.
+4b. **A status with more than one value owes a transition, or a named future case.** Whenever
+   the aggregate carries a state field whose type admits more than one value — an enum, a
+   status value object, a lifecycle flag — every value some use case will eventually need has
+   to be **reachable through the aggregate's own API**. For each one, the partial's aggregate
+   block says which of these holds:
+
+   - **a method on the aggregate** (`activate()`, `reject(reason)`), designed here, when a use
+     case in this project performs the transition — now or in the case being designed;
+   - **a named backlog `UC-NNN`** that will introduce it, stated as such, when nothing does
+     yet.
+
+   What is never an answer: the reidratation path. A factory that exists to rebuild persisted
+   state (`rehydrate`, a package-private constructor the mapper calls) is not a transition, and
+   using it to produce a state no behaviour produces is how a state becomes reachable in tests
+   and unreachable in production. That shipped: `Customer.register()` always produced
+   `KYC_IN_PROGRESS`, the aggregate had no transition, a later case added a precondition on
+   `ACTIVE`, and the fixtures reached it through `rehydrate()` while every real request failed
+   (lessons-learned-013 §§ 5, 8.7).
+
+   Design only the transitions a use case needs — a method for a value nobody moves to yet is
+   dead code, and the named backlog case is the correct answer in that situation. What this step
+   forbids is the third option: a value with no method and no named case, where the gap is
+   discovered later by whoever adds a precondition on it.
+
 5. **Map each invariant to its exception.** Typed family from
    `@.claude/rules/error-handling.md` and `errorCode` in `UPPER_SNAKE_CASE`. An invariant
    without a named exception is an invariant nobody will implement.
@@ -165,7 +189,7 @@ question nobody asked.
 
 | Block | Details | Form exemplar |
 |---|---|---|
-| Aggregate and value objects | Root, fields, types, which VOs exist and why, which fields are sensitive (masking candidates) | `Aggregate.java.example` · `ValueObject.java.example` · `ValueObjectCatalog.java.example` |
+| Aggregate and value objects | Root, fields, types, which VOs exist and why, which fields are sensitive (masking candidates), and — for every state field with more than one value — which method reaches each value or which named backlog case will | `Aggregate.java.example` · `ValueObject.java.example` · `ValueObjectCatalog.java.example` |
 | Invariants | Each rule, where it's enforced, which exception it raises; and the state of the exception family (NEW or REUSE) | `DomainGuards.java.example` · `DomainException.java.example` and the four typed ones · `@.claude/rules/error-handling.md` |
 | Ports | Input (`<Verb><Noun>UseCase`), command, output — complete signatures | `UseCasePort.java.example` · `Command.java.example` |
 | Events | Which event, which payload, which UC consumes it | `DomainEvent.java.example` |

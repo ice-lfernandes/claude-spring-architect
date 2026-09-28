@@ -27,7 +27,17 @@ bloqueia com `exit 2`:
   inclusive o sem executor. `git push` é sempre `ask`.
 - **Spec aprovado é imutável.** Um caso posterior registra a mudança necessária na
   própria seção `## Impact on approved use cases`, e uma linha no `CHANGELOG.md` da pasta
-  de cada caso alterado. O `guard` congela os arquivos.
+  de cada caso alterado. O `guard` congela os arquivos — e libera exatamente esse
+  `CHANGELOG.md`, então o log que a pasta congelada deve receber é a única escrita que ela
+  ainda aceita (`guard.frozen_exempt_basenames`).
+- **Uma impact row que adiciona precondição nomeia quem a satisfaz.** Coluna
+  `Satisfied by`: um `UC-NNN` aprovado, o próprio caso, ou um caso do backlog **nomeado** —
+  e nesse último caso a spec e o relatório final dizem que o caso anterior fica inalcançável
+  ponta a ponta até o outro entrar. Sem satisfator, a consolidação para. Fixture que fabrica
+  o estado não conta como satisfator.
+- **O relatório final carrega três achados que ninguém deve ter de reconstruir:** caso
+  aprovado que este run deixou inalcançável, garantia de dedupe delegada a consumidor externo
+  sem contrato, e dado pessoal que cruza fronteira em claro com seu destinatário.
 
 ## Por que é uma skill manual, não um agent
 

@@ -1,20 +1,47 @@
 # EXEMPLAR — Kafka service block, KRaft mode (no separate Zookeeper container).
 # Merge under `services:`, indentation matched to the file's own.
+#
+# TWO LISTENERS, ONE PER NETWORK, AND IT IS NOT OPTIONAL. A broker answers a bootstrap by
+# telling the client which address to use from then on. One listener cannot serve both the
+# compose network and the host, because that address has to resolve differently in each: a
+# container reaches the broker as `kafka`, the host cannot resolve `kafka` at all. Publishing
+# 9092 to the host while advertising only `kafka:9092` is therefore a promise nothing can
+# keep — the client connects to localhost:9092, is redirected to `kafka:9092`, and every send
+# after that dies on `java.net.UnknownHostException: kafka`, forever, with no path to
+# recovery (lessons-learned-013 § 11).
+#
+# Nothing runtime catches it, which is why the exemplar has to be right: the healthcheck below
+# runs INSIDE the container, where `localhost` IS the broker, so it passes with the listener
+# misconfigured; and Testcontainers' `KafkaContainer` wires its own advertised listeners, so
+# the integration tests exercise a broker this file does not produce.
+# `ArchHook.java compose` reads this file and fails when a published port has no
+# host-resolvable advertised address — `compose.advertised_env_suffixes` in
+# `@.claude/schemas/extensions.json`.
+#
+# PLAINTEXT is the compose-network listener: the `app` service keeps
+# `KAFKA_BOOTSTRAP_SERVERS: kafka:9092` untouched. EXTERNAL serves the host at
+# `localhost:29092`, which is the port `application-kafka.yml`'s `bootstrap-servers` default
+# has to name (`messaging-architect` owns that default).
 kafka:
   image: apache/kafka:3.8.0
   ports:
     - "9092:9092"
+    - "29092:29092"
   environment:
     KAFKA_NODE_ID: 1
     KAFKA_PROCESS_ROLES: broker,controller
-    KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+    KAFKA_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+    KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
   volumes:
     - kafka_data:/var/lib/kafka/data
+  # Proves the broker is up, and nothing more: it runs inside the container, so it says
+  # nothing about whether the host can reach either listener. Host reachability is checked by
+  # `java .claude/hooks/ArchHook.java compose`, from the file.
   healthcheck:
     test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
     interval: 10s

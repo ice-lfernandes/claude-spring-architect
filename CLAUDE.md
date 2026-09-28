@@ -20,7 +20,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
 | Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
-| Check every compose service is up, and no foreign container holds its ports | `java .claude/hooks/ArchHook.java compose` |
+| Check every compose service is up, no foreign container holds its ports, and every published port is advertised at a host-resolvable address | `java .claude/hooks/ArchHook.java compose` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
 | Write a target project's `.claude/` from this one, transformed for a blueprint | `java .claude/hooks/ArchHook.java export <dest> --blueprint <id> [--dry-run]` |
 | Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
@@ -42,9 +42,8 @@ rules/ + blueprints/ + .mcp.json   norms and data   ← LEAF
 decisions/                  history — nobody reads it at runtime, outside the graph
 ```
 
-`claude-code-architect-designer` writes upward into `hooks/ + settings.json`, after
-approval — a design-time edge, like `project-bootstrap` writing `src/`. At runtime the
-direction above is unchanged.
+`claude-code-architect-designer` writes upward into `hooks/ + settings.json` after approval —
+a design-time edge, like `project-bootstrap` writing `src/`; the runtime direction is unchanged.
 
 ## Invariants (non-negotiable)
 
@@ -127,7 +126,7 @@ direction above is unchanged.
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level, choosing an observability backend (Jaeger or Grafana+Tempo+Prometheus) behind the OTLP collector | skill `docker-architect` |
 | A versioned file citing a `docs/use-cases/UC-NNN-slug/` folder that was deleted or renamed | `ArchHook.java doctor` — the `UC references` line, so `/arch-doctor` reports it. Reads `doctor.uc_references` from `@.claude/schemas/extensions.json`; silent in this meta-repo, which has no `docs/use-cases/` |
-| A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse` | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison needs no Docker: it reads both files |
+| A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse`, a broker published to the host that no host client can reach | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison and the advertised-address check need no Docker: they read files |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
@@ -141,125 +140,77 @@ direction above is unchanged.
 | Contract every blueprint fulfills | `@.claude/blueprints/_schema.md` |
 | Frontmatter fields the runtime recognizes | `@claude-help.md` |
 | How each piece of Claude Code works | `@claude-help.md` |
+| A skill, hook, injection or MCP server that silently does nothing — and the runtime trap behind it | `@docs/11-pitfalls.md` |
 
 ## Known pitfalls
 
-- **A skill cannot have the name of a native slash command.** The folder name becomes
-  the command, and `/doctor`, `/init`, `/context`, `/memory` already exist in the
-  runtime. That's why this repo's diagnostic skill is called `arch-doctor`. Shadowing a
-  native command doesn't produce an error — it runs the wrong command.
-- **`.claude/settings.json` is only read at session startup.** Editing hooks mid-session
-  has no effect — `claude` must be restarted.
-- **A hook fails silently in four ways, none an error.** Unknown event name — never
-  fires. `matcher` on an event that doesn't read one — filters nothing. Pipe or `&&`
-  inside `"command"` — part of the filename (exec form: `command` is the binary, `args`
-  the arguments). A mode that throws — exits 0 through `main`'s catch, looks like it
-  passed. `schema` catches the first three, from `settings` in
-  `@.claude/schemas/extensions.json`; the fourth only by running the mode by hand.
+Only what is specific to **this** repository. The runtime's own silent traps — a skill named
+after a native command, `$ARGUMENTS` interpolated in prose, `allowed-tools` checking each pipe
+segment, an injection inheriting the shell's cwd, unknown frontmatter ignored,
+`claude plugin validate` validating no field, a hook's four silent failures, which
+`ArchHook.java` modes read stdin, `AskUserQuestion`'s 2-option floor and 4-question ceiling,
+and the four `.mcp.json` ones — live in `@docs/11-pitfalls.md`, with `@claude-help.md` as their
+source.
+
 - **A skill writes only its class's territory, and `guard` blocks the rest with exit 2.**
-  Deny by default: the message names the class and its `write_allow`, and the fix is the
-  data (`skill_classes` in `@.claude/schemas/extensions.json`), never a retry. A design run
-  is docs-only and cannot even *call* a `build`-class skill — `docker-architect` included:
-  the missing compose service is recorded in the partial and materialized afterwards by
-  `/docker-architect`. Territory is unrestricted while no skill phase is open, which is why
+  Deny by default; the message names the class and its `write_allow`, and the fix is the data
+  (`skill_classes` in `@.claude/schemas/extensions.json`), never a retry. A design run is
+  docs-only and cannot even *call* a `build`-class skill — `docker-architect` included: the
+  missing compose service is recorded in the partial and materialized afterwards by
+  `/docker-architect`. With no skill phase open, territory is unrestricted, which is why
   editing a file by hand is never blocked.
 - **A subagent's write is judged by `agent_classes`, not by the caller's phase.** Every write
-  a subagent makes carries its `agent_type`, and `guard` checks that path against the agent's
-  own `write_allow` — so an open design phase neither widens nor narrows it, and nothing
-  closes the phase on an `Agent` call any more (it used to, which silently unrestricted the
-  *caller* for the rest of the turn). An agent no class lists falls back to the caller's
-  phase, because nothing else describes what it may write.
-- **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim
-  query, and the `app.outbox.*` values that pace the claim. `messaging-architect` declares
-  that the case needs one and which delivery guarantee the relay must honour, and never a
-  column name; it keeps the relay's broker side. A § 6 row naming columns is a divergence,
-  and a column decision that would drop a declared guarantee stops the pipeline instead of
-  being settled by precedence.
-- **The bounded context is a project fact, not a per-use-case answer.** It is the first
-  segment of every topic name, asked with the coordinates in `/init-project` and written
-  into the generated project's root `CLAUDE.md`. Whoever designs messaging reads it; a
-  prefix chosen inside one use case gives one system two namespaces.
-- **`$ARGUMENTS` in the body of a skill is interpolated at every occurrence**, not only
-  under `## Target`. A sentence that talks *about* the argument reaches the model with the
-  real value inside it: `/new-feature`'s "invoke `test-architect` with empty `$ARGUMENTS`
-  (setup mode)" arrived as "with empty `UC-003-initiate-kyc-verification` (setup mode)" —
-  an order to use setup mode, naming the argument that means design mode. Write "the
-  argument" or "the target above"; `ArchHook.java schema` rejects the literal, reading
-  `arguments` from `@.claude/schemas/extensions.json`.
+  carries its `agent_type`, and `guard` checks the path against the agent's own `write_allow`,
+  so an open design phase neither widens nor narrows it. An agent no class lists falls back to
+  the caller's phase — nothing else describes what it may write.
+- **An implemented use case's folder is frozen except for three writes:** the spec's `status:`
+  closing to `implemented`, a checklist toggle in it, and `UC-NNN/CHANGELOG.md` — the write
+  `/new-feature`'s consolidation *requires* for every change an impact row makes. Exempt
+  basenames are data (`guard.frozen_exempt_basenames`), matched directly under the folder:
+  `notes/CHANGELOG.md` is still frozen.
+- **A healthcheck that passes proves nothing about host reachability** — it runs inside the
+  container, where `localhost` is the service. A service that publishes a port to the host
+  while advertising only its compose-network name (`KAFKA_ADVERTISED_LISTENERS:
+  PLAINTEXT://kafka:9092` next to `ports: "9092:9092"`) is reachable from no host client, and
+  neither the healthcheck nor Testcontainers sees it — Testcontainers wires its own listeners.
+  `ArchHook.java compose` reads the file for it (`compose.advertised_env_suffixes`); a service
+  that advertises nothing claims nothing and is left alone.
+- **`pom.xml` has exactly one writer inside a feature run: the executor, for a dependency the
+  spec declares** (the messaging partial's § 7, or the persistence equivalent). The design
+  skills are docs-only, `/new-feature` writes the spec, the two installers own only their own
+  setup. Anything else in the file — a plugin, a property, a version bump — is reported, never
+  written.
+- **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim query,
+  and the `app.outbox.*` values that pace the claim. `messaging-architect` declares that the
+  case needs one and which delivery guarantee the relay must honour, never a column name, and
+  keeps the relay's broker side. A § 6 row naming columns is a divergence, and a column
+  decision that would drop a declared guarantee stops the pipeline instead of being settled by
+  precedence.
+- **The bounded context is a project fact, not a per-use-case answer.** First segment of every
+  topic name, asked with the coordinates in `/init-project` and written into the generated
+  project's root `CLAUDE.md`. A prefix chosen inside one use case gives one system two
+  namespaces.
 - **`grep -A2 "^services:" docker-compose.yml` is not the list of services.** It reads two
-  lines and stops, so it drops the services declared further down and reports the children
-  of `volumes:` as services. Every piece that needs that list — `docker-architect`'s
-  injection and step 3, `messaging-architect` step 9, `persistence-architect` step 9 — uses
-  the `awk` one-liner bounded to the `services:` block. A wrong portrait is worse than
-  none: it invites the skill to recreate a service that already exists.
-- **The runtime silently ignores unknown frontmatter.** An invented field is decoration,
-  not behavior. List of native fields in `@claude-help.md`.
-- **`AskUserQuestion` rejects a question with fewer than 2 options**, and rejects the
-  **whole batch** with it: `InputValidationError ... "too_small" ... path:
-  ["questions",1,"options"]`. A question with one option isn't a question — decide it,
-  and record the decision where the answer would have gone. The batch also has an upper
-  bound of 4 questions per call. The generated project carries the same pitfall in its own
-  `CLAUDE.md`, from `project-bootstrap/templates/root.CLAUDE.md.example`.
-- **Everything the model must obey lives in the body of the file**, never in
-  frontmatter. `metadata.*` was removed from skills and agents: ownership, `reads`,
-  `handoff`, and contracts live in the `## Contrato` section of the body. Do not put
-  `metadata:` back into a `SKILL.md` — it costs tokens on every invocation and enforces
-  nothing.
-- **The `CLAUDE.md` at the root of a generated project is not this file.** It is
-  produced from
+  lines and stops, dropping services declared further down and reporting the children of
+  `volumes:` as services. Every piece that needs that list — `docker-architect`'s injection
+  and step 3, `messaging-architect` step 9, `persistence-architect` step 9 — uses the `awk`
+  one-liner bounded to the `services:` block. A wrong portrait invites recreating a service
+  that already exists.
+- **The `CLAUDE.md` at the root of a generated project is not this file.** It comes from
   `.claude/skills/project-bootstrap/templates/root.CLAUDE.md.example`.
-- **`claude plugin validate` does not validate fields.** It accepts `metadata:`, accepts
-  camelCase in a skill, and accepts an invented field, always with `✔ Validation
-  passed`. It does not look at `.claude/agents/`, `.claude/rules/`, or
-  `.claude/settings.json`. It catches malformed YAML, nothing else. What validates
-  fields is `java .claude/hooks/ArchHook.java schema`.
-- **`.claude/decisions/` is neither a norm nor living documentation.** It records what
-  was decided on the date, not what holds true today. It has no `paths`, does not enter
-  `00-index.md`, and does not go into the generated project. It is superseded by a new
-  record; the old one is not rewritten.
-- **This repository does not run `./mvnw`.** `ArchHook` exits 0 when it doesn't find
-  the wrapper; here that's expected, not a failure.
-- **`allowed-tools` with `Bash(command:*)` checks each segment of the pipe separately.**
-  An injection `` !`a | b | c` `` in the body needs a rule for `a`, `b`, and `c`; miss
-  one and the whole command is blocked before it runs. Write injections as a single
-  command (`ls .claude/skills`, not `find … | sed | sort`). This only affects skills
-  that restrict Bash: `allowed-tools: Bash` without a filter lets the whole pipeline
-  through.
-- **A frontmatter `` !`…` `` injection runs in the session's persistent shell, at whatever
-  cwd it currently holds.** `cd` into a skill directory in one `Bash` call contaminates
-  every injection of every skill invoked afterward, and a relative `test -f` then reports
-  a file as absent while it exists. Read a template with `Read` at an absolute path, never
-  `cd` + `cat`. Every injection in this repo resolves paths from
-  `"${CLAUDE_PROJECT_DIR:-.}"`, and `ArchHook.java schema` blocks one that doesn't — a
-  genuinely cwd-independent injection needs a regex in `injections.exempt_patterns` of
-  `@.claude/schemas/extensions.json`.
-- **The `audit` mode is off in this repository, on purpose.** It switches itself on by
-  the presence of `.claude/audit-usage/`, and this meta-repo doesn't create the
-  directory: the trail is a feature of the *generated* project, wired in
-  `project-bootstrap/templates/settings.json.example`, not in this repo's
-  `settings.json`. Copying those hook entries here would start auditing the design of
-  the tool instead of its use. What it records and why it isn't a skill:
-  `@.claude/decisions/0035-auditoria-execucao-hook.md`. The consequence for
-  `/audit-usage` is that running it **here** correctly reports the trail is off — its
-  territory is the generated project, and it is exercised there, not in this repo.
-- **The trail doesn't record its observers.** `/audit-usage` and `/arch-doctor` carry
-  `disable-model-invocation: true` but change nothing, so they're listed in
-  `audit.exclude_skills` in `@.claude/schemas/extensions.json` and leave no report of
-  their own. Invoking one still *closes* the run in progress — which it already did, and
-  which is the only way, inside a live session, to get a report that isn't stamped
+- **`.claude/decisions/` is neither a norm nor living documentation.** It records what was
+  decided on the date, not what holds today: no `paths`, outside `00-index.md`, and it does
+  not travel to the generated project. A new record supersedes the old one; the old one is not
+  rewritten.
+- **This repository does not run `./mvnw`.** `ArchHook` exits 0 when it finds no wrapper; here
+  that is expected, not a failure.
+- **The `audit` mode is off in this repository, on purpose.** It switches itself on by the
+  presence of `.claude/audit-usage/`, which this meta-repo does not create: the trail is a
+  feature of the *generated* project, wired in
+  `project-bootstrap/templates/settings.json.example`. Copying those entries here would audit
+  the design of the tool instead of its use — `@.claude/decisions/0035-auditoria-execucao-hook.md`.
+  So `/audit-usage` run **here** correctly reports the trail is off.
+- **The trail doesn't record its observers.** `/audit-usage` and `/arch-doctor` change nothing,
+  so `audit.exclude_skills` leaves them no report of their own. Invoking one still *closes* the
+  run in progress — the only way, inside a live session, to get a report not stamped
   `⏳ em andamento`. Why: `@.claude/decisions/0036-skill-audit-usage.md`.
-- **Only the hook-protocol modes of `ArchHook.java` read stdin** — `check`, `format`,
-  `tests`, `schema`, `audit`, `guard`. Invoking one of those by hand without `</dev/null`
-  blocks until something closes stdin, with no output: a command that looks hung, not
-  failed. `export`, `doctor` and `compose` are invoked by people and read nothing.
-- **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or
-  editing a server mid-session has no effect until `claude` is restarted.
-- **A project-scoped server in `.mcp.json` needs one-time human approval** the first
-  time it loads (`claude mcp list` shows pending ones). That prompt is the trust
-  boundary a cloned repository can't skip — never work around it with
-  `enableAllProjectMcpServers`.
-- **Server precedence is `local > project > user`, silently.** A personal server with
-  the same name as the team's `.mcp.json` one shadows it — no warning either way.
-- **An unset `${VAR}` in `.mcp.json` doesn't fail generation.** The server loads with
-  the literal `${VAR}` text and fails to connect at runtime instead. `claude mcp list`
-  surfaces the missing-variable warning; frontmatter schema validation does not.

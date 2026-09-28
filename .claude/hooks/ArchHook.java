@@ -430,15 +430,24 @@ public class ArchHook {
 
     // ── compose ──────────────────────────────────────────────────────────────
     //
-    // Three questions `docker compose up -d` does not answer, all cheap:
+    // Four questions `docker compose up -d` does not answer, all cheap:
     //   1. Is every service of this project actually running — not `created`, not
     //      `exited`?
     //   2. Is a container from ANOTHER project publishing a host port this project's
     //      compose file also declares?
     //   3. Does every `image:` of the compose file carry the same tag the test suite
     //      pins for that same repository in `DockerImageName.parse(...)`?
+    //   4. Does a service that publishes a port to the host also ADVERTISE an address the
+    //      host can reach? Publishing `9092:9092` while advertising only `kafka:9092` is a
+    //      promise the compose network keeps and the host cannot: the client bootstraps
+    //      against localhost, the broker answers with its advertised address, and every
+    //      call after that dies on `UnknownHostException: kafka` — lessons-learned-013 § 11,
+    //      shipped by the `docker-architect` exemplar itself. Nothing else sees it: the
+    //      healthcheck runs INSIDE the container, where `localhost` is the service, and
+    //      Testcontainers configures its own listeners, so the ITs exercise a broker the
+    //      compose file does not produce.
     //
-    // Question 3 needs no Docker at all — it compares two files — and it is here because
+    // Questions 3 and 4 need no Docker at all — they read files — and they are here because
     // this mode already owns `docker-compose.yml`. Two skills used to promise the match in
     // prose (`docker-architect` step 4, `test-architect`'s setup mode), with a YAML comment
     // as the only link between the halves and the execution order deciding which side led.
@@ -490,7 +499,8 @@ public class ArchHook {
 
         // Files only, no daemon: computed before the first `docker` call so it survives
         // every early return below. A machine with Docker off still gets this answer.
-        List<String> tagIssues = imageTagMismatches(file);
+        List<String> tagIssues = new ArrayList<>(imageTagMismatches(file));
+        tagIssues.addAll(advertisedAddressIssues(file, declared));
 
         Proc ps;
         try {
@@ -563,20 +573,22 @@ public class ArchHook {
         boolean ok = detail.isEmpty();
         String summary = ok
                 ? running + "/" + total
-                        + " service(s) running, no port collision, image tags match"
+                        + " service(s) running, no port collision, image tags match,"
+                        + " published ports advertised to the host"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";
         return new ComposeReport(ok, summary, detail);
     }
 
     /**
-     * A report whose service-state half could not be checked. The tag comparison reads
-     * files only, so it still counts — and still fails the report on a mismatch, however
-     * unreachable the daemon is.
+     * A report whose service-state half could not be checked. The tag comparison and the
+     * advertised-address check read files only, so they still count — and still fail the
+     * report, however unreachable the daemon is.
      */
-    static ComposeReport withTags(List<String> tagIssues, String summary) {
-        if (tagIssues.isEmpty()) return new ComposeReport(true, summary, List.of());
+    static ComposeReport withTags(List<String> fileIssues, String summary) {
+        if (fileIssues.isEmpty()) return new ComposeReport(true, summary, List.of());
         return new ComposeReport(false,
-                tagIssues.size() + " image tag mismatch(es); " + summary, tagIssues);
+                fileIssues.size() + " problem(s) read from the compose file; " + summary,
+                fileIssues);
     }
 
     /** Accepts both shapes `docker compose ps --format json` emits: an array, or one object per line. */
@@ -687,6 +699,109 @@ public class ArchHook {
             }
         }
         return out;
+    }
+
+    /**
+     * Services that publish a port to the host while advertising only an address the host
+     * cannot resolve. Reads two files' worth of nothing — the compose file and
+     * `.claude/schemas/extensions.json` — so it answers with the daemon down, which is the
+     * point: the defect it looks for is invisible to every runtime check. The broker's own
+     * healthcheck runs inside the container and passes, `docker compose ps` says `running`,
+     * and the first host-side client still dies on `UnknownHostException`.
+     *
+     * <p>The rule, and it is narrow on purpose: a service that publishes at least one host
+     * port AND declares an env key ending in one of `compose.advertised_env_suffixes` must
+     * advertise at least one entry whose host is in `compose.host_addresses` and whose port
+     * that same service publishes. Advertising `localhost:29092` without publishing 29092 is
+     * the same broken promise in the other direction, so both halves are checked together.
+     * A service that advertises nothing claims nothing and is left alone.
+     */
+    static List<String> advertisedAddressIssues(Path composeFile, Map<String, Set<String>> ports) {
+        Map<String, Object> cfg = asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))),
+                "compose"));
+        if (cfg == null) return List.of();
+        List<String> suffixes = asStrList(cfg.get("advertised_env_suffixes"));
+        List<String> hosts = asStrList(cfg.get("host_addresses"));
+        if (suffixes.isEmpty() || hosts.isEmpty()) return List.of();
+
+        Map<String, Map<String, String>> env = composeServiceEnv(readOrNull(composeFile));
+        List<String> out = new ArrayList<>();
+        String compose = relative(composeFile);
+        for (Map.Entry<String, Map<String, String>> svc : env.entrySet()) {
+            Set<String> published = ports.getOrDefault(svc.getKey(), Set.of());
+            if (published.isEmpty()) continue;
+            for (Map.Entry<String, String> e : svc.getValue().entrySet()) {
+                String key = e.getKey();
+                if (suffixes.stream().noneMatch(key::endsWith)) continue;
+                boolean reachable = false;
+                for (String entry : e.getValue().split(",")) {
+                    String addr = entry.strip();
+                    int scheme = addr.indexOf("://");
+                    if (scheme >= 0) addr = addr.substring(scheme + 3);
+                    int colon = addr.lastIndexOf(':');
+                    if (colon < 0) continue;
+                    if (hosts.contains(addr.substring(0, colon).strip())
+                            && published.contains(addr.substring(colon + 1).strip())) {
+                        reachable = true;
+                        break;
+                    }
+                }
+                if (reachable) continue;
+                out.add("service `" + svc.getKey() + "` publishes host port(s) "
+                        + String.join(", ", published) + " but `" + key + "` advertises `"
+                        + e.getValue() + "` — no address the host can resolve on a published"
+                        + " port, so a client on the host bootstraps, is redirected to the"
+                        + " advertised address and never connects again  →  give the service a"
+                        + " second listener (one per network) in " + compose + ", advertised as "
+                        + hosts.get(0) + ":<published port>");
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The `environment:` of each compose service, in both shapes YAML allows: a mapping
+     * (`KEY: value`) and a list (`- KEY=value`). Same walk as {@link #composeHostPorts},
+     * which is why neither reaches for a YAML library the JDK does not ship.
+     */
+    static Map<String, Map<String, String>> composeServiceEnv(String yaml) {
+        Map<String, Map<String, String>> byService = new LinkedHashMap<>();
+        if (yaml == null) return byService;
+        boolean inServices = false, inEnv = false;
+        String service = null;
+        for (String raw : yaml.split("\r?\n", -1)) {
+            String line = raw.stripTrailing();
+            if (line.isBlank() || line.strip().startsWith("#")) continue;
+            int indent = line.length() - line.stripLeading().length();
+            String body = line.strip();
+
+            if (indent == 0) {                       // top-level key
+                inServices = body.startsWith("services:");
+                inEnv = false;
+                service = null;
+                continue;
+            }
+            if (!inServices) continue;
+            if (indent == 2 && body.endsWith(":")) { // a service name
+                service = body.substring(0, body.length() - 1).strip();
+                inEnv = false;
+                continue;
+            }
+            if (service == null) continue;
+            if (indent == 4) {                       // a key inside the service
+                inEnv = body.startsWith("environment:");
+                continue;
+            }
+            if (!inEnv) continue;
+            boolean listForm = body.startsWith("- ");
+            String pair = listForm ? body.substring(2).strip() : body;
+            int sep = listForm ? pair.indexOf('=') : pair.indexOf(':');
+            if (sep <= 0) continue;
+            String key = pair.substring(0, sep).strip();
+            String value = unquote(pair.substring(sep + 1).strip());
+            byService.computeIfAbsent(service, k -> new LinkedHashMap<>()).put(key, value);
+        }
+        return byService;
     }
 
     /** The `image:` value of each compose service. Same walk as {@link #composeHostPorts}. */
@@ -3962,11 +4077,38 @@ public class ArchHook {
         Path folder = ROOT.resolve(asStr(cfg.get("use_cases_dir"))).resolve(m.group(1));
         String status = specStatus(folder);
         if (status == null || !asStrList(cfg.get("frozen_statuses")).contains(status)) return;
-        if (isStatusClose(in, rel, status) || isChecklistToggle(in, rel, status)) return;
+        if (isStatusClose(in, rel, status) || isChecklistToggle(in, rel, status)
+                || isFrozenExempt(cfg, rel.substring(m.end()))) {
+            return;
+        }
+        List<String> exempt = asStrList(cfg.get("frozen_exempt_basenames"));
         err("❌ " + m.group(1) + " is " + status + " — its specs are immutable.");
-        err("Record the change in the new use case's \"Impact on approved use cases\" section.");
+        err("Record the change in the new use case's \"Impact on approved use cases\" section,");
+        err("and the one-line entry in " + m.group(1) + "/CHANGELOG.md, which stays writable.");
+        err("Writable inside a frozen folder: " + String.join(", ", exempt)
+                + "; plus the spec's own `status:` line and its checklist toggles.");
         err("To reopen a spec that was never implemented, set `status: draft` by hand.");
         System.exit(2);
+    }
+
+    /**
+     * The third write a frozen `UC-NNN` folder admits, and the only one that is not an edit
+     * of the spec itself: a file whose basename `guard.frozen_exempt_basenames` lists, sitting
+     * DIRECTLY under the folder — `CHANGELOG.md`. `/new-feature`'s consolidation requires one
+     * line there for every change an impact row makes to code an already-approved case
+     * produced, which is exactly how the approved spec stays untouched while what changed
+     * underneath it is still recorded. Until lessons-learned-013 § 1 the guard blocked that
+     * write categorically and told the person to set `status: draft` — reopening an
+     * implemented spec to append a changelog line, far worse than the block itself.
+     *
+     * <p>Matched on the basename alone, for any tool and any phase: knowing that an append is
+     * really an append would mean reimplementing `Edit`'s semantics here, and the file is a log
+     * the guard has no reason to interpret. `remainder` is what follows `<use_cases_dir>/UC-*\/`,
+     * so a nested `notes/CHANGELOG.md` is still frozen — one path, one owner.
+     */
+    static boolean isFrozenExempt(Map<String, Object> cfg, String remainder) {
+        return !remainder.contains("/")
+                && asStrList(cfg.get("frozen_exempt_basenames")).contains(remainder);
     }
 
     /** `status:` of the folder's UC-*-spec.md, or null when there's no consolidated spec. */

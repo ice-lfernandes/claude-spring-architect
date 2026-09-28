@@ -27,7 +27,17 @@ Four boundaries hold on every run, and none of them is prose — the `guard` hoo
   of the flow, including the one without the executor. `git push` is always `ask`.
 - **An approved spec is immutable.** A later case records the change it needs in its
   own `## Impact on approved use cases` section, plus one line in the `CHANGELOG.md` of
-  every altered case's folder. `guard` freezes the files.
+  every altered case's folder. `guard` freezes the files — and exempts exactly that
+  `CHANGELOG.md`, so the log a frozen folder is supposed to receive is the one write it
+  still accepts (`guard.frozen_exempt_basenames`).
+- **An impact row that adds a precondition names its satisfier.** A `Satisfied by` column:
+  an approved `UC-NNN`, this case, or a **named** backlog case — and in that last situation the
+  spec and the final report both state that the earlier case is unreachable end to end until
+  that one ships. With no satisfier, consolidation stops. A fixture that fabricates the state
+  is not a satisfier.
+- **The final report carries three findings nobody should have to reconstruct:** an approved
+  case this run left unreachable, a dedupe guarantee delegated to an external consumer with no
+  contract, and personal data crossing a boundary in clear, with its receiver.
 
 ## Why it's a manual skill, not an agent
 

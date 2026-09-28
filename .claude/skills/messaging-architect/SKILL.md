@@ -138,6 +138,8 @@ still transport.
    | Ordering requirement across different aggregates | Whether one topic is enough or the event needs to fan out differently |
    | Existing `processed_events`-style dedupe table in this project | Reuse vs. ask `persistence-architect` to model one |
    | **Serialization** — do both sides need a contract they can validate at build time, and is there a second team on the other end asking for it? | JSON (the rule's default) or a schema registry. **Ask only with the cost in the question**, see below |
+   | **Personal data in the payload** — does the event carry a field that identifies a natural person, and if so, what is the minimum the receiver needs? | The payload's field list: full value, reduced form (id, hash, last digits), or a reference the receiver resolves. `@.claude/rules/security.md` § In transit. **Always asked when a candidate field exists**, see below |
+   | **Who guarantees dedupe**, when the consumer is not in this project | Whether at-least-once is actually absorbed anywhere. `@.claude/rules/messaging.md` § Delivery semantics |
 
    Every axis but the first is consumer-side. A use case that only **produces** still has the
    publication timing to settle, so "no axis applies, no `AskUserQuestion` this pass" is never
@@ -163,6 +165,41 @@ still transport.
    A user who picks the upgrade after reading that row picked it knowingly. One who is
    offered "JSON (recommended)" versus "Avro + schema registry" with no cost attached is
    picking a name, and that is how the six items above entered a project in one answer.
+
+   **The personal-data axis, and why it is asked and not inferred.** Run the candidate test of
+   `@.claude/rules/security.md` § What counts as personal data over the payload's fields —
+   against the types of `@.claude/rules/value-objects.md` § Catalog, never against field names
+   alone: the field that leaked a national identifier in a real run was called
+   `securityNumber`, and masking it in the logs (which `@.claude/rules/logging.md` did require,
+   and which was applied) changed nothing about the copy serialized into the outbox column and
+   the copy published on the topic.
+
+   - **Candidate field present → ask, with the three legitimate answers as the options:** the
+     full value, a reduced form, or a reference the receiver resolves under its own
+     authorization. "The receiver's whole purpose is that value" is a correct answer — an
+     identity-verification service does need the identifier it verifies — and it is the answer
+     that most needs recording, because it is the one nobody revisits when the receiver
+     changes.
+   - **No candidate field → one line in the partial saying so**, not silence. `none` is an
+     answer; an unasked question is what shipped a CPF in clear across a team boundary and into
+     a `jsonb` column retained for seven days.
+   - Whatever the answer, it lands in § 2 of the partial next to the payload's field list, with
+     the receiver named. A decision recorded elsewhere is a decision the next run re-decides.
+
+   **The dedupe-owner axis.** At-least-once delivery is only safe because something absorbs
+   the duplicate, and `@.claude/rules/messaging.md` § Delivery semantics puts that on the
+   consumer. When the consumer is **in this project**, step 5a is what makes it true. When it
+   is **not** — another team, another company — the guarantee is being delegated across an
+   organizational boundary, and this skill's job is to say so out loud rather than let a
+   Javadoc sentence imply it is handled:
+
+   - name the receiver, and state whether its idempotency is **contracted** (written down
+     somewhere both sides can point at), **assumed**, or **unknown**;
+   - when the answer is "assumed" or "unknown", that is a **finding for the final report**, not
+     a line buried in § 3 — the run ends naming it, so the person who asked for the feature
+     decides whether to accept it;
+   - the event's own identity is what makes dedupe possible at all, so the payload carries it
+     regardless of who dedupes: the same `event_id` the outbox row is keyed on.
 
 4. **Design the producer adapter.** Implements the outbound port `domain-modeling` already
    declared — never a new interface. Payload is the minimum the consumer needs, mapped
@@ -193,6 +230,14 @@ still transport.
    per-row exponential backoff became a fixed 2s repoll, decided by a precedence rule
    written for table shape. The column set has one owner and one canonical source, and
    neither is this file.
+
+   The guarantee has a second half, and it is the one a real run left unstated: **at-least-once
+   only holds if something absorbs the duplicate.** § 6's row names the attempts and the DLQ;
+   § 3 names who dedupes (step 3's axis). The claim query itself — locked, leased, or explicitly
+   single-instance — is `persistence-architect`'s decision and belongs in `20-persistencia.md`;
+   what this skill must not do is accept a method *named* like a claim as proof that a claim
+   happens. A gateway method called `claimPending` implemented as an unlocked `SELECT` is the
+   shape that shipped, and two relay instances then publish the whole batch twice, every pass.
 
    What this skill keeps is the guarantee, and it keeps it as a **requirement**, not a
    suggestion: a shape that cannot satisfy the declared backoff and attempt count is a
@@ -226,9 +271,26 @@ still transport.
    values are the rule; what this skill decides is the per-use-case sizing (group id, offset
    reset tolerance) from step 3.
 
+   **This skill owns the `bootstrap-servers` default, and it is host-first.** The application
+   started with `./mvnw spring-boot:run` runs on the host, so the default has to be an address
+   the host resolves — `${KAFKA_BOOTSTRAP_SERVERS:localhost:<external port>}`, the port
+   `docker-architect`'s service block publishes for its EXTERNAL listener. The compose `app`
+   service overrides the variable with the internal address. Defaulting to the internal one
+   instead is `UnknownHostException: kafka` on the first host-side publish, with no path to
+   recovery and no check that sees it — lessons-learned-013 § 11.
+
+   **Declare the dependencies this transport needs, in § 7 of the partial.** A `KafkaTemplate`
+   needs `org.springframework.boot:spring-boot-starter-kafka`: Spring Boot 4 moved Kafka
+   autoconfiguration out of `spring-boot-autoconfigure`, so a plain `spring-kafka` library
+   dependency wires nothing at all and every property above stays inert. Version column empty
+   whenever the Boot parent manages it — never a version from memory (`@CLAUDE.md`
+   invariant 8). The executor may write `pom.xml` for exactly the dependencies this block
+   names; a requirement missing here is a run that stops at a missing type with nobody
+   entitled to add it.
+
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/25-mensageria.md`, from
-   `templates/messaging-spec.md.example`. Six blocks, all mandatory — § 6 included, written
-   as `none` when steps 4a and 5a both found nothing to ask for.
+   `templates/messaging-spec.md.example`. Seven blocks, all mandatory — § 6 and § 7 included,
+   each written as `none` when there is nothing to ask for.
 
 9. **Check Kafka has a container.** List the keys inside the `services:` block and look
    for `kafka` — never `grep -A2 "^services:"`, which reads two lines and then reports the
@@ -245,15 +307,20 @@ still transport.
    while a design run is open.
 
 10. **Report and stop.** Path of the file written, **the content of § 6** (each schema
-    requirement handed to `persistence-architect`, or "none"), the pending broker service if
+    requirement handed to `persistence-architect`, or "none"), **the content of § 7** (each
+    declared dependency the executor has to add, or "none"), the pending broker service if
     step 9 found one (and the command that fixes it),
+    **the personal-data answer** (which fields cross, in what form, to which receiver — or
+    "none"), **and, when the consumer is not in this project, whether its idempotency is
+    contracted, assumed or unknown** — the last two are findings the person who asked for the
+    feature has to see, not partial content to be read later,
     and what's missing for the folder to be complete (`20-persistencia.md`,
     `40-testes.md`). Don't invoke anyone else — `persistence-architect` runs next in the
     pipeline and reads § 6 in its first pass.
 
 ## What the partial contains
 
-Six blocks. An empty block is written as "none" — deleting it hides a question nobody
+Seven blocks. An empty block is written as "none" — deleting it hides a question nobody
 asked.
 
 | Block | Fixes | Form exemplar |

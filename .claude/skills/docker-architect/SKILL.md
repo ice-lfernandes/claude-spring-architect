@@ -251,9 +251,19 @@ this table is where it lives.
    **End the report with the one command that verifies the result** — not optional, and the
    step a real run skipped — and say what it
    catches: `java .claude/hooks/ArchHook.java compose` — every service actually
-   `running` rather than `created`, and no container from another project holding a host
-   port this one publishes. `docker compose up -d` exits 0 in both of those failures.
-   Don't run it here: nothing has been started yet at this point, and a report about
+   `running` rather than `created`, no container from another project holding a host
+   port this one publishes, and **every published port advertised at an address the host can
+   resolve**. `docker compose up -d` exits 0 in all three of those failures.
+
+   The third one is the only check in the system that sees it, so say what it means when it
+   fires: a service that publishes a port to the host is claiming host reachability, and a
+   broker that advertises only its compose-network name breaks that claim on the first
+   host-side client — the healthcheck cannot see it (it runs inside the container, where
+   `localhost` is the service) and neither can the integration tests (Testcontainers wires
+   its own listeners). It reads the file, so run it even with the stack down — that half
+   answers without a daemon (lessons-learned-013 § 11).
+
+   Don't start the stack here: nothing has been started yet at this point, and a report about
    containers that do not exist is noise.
 
    Don't invoke anyone — a sibling skill that chained this one resumes on its own thread.

@@ -140,6 +140,25 @@ the decision.
    goes into this spec's `## Impact on approved use cases` section — which case, what
    changes, why. Decide what this case needs; don't defer or anticipate a decision for a
    future case.
+
+   **An impact row that adds a precondition names which use case satisfies it.** This is the
+   one row shape that can break a case that was working: "reject when `status != ACTIVE`" is
+   correct, applies cleanly, compiles, passes — and leaves the earlier case reachable only
+   through a state nothing in the system produces. That happened: a use case became 422 on
+   every real call, the build stayed green, and the only trace was a comment in a test
+   fixture. So each such row carries a fourth column, **Satisfied by**, with one of:
+
+   - **an approved or implemented `UC-NNN`** — name it, and the precondition is reachable
+     today;
+   - **this very case** — it both adds the precondition and provides the transition;
+   - **a backlog `UC-NNN`, named** — then the row says so in words, this spec's
+     `## Out of scope` repeats it, and the consequence is stated outright: from this change
+     until that case ships, the earlier use case is unreachable end to end. A reviewer may
+     accept that; nobody can accept it without being told.
+
+   No fourth answer. "The tests construct the state" is not a satisfier — a fixture that
+   fabricates a state no production path can reach is the signature of this defect, not the
+   solution to it.
 5. **Derive the real paths** from the active blueprint's `packages.map` — in the
    generated project, from the packages documented in the root `CLAUDE.md` and the
    module `CLAUDE.md` files. Never write a generic path when the real one is knowable.
