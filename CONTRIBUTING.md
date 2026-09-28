@@ -176,6 +176,19 @@ runtime via Spring Initializr; without network access, ask. CI greps for this.
   an unrelated docs rewrite is two.
 - Fill in `.github/PULL_REQUEST_TEMPLATE.md` and let CI pass before asking for review.
 
+## Releases
+
+Every merge into `main` is tagged. `release.yml` creates the annotated tag from the merge
+commit, and it reads the level from § Release bump of the PR description — `major`,
+`minor` or `patch`, exactly one ticked. The `release bump is declared` check fails while
+the PR is open otherwise, so the decision is made by review and not after the fact.
+
+Two things stay manual on purpose: a GitHub Release, when a ref deserves more prose than
+the tag message the workflow writes, and the plugin marketplace, where
+[`claude-spring-architect-marketplace`](https://github.com/ice-lfernandes/claude-spring-architect-marketplace)
+pins a ref with `./sync.sh vX.Y.Z` — publishing is a decision, not a consequence of
+merging.
+
 ## Reporting instead of contributing
 
 Bugs, feature proposals and blueprint ideas have forms:

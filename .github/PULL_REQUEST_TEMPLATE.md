@@ -1,6 +1,8 @@
 <!--
 Contribution guide: CONTRIBUTING.md. Invariants: CLAUDE.md § Invariants.
 Delete the sections that don't apply to this PR — an untouched checkbox is read as "not done".
+§ Release bump is the one exception: it is not optional and is not deleted. CI fails
+without it, because the tag created on merge has no other source for the level.
 -->
 
 ## What changes
@@ -10,6 +12,21 @@ Delete the sections that don't apply to this PR — an untouched checkbox is rea
 ## Why
 
 <!-- The problem, not the diff. Link the issue with `Closes #NN` if there is one. -->
+
+## Release bump (mandatory — exactly one)
+
+`release.yml` tags the merge commit of this PR the moment it lands on `main`, and this
+section is the only place it reads the level from. Tick exactly one; the
+`release bump is declared` check fails while the PR is open otherwise, and nothing
+downstream can decide it later.
+
+- [ ] `major` — breaking for a project that already adopted: an `extensions.json` key
+      renamed or removed, an `export` path moved, a blueprint contract changed, anything
+      that makes `/arch-adopt` at the new ref fail on a project adopted at the old one
+- [ ] `minor` — new capability, adopt stays compatible: a new norm, skill, agent, hook
+      mode, blueprint or MCP server
+- [ ] `patch` — fix or wording: a bug in `ArchHook.java`, an exemplar corrected, norm
+      prose sharpened, `docs/`, `README.md`
 
 ## Type of change
 

@@ -1,0 +1,186 @@
+name: release
+
+# One claim: every PR merged into `main` leaves a tag behind, and the level of that tag
+# was decided while the PR was open, not after it.
+#
+# The two halves are deliberately one file, because they share one parser. The bump level
+# lives in the PR body (`.github/PULL_REQUEST_TEMPLATE.md` § Release bump), and a body
+# read by two different regexes in two different files is a divergence waiting to happen:
+#
+#   bump-declared  runs on every PR event, fails while the PR is open unless the section
+#                  ticks exactly one level, and publishes that level as an output.
+#                  Make it a required status check in the branch protection of `main` —
+#                  that, and nothing in this file, is what makes the field mandatory.
+#   tag            runs once, on the `closed` event of a merged PR, and creates the
+#                  annotated tag from the merge commit.
+#
+# What this does NOT do, on purpose: create a GitHub Release, write release notes, or
+# touch the marketplace repository. The tag message points at the PR, which is where the
+# prose already is; `claude-spring-architect-marketplace` pins a ref by hand
+# (`./sync.sh vX.Y.Z`) because bumping it is a decision about what to publish, not a
+# consequence of merging.
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize, ready_for_review, closed]
+
+# Read by default. Only the `tag` job writes, and it says so itself.
+permissions:
+  contents: read
+
+jobs:
+  bump-declared:
+    name: release bump is declared
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # An `edited` event fires on every edit of the body; a superseded check is pointless.
+    # Never grouped with the `tag` job below — see its own concurrency block.
+    concurrency:
+      group: bump-declared-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      level: ${{ steps.parse.outputs.level }}
+    steps:
+      # No checkout: the PR body arrives in the event payload, and this job reads nothing
+      # else. A checkout here would only widen what an untrusted body can reach.
+      - name: exactly one level ticked
+        id: parse
+        # The body is attacker-controlled text. It is passed through the environment and
+        # never interpolated into the script — `${{ github.event.pull_request.body }}`
+        # inline would let a backtick in a PR description run on the runner.
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          # Lowercased first, so `[X]` and `Major` are accepted; CR stripped because the
+          # web form submits CRLF and a trailing \r defeats the line match.
+          BODY=$(printf '%s' "${PR_BODY:-}" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
+          LEVELS=$(printf '%s\n' "$BODY" \
+            | sed -nE 's/^[[:space:]]*[-*][[:space:]]+\[x\][[:space:]]+`?(major|minor|patch)`?.*/\1/p' \
+            | sort -u)
+          N=$(printf '%s\n' "$LEVELS" | grep -c . || true)
+          if [ "$N" -ne 1 ]; then
+            echo "❌ § Release bump must tick exactly one level; this PR ticks $N."
+            [ "$N" -gt 1 ] && echo "   Ticked: $(echo $LEVELS)"
+            echo "   Edit the PR description and leave one of:"
+            echo "     - [x] \`major\`  breaking for a project that already adopted"
+            echo "     - [x] \`minor\`  new capability, adopt stays compatible"
+            echo "     - [x] \`patch\`  fix, norm wording, docs, exemplar"
+            echo "   The tag \`release.yml\` creates on merge has no other source for it."
+            exit 1
+          fi
+          echo "level=$LEVELS" >> "$GITHUB_OUTPUT"
+          echo "✅ bump level: $LEVELS"
+
+  tag:
+    name: tag the merge commit
+    needs: bump-declared
+    # `closed` fires on an abandoned PR too — `merged` is what separates the two. The base
+    # check is not redundant with the trigger: a PR retargeted at another branch still
+    # reaches this workflow.
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Serialized across PRs and never cancelled. Two merges seconds apart would otherwise
+    # read the same latest tag and compute the same next one, and the second push would
+    # fail on a tag that already exists — or, worse, be cancelled mid-push.
+    concurrency:
+      group: release-tag
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The merge commit, not `main`: `main` may already carry the next merge by the time
+      # this runs, and the tag has to name the state this PR produced. `fetch-depth: 0` is
+      # what brings the tags the version arithmetic reads.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # `validate.yml` passed on the PR head; this runs on the merge commit, which is a
+      # different tree whenever `main` moved under the PR. These two modes are the cheap
+      # half of that workflow — a semantic merge conflict in `extensions.json` fails here
+      # instead of shipping as a ref the marketplace can pin.
+      - name: the merge commit validates itself
+        run: |
+          java .claude/hooks/ArchHook.java schema
+          java .claude/hooks/ArchHook.java doctor
+
+      - name: compute the next version
+        id: next
+        env:
+          LEVEL: ${{ needs.bump-declared.outputs.level }}
+        run: |
+          set -euo pipefail
+          # `-v:refname` is version sort, not lexicographic: without it v0.9.0 outranks
+          # v0.10.0 and the next release goes backwards.
+          LAST=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -1)
+          [ -n "$LAST" ] || LAST=v0.0.0
+          case "${LAST#v}" in
+            [0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "❌ latest tag '$LAST' is not vMAJOR.MINOR.PATCH — nothing to bump from."; exit 1 ;;
+          esac
+          V=${LAST#v}; MAJOR=${V%%.*}; REST=${V#*.}; MINOR=${REST%%.*}; PATCH=${REST#*.}
+          case "$LEVEL" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+            *) echo "❌ bump level '$LEVEL' is not major, minor or patch."; exit 1 ;;
+          esac
+          NEW="v$MAJOR.$MINOR.$PATCH"
+          if git rev-parse -q --verify "refs/tags/$NEW" > /dev/null; then
+            echo "❌ $NEW already exists. A tag is never moved: cut the next level, or"
+            echo "   delete the stale tag deliberately and re-run this workflow."
+            exit 1
+          fi
+          echo "new=$NEW"  >> "$GITHUB_OUTPUT"
+          echo "last=$LAST" >> "$GITHUB_OUTPUT"
+          echo "✅ $LAST + $LEVEL → $NEW"
+
+      - name: create and push the annotated tag
+        env:
+          NEW: ${{ steps.next.outputs.new }}
+          LAST: ${{ steps.next.outputs.last }}
+          LEVEL: ${{ needs.bump-declared.outputs.level }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The title is untrusted text written to a file and handed to `-F`: no shell
+          # expansion, and no `-m` whose argument a quote could escape.
+          {
+            printf '%s — %s\n\n' "$NEW" "$PR_TITLE"
+            printf '%s bump from %s, tagged from the merge commit of #%s.\n\n' \
+              "$LEVEL" "$LAST" "$PR_NUMBER"
+            printf 'PR:     %s\n'   "$PR_URL"
+            printf 'Author: @%s\n'  "$PR_AUTHOR"
+            printf 'Commit: %s\n\n' "$MERGE_SHA"
+            printf 'The PR is the release note. A ref worth more prose than this gets a\n'
+            printf 'GitHub Release written on top of it by hand.\n'
+          } > "$RUNNER_TEMP/tag-message.txt"
+          git tag -a "$NEW" -F "$RUNNER_TEMP/tag-message.txt" "$MERGE_SHA"
+          # `GITHUB_TOKEN` pushes do not trigger workflows, so this cannot re-enter here.
+          git push origin "refs/tags/$NEW"
+          {
+            printf '### `%s`\n\n' "$NEW"
+            printf '%s bump from `%s`, on #%s.\n' "$LEVEL" "$LAST" "$PR_NUMBER"
+          } >> "$GITHUB_STEP_SUMMARY"
