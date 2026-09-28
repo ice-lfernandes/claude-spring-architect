@@ -1,19 +1,42 @@
 # Use case backlog
 
-Use cases a split left for later, in dependency order. **No number reserved** — a number
-is given when the case is designed. Remove the line when its `/new-feature` starts.
+Use cases a split left for later, in dependency order. Each row carries a **`BL-NN`**, its own
+identifier, assigned when the row is appended and never reused. **It is not a `UC` number and
+never becomes one** — the two sequences are independent, which is what lets a row be dropped or
+merged without leaving a hole in the `UC` sequence. No slug either: both the number and the slug
+are fixed only when the case is designed.
 
-| Depends on | Description for `/new-feature` | Split from |
+`BL-NN` exists so that a spec can point at a row. An impact row that adds a precondition names
+the case that satisfies it, and when that case is still in the backlog there was previously
+nothing to name — two reports invented `UC-004`, a number that existed nowhere, because the
+sentence needed one.
+
+| Id | Depends on | Description for `/new-feature` | Split from |
+|---|---|---|---|
+| `BL-01` | `UC-001-create-customer` | REST endpoint that reads one customer by id from the `customers` table. Not found is a business error | `UC-001-create-customer` |
+| `BL-02` | `UC-001-create-customer` | REST endpoint that renames a customer in the `customers` table. Name must stay unique | `UC-001-create-customer` |
+| `BL-03` | `UC-001-create-customer` | REST endpoint that deletes a customer by id from the `customers` table | `UC-001-create-customer` |
+
+## Retired
+
+A row leaves the table above when its `/new-feature` starts and the real `UC-NNN` is assigned.
+It lands here instead of being deleted: a spec that cited `BL-NN` is immutable once approved, so
+the citation has to stay resolvable exactly at the moment the case stops being backlog. This is
+also the only place that records which backlog row a use case came from.
+
+| Id | Became | Date |
 |---|---|---|
-| `UC-001-create-customer` | REST endpoint that reads one customer by id from the `customers` table. Not found is a business error | `UC-001-create-customer` |
-| `UC-001-create-customer` | REST endpoint that renames a customer in the `customers` table. Name must stay unique | `UC-001-create-customer` |
-| `UC-001-create-customer` | REST endpoint that deletes a customer by id from the `customers` table | `UC-001-create-customer` |
+| `BL-00` | `UC-002-create-account` | 2026-01-15 |
 
 <!--
 HOW TO USE THIS:
 - Appended by the `use-case-design` skill (step 2) into docs/use-cases/BACKLOG.md.
   Create the file from this header when it doesn't exist; append rows otherwise.
+- `BL-NN`: highest existing + 1, counting BOTH tables. Never reuse a retired one.
 - "Description" is passed as is to `/new-feature <description>` — write it in the
   technical vocabulary that skill accepts: trigger and destination named.
-- No number, no slug. Both are fixed only when the case is designed.
+- No number, no slug. Both are fixed only when the case is designed, and the row then
+  moves to ## Retired with the UC it became.
+- `ArchHook.java doctor` reports a `BL-NN` cited anywhere in the repository that appears
+  in neither table.
 -->

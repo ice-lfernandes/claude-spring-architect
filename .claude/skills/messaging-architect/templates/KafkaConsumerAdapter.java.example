@@ -16,6 +16,15 @@
  * WHAT'S NOT HERE: the DLQ routing and retry backoff themselves — that's
  * `application-kafka.yml`'s `DefaultErrorHandler`, wired once per consumer group, not
  * per listener method.
+ *
+ * PACKAGE: one subpackage per event flow — `…messaging.orderconfirmed`,
+ * `…messaging.stockreserved` — never a single flat `…messaging` holding every flow
+ * (`.claude/rules/messaging.md` § Boundary). The unit is the flow, not the aggregate: one
+ * event routinely crosses aggregates, and two events of one aggregate share nothing but their
+ * source. The classes stay package-private, which after the split means one flow cannot see
+ * another's payload: that is the point, and the way across is the port, not a `public`.
+ *
+ * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
  */
 
 // --- ReserveStockUseCase.java (declared by domain-modeling, unrelated to Kafka)
@@ -26,8 +35,8 @@ public interface ReserveStockUseCase {
     void reserve(ReserveStockCommand command);
 }
 
-// --- OrderConfirmedPayload.java (adapter-local — mirrors the producer side's shape)
-package com.example.demo.adapter.in.messaging;
+// --- orderconfirmed/OrderConfirmedPayload.java (adapter-local — mirrors the producer side's shape)
+package com.example.demo.adapter.in.messaging.orderconfirmed;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -44,8 +53,8 @@ public interface ProcessedEventStore {
     void markProcessed(String eventKey);
 }
 
-// --- OrderConfirmedListener.java
-package com.example.demo.adapter.in.messaging;
+// --- orderconfirmed/OrderConfirmedListener.java
+package com.example.demo.adapter.in.messaging.orderconfirmed;
 
 import com.example.demo.application.port.in.ReserveStockUseCase;
 import com.example.demo.application.port.in.ReserveStockCommand;

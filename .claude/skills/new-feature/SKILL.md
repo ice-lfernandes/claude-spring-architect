@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: Orchestrates the feature pipeline — one use case per run, 5 design skills → spec.md for the executor
+description: Orchestrates the feature pipeline — one use case per run, 5 design skills → spec.md for the executor, and implements an already-approved spec on the same argument
 disable-model-invocation: true
 argument-hint: "<feature description> | UC-NNN-slug | empty to list"
 ---
@@ -121,11 +121,14 @@ applied there, directly, when a symptom already in the generated code matches a 
 | `draft` | this skill | at consolidation |
 | `approved` | this skill | only after the user's explicit approval, § End of flow |
 | `implemented` | `java-spring-boot-developer` | with a green build |
+| `implemented-blocked` | `java-spring-boot-developer` | with a green build, when the run left an approved use case unreachable end to end — the code is on disk and verified, and a `Satisfied by` the spec named is not there yet |
 
 A use case folder is **open** when it has no `UC-NNN-spec.md` yet, or its spec is `draft`.
+`implemented-blocked` is **not** open: a case whose code is on disk, green and committed is not
+work in progress, and its satisfier is usually a backlog row nobody is holding this run for.
 
 **One `/new-feature` produces one use case.** The next one only starts once the previous
-is `approved` or `implemented`.
+is `approved`, `implemented` or `implemented-blocked`.
 
 **An approved spec is immutable.** Later cases read approved specs as a read-only
 contract and reuse the aggregate already modeled. A change a new case needs in an
@@ -187,6 +190,11 @@ Classify the argument with the argument in single quotes:
 printf '%s' '<argument>' | grep -Eqx 'UC-[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*' && echo EXACT
 printf '%s' '<argument>' | grep -Eiq 'uc-[0-9]' && echo UC_LIKE
 test -d 'docs/use-cases/<argument>' && echo FOLDER
+
+# The number the argument carries, and the folders it resolves to. RESOLVES_ONE when the
+# argument names no folder of its own but its UC number has exactly one on disk.
+N=$(printf '%s' '<argument>' | grep -Eio 'uc-[0-9]{3}' | head -1 | tr 'a-z' 'A-Z')
+test -n "$N" && ls -d "docs/use-cases/$N"-*/ 2>/dev/null
 ```
 
 Evaluate in order and **stop at the first row that matches**. There is no "any other
@@ -196,24 +204,49 @@ text" row.
 |---|---|---|
 | 1 | empty | ✅ list the survey above — each case with its `status` — and stop |
 | 2 | `EXACT`, `FOLDER`, status `draft` or `(no spec)` | ✅ resume: skip `use-case-design`, generate only the missing partials, then consolidation |
-| 3 | `EXACT`, `FOLDER`, status `approved` or `implemented` | ❌ `approved spec is immutable — describe the change as a new feature` |
-| 4 | `EXACT`, no `FOLDER` | ❌ `use case not found; to create one, describe the feature` |
-| 5 | `UC_LIKE` but not `EXACT` (slug plus context, malformed slug, two slugs, a path) | ❌ `ambiguous argument` |
-| 6 | free text, and the survey shows an open case | ❌ `<UC folder> is open — resume or approve it first` |
-| 7 | free text, and no open case | ✅ new: pass the description **as is** to `use-case-design` |
+| 3 | `EXACT`, `FOLDER`, status `approved` | ✅ **implement**: jump to § End of flow at *Implement now*, skipping steps 1-6, consolidation and the approval question. The argument is the request; nothing is asked again |
+| 4 | `EXACT`, `FOLDER`, status `implemented` or `implemented-blocked` | ❌ `already implemented — describe the change as a new feature` |
+| 5 | no `FOLDER`, and the argument's `UC-NNN` resolves to **exactly one** folder on disk | ❌ `<UC-NNN> is <real-slug>, status <status>` — plus the exact command for it. The case exists; the argument named it wrongly |
+| 6 | `EXACT`, no `FOLDER`, number resolving to zero or several folders | ❌ `use case not found; to create one, describe the feature` |
+| 7 | `UC_LIKE` but not `EXACT` (slug plus context, malformed slug, two slugs, a path) | ❌ `ambiguous argument` |
+| 8 | free text, and the survey shows an open case | ❌ `<UC folder> is open — resume or approve it first` |
+| 9 | free text, and no open case | ✅ new: pass the description **as is** to `use-case-design` |
 | — | anything else | ❌ `unrecognized argument` |
 
-**The model doesn't interpret the input.** It doesn't fix a slug, separate a slug from
-context, or infer intent. A text that almost matches a row doesn't match it.
+Row 5 is the near miss, and it is an **error row, not a success one**: it reports and stops.
+`/new-feature UC-003-spec` once answered `use case not found` while
+`docs/use-cases/UC-003-initiate-kyc-verification/` sat on disk — literally true, since no folder
+carries that name, and practically wrong, since the argument was the basename of the spec file
+inside that folder (lessons-learned-014 § 12). The answer names the real slug and the status, so
+the next attempt is one line away. It does **not** resolve the argument and carry on: the
+argument was wrong, two rows above write `src/`, and guessing which case was meant is exactly
+what the next paragraph forbids.
 
-**An error has a fixed shape and ends the run.** After it: no skill call, no write, no
-question.
+**The model doesn't interpret the input.** It doesn't fix a slug, separate a slug from
+context, or infer intent. A text that almost matches a row doesn't match it. Row 5 is not an
+exception: it reports what it found, it does not act on it.
+
+**An error has a fixed shape and ends the run. After it: no side effect** — no skill call, no
+write, no question. Reading is still allowed, and row 5 is why: the survey is `ls` and `grep`,
+it changes nothing, and it is the cheapest way for a near miss to correct itself. The rule used
+to say "no output", which a run broke by printing the survey after the error — the output the
+user actually needed. A rule violated because it is slightly wrong is a rule to fix, not to
+repeat.
 
 ```text
 ❌ /new-feature: <reason>.
 Usage: /new-feature <feature description>   → new use case
-       /new-feature UC-NNN-slug              → resume a draft case
+       /new-feature UC-NNN-slug              → resume a draft case,
+                                               or implement it once approved
        /new-feature                          → list
+```
+
+Row 5 keeps that shape and adds the one line that makes it actionable:
+
+```text
+❌ /new-feature: UC-003 is UC-003-initiate-kyc-verification, status approved.
+Did you mean: /new-feature UC-003-initiate-kyc-verification
+Usage: …
 ```
 
 ### 2 · Worktree — decided here, never later
@@ -246,19 +279,27 @@ status` that doesn't match the feature just implemented (lessons-learned-006 § 
 invocation at § End of flow so its own state check (`@.claude/skills/git-publish/SKILL.md`
 step 1) knows to warn instead of assuming the diff matches the feature.
 
-**Fourth case: the index already carries changes from before this run.**
+**Fourth case: the worktree already carries changes from before this run.**
 
 ```bash
-git diff --cached --stat 2>/dev/null
+git status --porcelain 2>/dev/null
 ```
 
-Non-empty → staged work that is **not** this run's. Report it here, in full (path count
-and what the paths are), and carry the fact to `git-publish` the same way `IGNORED`
-travels. This is the cheap moment to decide: at the end of the flow the run's own
-deliverable is mixed into the same index, and separating them costs a reset nobody
-planned. lessons-learned-012 § 7: 1.503 staged deletions from before the run only surfaced
-at `git-publish`, and the handling was improvised because no state in either skill
-described it.
+Non-empty → work that is **not** this run's. Report it here, in full (path count and what
+the paths are, staged and unstaged alike), and carry **the list itself** to `git-publish`
+the same way `IGNORED` travels — not just the fact that something was dirty.
+
+`git status --porcelain`, never `git diff --cached`: the index is half the picture, and the
+half that was already known. An unstaged edit and an untracked file from a previous run are
+invisible to the index and are swept into the commit by `git add -A` all the same — a modified
+`.claude/audit-usage/history.jsonl` and one untracked report rode along exactly that way, while
+the guardrail reported a clean start (lessons-learned-014 § 11). Harmless there, since
+`git-publish` commits the audit trail with the run on purpose; the shape is not.
+
+This is the cheap moment to decide: at the end of the flow the run's own deliverable is mixed
+into the same worktree, and separating them costs a reset nobody planned. lessons-learned-012
+§ 7: 1.503 staged deletions from before the run only surfaced at `git-publish`, and the
+handling was improvised because no state in either skill described it.
 
 ### 3 · Project
 
@@ -334,7 +375,8 @@ If it exists: read, validate (four blocks: aggregate, VOs, invariants, ports).
 ### Step 3: REST (depends on 1,2)
 
 If `30-rest.md` is missing: **invoke** `/rest-api-architect UC-NNN`.
-If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, idempotency).
+If it exists: read, validate (six blocks: resources, DTOs, errors, pagination, idempotency,
+personal data).
 
 **Output:** "✅ REST ready" or gaps.
 
@@ -343,15 +385,17 @@ If it exists: read, validate (five blocks: resources, DTOs, errors, pagination, 
 Read `10-dominio.md`'s Events block. If it names external (Kafka) delivery for the
 event and `25-mensageria.md` is missing: **invoke** `/messaging-architect UC-NNN`. If
 the event is absent or stays in-process, skip this step — not every use case needs it.
-If `25-mensageria.md` exists: read, validate (seven blocks: topic and delivery, producer,
+If `25-mensageria.md` exists: read, validate (nine blocks: topic and delivery, producer,
 consumer and idempotency, retry/DLQ, configuration, schema requirements, declared
-dependencies).
+dependencies, personal data, deferred).
 
 A missing § 6 is a gap, not an omission: it's the list step 5 reads. `none` is a valid
 value there and means publication Form A with no consumer dedupe table to build. § 7 is
 the same shape for build dependencies: it is the only list the executor may act on when it
 writes `pom.xml`, so a missing one leaves a needed dependency with no owner
-(lessons-learned-013 § 10).
+(lessons-learned-013 § 10). **This step is not the only check on it** — a run that reaches
+consolidation without taking this step is exactly how two lists went missing and a spec was
+approved anyway, so consolidation gates the same thing for every path.
 
 **Output:** "✅ Messaging ready", "— skipped (no external delivery)", or gaps.
 
@@ -360,9 +404,11 @@ writes `pom.xml`, so a missing one leaves a needed dependency with no owner
 If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
 both schema requirement lists in the same pass — `30-rest.md` block 4 (the idempotency
 table among them) and, when step 4 ran, `25-mensageria.md` § 6 (the shared outbox table,
-the dedupe table). If it exists: read, validate (six blocks: schema, mapping, adapter and ports, migrations,
-configuration, declared dependencies). § 6 is the persistence twin of `25-mensageria.md` § 7,
-and the same rule holds: it is the only list that entitles the executor to touch `pom.xml`.
+the dedupe table). If it exists: read, validate (seven blocks: schema, mapping, adapter and
+ports, migrations, configuration, declared dependencies, deferred). § 6 is the persistence twin
+of `25-mensageria.md` § 7,
+and the same rule holds: it is the only list that entitles the executor to touch `pom.xml` —
+and consolidation checks it again, for the paths that never take this step.
 
 **Output:** "✅ Persistence ready" or gaps.
 
@@ -427,12 +473,49 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    - **A row that adds a precondition must name its satisfier, or consolidation stops.** Any
      row making an earlier case require a state it did not require before — a status, a flag, a
      related record — carries the `Satisfied by` column `00-caso-de-uso.md` already asks for:
-     an approved `UC-NNN`, this case, or a **named** backlog case. Missing or vague, the
-     pipeline stops and asks; it is not filled in by inference. Where the satisfier is a
-     backlog case, the consolidated spec says outright that the earlier case is unreachable end
-     to end until that one ships, and the final report repeats it — a use case that answers 422
+     an approved `UC-NNN`, this case, or a backlog row **by its `BL-NN`**. Missing or vague, the
+     pipeline stops and asks; it is not filled in by inference. A `UC` number is not a valid
+     answer for a backlog case — it has none until it is designed, and two reports of a real run
+     invented `UC-004` because the sentence needed a name and `BACKLOG.md` had none to give
+     (lessons-learned-014 § 7). Where the satisfier is a backlog row, the consolidated spec says
+     outright that the earlier case is unreachable end to end until that one ships, and the final
+     report repeats it, citing the same `BL-NN` — a use case that answers 422
      on every real call is not a detail the reader should have to find in a test fixture
      (lessons-learned-013 § 5)
+   - **A partial that applies must carry its declared-dependency section, or consolidation
+     stops.** `20-persistencia.md` § 6 always; `25-mensageria.md` § 7 whenever step 4 ran. The
+     value `none` is legitimate and common — most cases need no new dependency — but **absence
+     is not `none`**: one says the design skill decided nothing was needed, the other says
+     nobody looked, and the executor cannot tell them apart. Steps 4 and 5 validate the same
+     thing; they are conditional, and a spec once reached `approved` with both lists missing
+     because its partials had been written in earlier runs (lessons-learned-014 § 6). The
+     executor then added a dependency to `pom.xml` by inference — a defensible one, and
+     precisely the decision this list reserves for the design skill. Consolidation is the block
+     every run passes, which is why the check belongs here as well, exactly like `Satisfied by`
+     above
+   - **A personal-data field crossing the process boundary in clear carries a recorded
+     decision, or consolidation stops.** `25-mensageria.md` § 8 and `30-rest.md` § 6 each list
+     the fields of the payload and the response body that match
+     `@.claude/rules/logging.md` § Masking candidates, with the form chosen. A `full value` row
+     without a named receiver and a reason is not consolidated: the pipeline stops and asks, and
+     it is not filled in by inference. `none` is a valid value and absence is not one. Until now
+     this was a line in the **final report** — detection after the spec is approved, after the
+     code is written and after the commit, and in the observed run it appeared there only because
+     the executor volunteered it, for a CPF already published in clear on a topic
+     (lessons-learned-014 § 8, `@.claude/rules/security.md` § In transit)
+   - **A deferred row leaves the run with an owner, or consolidation stops.** Each partial's
+     `Deferred` block carries what it decided not to do, the norm that requires it, and an
+     intended owner. `checklist` → add the item to this spec's checklist; the run implements it.
+     `backlog` → **consolidation appends the row to `docs/use-cases/BACKLOG.md` and assigns its
+     `BL-NN`**, then writes that id into this spec's `## Out of scope` with the consequence
+     spelled out: what the project does not guarantee until that row ships. Consolidation is the
+     only writer of a backlog row inside a feature run — two partials each computing "highest
+     plus one" would issue the same `BL-NN`. An item whose norm makes it mandatory and whose
+     owner is missing or vague stops the pipeline and is not inferred: a real run decided a
+     7-day retention for `outbox_events`, left a commented `DELETE` in the migration, kept
+     `app.outbox.prune-after` out of `application.yml` on purpose, and handed the job to nobody,
+     over a table whose payload carries personal data (lessons-learned-014 § 9,
+     `@.claude/rules/security.md` § At rest)
    - **Every case named in that section gets a line in its own `CHANGELOG.md`**, at
      `docs/use-cases/UC-XXX-<slug>/CHANGELOG.md` — created on the first change, appended
      afterwards. One line: date, the `UC-NNN` making the change, and what changed
@@ -470,7 +553,22 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
 Every branch below ends in an explicit instruction. None of them runs git outside
 `git-publish`.
 
-### Approval — always asked
+**Two entry points reach this section, and they differ in exactly one thing — whether the
+implement question has already been answered.**
+
+| Arriving from | Enters at | Asks *Implement now / Not now* |
+|---|---|---|
+| Consolidation, in the same run | § Approval | yes — the user has not said yet |
+| Input row 3, `/new-feature UC-NNN-slug` over an `approved` spec | § Executor offer, at **Implement now**, skipping § Approval | no — the command is the request |
+
+The second is the front door the second half of the pipeline did not have. Without it, an
+approved spec's normal life — the run ends, the context is cleared — left no supported way to
+reach the delegation, and every guarantee below became something a later session either
+remembered or dropped: the pre-flight, the `CHANGELOG.md` writes, the four mandated findings of
+the final report, and the `git-publish` chaining. Design:
+`@.claude/decisions/0067-implement-entry-row.md`.
+
+### Approval — asked on every run that consolidated a spec
 
 `AskUserQuestion`: **Approve `UC-NNN-spec.md`** / **Keep as draft**.
 
@@ -478,9 +576,13 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
   (`/new-feature UC-NNN-<slug>`), and stop. No git: a draft isn't a deliverable.
 - **Approve** → change the spec's line to `status: approved`, then the executor offer.
 
-### Executor offer — always asked, only for `approved`
+### Executor offer — only for `approved`
 
 `AskUserQuestion`: **Implement now** (`java-spring-boot-developer`) / **Not now**.
+
+**Asked only when the run itself just approved the spec.** Arriving from input row 3, the
+question is skipped and the run starts at **Implement now** below: the command named an
+approved spec, which is the answer.
 
 - **Implement now** →
   - **One-time setup pre-flight, before delegating.** The executor is about to write the
@@ -520,7 +622,8 @@ Every branch below ends in an explicit instruction. None of them runs git outsid
     - Neither gap found → skip this pre-flight silently, no question asked.
   - Delegate to `java-spring-boot-developer`, sending the spec path.
   - **Success** (final summary reports the checklist complete, the build green, and the
-    spec at `status: implemented`) → **invoke** `git-publish` via the `Skill` tool, with
+    spec at `status: implemented` — or at `implemented-blocked`, which is a success too, with
+    the case it blocks on named) → **invoke** `git-publish` via the `Skill` tool, with
     `feat(UC-NNN-<slug>): <one-line summary>` as context.
   - **Failure** → report the executor's failure and stop. No git.
 - **Not now** → **invoke** `git-publish` via the `Skill` tool, with context
@@ -544,10 +647,13 @@ Last message of the run, and the only report: the spec path and status, the back
 entries left for later (if any), **every follow-up the run left pending outside `docs/`** —
 each compose service or `docker/init` file a partial named, with the `/docker-architect`
 command that materializes it, or "none" —
-**every approved use case this run left unreachable end to end**, with the backlog case that
-restores it (or "none"), **every guarantee delegated to a consumer outside this project whose
+**every approved use case this run left unreachable end to end**, with the backlog row that
+restores it named by its `BL-NN` (or "none") — never a `UC` number, which a backlog row does not
+have — **every item a partial deferred, with the owner it left it to** (a checklist item, or a
+`BL-NN`, or "none"), **every guarantee delegated to a consumer outside this project whose
 idempotency is assumed or unknown** (or "none"), and **every personal-data field that crosses
-a boundary in clear, with its receiver** (or "none") — three findings a reader must not have to
+a boundary in clear, with its receiver** (or "none") — now a repeat of what § 8 and § 6 of the
+partials already recorded, not the first time anyone asks — three findings a reader must not have to
 reconstruct from a fixture comment or a Javadoc sentence — what `git-publish`
 did, and a recommendation to run
 `/clear` before the next `/new-feature` — a clean context per use case keeps cost

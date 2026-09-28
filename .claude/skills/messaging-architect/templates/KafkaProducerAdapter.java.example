@@ -20,6 +20,15 @@
  * WHAT'S NOT HERE: retry/backoff and DLQ wiring — that's `application-kafka.yml`'s
  * `DefaultErrorHandler`, not per-adapter code. Schema registry — not assumed until a use
  * case needs it (`.claude/rules/messaging.md` § Topics and serialization).
+ *
+ * PACKAGE: one subpackage per event flow — `…messaging.orderconfirmed`,
+ * `…messaging.stockreserved` — never a single flat `…messaging` holding every flow
+ * (`.claude/rules/messaging.md` § Boundary). The unit is the flow, not the aggregate: one
+ * event routinely crosses aggregates, and two events of one aggregate share nothing but their
+ * source. The classes stay package-private, which after the split means one flow cannot see
+ * another's payload: that is the point, and the way across is the port, not a `public`.
+ *
+ * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
  */
 
 // --- PublishOrderConfirmedPort.java (declared by domain-modeling, in application/port/out)
@@ -32,8 +41,8 @@ public interface PublishOrderConfirmedPort {
     void publish(OrderConfirmed event);
 }
 
-// --- OrderConfirmedPayload.java (adapter-local, never the domain event itself)
-package com.example.demo.adapter.out.messaging;
+// --- orderconfirmed/OrderConfirmedPayload.java (adapter-local, never the domain event itself)
+package com.example.demo.adapter.out.messaging.orderconfirmed;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -46,8 +55,8 @@ public record OrderConfirmedPayload(UUID orderId, UUID customerId, Instant occur
     }
 }
 
-// --- OrderConfirmedPublisher.java
-package com.example.demo.adapter.out.messaging;
+// --- orderconfirmed/OrderConfirmedPublisher.java
+package com.example.demo.adapter.out.messaging.orderconfirmed;
 
 import com.example.demo.application.port.out.PublishOrderConfirmedPort;
 import com.example.demo.domain.event.OrderConfirmed;

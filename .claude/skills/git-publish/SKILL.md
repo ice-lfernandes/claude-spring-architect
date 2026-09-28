@@ -91,17 +91,21 @@ Four states, four different phrasings for gate 1:
 | `UNTRACKED` (no `.git`) | "Initialize git and create the first commit?" |
 | `TRACKED`, dirty (`git status --porcelain` non-empty) | "Commit these changes now?" |
 | `TRACKED`, clean | Skip gate 1 — nothing to commit. Go straight to gate 2 only if there are unpushed commits or no remote configured; otherwise report "nothing to do" and stop |
-| `TRACKED`, and `git diff --cached --stat` shows paths **outside** the ones the caller named | "Commit only this run's paths, or everything that is staged?" — two options, and the question comes **before** gate 1's own |
+| `TRACKED`, and `git status --porcelain` shows paths **outside** the ones the caller named | "Commit only this run's paths, or everything that is dirty?" — two options, and the question comes **before** gate 1's own |
 
-**`PRE_EXISTING_INDEX`** — the fourth state. Staged changes that belong to no caller of
-this skill: someone else's cleanup, a deletion made by hand, a half-finished commit.
+**`PRE_EXISTING_WORK`** — the fourth state. Changes that belong to no caller of this skill:
+someone else's cleanup, a deletion made by hand, a half-finished edit, an untracked file from a
+previous run. **Read from `git status --porcelain`, not from the index alone** — an unstaged
+edit and an untracked file are invisible to `git diff --cached` and `git add -A` commits them
+anyway (lessons-learned-014 § 11).
 Deciding it silently is what went wrong in lessons-learned-012 § 7 — 1.503 staged
 deletions rode along with a feature commit, and only a manual read of the list caught it.
 Show the paths, say which of them the caller named, and ask with those two options. On
 "only this run's paths", stage with `git add -- <paths>` and never `git add -A`; the rest
-stays staged and is reported as left behind, not reverted. `/new-feature`'s guardrail step
-2 already flags this at the start of the run — when it did, carry its list here instead of
-rediscovering it.
+stays dirty and is reported as left behind, not reverted. `/new-feature`'s guardrail step
+2 already flags this at the start of the run and **hands over the list itself** — when it did,
+use that list instead of rediscovering it, and diff it against what is dirty now: what the
+guardrail saw is what the run did not produce.
 
 ### 2 · Gate 1 — local commit
 
@@ -124,11 +128,18 @@ On "Yes":
 4. `git commit -m "<message>"` — build the message from the input context following
    Conventional Commits: `chore: initial project scaffold — <blueprint/build/features>`
    for a project-initializer call, `feat(UC-NNN-slug): <summary>` for a `/new-feature`
-   call after the executor, `docs(UC-NNN-slug): approved spec` for a docs-only one, or a generic `chore: commit pending changes` with no context. Always append:
+   call after the executor, `docs(UC-NNN-slug): approved spec` for a docs-only one, or a generic `chore: commit pending changes` with no context.
 
-   ```
-   Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-   ```
+   **Attribution: append exactly the trailer the session provides, and nothing else.** The
+   running session states its own attribution lines; use them verbatim. **When it states none,
+   the commit carries none** — no `Co-Authored-By` at all.
+
+   **Never write a model name from memory.** Same discipline `@CLAUDE.md` invariant 8 applies to
+   Java and Spring Boot versions, and for a sharper reason here: this file is copied into every
+   generated project, so a literal pinned in it goes stale in every one of them, silently and
+   forever. A run under one model committed with another model's name because this step spelled
+   one out, and the audit trail then recorded two models on one feature (lessons-learned-014
+   § 10). A wrong attribution is worse than an absent one — it is in the git history for good.
 
 ### 3 · Gate 2 — remote create/push
 

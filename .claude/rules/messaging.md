@@ -27,6 +27,21 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
   inbound port. It never touches the target aggregate directly
 - No Kafka type (`ProducerRecord`, `ConsumerRecord`, `@KafkaListener`) in a domain or
   application signature
+- **One subpackage per event flow inside the messaging adapter**, always — including while
+  the project has a single flow. A flow is the payload record plus the producer adapter that
+  writes it, or the consumer adapter plus its dedupe: `…messaging.orderconfirmed`,
+  `…messaging.stockreserved`. The unit here is the **flow**, not the aggregate, because one
+  event routinely crosses aggregates and two events of one aggregate have nothing in common
+  but their source. **Shared transport infrastructure gets its own subpackage on the same
+  rule** — `…messaging.outbox` first among them, holding the relay, its properties binding,
+  its scheduling wiring and the outbox writer. A flat adapter package holding every flow's
+  classes breaks SRP at the package level and grows without bound: one feature already put six
+  classes in it, four of them the outbox's. The `test/` tree mirrors the same subpackages
+- **Visibility is package-private by default**, payload record, producer, consumer, relay and
+  wiring alike. The split is what makes the default bite: one flow's payload is no longer
+  visible from another's subpackage, and the way across is the port the adapter implements,
+  never a `public` added to reach sideways. Only the specific class another flow genuinely
+  consumes becomes `public` — one class at a time, never preemptively
 - **Framework wiring for the broker lives in this package too, `@Configuration` included.**
   A class that builds a `ProducerFactory`, a `KafkaTemplate`, a `DefaultErrorHandler`, or
   enables the scheduling a relay depends on is adapter-local wiring: it carries broker types,

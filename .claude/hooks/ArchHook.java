@@ -51,6 +51,10 @@ public class ArchHook {
         // same place the mode names already live.
         String stdin = switch (mode) {
             case "check", "format", "tests", "schema", "audit", "guard" -> readAll(System.in);
+            // `compose gate` is the hook-invoked half of `compose` and needs the payload for
+            // `stop_hook_active`. The bare `compose` a person types stays out of the list, which
+            // is the hang lessons-learned-011 § 2 found.
+            case "compose" -> args.length > 1 && "gate".equals(args[1]) ? readAll(System.in) : "";
             default -> "";
         };
         try {
@@ -61,7 +65,7 @@ public class ArchHook {
                 case "schema" -> schema(stdin);
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
-                case "compose" -> compose();
+                case "compose" -> compose(args.length > 1 ? args[1] : "report", stdin);
                 case "export" -> export(args);
                 case "doctor" -> doctor();
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
@@ -305,6 +309,15 @@ public class ArchHook {
                         orphans.size() + " citation(s) point at a folder that is gone");
                 for (String o : orphans) err("    " + o);
             }
+            String blRoot = asStr(get(doctorSpec("bl_references"), "root"));
+            if (blRoot != null && !Files.isDirectory(ROOT.resolve(blRoot))) {
+                report("BL references", true, "no " + blRoot + " — nothing to check (optional)", "");
+            } else {
+                List<String> unknown = unknownBacklogRefs();
+                report("BL references", unknown.isEmpty(), "every cited backlog row exists",
+                        unknown.size() + " citation(s) name a backlog row the file does not have");
+                for (String o : unknown) err("    " + o);
+            }
         }
         err("");
         err(rules > 0 && w != null
@@ -382,6 +395,68 @@ public class ArchHook {
     static String ucReferenceRoot() {
         Map<String, Object> spec = ucReferenceSpec();
         return spec == null ? null : asStr(spec.get("root"));
+    }
+
+    /** One block of `doctor`'s configuration, or null. */
+    static Map<String, Object> doctorSpec(String key) {
+        try {
+            return asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))), "doctor", key));
+        } catch (Exception e) { return null; }
+    }
+
+    /**
+     * `orphanUseCaseRefs`' twin, for the backlog's own identifier.
+     *
+     * <p>A `BL-NN` is what an impact row cites when the use case that satisfies a precondition
+     * has not been designed yet. `BACKLOG.md` reserves no `UC` number on purpose — so that a row
+     * dropped or merged leaves no hole in the `UC` sequence — which left the `Satisfied by` gate
+     * unsatisfiable whenever the satisfier was in the backlog: two reports of one run wrote
+     * `UC-004`, a number that existed nowhere, because the sentence needed a name
+     * (lessons-learned-014 § 7).
+     *
+     * <p>The citation has to keep resolving after that case IS designed, since the spec carrying
+     * it is immutable once approved. That is why `BACKLOG.md` keeps a `## Retired` table and this
+     * check accepts a hit anywhere in the file: `resolves_in` is the whole file, both tables.
+     * Reported, never blocking — a citation nobody can follow is a documentation defect, and
+     * `doctor` is where a person is already reading.
+     */
+    static List<String> unknownBacklogRefs() {
+        List<String> found = new ArrayList<>();
+        Map<String, Object> spec = doctorSpec("bl_references");
+        if (spec == null) return found;
+        String pat = asStr(spec.get("pattern"));
+        String root = asStr(spec.get("root"));
+        if (pat == null || pat.isEmpty()) return found;
+        if (root != null && !root.isEmpty() && !Files.isDirectory(ROOT.resolve(root))) return found;
+        String backlog = orEmpty(readOrNull(ROOT.resolve(orEmpty(asStr(spec.get("resolves_in"))))));
+        List<String> exts = asStrList(spec.get("extensions"));
+        List<String> skip = asStrList(spec.get("exempt_paths"));
+
+        List<String> files;
+        try {
+            Proc p = run("git", "ls-files");
+            if (p.exit() != 0) return found;
+            files = p.out();
+        } catch (Exception e) { return found; }
+
+        Pattern re = Pattern.compile(pat);
+        for (String f : files) {
+            if (!exts.isEmpty() && exts.stream().noneMatch(f::endsWith)) continue;
+            if (skip.stream().anyMatch(f::startsWith)) continue;
+            if (f.equals(asStr(spec.get("resolves_in")))) continue;   // the file defines them
+            String body = readOrNull(ROOT.resolve(f));
+            if (body == null) continue;
+            Set<String> seen = new LinkedHashSet<>();
+            Matcher m = re.matcher(body);
+            while (m.find()) {
+                String id = m.group(m.groupCount() >= 1 ? 1 : 0);
+                if (!seen.add(id)) continue;
+                if (!backlog.contains(id)) {
+                    found.add(f + " cites " + id + ", which is in neither table of BACKLOG.md");
+                }
+            }
+        }
+        return found;
     }
 
     static List<String> orphanUseCaseRefs() {
@@ -472,7 +547,8 @@ public class ArchHook {
 
     record ComposeReport(boolean ok, String summary, List<String> detail) {}
 
-    static void compose() {
+    static void compose(String sub, String stdin) {
+        if ("gate".equals(sub)) { composeGate(stdin); return; }
         ComposeReport r = composeReport();
         err("ArchHook compose");
         err("  Project root ...... " + ROOT);
@@ -480,6 +556,37 @@ public class ArchHook {
         for (String d : r.detail()) err("    " + d);
         err("");
         err(r.ok() ? "✅ Compose healthy." : "⚠️  See the marked lines above.");
+    }
+
+    /**
+     * The same report as a gate: silent while healthy, exit 2 with the failing lines otherwise.
+     *
+     * <p>Why this exists at all, when `compose` already runs the check: it had never been run.
+     * `docker-architect` step 7 calls it "the one command that verifies the result" and "not
+     * optional", and a `kafka` block publishing 9092 while advertising only `kafka:9092` still
+     * shipped on day one and stayed unreachable from the host until a use case needed it —
+     * lessons-learned-014 § 13. Both green signals that stood in for it describe a broker the
+     * file does not produce: the healthcheck runs inside the container, where `localhost` IS
+     * the broker, and Testcontainers wires its own advertised listeners. So the missing piece
+     * was never a check; it was an exit code and a registration.
+     *
+     * <p>Registered on `Stop`, next to `tests`, in `.claude/settings.json` and in
+     * `project-bootstrap/templates/settings.json.example`. `composeReport()` stays the single
+     * definition of healthy, shared with `doctor` and with the report form — this adds no second
+     * opinion. A project with no compose file returns before the first `docker` call, and a
+     * machine with the daemon off still gets the two file-only checks, which is the half that
+     * catches the defect above. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+     */
+    static void composeGate(String stdin) {
+        // If the Stop hook already blocked before, don't block again: avoids cycles.
+        if (Pattern.compile("\"stop_hook_active\"\\s*:\\s*true").matcher(stdin).find()) return;
+        ComposeReport r = composeReport();
+        if (r.ok()) return;
+        err("❌ Compose: " + r.summary());
+        for (String d : r.detail()) err("   " + d);
+        err("Fix docker-compose.yml, or run `java .claude/hooks/ArchHook.java compose` for the");
+        err("full report. A service stopped on purpose is still a stopped service here.");
+        System.exit(2);
     }
 
     /**
@@ -3964,6 +4071,8 @@ public class ArchHook {
             case "prompt" -> guardPrompt(sch, state, in);
             case "call"   -> guardCall(sch, state, in);
             case "write"  -> guardWrite(sch, state, in);
+            case "bash"   -> guardBash(sch, state, in);
+            case "sweep"  -> guardSweep(sch, state, in, stdin);
             default       -> { }
         }
     }
@@ -3976,8 +4085,36 @@ public class ArchHook {
 
     static void guardPrompt(Map<String, Object> sch, Path state, Object in) throws IOException {
         Files.deleteIfExists(state);
+        guardBaseline(state);
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)").matcher(orEmpty(asStr(get(in, "prompt"))));
         if (m.find() && skillClassOf(sch, m.group(1)) != null) guardOpen(state, m.group(1));
+    }
+
+    /** Where `guard sweep` finds the working tree as it stood when the turn began. */
+    static Path guardBaselineFile(Path state) {
+        return state.resolveSibling(state.getFileName() + ".baseline");
+    }
+
+    /**
+     * Records `git status --porcelain` at `UserPromptSubmit`, so the `Stop` sweep can tell what
+     * this turn wrote from what was already dirty when it started. Without the baseline the
+     * sweep opens every run by reporting somebody's half-finished edit from before it — the
+     * shape lessons-learned-014 § 11 records from the other direction, where the entry
+     * guardrail read the index alone and swept two pre-existing changes into the run's commit.
+     *
+     * <p>`--untracked-files=all` is not optional: plain porcelain collapses a brand-new
+     * directory into one `?? src/` entry, and a heredoc that creates the first file under a new
+     * path is exactly the write this sweep exists to see.
+     */
+    static void guardBaseline(Path state) {
+        try {
+            Proc p = run(gitCmd(), "status", "--porcelain", "--untracked-files=all");
+            Files.createDirectories(state.getParent());
+            Files.writeString(guardBaselineFile(state),
+                    p.exit == 0 ? String.join("\n", p.out) : "", StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // No git, no baseline: the sweep returns instead of guessing.
+        }
     }
 
     static void guardCall(Map<String, Object> sch, Path state, Object in) throws IOException {
@@ -4032,7 +4169,44 @@ public class ArchHook {
     static void guardWrite(Map<String, Object> sch, Path state, Object in) throws IOException {
         String file = asStr(get(in, "tool_input", "file_path"));
         if (file == null) return;
-        String rel = relative(Paths.get(file));
+        guardPath(sch, state, in, relative(Paths.get(file)));
+    }
+
+    /**
+     * The two checks themselves, over one repo-relative path: class territory first, frozen
+     * `UC-NNN` folder second. Split out of `guardWrite` so `guard bash` applies exactly the
+     * same rules to a path it parsed out of a shell command — invariant 2, one owner. A
+     * territory widened in `skill_classes` widens for both entry points at once, because there
+     * is no second copy of the rule to forget.
+     *
+     * <p>`in` still travels through: the two spec exemptions below read `tool_name` and
+     * `old_string`/`new_string` from it and already require `Edit`, so a Bash-sourced write
+     * fails them by construction. That is deliberate — `sed -i` cannot prove it is closing a
+     * `status:` line, and the legitimate path for that single write is the `Edit` the executor
+     * already makes.
+     */
+    static void guardPath(Map<String, Object> sch, Path state, Object in, String rel)
+            throws IOException {
+        List<String> violation = guardViolations(sch, state, in, rel, false);
+        if (violation.isEmpty()) return;
+        violation.forEach(ArchHook::err);
+        System.exit(2);
+    }
+
+    /**
+     * The two rules themselves, over one repo-relative path, as the lines they would print —
+     * empty when the path is admissible. Returning instead of exiting is what lets `guard sweep`
+     * report every offending path of a turn at once while `guard write` and `guard bash` keep
+     * stopping at the first: one owner for the rules, three callers, invariant 2.
+     *
+     * <p>`sweep` is true only for the `Stop` sweep, which has no `old_string`/`new_string` to
+     * read and therefore cannot recognise the two spec edits a frozen folder admits the way the
+     * tool-time callers do. It compares against `git show HEAD:` instead — see
+     * {@link #isSpecEditLegalOnDisk}.
+     */
+    static List<String> guardViolations(Map<String, Object> sch, Path state, Object in,
+            String rel, boolean sweep) throws IOException {
+        List<String> out = new ArrayList<>();
         Map<String, Object> cfg = asMap(sch.get("guard"));
 
         // 1. Territory, deny by default. `agent_type` is present only when the call comes from
@@ -4044,51 +4218,356 @@ public class ArchHook {
         if (agentCls != null) {
             List<String> allow = agentWriteAllowOf(sch, agent);
             if (!matchesAny(allow, rel)) {
-                err("❌ agent `" + agent + "` is class `" + agentCls + "` — " + rel
+                out.add("❌ agent `" + agent + "` is class `" + agentCls + "` — " + rel
                         + " is outside its territory.");
-                err("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
+                out.add("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
                         : String.join(", ", allow)));
-                err("Report the path in the summary you return and stop, or hand it to the piece");
-                err("that owns it. If the path is legitimately this agent's, widen");
-                err("agent_classes." + agentCls + " in " + SCHEMA_FILE + " — retrying will not help.");
-                System.exit(2);
+                out.add("Report the path in the summary you return and stop, or hand it to the piece");
+                out.add("that owns it. If the path is legitimately this agent's, widen");
+                out.add("agent_classes." + agentCls + " in " + SCHEMA_FILE + " — retrying will not help.");
+                return out;
             }
         } else if (Files.isRegularFile(state)) {
             String active = readOrNull(state);
             String cls = skillClassOf(sch, active);
             List<String> allow = writeAllowOf(sch, active);
             if (cls != null && !matchesAny(allow, rel)) {
-                err("❌ `" + active + "` is class `" + cls + "` — " + rel
+                out.add("❌ `" + active + "` is class `" + cls + "` — " + rel
                         + " is outside its territory.");
-                err("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
+                out.add("   write_allow: " + (allow.isEmpty() ? "(nothing — this class writes no file)"
                         : String.join(", ", allow)));
-                err("Put the content in the spec as a code block, or finish the run and invoke the");
-                err("skill that owns this path. If the path is legitimately this skill's, widen");
-                err("skill_classes." + cls + " in " + SCHEMA_FILE + " — retrying will not help.");
-                System.exit(2);
+                out.add("Put the content in the spec as a code block, or finish the run and invoke the");
+                out.add("skill that owns this path. If the path is legitimately this skill's, widen");
+                out.add("skill_classes." + cls + " in " + SCHEMA_FILE + " — retrying will not help.");
+                return out;
             }
         }
 
         // 2. A folder whose consolidated spec is approved or implemented is frozen.
-        if (cfg == null) return;
+        if (cfg == null) return out;
         Matcher m = Pattern.compile("^" + Pattern.quote(orEmpty(asStr(cfg.get("use_cases_dir")))) + "/(UC-[^/]+)/")
                 .matcher(rel);
-        if (!m.find()) return;
+        if (!m.find()) return out;
         Path folder = ROOT.resolve(asStr(cfg.get("use_cases_dir"))).resolve(m.group(1));
         String status = specStatus(folder);
-        if (status == null || !asStrList(cfg.get("frozen_statuses")).contains(status)) return;
-        if (isStatusClose(in, rel, status) || isChecklistToggle(in, rel, status)
-                || isFrozenExempt(cfg, rel.substring(m.end()))) {
-            return;
+        if (status == null || !asStrList(cfg.get("frozen_statuses")).contains(status)) return out;
+        if (isStatusClose(cfg, in, rel, status) || isChecklistToggle(cfg, in, rel, status)
+                || isFrozenExempt(cfg, rel.substring(m.end()))
+                || (sweep && isSpecEditLegalOnDisk(cfg, rel))) {
+            return out;
         }
         List<String> exempt = asStrList(cfg.get("frozen_exempt_basenames"));
-        err("❌ " + m.group(1) + " is " + status + " — its specs are immutable.");
-        err("Record the change in the new use case's \"Impact on approved use cases\" section,");
-        err("and the one-line entry in " + m.group(1) + "/CHANGELOG.md, which stays writable.");
-        err("Writable inside a frozen folder: " + String.join(", ", exempt)
+        out.add("❌ " + m.group(1) + " is " + status + " — its specs are immutable.");
+        out.add("Record the change in the new use case's \"Impact on approved use cases\" section,");
+        out.add("and the one-line entry in " + m.group(1) + "/CHANGELOG.md, which stays writable.");
+        out.add("Writable inside a frozen folder: " + String.join(", ", exempt)
                 + "; plus the spec's own `status:` line and its checklist toggles.");
-        err("To reopen a spec that was never implemented, set `status: draft` by hand.");
+        out.add("To reopen a spec that was never implemented, set `status: draft` by hand.");
+        return out;
+    }
+
+    /**
+     * `guard`, applied to what a shell command writes. Every other enforcement in this file is
+     * reached through a tool-name matcher — `Write`, `Edit`, `MultiEdit`, `NotebookEdit` — so a
+     * heredoc, a `sed -i` or a `tee` passed through none of them: the net was tool-shaped, not
+     * filesystem-shaped, and a host setting that prefers `Bash` for edits disabled the whole of
+     * it in silence (lessons-learned-014 § 1). The two guarantees with no second net are the
+     * ones this closes: class territory, and the frozen `UC-NNN` folder. The layer boundary is
+     * re-checked by ArchUnit at `./mvnw verify` and formatting by `spotless:apply`, which is why
+     * `check` and `format` deliberately stay off `Bash` — a `PostToolUse` matcher there would
+     * pay a JVM on every `ls`.
+     *
+     * <p><b>The bar is not completeness.</b> Shell has more ways to write a file than any parser
+     * will hold, and one that blocked on what it could not read would stop `./mvnw` on its first
+     * false positive and be deleted the same week. A target that does not resolve to a literal
+     * path inside the repository is skipped without a word; a command with no recognized write
+     * shape exits immediately. What this buys is that the obvious spellings — the ones in the
+     * harness instruction that caused the incident — stop being free.
+     *
+     * <p>Shapes are data, `guard.bash_write_shapes` in {@code .claude/schemas/extensions.json}
+     * — invariant 10, no list of command names in this file.
+     *
+     * <p>Registration: `PreToolUse`, matcher `Bash`, in `.claude/settings.json` and in
+     * `project-bootstrap/templates/settings.json.example`. Design:
+     * `.claude/decisions/0063-bash-write-enforcement.md`.
+     */
+    static void guardBash(Map<String, Object> sch, Path state, Object in) throws IOException {
+        String cmd = asStr(get(in, "tool_input", "command"));
+        if (cmd == null || cmd.isBlank()) return;
+        for (String rel : bashWriteTargets(asMap(get(sch, "guard", "bash_write_shapes")), cmd)) {
+            guardPath(sch, state, in, rel);
+        }
+    }
+
+    /**
+     * Repo-relative paths a shell command writes, as far as they can be read literally.
+     *
+     * <p>The command is cut into segments on `;`, `&&`, `||`, `|` and newlines, and each segment
+     * is read on its own. A heredoc body is skipped whole: `cat > f <<'EOF'` followed by
+     * markdown whose lines start with `>` would otherwise read every blockquote as a redirect.
+     * Quoting is honoured, so a `>` inside quotes is a character and not an operator.
+     *
+     * <p>Two ways a segment names a target: a redirect operator, whose target is the next token,
+     * and a command in `bash_write_shapes.commands`, whose targets sit where its `targets` field
+     * says — `all` operands, the `tail` after the first (a `sed` script), the `last` one, or the
+     * ones carrying an `operand_prefix` (`dd of=`). A `requires_flag_prefix` entry only counts
+     * when that flag is present, which is what keeps a read-only `sed` out of it.
+     */
+    static List<String> bashWriteTargets(Map<String, Object> shapes, String cmd) {
+        List<String> out = new ArrayList<>();
+        if (shapes == null) return out;
+        List<String> ops = asStrList(shapes.get("redirect_operators"));
+        List<String> markers = asStrList(shapes.get("unresolvable_markers"));
+        List<Object> commands = asList(shapes.get("commands"));
+        for (List<Tok> seg : bashSegments(cmd)) {
+            // 1. Redirection: the operator is bare, and its target is the token after it.
+            for (int i = 0; i < seg.size() - 1; i++) {
+                Tok t = seg.get(i);
+                if (!t.quoted() && ops.contains(t.text())) {
+                    addBashTarget(out, markers, seg.get(i + 1));
+                }
+            }
+            // 2. A command whose own arguments are what it writes.
+            List<Tok> words = new ArrayList<>();
+            for (Tok t : seg) {
+                if (!t.quoted() && ops.contains(t.text())) { words.clear(); continue; }
+                words.add(t);
+            }
+            if (words.isEmpty()) continue;
+            String head = bashCommandName(words.get(0).text());
+            for (Object o : commands) {
+                Map<String, Object> shape = asMap(o);
+                if (shape == null || !head.equals(asStr(shape.get("name")))) continue;
+                String flag = asStr(shape.get("requires_flag_prefix"));
+                List<Tok> operands = new ArrayList<>();
+                boolean flagSeen = flag == null;
+                for (Tok t : words.subList(1, words.size())) {
+                    if (t.text().startsWith("-") && !t.quoted()) {
+                        if (flag != null && t.text().startsWith(flag)) flagSeen = true;
+                        continue;
+                    }
+                    operands.add(t);
+                }
+                if (!flagSeen || operands.isEmpty()) continue;
+                switch (orEmpty(asStr(shape.get("targets")))) {
+                    case "all"  -> operands.forEach(t -> addBashTarget(out, markers, t));
+                    case "tail" -> operands.subList(1, operands.size())
+                                           .forEach(t -> addBashTarget(out, markers, t));
+                    case "last" -> addBashTarget(out, markers, operands.get(operands.size() - 1));
+                    case "prefixed" -> {
+                        String p = orEmpty(asStr(shape.get("operand_prefix")));
+                        for (Tok t : operands) {
+                            if (t.text().startsWith(p)) {
+                                addBashTarget(out, markers,
+                                        new Tok(t.text().substring(p.length()), t.quoted()));
+                            }
+                        }
+                    }
+                    default -> { }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Keeps a target only when it is literal and lands inside the repository. Anything holding
+     * an expansion, a glob or a home reference is unreadable from here, and a path outside
+     * `ROOT` is not this repository's territory to police — both are dropped in silence, which
+     * is the rule that makes this hook safe to run on every command.
+     */
+    static void addBashTarget(List<String> out, List<String> markers, Tok tok) {
+        String raw = tok.text();
+        if (raw.isBlank()) return;
+        for (String marker : markers) if (raw.contains(marker)) return;
+        try {
+            Path abs = ROOT.resolve(raw).toAbsolutePath().normalize();
+            if (!abs.startsWith(ROOT.toAbsolutePath().normalize())) return;
+            String rel = relative(abs);
+            if (!rel.isBlank() && !out.contains(rel)) out.add(rel);
+        } catch (Exception e) {
+            // An unparseable path is an unreadable target, not a violation.
+        }
+    }
+
+    /**
+     * The same two rules, over everything this turn wrote, whatever wrote it.
+     *
+     * <p>`guard write` and `guard bash` are both tool-shaped: the first matches four tool names,
+     * the second reads the shell spellings it knows and — deliberately — lets through what it
+     * cannot parse, because a parser that blocked on a target it could not read would stop
+     * `./mvnw` on its first false positive. This is the other shape of the rule. It looks at what
+     * changed on disk, so a generated script, a `python3 -c` with `open(..., 'w')` or an editor
+     * launched from the shell is caught the same as a heredoc.
+     *
+     * <p>It is detection, not prevention — the write already happened — which is why it backs
+     * the tool-time guards instead of replacing them. And it is <b>git-shaped</b>: a path git
+     * ignores never appears in `git status --porcelain` and is therefore never swept. In this
+     * repository that is `.claude/decisions/` and `.claude/lessons-learned/`, ignored on purpose.
+     *
+     * <p>Only paths whose porcelain entry is new or changed since the baseline are read, so a
+     * tree dirty before the turn stays out of the report. Exit 2 hands the lines back to the
+     * model; `stop_hook_active` bounds it to one firing, the way `tests` already does.
+     * Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+     */
+    static void guardSweep(Map<String, Object> sch, Path state, Object in, String stdin)
+            throws Exception {
+        if (Pattern.compile("\"stop_hook_active\"\\s*:\\s*true").matcher(stdin).find()) return;
+        Path baselineFile = guardBaselineFile(state);
+        if (!Files.isRegularFile(baselineFile)) return;
+        Proc now = run(gitCmd(), "status", "--porcelain", "--untracked-files=all");
+        if (now.exit != 0) return;                               // no git, nothing to compare
+        Set<String> before = new LinkedHashSet<>(
+                Arrays.asList(readOrNull(baselineFile).split("\n")));
+
+        List<String> lines = new ArrayList<>();
+        for (String entry : now.out) {
+            if (entry.isBlank() || before.contains(entry)) continue;
+            String rel = porcelainPath(entry);
+            if (rel == null) continue;
+            List<String> v = guardViolations(sch, state, in, rel, true);
+            if (!v.isEmpty()) { lines.add(""); lines.addAll(v); }
+        }
+        if (lines.isEmpty()) return;
+        err("❌ This turn wrote outside what the open phase and the frozen folders admit.");
+        err("   The tool-time guards did not see these writes — a shell spelling they do not");
+        err("   parse, or a tool with no matcher. Revert them, or report them and stop.");
+        lines.forEach(ArchHook::err);
         System.exit(2);
+    }
+
+    /**
+     * The path out of one `git status --porcelain` line. A rename prints `old -> new`; the new
+     * name is the one that was written, and the one the territory has to admit.
+     */
+    static String porcelainPath(String entry) {
+        if (entry.length() < 4) return null;
+        String path = entry.substring(3).strip();
+        int arrow = path.indexOf(" -> ");
+        if (arrow >= 0) path = path.substring(arrow + 4);
+        if (path.startsWith("\"") && path.endsWith("\"") && path.length() > 1) {
+            path = path.substring(1, path.length() - 1);
+        }
+        return path.isBlank() || path.endsWith("/") ? null : path;
+    }
+
+    /**
+     * The sweep's stand-in for {@link #isStatusClose} and {@link #isChecklistToggle}, which read
+     * `Edit`'s `old_string`/`new_string` and so cannot answer at `Stop`.
+     *
+     * <p>Compares the working copy against `git show HEAD:<path>` and admits exactly the same two
+     * edits: a `status:` line moved along `guard.status_transitions` from the value HEAD carries,
+     * and `[ ]` → `[x]` toggles on a status `guard.checklist_toggle_statuses` lists. It reads the
+     * same two lists the tool-time checks read, so the three cannot disagree about what the state
+     * machine is. Without this the executor's own legal close — the one write the frozen folder
+     * exists to allow — would be reported every run, and a guard that cries on the legitimate
+     * path is the guard people route around.
+     */
+    static boolean isSpecEditLegalOnDisk(Map<String, Object> cfg, String rel) {
+        if (cfg == null || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+        try {
+            Proc head = run(gitCmd(), "show", "HEAD:" + rel);
+            if (head.exit != 0) return false;                    // not committed: nothing to compare
+            Map<String, String> fm = frontmatter(String.join("\n", head.out));
+            String was = fm == null ? null : fm.get("status");
+            boolean closable = was != null && !asStrList(get(cfg, "status_transitions", was)).isEmpty();
+            boolean togglable = was != null
+                    && asStrList(cfg.get("checklist_toggle_statuses")).contains(was);
+            if (!closable && !togglable) return false;
+            List<String> before = head.out;
+            List<String> now = Arrays.asList(orEmpty(readOrNull(ROOT.resolve(rel))).split("\n"));
+            if (before.size() != now.size()) return false;
+            for (int i = 0; i < before.size(); i++) {
+                String a = before.get(i), b = now.get(i);
+                if (a.equals(b)) continue;
+                boolean statusLine = closable && a.strip().equals("status: " + was)
+                        && asStrList(get(cfg, "status_transitions", was))
+                                .contains(b.strip().replaceFirst("^status:\\s*", ""));
+                boolean toggle = togglable && a.replace("[ ]", "[x]").equals(b);
+                if (!statusLine && !toggle) return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** `/usr/bin/sed` and `sed` are the same command for the purposes of the shape table. */
+    static String bashCommandName(String word) {
+        int slash = word.lastIndexOf('/');
+        return slash < 0 ? word : word.substring(slash + 1);
+    }
+
+    /** One token of a shell command, and whether it was written inside quotes. */
+    record Tok(String text, boolean quoted) {}
+
+    /**
+     * Cuts a command into the segments a separator delimits, dropping heredoc bodies. Quoting
+     * is tracked so that a separator or a redirect operator inside quotes stays a character.
+     */
+    static List<List<Tok>> bashSegments(String cmd) {
+        List<List<Tok>> segs = new ArrayList<>();
+        List<Tok> cur = new ArrayList<>();
+        StringBuilder tok = new StringBuilder();
+        boolean quoted = false, started = false;
+        char quote = 0;
+        String heredoc = null;
+        for (String line : cmd.split("\n", -1)) {
+            if (heredoc != null) {                       // inside a heredoc body: not a command
+                if (line.strip().equals(heredoc)) heredoc = null;
+                continue;
+            }
+            for (int i = 0; i < line.length(); i++) {
+                char c = line.charAt(i);
+                if (quote != 0) {
+                    if (c == quote) quote = 0; else tok.append(c);
+                    continue;
+                }
+                if (c == '\'' || c == '"') { quote = c; quoted = true; started = true; continue; }
+                if (c == '\\' && i + 1 < line.length()) { tok.append(line.charAt(++i)); started = true; continue; }
+                if (Character.isWhitespace(c)) {
+                    if (started) { cur.add(new Tok(tok.toString(), quoted)); tok.setLength(0); }
+                    quoted = false; started = false;
+                    continue;
+                }
+                if (c == ';' || c == '|' || c == '&') {
+                    if (started) { cur.add(new Tok(tok.toString(), quoted)); tok.setLength(0); }
+                    quoted = false; started = false;
+                    if (!cur.isEmpty()) { segs.add(cur); cur = new ArrayList<>(); }
+                    continue;
+                }
+                if (c == '<' && i + 1 < line.length() && line.charAt(i + 1) == '<') {
+                    if (started) { cur.add(new Tok(tok.toString(), quoted)); tok.setLength(0); }
+                    quoted = false; started = false;
+                    heredoc = heredocDelimiter(line.substring(i + 2));
+                    i = line.length();
+                    continue;
+                }
+                if (c == '>' || c == '<') {
+                    if (started) { cur.add(new Tok(tok.toString(), quoted)); tok.setLength(0); }
+                    quoted = false; started = false;
+                    StringBuilder op = new StringBuilder().append(c);
+                    while (i + 1 < line.length() && line.charAt(i + 1) == c) { op.append(c); i++; }
+                    cur.add(new Tok(op.toString(), false));
+                    continue;
+                }
+                tok.append(c);
+                started = true;
+            }
+            if (started) { cur.add(new Tok(tok.toString(), quoted)); tok.setLength(0); }
+            quoted = false; started = false;
+        }
+        if (!cur.isEmpty()) segs.add(cur);
+        return segs;
+    }
+
+    /** The word that ends a heredoc: `<<EOF`, `<<-EOF`, `<<'EOF'` and `<<"EOF"` all end at EOF. */
+    static String heredocDelimiter(String rest) {
+        String s = rest.strip();
+        if (s.startsWith("-")) s = s.substring(1).strip();
+        int end = 0;
+        while (end < s.length() && !Character.isWhitespace(s.charAt(end))) end++;
+        return s.substring(0, end).replace("'", "").replace("\"", "");
     }
 
     /**
@@ -4125,24 +4604,42 @@ public class ArchHook {
     }
 
     /** The one edit an approved spec admits: its status line, approved → implemented. */
-    static boolean isStatusClose(Object in, String rel, String status) {
-        if (!"approved".equals(status) || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+    /**
+     * The one edit that closes a spec: its `status:` line moved to a value
+     * `guard.status_transitions` lists as reachable from the one it carries. The map is data and
+     * not a pair of literals here because the machine has three states now — `approved` closes to
+     * `implemented` or to `implemented-blocked`, and either closed state reverts to `approved`,
+     * which is the exit the run that closed a spec by mistake did not have (lessons-learned-014
+     * § 5). `draft` is absent from the map: it is not closable by a tool.
+     */
+    static boolean isStatusClose(Map<String, Object> cfg, Object in, String rel, String status) {
+        if (cfg == null || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
         if (!"Edit".equals(asStr(get(in, "tool_name")))) return false;
         String oldS = asStr(get(in, "tool_input", "old_string"));
         String newS = asStr(get(in, "tool_input", "new_string"));
-        return oldS != null && newS != null && oldS.contains("status: approved")
-                && newS.equals(oldS.replace("status: approved", "status: implemented"));
+        if (oldS == null || newS == null || !oldS.contains("status: " + status)) return false;
+        for (String to : asStrList(get(cfg, "status_transitions", status))) {
+            if (newS.equals(oldS.replace("status: " + status, "status: " + to))) return true;
+        }
+        return false;
     }
 
     /**
-     * The other edit an `approved` spec admits: toggling `- [ ]` to `- [x]` in its
-     * implementation checklist, incremental progress that resuming the executor across
-     * sessions depends on (lessons-learned-006 § 7). `[ ]` and `[x]` are the same length,
-     * so normalizing both to `[ ]` and comparing catches any number of toggles in one
-     * `Edit` while still rejecting a change to anything else in the snippet.
+     * The other edit a frozen spec admits: toggling `- [ ]` to `- [x]` in its implementation
+     * checklist, incremental progress that resuming the executor across sessions depends on
+     * (lessons-learned-006 § 7). `[ ]` and `[x]` are the same length, so normalizing both to
+     * `[ ]` and comparing catches any number of toggles in one `Edit` while still rejecting a
+     * change to anything else in the snippet.
+     *
+     * <p>Which statuses admit it is `guard.checklist_toggle_statuses`, and it is all of them.
+     * Requiring `approved` meant that a run closing the status before ticking the boxes froze 23
+     * of them unticked, permanently, with the revert refused too — the spec then describing a
+     * feature as unfinished that was on disk, green and committed (lessons-learned-014 § 4). A
+     * toggle is monotone: it carries none of the risk immutability exists to prevent.
      */
-    static boolean isChecklistToggle(Object in, String rel, String status) {
-        if (!"approved".equals(status) || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+    static boolean isChecklistToggle(Map<String, Object> cfg, Object in, String rel, String status) {
+        if (cfg == null || !rel.matches(".*/UC-[^/]*-spec\\.md")) return false;
+        if (!asStrList(cfg.get("checklist_toggle_statuses")).contains(status)) return false;
         if (!"Edit".equals(asStr(get(in, "tool_name")))) return false;
         String oldS = asStr(get(in, "tool_input", "old_string"));
         String newS = asStr(get(in, "tool_input", "new_string"));

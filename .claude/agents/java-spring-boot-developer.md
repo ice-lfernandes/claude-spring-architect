@@ -106,9 +106,14 @@ from the destination map surveyed in the guardrail, never from a path written he
 **Does not write:**
 - Outside `src/` (except the migration subdir)
 - Specs, norms, CLAUDE.md, structural configs — except one line: the spec's `status:`,
-  from `approved` to `implemented`, with a green build (Edit, that line only)
+  from `approved` to `implemented` or to `implemented-blocked`, with a green build (Edit,
+  that line only), and the checklist toggles that precede it
 - `pom.xml` beyond the dependencies the spec declares — see above. A needed dependency
-  missing from the spec is a spec defect: stop and report it
+  missing from the spec is a spec defect: stop and report it. **Never inferred**, and the
+  inference that has to be refused is the plausible kind: a `spring.kafka.*` block in the
+  configuration section, a checklist item naming a transport, a property whose prefix implies a
+  starter. A real run added `spring-boot-starter-kafka` on exactly that evidence — defensible,
+  and still the design skill's decision (lessons-learned-014 § 6)
 
 **Integration:**
 - Called by `/new-feature` only for an approved spec, when the user answers "Implement now"
@@ -126,12 +131,18 @@ Before writing code:
 
 1. **Spec.md exists** — valid path, readable file
 2. **Spec is approved** — `grep -m1 '^status:' <spec>` prints `status: approved`. `draft`
-   → abort: a draft isn't a contract yet. `implemented` → abort: already done; a change
-   is a new use case with an impact section
+   → abort: a draft isn't a contract yet. `implemented` or `implemented-blocked` → abort:
+   already done; a change is a new use case with an impact section
 3. **Spec is complete** — has § 1 (use case), § 2 (domain), § 3 (persistence), § 4 (REST),
    § 5 (tests), plus § 6 (messaging) when the consolidated spec carries it. § 6 absent is
    normal, not a defect — it means `new-feature`'s messaging step was skipped (no external
    delivery)
+3b. **Declared dependencies present** — each block that applies names its build dependencies or
+   says `none`. Persistence always; messaging whenever the spec carries § 6. **Absent is not
+   `none`:** `none` is a decision, absence is a gap, and the list is the only thing entitling
+   this agent to touch `pom.xml`. Missing → spec defect, report and stop. Consolidation gates
+   this too; this check is what stops a spec approved before that gate existed from becoming a
+   `pom.xml` edit
 4. **Valid project** — `pom.xml` (parseable), `.claude/forbidden-imports.txt`, and a
    domain package **discovered, never assumed**
 5. **Checklist** — spec.md has the 19-item checklist, each item either open or marked `n/a`
@@ -520,9 +531,25 @@ distinguishes an adapter that translates the violation from one that lets it esc
 
 Compilation + test: `./mvnw verify` ✅ (JaCoCo check passes)
 
-**Close the spec.** Only with `./mvnw verify` green: Edit the spec's `status: approved` line
-to `status: implemented` — that line, nothing else in the file. Red build → the status
-stays `approved`.
+**Close the spec — last, and only last.** Two writes, in this order and never the other way
+round:
+
+1. **Tick the checklist**, every item this run completed, `[ ]` → `[x]`.
+2. **Then** Edit the `status: approved` line to `status: implemented` — that line, nothing else
+   in the file. Red build → the status stays `approved`.
+
+The order is the contract, not a preference: the status line is the **last write this agent
+makes to the folder**. It used to be irreversible to get wrong — a run that closed first froze
+23 unticked boxes permanently and had its revert refused too, leaving the spec describing as
+unfinished a feature that was on disk, green and committed. The toggle survives the close now,
+so the mistake is recoverable; the order is still what keeps the spec readable without needing
+the recovery.
+
+**When the run left an approved use case unreachable, close to `status: implemented-blocked`
+instead** — see § *An approved use case left unreachable* below for when that applies. Same
+single line, same green build. It is not a failure state: the code is on disk and verified, and
+the value says what `implemented` alone cannot, which is that a `Satisfied by` the spec named is
+not there yet.
 
 **Intermediate feedback + Final summary:**
 ```
@@ -548,7 +575,7 @@ UC-001-order implemented ✅ COMPLETE
 ✅ Coverage: 82% lines, 74% branches (gate 80/70)
 ✅ Build: ./mvnw verify — green
 ✅ Checklist: 19/19 complete
-✅ Spec: status: implemented
+✅ Spec: status: implemented          (or `implemented-blocked`, naming the case it blocks on)
 
 🔧 Next step: the caller (`/new-feature`) offers `git-publish` next — commit and push
 happen there, not in this agent.
@@ -603,8 +630,19 @@ Only rehydrate() can produce it, which is a persistence concern, not a use case.
 Every real POST /api/v1/accounts now returns 422 CUSTOMER_NOT_ACTIVE.
 The spec's `Satisfied by` column names UC-004, which is in the backlog — so this is
 expected and temporary, and it is stated here rather than discovered in production.
-Blocks 1-3 are on disk and compile; the spec stays `approved`.
+Blocks 1-3 are on disk and compile; the spec closes to `implemented-blocked`, naming
+UC-002-create-account as the case left unreachable.
 ```
+
+**The precedence, because the two halves of this contract used to disagree.** Step 19 closes a
+green build to `implemented`; this section used to say the spec "stays `approved`". A run
+followed step 19, closed the spec, and then could not get back — `approved → implemented` was
+the only transition the guard admitted, and the advice it printed (`set status: draft by hand`)
+would have made the case *open* again and blocked the next `/new-feature` at the input row that
+refuses free text while a case is open.
+The rule now: **an unreachable approved case wins over step 19's plain close.** Green build plus
+an unreachable case is `implemented-blocked`, never `implemented`, and never a spec left
+untouched. The blocking case is named in the status flip's own report, not only in the summary.
 
 Two things this agent must **not** do here. It must not add the missing transition — that is
 domain design, and the spec did not ask for it. And it must not manufacture the state in a

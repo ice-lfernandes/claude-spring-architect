@@ -55,14 +55,17 @@ interpreted. First matching row wins; anything else is an error.
 |---|---|
 | empty | lists the use cases with their `status` |
 | `UC-NNN-slug`, folder exists, spec `draft` or missing | resumes: only the missing partials, then consolidation |
-| `UC-NNN-slug`, spec `approved` or `implemented` | ❌ approved spec is immutable |
-| `UC-NNN-slug`, no folder | ❌ not found — describe the feature to create one |
+| `UC-NNN-slug`, spec `approved` | implements it: straight to the executor delegation, skipping the design steps and consolidation |
+| `UC-NNN-slug`, spec `implemented` or `implemented-blocked` | ❌ already implemented — describe the change as a new feature |
+| no folder, but the argument's `UC-NNN` has exactly one folder on disk | ❌ names the real slug and status, plus the exact command — the case exists, the argument named it wrongly |
+| `UC-NNN-slug`, no folder, number matching zero or several | ❌ not found — describe the feature to create one |
 | contains `UC-` + digit but isn't exact | ❌ ambiguous argument |
 | free text, some case still open | ❌ resume or approve it first |
 | free text, no open case | new use case — the text goes as is to `use-case-design` |
 
-An error prints the reason and the usage, and ends the run: no skill call, no write, no
-question.
+An error prints the reason and the usage, and ends the run: no side effect after it — no
+skill call, no write, no question. Reading is allowed, which is what lets a near miss answer
+with the real slug instead of "not found".
 
 ## Sequence diagram
 

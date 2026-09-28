@@ -224,9 +224,25 @@ chain, this isn't the right skill.
     off to another owner (idempotency table), and what's left for the folder to be
     complete (`40-testes.md`). Don't invoke anyone.
 
+## Personal data leaving in a response body
+
+Before the partial is written, run `@.claude/rules/security.md` § How to verify grep 1 against
+the response DTOs just designed, and read every hit against the derivation in
+`@.claude/rules/logging.md` § Masking candidates — the value-object catalog plus the name list,
+one owner, not re-derived here.
+
+Each matching field gets one of three answers in the partial's `Personal data` block: the
+**full value** (the receiver's whole purpose needs it, with the receiver named and the reason
+given), a **reduced form** (an id, a hash, the last digits), or a **reference** the caller
+resolves under its own authorization. A full value with no record does not consolidate.
+
+`@MaskSensitiveData` on the DTO is not the answer to this. It covers the log line; the block
+covers the body that leaves the process. A field masked in the logs and returned in clear was
+never protected — it was protected in the one place someone happened to look.
+
 ## What the partial contains
 
-Five blocks. A block with no content is written as "none" — deleting it hides a
+Seven blocks. A block with no content is written as "none" — deleting it hides a
 question nobody asked.
 
 | Block | Fixes | Shape exemplar |
@@ -237,6 +253,7 @@ question nobody asked.
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
 | Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (every `@Idempotent` endpoint, first one included) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
+| Personal data | Every field of a **response** body matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. `@.claude/rules/security.md` § In transit calls that the `Recorded decision`, and `@MaskSensitiveData` on the DTO is not it: masking covers the log, this covers the body that leaves the process. `none` when there is none, and absence is not `none` | `@.claude/rules/security.md` § How to verify, grep 1 |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the
 executor agent that reads them when generating code.
