@@ -116,6 +116,27 @@ Asserting only the status number isn't enough: a wrong `errorCode` would slip th
 Body-shape fixtures: `templates/error-responses.json.example` and
 `templates/page-response.json.example`.
 
+## 6 · Personal data
+
+none
+
+Every field of a **response** body above that matches the derivation in
+`@.claude/rules/logging.md` § Masking candidates. Run `@.claude/rules/security.md` § How to
+verify grep 1 against the DTOs this partial designed and read the hits against that list;
+`none` is a decision, absence is a gap.
+
+`@MaskSensitiveData` on the DTO does not answer this block. Masking covers the log line; this
+block covers the body that leaves the process, and a field masked in the logs and returned in
+clear was never protected — it was protected in the one place someone happened to look
+(`@.claude/rules/security.md`, opening principle).
+
+| Field | Form | Receiver and reason |
+|---|---|---|
+| `customer.document` (CPF) | reduced — last 4 digits | The screen only disambiguates between two accounts; nothing downstream needs the full value |
+
+A **full value** carries the receiver's name and the reason, and without them consolidation
+stops. `reduced` and `reference` need no receiver column: nothing personal crosses.
+
 ## Impact on approved use cases
 
 none

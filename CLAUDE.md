@@ -21,6 +21,9 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Validate frontmatter of skills and agents | `claude plugin validate .claude/skills` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, no foreign container holds its ports, and every published port is advertised at a host-resolvable address | `java .claude/hooks/ArchHook.java compose` |
+| Check which paths a shell command would write, and whether the guard admits them | `echo '{"tool_input":{"command":"…"}}' \| java .claude/hooks/ArchHook.java guard bash` |
+| Sweep what the current turn wrote against the open phase's territory and the frozen folders | `echo '{}' \| java .claude/hooks/ArchHook.java guard sweep` |
+| The compose check as a gate — silent while healthy, exit 2 otherwise | `echo '{}' \| java .claude/hooks/ArchHook.java compose gate` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
 | Write a target project's `.claude/` from this one, transformed for a blueprint | `java .claude/hooks/ArchHook.java export <dest> --blueprint <id> [--dry-run]` |
 | Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
@@ -123,9 +126,11 @@ a design-time edge, like `project-bootstrap` writing `src/`; the runtime directi
 | REST adapter, controller, DTO, status, OpenAPI | skill `rest-api-architect` |
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
+| Implementing a spec that is already `approved`, in a later session | the same skill: `/new-feature UC-NNN-<slug>` over an approved spec goes straight to the executor delegation, skipping the design steps and consolidation. It is the only supported door to the pre-flight, the `CHANGELOG.md` writes, the four mandated findings and the `git-publish` chaining |
 | Creating a git repo, committing, or pushing the project just generated or just implemented | skill `git-publish` — chained automatically after `/init-project` and after `java-spring-boot-developer` succeeds; behind two confirmations |
 | Docker, docker-compose, adding a service (DB, broker) to a project, Testcontainers image consistency at the compose level, choosing an observability backend (Jaeger or Grafana+Tempo+Prometheus) behind the OTLP collector | skill `docker-architect` |
 | A versioned file citing a `docs/use-cases/UC-NNN-slug/` folder that was deleted or renamed | `ArchHook.java doctor` — the `UC references` line, so `/arch-doctor` reports it. Reads `doctor.uc_references` from `@.claude/schemas/extensions.json`; silent in this meta-repo, which has no `docs/use-cases/` |
+| A spec citing a backlog row — `BL-NN` — that `docs/use-cases/BACKLOG.md` does not have, in either its active or its retired table | `ArchHook.java doctor` — the `BL references` line, same shape and same data block (`doctor.bl_references`). `BL-NN` is the backlog's own identifier, assigned by `use-case-design` on append and never a `UC` number: it exists so an impact row can name the case that satisfies a precondition while that case is still backlog |
 | A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse`, a broker published to the host that no host client can reach | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison and the advertised-address check need no Docker: they read files |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` |
@@ -163,11 +168,49 @@ source.
   carries its `agent_type`, and `guard` checks the path against the agent's own `write_allow`,
   so an open design phase neither widens nor narrows it. An agent no class lists falls back to
   the caller's phase — nothing else describes what it may write.
+- **Enforcement is no longer tool-shaped, but it is still not filesystem-shaped.** Until
+  lessons-learned-014 § 1 every hook matched on a tool name, so a heredoc, a `sed -i` or a
+  `tee` passed through `guard`, `check`, `format`, `audit` and `schema` alike — the exact
+  spellings a host instruction to prefer `Bash` over `Write`/`Edit` produces. `guard bash`
+  (`PreToolUse`, matcher `Bash`) now reads the command for the write shapes in
+  `guard.bash_write_shapes` and applies the territory and frozen-folder checks to every target
+  it can read literally. **What it deliberately does not do:** a target holding `$`, a backtick
+  or a glob, or landing outside the repository, is skipped without a word, and `check` and
+  `format` stay off `Bash` entirely — ArchUnit and `spotless:apply` already re-check both,
+  while a `PostToolUse` matcher there would pay a JVM on every `ls`. So the true statement is
+  narrow: **inside Claude Code, through `Write`/`Edit`/`MultiEdit`/`NotebookEdit`, and through
+  the shell spellings the shape list names.** Design:
+  `@.claude/decisions/0063-bash-write-enforcement.md`.
+- **`guard sweep` backs both write guards on `Stop`, and it is git-shaped.** It diffs the
+  working tree against the baseline `guard prompt` takes at `UserPromptSubmit`, so a tree dirty
+  before the turn is not reported, and it runs the same territory and frozen-folder checks over
+  whatever changed — no matter which tool wrote it. Two limits worth knowing before reading it
+  as total coverage: it is **detection, not prevention** (the write already happened), and a
+  path git ignores never appears in `git status --porcelain`, so `.claude/decisions/` and
+  `.claude/lessons-learned/` are never swept in this repository. A spec's `status:` close and
+  its `[ ]` → `[x]` toggles are admitted by comparing against `git show HEAD:`, since the sweep
+  has no `old_string` to read. Design: `@.claude/decisions/0065-guard-sweep-on-stop.md`.
+- **`compose gate` runs the compose check unprompted, and it blocks.** `docker-architect` step 7
+  already called `ArchHook.java compose` "not optional" and it had never been run against a
+  project: a `kafka` block publishing 9092 while advertising only `kafka:9092` shipped on day
+  one and was unreachable from every host client until a use case needed it. The gate is the
+  same `composeReport()` — one definition of healthy, shared with `doctor` — silent while
+  healthy, exit 2 with the failing lines otherwise. A service stopped on purpose blocks the stop
+  too; that is a gate, not a bug. Design: `@.claude/decisions/0064-compose-gate-on-stop.md`.
 - **An implemented use case's folder is frozen except for three writes:** the spec's `status:`
-  closing to `implemented`, a checklist toggle in it, and `UC-NNN/CHANGELOG.md` — the write
-  `/new-feature`'s consolidation *requires* for every change an impact row makes. Exempt
-  basenames are data (`guard.frozen_exempt_basenames`), matched directly under the folder:
-  `notes/CHANGELOG.md` is still frozen.
+  line moved along `guard.status_transitions`, a checklist toggle in it, and
+  `UC-NNN/CHANGELOG.md` — the write `/new-feature`'s consolidation *requires* for every change
+  an impact row makes. Exempt basenames are data (`guard.frozen_exempt_basenames`), matched
+  directly under the folder: `notes/CHANGELOG.md` is still frozen.
+- **The spec has three closed states, and the checklist is ticked before the status closes.**
+  `approved` closes to `implemented`, or to `implemented-blocked` when the run left an approved
+  use case unreachable end to end — the code is on disk and green, and a `Satisfied by` the spec
+  named is not there yet. Either reverts to `approved`, which is the exit a run that closed by
+  mistake did not have. A `[ ]` → `[x]` toggle is admitted in **all three**
+  (`guard.checklist_toggle_statuses`): it is monotone, and requiring `approved` once froze 23
+  unticked boxes forever. The order is still the executor's contract, not the hook's: the status
+  line is the last write it makes to the folder. Design:
+  `@.claude/decisions/0066-spec-state-machine.md`.
 - **A healthcheck that passes proves nothing about host reachability** — it runs inside the
   container, where `localhost` is the service. A service that publishes a port to the host
   while advertising only its compose-network name (`KAFKA_ADVERTISED_LISTENERS:

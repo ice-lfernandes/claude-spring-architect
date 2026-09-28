@@ -55,13 +55,17 @@ interpretado. Vale a primeira linha que casar; qualquer outra coisa é erro.
 |---|---|
 | vazia | lista os casos de uso com o `status` de cada um |
 | `UC-NNN-slug`, pasta existe, spec `draft` ou ausente | retoma: só os partials que faltam, depois consolidação |
-| `UC-NNN-slug`, spec `approved` ou `implemented` | ❌ spec aprovado é imutável |
-| `UC-NNN-slug`, pasta não existe | ❌ não encontrado — descreva a feature para criar |
+| `UC-NNN-slug`, spec `approved` | implementa: direto para a delegação ao executor, pulando os passos de design e a consolidação |
+| `UC-NNN-slug`, spec `implemented` ou `implemented-blocked` | ❌ já implementado — descreva a mudança como feature nova |
+| pasta não existe, mas o `UC-NNN` do argumento tem exatamente uma pasta no disco | ❌ informa o slug real e o status, mais o comando exato — o caso existe, o argumento nomeou errado |
+| `UC-NNN-slug`, pasta não existe, número casando com zero ou várias | ❌ não encontrado — descreva a feature para criar |
 | contém `UC-` + dígito mas não é exato | ❌ argumento ambíguo |
 | texto livre, algum caso ainda aberto | ❌ retome ou aprove antes |
 | texto livre, nenhum caso aberto | caso novo — o texto vai como está para `use-case-design` |
 
-Erro imprime o motivo e o uso, e encerra: nenhuma chamada de skill, escrita ou pergunta.
+Erro imprime o motivo e o uso, e encerra: nenhum efeito colateral depois dele — nenhuma
+chamada de skill, escrita ou pergunta. Leitura continua permitida, e é o que deixa um
+quase-acerto responder com o slug real em vez de "não encontrado".
 
 ## Diagrama de sequência
 

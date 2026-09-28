@@ -83,6 +83,15 @@
       "extensions": [".md", ".yml", ".yaml", ".java", ".json", ".xml", ".sql", ".txt"],
       "$comment_exempt": "Prefixes, matched with startsWith, and written WITHOUT a trailing slash on purpose: a directory prefix spelled with one IS an export residue marker, so this file would report itself as carrying a dead citation on every run. These paths are data, not citations.",
       "exempt_paths": [".claude/decisions", ".claude/lessons-learned", ".claude/skills", ".claude/agents"]
+    },
+
+    "$comment_bl": "bl_references is uc_references' twin, for the backlog's own identifier. A BL-NN is what an impact row cites when the use case that satisfies a precondition has not been designed yet: BACKLOG.md deliberately reserves no UC number, so before this identifier existed the `Satisfied by` gate was unsatisfiable whenever the satisfier was in the backlog, and two reports of one run invented `UC-004` to fill the sentence (lessons-learned-014 § 7). The citation has to keep resolving after the case IS designed, since the spec carrying it is immutable once approved — which is why BACKLOG.md keeps a `## Retired` table and this check accepts a hit in either one: `resolves_in` is the file, and a BL-NN present anywhere in it counts. Reported, never blocking, like its twin, and `root` gates the whole sweep, so it is silent in this meta-repository. Design: .claude/decisions/0069-backlog-identifier.md",
+    "bl_references": {
+      "root": "docs/use-cases",
+      "resolves_in": "docs/use-cases/BACKLOG.md",
+      "pattern": "\\b(BL-[0-9]{2,3})\\b",
+      "extensions": [".md", ".yml", ".yaml", ".java", ".json", ".xml", ".sql", ".txt"],
+      "exempt_paths": [".claude/decisions", ".claude/lessons-learned", ".claude/skills", ".claude/agents"]
     }
   },
 
@@ -270,8 +279,33 @@
   "guard": {
     "$comment": "Read by ArchHook.java `guard` mode, registered in .claude/settings.json and in project-bootstrap/templates/settings.json.example. A phase opens when a skill listed in `skill_classes` is invoked (by `/<skill>` or a Skill call) and closes on the next prompt. While it is open, Write/Edit must match the active skill's `write_allow` — deny by default, which is the whole difference from the denylist this block used to carry: `docker-compose.yml` is not under `src/**`, so a design run wrote a schema-registry service block into it while every skill involved forbade the write in prose (lessons-learned-012 §§ 4, 12, 13). A write that carries an `agent_type` is judged by that agent's own class instead, `agent_classes` above — no phase involved, which is also why an Agent call no longer closes the open phase: the main thread's territory is not the subagent's business. A Skill call to a `blocked_during_design` class is refused while a `design_phase` class is open. Independently of all of it, any file under `use_cases_dir`/UC-*/ whose UC-*-spec.md has a status in `frozen_statuses` is blocked, except the executor's single Edit of `status: approved` to `status: implemented`. Which skills design, which agents execute, and what each class may write are NOT here: they are `skill_classes` and `agent_classes` above, single owner each. Design: .claude/decisions/0058-skill-classes-territory-schema.md and .claude/decisions/0059-agent-classes-territory-schema.md `frozen_exempt_basenames` is the third write a frozen folder admits, and the only one that is not an edit of the spec: a file with one of these basenames sitting DIRECTLY under the UC-NNN folder is always writable, whatever tool, phase or agent produces it. /new-feature's consolidation requires one CHANGELOG.md line per change an impact row makes to an already-approved case — the write that keeps the approved spec itself untouched — and the guard blocked exactly that, advising `status: draft` on an implemented spec to get past it (lessons-learned-013 § 1). Matched on the basename, never on content: knowing an append is really an append would mean reimplementing Edit's semantics inside the hook, and a changelog is a log the guard has no reason to read. Design: .claude/decisions/0060-lessons-learned-013-shipping-defects.md",
     "use_cases_dir": "docs/use-cases",
-    "frozen_statuses": ["approved", "implemented"],
-    "frozen_exempt_basenames": ["CHANGELOG.md"]
+    "frozen_statuses": ["approved", "implemented", "implemented-blocked"],
+    "frozen_exempt_basenames": ["CHANGELOG.md"],
+
+    "$comment_status": "The spec's state machine, read by ArchHook.java's isStatusClose and isChecklistToggle and by the Stop sweep's isSpecEditLegalOnDisk — three callers, one owner, so they cannot drift. `status_transitions` maps the status a spec carries to what a close may write into it: `draft` is absent on purpose (it is not closable by a tool, only by /new-feature's own approval) and neither closed state walks further on its own. `implemented-blocked` exists because the concept lived in prose in three places and in the state machine in none: the executor's contract says an approved case left unreachable end to end keeps its code on disk and its spec NOT closed, step 19 says a green build closes the spec, and the guard admitted approved→implemented alone — so the run that followed step 19 could not get back, and the hook's advice (`set status: draft`) would have made the case open again and blocked the next /new-feature at input row 6 (lessons-learned-014 § 5). `implemented → approved` is the revert that run needed and did not have. `checklist_toggle_statuses` is every status whose spec still admits `[ ]` → `[x]`: all three, because a toggle is monotone and carries none of the risk immutability exists to prevent, and because requiring `approved` froze 23 unticked boxes forever the moment a run closed the status first (lessons-learned-014 § 4). The write ORDER that avoids that is not here — it is a procedure the executor follows, written in .claude/agents/java-spring-boot-developer.md. Design: .claude/decisions/0066-spec-state-machine.md",
+    "status_transitions": {
+      "approved": ["implemented", "implemented-blocked"],
+      "implemented": ["approved"],
+      "implemented-blocked": ["approved"]
+    },
+    "checklist_toggle_statuses": ["approved", "implemented", "implemented-blocked"],
+
+    "bash_write_shapes": {
+      "$comment": "Read by ArchHook.java `guard bash`, registered as PreToolUse/matcher Bash in the same two settings files as `guard write`. Every other enforcement here is reached through a tool-name matcher, so a heredoc, a `sed -i` or a `tee` passed through none of them — the net was tool-shaped, not filesystem-shaped, and a host setting that prefers Bash for edits disabled all of it in silence (lessons-learned-014 § 1). The exposure is uneven and only two guarantees have no second net: class territory and the frozen UC-NNN folder, which is what `guard bash` checks. The layer boundary is re-checked by ArchUnit at `./mvnw verify` and formatting by `spotless:apply`, so `check` and `format` stay off Bash on purpose — a PostToolUse matcher there pays a JVM on every `ls`. THE BAR IS NOT COMPLETENESS: shell has more ways to write a file than any list holds, and a parser that blocked on what it could not read would stop `./mvnw` on its first false positive and be deleted the same week. A target holding an `unresolvable_markers` entry, or landing outside the repository, is skipped without a word; a command with no shape below exits immediately. What this buys is that the obvious spellings stop being free. `targets` says where a command's own writes sit: `all` operands, the `tail` after the first (a sed script), the `last` one, or the ones carrying `operand_prefix`. `requires_flag_prefix` is what keeps a read-only `sed` out of it. Adding a shape is one entry here and no Java — invariant 10. Design: .claude/decisions/0063-bash-write-enforcement.md",
+      "redirect_operators": [">", ">>"],
+      "unresolvable_markers": ["$", "`", "*", "?", "~"],
+      "commands": [
+        { "name": "tee", "targets": "all" },
+        { "name": "truncate", "targets": "all" },
+        { "name": "sed", "targets": "tail", "requires_flag_prefix": "-i" },
+        { "name": "perl", "targets": "tail", "requires_flag_prefix": "-i" },
+        { "name": "cp", "targets": "last" },
+        { "name": "mv", "targets": "last" },
+        { "name": "install", "targets": "last" },
+        { "name": "rsync", "targets": "last" },
+        { "name": "dd", "targets": "prefixed", "operand_prefix": "of=" }
+      ]
+    }
   },
 
   "source": {

@@ -289,8 +289,34 @@ still transport.
    entitled to add it.
 
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/25-mensageria.md`, from
-   `templates/messaging-spec.md.example`. Seven blocks, all mandatory — § 6 and § 7 included,
-   each written as `none` when there is nothing to ask for.
+   `templates/messaging-spec.md.example`. Nine blocks, all mandatory — § 6 through § 9
+   included, each written as `none` when there is nothing to ask for.
+
+   **§ 8 is `Personal data`, and it is written before the payload is called done.** Run
+   `@.claude/rules/security.md` § How to verify grep 1 against the payload record this partial
+   just designed, and read every hit against the derivation in
+   `@.claude/rules/logging.md` § Masking candidates — the type catalog plus the name list, one
+   owner, not re-derived here. For each field that matches, § 8 states which of the three
+   legitimate answers applies: the **full value** (the receiver's whole purpose needs it), a
+   **reduced form** (an id, a hash, the last digits), or a **reference** the receiver resolves
+   under its own authorization. A full value carries the receiver's name and the reason, which
+   is the `Recorded decision` `@.claude/rules/security.md` § In transit requires — *the exception
+   is the record, not the absence of one*.
+
+   A CPF crossed a team boundary in clear on a Kafka topic because no step ever asked: the
+   pipeline's only mention of personal data was in the final report, which is detection after
+   the spec is approved, after the code is written and after the commit, and it surfaced there
+   only because the executor volunteered it (lessons-learned-014 § 8). The field was named
+   `securityNumber`, which is why the name list and not intuition is what the grep is read
+   against.
+
+   **§ 9 is `Deferred`:** one row per item this partial decided not to do in this run — what was
+   decided, what is missing, the norm that requires it (by path), and the intended owner,
+   `checklist` (this run does it) or `backlog` (a later one does). Absence is not `none`: one
+   says nothing was deferred, the other says nobody looked. Consolidation resolves each row to a
+   real owner and is what writes the `BACKLOG.md` line and assigns its `BL-NN`. A deferral that
+   leaves no owner is how a decided retention window ended up enforced by nothing
+   (lessons-learned-014 § 9).
 
 9. **Check Kafka has a container.** List the keys inside the `services:` block and look
    for `kafka` — never `grep -A2 "^services:"`, which reads two lines and then reports the
@@ -320,7 +346,7 @@ still transport.
 
 ## What the partial contains
 
-Seven blocks. An empty block is written as "none" — deleting it hides a question nobody
+Nine blocks. An empty block is written as "none" — deleting it hides a question nobody
 asked.
 
 | Block | Fixes | Form exemplar |
@@ -331,6 +357,9 @@ asked.
 | Retry and DLQ | Backoff, DLQ topic, which failures skip retry | `@.claude/rules/messaging.md` § Retry and DLQ |
 | Configuration | Group id, offset reset, ack mode, with the decided value and why | `application-kafka.yml.example` |
 | Schema requirements | Every table this transport needs that the domain didn't model — the shared `outbox_events` under Form B (step 4a), the shared dedupe table (step 5a) — one row each, stating **which table and which guarantee**, never a column name and never DDL. The outbox's columns and pacing belong to `20-persistencia.md`; a column named here becomes a divergence there. `none` when there are none | `@.claude/rules/messaging.md` § Publication timing · § Retry and DLQ |
+| Declared dependencies | Build dependencies this transport needs and the project does not declare — the only list entitling the executor to touch `pom.xml`. `none` when there are none, and absence is not `none` | — |
+| Personal data | Every payload field matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. That is the `Recorded decision` `@.claude/rules/security.md` § In transit requires. `none` when the payload carries none, and absence is not `none` | `@.claude/rules/security.md` § How to verify, grep 1 |
+| Deferred | One row per item this partial decided **not** to do in this run: what was decided, what is missing, the norm that requires it (by path), and the intended owner — `checklist` or `backlog`. `none` when nothing was deferred, absence is not `none`. Consolidation resolves the owner and is what writes the `BACKLOG.md` line | — |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.

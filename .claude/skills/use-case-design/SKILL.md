@@ -91,8 +91,17 @@ the decision.
    2. Design only the chosen one.
    3. Append the others to `docs/use-cases/BACKLOG.md`, from
       `templates/backlog.md.example`: one line each, with the description ready to pass
-      to the next `/new-feature`. **Don't reserve a number** — a number is given when the
-      case is designed, so skipping or dropping an entry leaves no gap.
+      to the next `/new-feature`. **Don't reserve a `UC` number** — that is given when the
+      case is designed, so skipping or dropping an entry leaves no gap in the sequence.
+      **Do assign a `BL-NN`**, the row's own identifier: highest existing plus one, counting
+      both tables of the file, never reused. It is what an impact row cites when the case
+      that satisfies a precondition is still in the backlog — without it the `Satisfied by`
+      column has nothing to name, and a real run invented `UC-004` twice to fill the sentence.
+
+   **Designing a case that came from the backlog:** its row moves from the table to
+   `## Retired`, with the `UC-NNN-<slug>` just assigned and the date. Not deleted — a spec that
+   cited that `BL-NN` is immutable once approved, so the citation has to stay resolvable exactly
+   when the case stops being backlog.
 
    Nothing is saved before the answer.
 3. **Interview** with `AskUserQuestion`, four blocks, one per call when earlier
@@ -134,9 +143,9 @@ the decision.
    **CHANGE**, or **REUSE** state. Proposing to create what already exists is this
    skill's most expensive failure mode.
 
-   Read the approved specs too — every `UC-NNN-spec.md` whose `status:` is `approved`
-   or `implemented`. They are a **read-only contract**: reuse the aggregate they already
-   modeled, and never edit their files. A change this case needs in an approved case
+   Read the approved specs too — every `UC-NNN-spec.md` whose `status:` is `approved`,
+   `implemented` or `implemented-blocked`. They are a **read-only contract**: reuse the
+   aggregate they already modeled, and never edit their files. A change this case needs in an approved case
    goes into this spec's `## Impact on approved use cases` section — which case, what
    changes, why. Decide what this case needs; don't defer or anticipate a decision for a
    future case.
@@ -148,13 +157,15 @@ the decision.
    every real call, the build stayed green, and the only trace was a comment in a test
    fixture. So each such row carries a fourth column, **Satisfied by**, with one of:
 
-   - **an approved or implemented `UC-NNN`** — name it, and the precondition is reachable
-     today;
+   - **an approved, implemented or implemented-blocked `UC-NNN`** — name it, and the
+     precondition is reachable today;
    - **this very case** — it both adds the precondition and provides the transition;
-   - **a backlog `UC-NNN`, named** — then the row says so in words, this spec's
-     `## Out of scope` repeats it, and the consequence is stated outright: from this change
-     until that case ships, the earlier use case is unreachable end to end. A reviewer may
-     accept that; nobody can accept it without being told.
+   - **a backlog row, by its `BL-NN`** — `docs/use-cases/BACKLOG.md` gives every row an
+     identifier for exactly this, and a `UC` number is **not** one of the answers here: a
+     backlog case has no `UC` number until it is designed, and writing one invents it. Name the
+     `BL-NN`, then this spec's `## Out of scope` repeats it and the consequence is stated
+     outright: from this change until that case ships, the earlier use case is unreachable end
+     to end. A reviewer may accept that; nobody can accept it without being told.
 
    No fourth answer. "The tests construct the state" is not a satisfier — a fixture that
    fabricates a state no production path can reach is the signature of this defect, not the
@@ -229,8 +240,14 @@ orchestrator.
 
 **Owns** the use case number and slug. No other piece assigns them.
 
-**Does not** edit an approved spec (`status: approved` or `implemented`) — reads it as a
-contract, and records the needed change in its own impact section.
+**Shares one sequence, with one other named writer.** `BL-NN` is assigned here when a split
+appends a backlog row, and by `/new-feature`'s consolidation when a partial defers something to
+the backlog. Those two, never a third: a design skill that appended its own row would compute
+"highest plus one" against the same file in the same run and issue a duplicate.
+
+**Does not** edit an approved spec (`status: approved`, `implemented` or
+`implemented-blocked`) — reads it as a contract, and records the needed change in its own
+impact section.
 
 **Does not** write code, tests, migrations, or OpenAPI, and never writes under `src/`. Doesn't touch the inbound REST
 adapter — the package the blueprint's `packages.map` gives that role

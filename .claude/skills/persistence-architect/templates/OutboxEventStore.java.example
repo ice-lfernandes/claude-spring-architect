@@ -24,7 +24,11 @@
  * PACKAGE: `…persistence.outbox` — its own subpackage, the same as `…persistence.idempotency`
  * and as any aggregate's (`.claude/rules/persistence.md` § Boundary). It is not an aggregate:
  * it is shared infrastructure, which is exactly why it must not be dumped in the persistence
- * package root.
+ * package root. **Named as a pair with `…messaging.outbox`**, the broker half of the same
+ * concern (`messaging-architect/templates/OutboxRelayPublisher.java.example`): one concern, two
+ * adapters, the same subpackage name in each. A feature that split persistence per aggregate
+ * and left messaging flat put four of that concern's classes in the messaging root
+ * (lessons-learned-014 § 14).
  *
  * WHY THIS PORT ISN'T DECLARED IN `10-dominio.md`: like `IdempotencyKeyPort`, it mirrors no
  * output port of any aggregate. `domain-modeling` declares the port that *publishes the event*;

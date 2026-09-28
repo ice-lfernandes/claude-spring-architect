@@ -61,10 +61,26 @@
  * stays `application-kafka.yml`'s `DefaultErrorHandler`, same as Form A.
  *
  * ELIDED, adapter-local and uninteresting: `OutboxAppender` (serializes the payload record
- * and inserts the row through the same outbound abstraction), `TopicResolver` (event type to
- * topic name, per `.claude/rules/messaging.md` § Topics and serialization), and
- * `OrderConfirmedPayload` — unchanged from Form A, see `KafkaProducerAdapter.java.example`.
- * The payload shape does not depend on the publication form.
+ * and inserts the row through the same outbound abstraction, in `…messaging.outbox` —
+ * every flow appends through it, so it is shared infrastructure and `public`),
+ * `TopicResolver` (event type to topic name, in `…messaging.outbox` for the same reason, per
+ * `.claude/rules/messaging.md` § Topics and serialization), and `OrderConfirmedPayload` —
+ * unchanged from Form A, in this flow's own `…messaging.orderconfirmed`, see
+ * `KafkaProducerAdapter.java.example`. The payload shape does not depend on the publication
+ * form. Those two are the exception the § Boundary rule allows by name: package-private is the
+ * default, and a class another subpackage genuinely consumes opens up one at a time.
+ *
+ * PACKAGE: the outbox is shared transport infrastructure, not one event's flow, and that is
+ * exactly why it gets its own subpackage instead of being dropped into the adapter root —
+ * `…messaging.outbox` (`.claude/rules/messaging.md` § Boundary). A root that holds "whatever
+ * belongs to nobody" is the flat package the rule exists to prevent. Its persistence half
+ * lives under `…persistence.outbox` for the same reason, named as a pair on purpose: one
+ * concern, two adapters, one subpackage name in each
+ * (`persistence-architect/templates/OutboxEventStore.java.example`). The event's own payload
+ * and its writer stay in the flow's subpackage; only what every event's relay shares lives
+ * here. Package-private by default, as everywhere else in this adapter.
+ *
+ * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
  */
 
 // --- OutboxRelayGateway.java (application layer — the relay's only view of outbox state)
@@ -114,8 +130,8 @@ import java.util.UUID;
 public record OutboxEventRecord(
         UUID eventId, String aggregateId, String eventType, String payload, Instant occurredAt) {}
 
-// --- OrderConfirmedOutboxWriter.java (implements the port domain-modeling declared)
-package com.example.demo.adapter.out.messaging;
+// --- orderconfirmed/OrderConfirmedOutboxWriter.java (implements the port domain-modeling declared)
+package com.example.demo.adapter.out.messaging.orderconfirmed;
 
 import com.example.demo.application.port.out.PublishOrderConfirmedPort;
 import com.example.demo.domain.event.OrderConfirmed;
@@ -142,8 +158,8 @@ public class OrderConfirmedOutboxWriter implements PublishOrderConfirmedPort {
     }
 }
 
-// --- OutboxProperties.java (adapter-local binding of `app.outbox.*`)
-package com.example.demo.adapter.out.messaging;
+// --- outbox/OutboxProperties.java (adapter-local binding of `app.outbox.*`)
+package com.example.demo.adapter.out.messaging.outbox;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -169,8 +185,8 @@ public record OutboxProperties(boolean enabled, int batchSize, int maxAttempts) 
     }
 }
 
-// --- SchedulingConfig.java (adapter-local framework wiring — the relay is the only @Scheduled)
-package com.example.demo.adapter.out.messaging;
+// --- outbox/SchedulingConfig.java (adapter-local framework wiring — the relay is the only @Scheduled)
+package com.example.demo.adapter.out.messaging.outbox;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
@@ -188,8 +204,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @ConditionalOnProperty(name = "app.outbox.enabled", matchIfMissing = true)
 class SchedulingConfig {}
 
-// --- OutboxRelay.java (the only class in Form B that imports KafkaTemplate)
-package com.example.demo.adapter.out.messaging;
+// --- outbox/OutboxRelay.java (the only class in Form B that imports KafkaTemplate)
+package com.example.demo.adapter.out.messaging.outbox;
 
 import com.example.demo.application.port.out.OutboxEventRecord;
 import com.example.demo.application.port.out.OutboxRelayGateway;

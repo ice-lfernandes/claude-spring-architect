@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spawning the process: without it, every edit to any file would pay for a JVM startup. The `guard` entries are the deliberate exception: territory is deny-by-default (`skill_classes` in .claude/schemas/extensions.json), so an `if` narrowing them to a path list would recreate the denylist hole they exist to close — a design run once wrote docker-compose.yml, which no forbidden-path list named. `guard write` returns immediately when no phase is open, which is every write outside a skill invocation.",
+  "_comment": "Hooks in exec form (command + args) — the recommended form to avoid quoting and path issues on Windows. No shell is invoked. The `if` field filters by permission rule before spawning the process: without it, every edit to any file would pay for a JVM startup. The `guard` entries are the deliberate exception: territory is deny-by-default (`skill_classes` in .claude/schemas/extensions.json), so an `if` narrowing them to a path list would recreate the denylist hole they exist to close — a design run once wrote docker-compose.yml, which no forbidden-path list named. `guard write` returns immediately when no phase is open, which is every write outside a skill invocation. The `Bash` entry is the same deny-by-default check reached from the other side: every other enforcement here matches on a tool name, so a heredoc or a `sed -i` passed through none of them (lessons-learned-014 § 1). It carries no `if` for the same reason the `guard` entries don't, and for one more — a permission rule matches a command prefix, and `cat > file`, the spelling that was actually used, has no prefix that names the write. A target it cannot read literally is skipped in silence, so the cost of a false positive is bounded by design. The write matchers are one list: `format` and `check` used to match `Write|Edit` alone, which left a `MultiEdit` territory-checked but never boundary-checked or formatted (lessons-learned-014 § 2). On `Stop`, `guard sweep` is the backstop behind both write guards: it reads what changed on disk since the baseline `guard prompt` took, so it catches the shell spellings the parser cannot read — and it is git-shaped, so a path git ignores is never swept. `compose gate` is the same `composeReport()` `doctor` and the bare `compose` use, silent while healthy: the check existed and had simply never been run against a project, which is how a broker unreachable from the host shipped on day one (lessons-learned-014 § 13).",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -36,6 +36,18 @@
             "command": "java",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "write"],
             "statusMessage": "Checking the active skill's territory...",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "bash"],
+            "statusMessage": "Checking what this command writes...",
             "timeout": 30
           }
         ]
@@ -80,7 +92,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -139,6 +151,20 @@
             "command": "java",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "schema"],
             "statusMessage": "Validating frontmatter...",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "guard", "sweep"],
+            "statusMessage": "Sweeping what this turn wrote...",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "compose", "gate"],
+            "statusMessage": "Checking compose services...",
             "timeout": 60
           },
           {

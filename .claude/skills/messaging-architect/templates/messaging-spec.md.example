@@ -136,6 +136,43 @@ memory is what `@CLAUDE.md` invariant 8 forbids.
 |---|---|---|
 | `org.springframework.boot:spring-boot-starter-kafka` | (managed by the Boot parent) | Spring Boot 4 moved Kafka autoconfiguration out of `spring-boot-autoconfigure`; without this starter `spring-kafka` alone wires no `KafkaTemplate` and every `spring.kafka.*` property is inert |
 
+## 8 · Personal data
+
+none
+
+Every field of the payload above that matches the derivation in
+`@.claude/rules/logging.md` § Masking candidates — the value-object catalog plus the name list.
+Run `@.claude/rules/security.md` § How to verify grep 1 against the record this partial designed
+and read the hits against that list; `none` is a decision, absence is a gap.
+
+One of three answers per field, and the third column is not optional for the first:
+
+| Field | Form | Receiver and reason |
+|---|---|---|
+| `securityNumber` (CPF) | full value | The KYC provider verifies the identifier itself: the value **is** the receiver's purpose (`@.claude/rules/security.md` § Admitted exception). Retained by the broker for the topic's retention and by any dead-letter copy — stated here because a message body is kept by whoever consumes it |
+
+`reduced` (an id, a hash, the last digits) and `reference` (the receiver resolves it under its
+own authorization) need no receiver column: nothing personal crosses. A **full value** without a
+named receiver and a reason is what stops consolidation — *the exception is the record, not the
+absence of one*.
+
+## 9 · Deferred
+
+none
+
+One row per item this partial decided **not** to do in this run. `none` is a decision, absence
+is a gap: consolidation cannot tell them apart and stops on the second.
+
+Each row names the norm that makes the item mandatory, by path, and the owner it is handed to —
+`checklist` (this run implements it) or `backlog` (a later run does, and the spec says what the
+project does not guarantee until then). Consolidation resolves the owner: a `checklist` row
+becomes a checklist item, a `backlog` row becomes a line in `docs/use-cases/BACKLOG.md` with its
+`BL-NN`, which is also what the spec's `## Out of scope` then cites.
+
+| Decided | What is missing | Norm requiring it | Owner |
+|---|---|---|---|
+| `outbox_events` keeps 7 days | The prune pass that reads `app.outbox.prune-after`; the property stays out of `application.yml` until its reader exists | `@.claude/rules/security.md` § At rest | `backlog` |
+
 ## Impact on approved use cases
 
 none

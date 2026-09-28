@@ -235,6 +235,15 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    pass in the same run, or § 1 records the retention as a decision and the property stays
    out of `application.yml` until its reader exists.
 
+   **The second branch ends in the `## Deferred` block, never in the decision alone.** A
+   retention window recorded and left unowned is the case
+   `@.claude/rules/security.md` § At rest names outright — *a store whose retention window is a
+   property nobody reads has no retention* — and the outbox payload is where personal data sits.
+   So deferring the prune writes a `Deferred` row naming that rule and an owner, and
+   consolidation turns it into a checklist item or a `BL-NN`. A real run decided 7 days, left a
+   commented `DELETE` in the migration, kept the property out on purpose, and gave the job to
+   nobody (lessons-learned-014 § 9).
+
 5. **Fix the migration in the partial.** Name per `@.claude/rules/persistence.md`
    § Migrations, with `<N>` following the highest one found in step 2, and the target
    path under the module the blueprint gives the persistence role. The SQL goes as a
@@ -293,6 +302,7 @@ asked.
 | Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, adapter, and application component — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` · `IdempotentExecution.java.example` |
 | Outbox (only when `25-mensageria.md` fixes publication Form B) | The shared `outbox_events` table, its mapping, the adapter implementing `OutboxRelayGateway`, the **claim strategy** chosen out loud, and the retention chosen for the prune — modeled once, reused by every later event | `OutboxEventTable.sql.example` · `OutboxEventStore.java.example` |
 | Declared dependencies | Build dependencies this layer needs and the project does not declare — the only list the executor may act on when it writes `pom.xml` | — |
+| Deferred | One row per item this partial decided **not** to do in this run: what was decided, what is missing, the norm that requires it (by path), and the intended owner — `checklist` (this run does it) or `backlog` (a later one does). `none` when nothing was deferred, and absence is not `none`. Consolidation resolves each row to a real owner and is what writes the `BACKLOG.md` line | — |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.
