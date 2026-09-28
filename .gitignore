@@ -47,7 +47,5 @@ replay_pid*
 # Internal-only docs, not meant for the public repo
 CONTEXT.md
 monetization-roadmap.md
-.claude/decisions/
-.claude/lessons-learned/
 getting-started-open-source.md
 examples/

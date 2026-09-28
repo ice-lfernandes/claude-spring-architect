@@ -186,8 +186,9 @@ source.
   before the turn is not reported, and it runs the same territory and frozen-folder checks over
   whatever changed — no matter which tool wrote it. Two limits worth knowing before reading it
   as total coverage: it is **detection, not prevention** (the write already happened), and a
-  path git ignores never appears in `git status --porcelain`, so `.claude/decisions/` and
-  `.claude/lessons-learned/` are never swept in this repository. A spec's `status:` close and
+  path git ignores never appears in `git status --porcelain` and is never swept — which in this
+  repository is only what `.gitignore` still lists, `.claude/decisions/` and
+  `.claude/lessons-learned/` having been versioned since 2026-09-28. A spec's `status:` close and
   its `[ ]` → `[x]` toggles are admitted by comparing against `git show HEAD:`, since the sweep
   has no `old_string` to read. Design: `@.claude/decisions/0065-guard-sweep-on-stop.md`.
 - **`compose gate` runs the compose check unprompted, and it blocks.** `docker-architect` step 7

@@ -4402,8 +4402,9 @@ public class ArchHook {
      *
      * <p>It is detection, not prevention — the write already happened — which is why it backs
      * the tool-time guards instead of replacing them. And it is <b>git-shaped</b>: a path git
-     * ignores never appears in `git status --porcelain` and is therefore never swept. In this
-     * repository that is `.claude/decisions/` and `.claude/lessons-learned/`, ignored on purpose.
+     * ignores never appears in `git status --porcelain` and is therefore never swept — whatever
+     * `.gitignore` lists. `.claude/decisions/` and `.claude/lessons-learned/` were that case in
+     * this repository until 2026-09-28; both are versioned now and are swept like anything else.
      *
      * <p>Only paths whose porcelain entry is new or changed since the baseline are read, so a
      * tree dirty before the turn stays out of the report. Exit 2 hands the lines back to the
