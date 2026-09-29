@@ -4,6 +4,7 @@ description: Installs ArchUnit and wires the JaCoCo coverage gate into an alread
 model: sonnet
 tools: Read, Write, Edit, Bash
 effort: medium
+omitClaudeMd: true
 ---
 
 # `archunit-installer` — setup-mode executor
@@ -21,6 +22,10 @@ lands permanently in the caller's context and gets re-paid on every later turn. 
 it costs design mode nothing and stops that bill. Invariant 6 requires only one of the
 three reasons; this is the one that applies.
 
+`omitClaudeMd: true`: the root `CLAUDE.md` is a declared input, **Read** explicitly for the
+`commons` package; auto-loading it too paid for the same file twice
+(`@.claude/decisions/0083-unused-ecosystem-fields-and-real-allow-list.md`).
+
 No tool or model reason applies on its own — reads and writes stay inside the project,
 and package-translation reasoning doesn't need more than `sonnet` already used elsewhere
 in this repo (`java-spring-boot-developer`).
@@ -36,6 +41,9 @@ that data restated in prose, not a second promise: `ArchHook.java guard` reads t
 **Executor:** yes — writes under `src/` while a design phase may still be open. The class
 grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
 that flag in both directions.
+
+**Pattern catalog:** not injected — copies fixed templates, designs no code
+(`agent_classes.installer.pattern_catalog: false`; `schema` cross-checks this line).
 
 **Input (required):** project root. Precondition — business classes already exist — is
 the caller's (`test-architect`'s) to check before invoking; this agent doesn't re-verify
@@ -121,7 +129,7 @@ back to the caller.
    section carries `sensitive_dtos_implement_log_mask` and `sensitive_fields_are_marked`
    (`@.claude/rules/logging.md` § Masking candidates). Translate the DTO package to this
    project's inbound REST DTO package, and `LOG_MASK` / `MASK_SENSITIVE` to this project's
-   own `commons` package — the root `CLAUDE.md` names it. `SENSITIVE_NAMES` is copied
+   own `commons` package — Read the root `CLAUDE.md`, which names it. `SENSITIVE_NAMES` is copied
    verbatim: it is the rule's list, not a suggestion, and shortening it here is how a field
    stops being checked.
 

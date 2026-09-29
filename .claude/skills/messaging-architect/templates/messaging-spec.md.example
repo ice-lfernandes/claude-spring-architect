@@ -35,7 +35,7 @@ Port declared in `10-dominio.md`: `PublishOrderConfirmedPort`.
 |---|---|---|---|
 | `PublishOrderConfirmedPort` | `void publish(OrderConfirmed event)` | `OrderConfirmedPublisher` | `OrderConfirmedPayload(orderId, customerId, occurredAt)` |
 
-**Personal data in the payload** — `@.claude/rules/security.md` § In transit. Never omitted:
+**Personal data in the payload** — `@.claude/rules/personal-data.md` § In transit. Never omitted:
 `none` is the answer when no field qualifies, and an absent line is an unasked question.
 
 | Field | Qualifies as personal data | What crosses | Receiver | Why this form |
@@ -142,14 +142,14 @@ none
 
 Every field of the payload above that matches the derivation in
 `@.claude/rules/logging.md` § Masking candidates — the value-object catalog plus the name list.
-Run `@.claude/rules/security.md` § How to verify grep 1 against the record this partial designed
+Run `@.claude/rules/personal-data.md` § How to verify grep 1 against the record this partial designed
 and read the hits against that list; `none` is a decision, absence is a gap.
 
 One of three answers per field, and the third column is not optional for the first:
 
 | Field | Form | Receiver and reason |
 |---|---|---|
-| `securityNumber` (CPF) | full value | The KYC provider verifies the identifier itself: the value **is** the receiver's purpose (`@.claude/rules/security.md` § Admitted exception). Retained by the broker for the topic's retention and by any dead-letter copy — stated here because a message body is kept by whoever consumes it |
+| `securityNumber` (CPF) | full value | The KYC provider verifies the identifier itself: the value **is** the receiver's purpose (`@.claude/rules/personal-data.md` § Admitted exception). Retained by the broker for the topic's retention and by any dead-letter copy — stated here because a message body is kept by whoever consumes it |
 
 `reduced` (an id, a hash, the last digits) and `reference` (the receiver resolves it under its
 own authorization) need no receiver column: nothing personal crosses. A **full value** without a
@@ -171,7 +171,7 @@ becomes a checklist item, a `backlog` row becomes a line in `docs/use-cases/BACK
 
 | Decided | What is missing | Norm requiring it | Owner |
 |---|---|---|---|
-| `outbox_events` keeps 7 days | The prune pass that reads `app.outbox.prune-after`; the property stays out of `application.yml` until its reader exists | `@.claude/rules/security.md` § At rest | `backlog` |
+| `outbox_events` keeps 7 days | The prune pass that reads `app.outbox.prune-after`; the property stays out of `application.yml` until its reader exists | `@.claude/rules/personal-data.md` § At rest | `backlog` |
 
 ## Impact on approved use cases
 

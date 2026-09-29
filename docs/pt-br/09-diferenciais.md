@@ -245,7 +245,7 @@ Nenhum é exclusivo por si só; juntos, nenhum vizinho os reúne:
 ## O que não é diferencial — dito com honestidade
 
 - **Conhecimento Spring puro.** Pacotes de skills como `spring-boot-skills` cobrem
-  Security, WebFlux e mais versões. Aqui não existe `rules/security.md` ainda
+  Security, WebFlux e mais versões. Aqui não existe `rules/authorization.md` ainda
   (planejada em `00-index.md`).
 - **Gradle.** O schema aceita `build.tool: gradle`, mas só existem templates de POM; o
   caminho exercitado ponta a ponta é Maven.

@@ -7,6 +7,7 @@ description: >
   if/switch chain, or refactoring a class with too many responsibilities.
 disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Glob, Grep
+model: opus
 ---
 
 # Java Patterns
@@ -18,14 +19,24 @@ a skill and not `rules/` — it only costs context when invoked. Form 2 (manual 
 and not Form 1, because a catalog the model reaches on its own turns into a pattern applied
 without the symptom that justifies it, which is what the entry rule below exists to stop.
 
-**Entry rule: no pattern without an observed symptom in the code.** Applying a pattern
-preemptively is overengineering — a Factory for two lines, a Strategy for a single `if`,
-an interface with one implementation that will never have a second. If you can't point
-to the file and line that hurts, the answer is "apply no pattern at all".
+**Entry rule: no pattern without a symptom observed in the code, or a force the approved
+spec already names.** Applying a pattern preemptively is overengineering — a Factory for
+two lines, a Strategy for a single `if`, an interface with one implementation that will
+never have a second. A force named in the spec is not preemption: variants or rules the
+spec enumerates, a cross-cutting concern it applies over several implementations,
+construction it constrains with invariants, a predicate it uses both to decide and to
+query — code written from that spec would show the symptom on its first version, and
+choosing the pattern before writing it is how that first version is never written badly.
+The "When **not**" column binds either way. If you can point neither to the file and line
+that hurts nor to the spec line that names the force, the answer is "apply no pattern at
+all".
+
+Pinned to `opus`: choosing a pattern against a growing chain is judgment, and the pin only raises the model for the rest of the turn (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Procedure
 
-1. Name the symptom in the actual code (`file:line`), not in the abstract.
+1. Name the symptom in the actual code (`file:line`), or the force in the approved spec
+   (its path and the line that names it) — never in the abstract.
 2. Look up the symptom in the table. No matching row, stop — write simple code.
 3. Confirm the pattern doesn't collide with the active blueprint's `packages.map`.
 4. Generate from the exemplar in `templates/`, with the names from
@@ -91,13 +102,19 @@ territory.
 
 **Two invocation modes, one writer per mode.** Standalone — a human runs
 `/java-patterns` against real code with an observed symptom; this skill is the sole
-writer for that turn, as above. Preloaded — `java-spring-boot-developer` carries this
-skill's catalog in full via its `skills:` frontmatter field and applies a matching row
-directly while generating a new feature, never as a separate invocation
-(`disable-model-invocation` wouldn't allow that anyway). In that mode this skill writes
-nothing itself: the executor remains the sole owner of `src/**` (invariant 2), and the
+writer for that turn, as above. Injected — in a generated project, `ArchHook.java context
+subagent` runs at `SubagentStart` and hands the sections listed in `subagent_context` of
+`@.claude/schemas/extensions.json` (this file's `## Why this is a skill and not a rule`,
+`## Catalog` and `## Forbidden in this repository`) to every agent whose `agent_classes`
+entry declares `pattern_catalog: true`, before its first turn. The agent applies a matching
+row while writing the feature, never as a separate invocation. In that mode this skill
+writes nothing itself: the agent remains the sole owner of `src/**` (invariant 2), and the
 catalog is reference material, the same role `templates/*.example` plays for the other
-four pipeline skills. `@.claude/decisions/0025-java-patterns-preloaded-in-executor.md`.
+four pipeline skills. Renaming one of those three headings empties the injection —
+`ArchHook.java schema` fails on it by name.
+`@.claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md`, which supersedes
+0025: a skill with `disable-model-invocation: true` cannot be preloaded through an agent's
+`skills:` field, so the catalog 0025 described never arrived.
 
 **Doesn't collide with `domain-modeling`**, which also deals with domain and
 application. The split is by moment, not by folder: that one produces the

@@ -1,5 +1,8 @@
 ---
-# No `paths`: this index is loaded by citation, never auto-loaded.
+paths:
+  - ".claude/rules/**"
+# Loads when a rule is read or edited; everyone else cites it. Without `paths` it
+# would load at launch, in every session.
 status: active
 ---
 
@@ -15,15 +18,22 @@ own `paths`; they are not repeated here.
 
 ## How a rule enters context
 
-Two paths, and the first is preferable:
+Two paths, and both apply to every rule:
 
 1. **Auto-loading via `paths`** — the frontmatter declares globs and the rule enters
    context on its own when matching files are touched. It doesn't depend on anyone
    remembering to read it.
-2. **Explicit citation** — for cross-cutting rules that no glob captures
-   (`git-workflow.md`, this index). Whoever needs it cites the path.
+2. **Explicit citation** — whoever designs something the rule governs, before the file
+   exists, cites the path.
 
-Declare `paths` whenever the rule has an identifiable file territory.
+**Every rule declares `paths`.** A rule without it is not "citation only": the runtime
+loads it at launch, in every session, whatever the session touches. A cross-cutting rule
+still gets the narrowest glob that holds its territory — this index loads on
+`.claude/rules/**`.
+
+Java globs are `**/src/**/*.java`, never `**/*.java`: the second matches
+`.claude/hooks/ArchHook.java`, which is no application code and would pull every Java norm
+into context on each read of the hook.
 
 ## Rules written
 
@@ -41,17 +51,16 @@ Declare `paths` whenever the rule has an identifiable file territory.
 | `observability.md` | Vendor integration for tracing (correlation identifier origin) and metrics (cardinality, health endpoint, vendor annotations) | Contract tests + context startup |
 | `logging.md` | `logback.xml` default pattern, log format and level semantics, sensitive data masked or kept out of logs, per-class-type log content | Review |
 | `messaging.md` | Kafka producer/consumer boundary, delivery semantics (at-least-once, idempotent consumer), topic naming and serialization, retry/DLQ, consumer configuration | `grep` from § How to verify + integration tests |
-| `security.md` | Personal data at rest and in transit: what counts as personal data, payload columns and retention, the minimum a receiver needs, the recorded decision when a value must cross in clear | `grep` from § How to verify + the design record it requires |
+| `personal-data.md` | Personal data at rest and in transit: what counts as personal data, payload columns and retention, the minimum a receiver needs, the recorded decision when a value must cross in clear | `grep` from § How to verify + the design record it requires |
 
-`security.md` has no `paths` either, and for a different reason: personal data is decided at
-the boundary that writes a payload, and that boundary is a different package in every
-architecture, so the rule is always cited by path instead of auto-loaded. Its first version
-covers personal data only — secrets and authn/authz stay planned below, unwritten, because no
-case has demanded them yet.
+`personal-data.md` loads on every Java source and every migration, not on one boundary
+package: the field that leaked was decided in a domain event, and its name did not say what
+it held. It is also cited by path wherever a payload is designed. Secrets and authn/authz are
+separate topics, planned below, unwritten because no case has demanded them yet.
 
-`architecture-ddd.md` is the only one without its own `paths` for a third reason: its globs
-come from the active blueprint's `architecture_paths` and are written into the file that
-bootstrap copies into the generated project. See `@.claude/blueprints/_schema.md`.
+`architecture-ddd.md`'s `paths` here is an example: its globs come from the active
+blueprint's `architecture_paths` and are written into the file that bootstrap copies into
+the generated project. See `@.claude/blueprints/_schema.md`.
 
 The rules whose territory is a package — `api-rest.md`, `persistence.md`,
 `value-objects.md`, `observability.md` — have a `paths` here that serves as an example
@@ -67,9 +76,15 @@ using it; don't improvise it inside another file.
 
 | File | Will cover | Expected `paths` |
 |---|---|---|
-| `git-workflow.md` | Branches, commit messages, PRs | — (cited) |
+| `git-workflow.md` | Branches, commit messages, PRs | narrowest glob that holds it — without one it loads at launch |
+| `secrets.md` | Credentials in configuration, code and versioned files | `**/src/**`, `**/*.yml`, `**/*.properties` |
+| `authorization.md` | Authentication and authorization at the entry boundary | derived from the blueprint's entry-layer package |
 
 ## States
 
 `status: active` applies now · `status: draft` is a proposal, do not apply ·
 `status: deprecated` is kept for reading old code, do not use in new code.
+
+The runtime does not read `status`. A `draft` rule under `rules/` still loads whenever its
+`paths` match and reads as a norm like any other, so a proposal stays out of this folder
+until it is `active`.

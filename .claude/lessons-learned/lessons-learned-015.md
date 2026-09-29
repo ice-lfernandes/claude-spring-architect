@@ -24,6 +24,7 @@ colando o bloco do tópico como entrada. Tokens estimados em bytes/4.
 | M | Armadilhas de `audit` no `CLAUDE.md` raiz | P3 custo | Não |
 | N | Recursos do ecossistema não usados | P3 ecossistema | Não |
 | O | Menores | P3 | Não |
+| P | `ArchHook.java` monolítico (5k linhas, 131 métodos `static`) | P3 manutenção | **Sim** (supersede o arquivo único) |
 
 Ordem sugerida: A → F/G/H → J/K/L → B/C.
 
@@ -371,3 +372,34 @@ comandos reais.
 - Stop `schema` roda em todo fim de turno (~2,5 s) mesmo sem mudança em `.claude/`.
   Resolve junto com A.
 - `.claude/claude-code-docs/` está untracked: commitar ou mover para `docs/`.
+
+---
+
+## P — `ArchHook.java` monolítico
+
+**Prioridade:** P3 manutenção · levantado em 2026-09-29, durante a escrita de A
+
+**Onde:** `.claude/hooks/ArchHook.java` — 5098 linhas, 131 métodos `static` num só
+namespace (2114 linhas na `0041`). `main` (`:55-74`) tem dois `switch`: um decide quem lê
+stdin, outro despacha.
+
+**Problema:** helpers de todos os modos se misturam; a política de stdin mora longe do
+modo e virou armadilha em `docs/11-pitfalls.md` em vez de estar no código.
+
+**O que não fazer:** um arquivo por modo. No JDK 21 o launcher de source roda **um**
+arquivo (multi-arquivo é JDK 22+), e o `build` fixa 21 — quebra comandos manuais, passos de
+CI e o `build` do `PostToolUse`. Também contraria `claude-code-architect-designer`
+§ Out of scope, `0041`, `0054` e `0075`, e o `export`/hash de arquivo único.
+
+**Sugestão:** classes aninhadas no mesmo arquivo — `sealed interface Mode { boolean
+readsStdin(String[] args); void run(String[] args, String stdin); }`, uma `static final
+class` por modo com seus helpers privados, utilitários compartilhados em uma classe aninhada
+própria. `switch` exaustivo sobre o `sealed`. Incremental, um modo por passo.
+
+**Cuidado:** modo que lança exceção sai 0 pelo catch do `main` e parece ter passado — uma
+regressão no `guard` desliga a proteção em silêncio. Cada passo roda `build --verify` e os
+testes de `.claude/.ci/`, e o modo à mão. Nenhuma falha observada vem da estrutura: é ganho
+de manutenção, não correção.
+
+**Pronto quando:** decisão própria registrada; `main` sem política de stdin; cada modo
+numa classe aninhada; CI verde; jar reconstruído.

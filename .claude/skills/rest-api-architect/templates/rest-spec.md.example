@@ -121,14 +121,14 @@ Body-shape fixtures: `templates/error-responses.json.example` and
 none
 
 Every field of a **response** body above that matches the derivation in
-`@.claude/rules/logging.md` § Masking candidates. Run `@.claude/rules/security.md` § How to
+`@.claude/rules/logging.md` § Masking candidates. Run `@.claude/rules/personal-data.md` § How to
 verify grep 1 against the DTOs this partial designed and read the hits against that list;
 `none` is a decision, absence is a gap.
 
 `@MaskSensitiveData` on the DTO does not answer this block. Masking covers the log line; this
 block covers the body that leaves the process, and a field masked in the logs and returned in
 clear was never protected — it was protected in the one place someone happened to look
-(`@.claude/rules/security.md`, opening principle).
+(`@.claude/rules/personal-data.md`, opening principle).
 
 | Field | Form | Receiver and reason |
 |---|---|---|

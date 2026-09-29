@@ -159,8 +159,12 @@ An agent exists for one of these:
 1. **Preserve context** — verbose exploration stays in the subagent, only the summary
    comes back.
 2. **Restrict tools** — a reviewer with `tools: Read, Grep, Glob` can't write.
-3. **Control cost or capability** — `model: haiku` for triage, `opus` where failure is
-   expensive.
+3. **Control cost or capability, scoped to that work** — `model: haiku` for triage, `opus`
+   where failure is expensive. A skill declares `model` natively, but its override holds
+   for the **rest of the turn**: a pin that lowers the model on a skill fired mid-turn
+   degrades whatever follows it. The model alone justifies an agent only when it must not
+   leak past the work — otherwise it is a skill's `model`, required per class in
+   `skill_classes` (decision 0081).
 
 Two of them are frontmatter, and `agent_classes.universal_fields` requires both on every
 agent: `tools` (reason 2) and `model` (reason 3). An agent that declares neither has

@@ -9,6 +9,7 @@ description: >
 argument-hint: "[scenario, use case, or problem in one sentence]"
 disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(claude plugin validate:*), Bash(java:*)
+model: opus
 ---
 
 ## Current inventory
@@ -76,6 +77,8 @@ context every session, or it never fires.
 This is a multi-step procedure — interview, classify, propose, write — hence a skill. As
 a rule it would break invariant 1 of `@CLAUDE.md`: a rule about when to create skills and
 agents would have to mention skills and agents, and `rules/` is a leaf.
+
+Pinned to `opus`: what it designs is enforced in every later session (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Procedure
 
@@ -264,7 +267,7 @@ the same interview again.
    | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
    | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example` and its own companion setup doc — both already named in `export.optional_copy`, so nothing else to wire |
    | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, if the hook blocks something a reader would otherwise call a bug |
-   | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java` and `schemas/extensions.json` whole |
+   | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java`, the rebuilt `ArchHook.jar` and `schemas/extensions.json` whole |
    | Hook mode (Form 7c) | The mode table in `@CLAUDE.md` § Commands, and the `doctor` report if the mode has state worth reporting |
    | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into `@CLAUDE.md` § Known pitfalls — a tool that silently refuses reads as a broken tool |
 
@@ -298,7 +301,9 @@ the same interview again.
     `java .claude/hooks/ArchHook.java doctor` and read its `Hooks` line: it is the only
     check that the registration count is what you intended. For Form 7c, run the new
     mode by hand once — `java .claude/hooks/ArchHook.java <mode>` — before reporting it
-    as done. A mode that throws exits 0 through the top-level catch and looks like it
+    as done, and rebuild the jar every hook launches — `java .claude/hooks/ArchHook.java
+    build` — committing it with the source: `schema` fails on a jar built from another
+    version of the file. A mode that throws exits 0 through the top-level catch and looks like it
     passed.
 
 ### Phase 5 · Report

@@ -8,7 +8,8 @@ description: >
   Piece of the `/new-feature` pipeline: requires `00-caso-de-uso.md` in the given folder
   and stops without it.
 argument-hint: "[path of the UC-NNN-<slug> folder]"
-allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*)
+model: opus
 ---
 
 ## Available specs
@@ -54,6 +55,8 @@ It's a procedure whose step 3 goes back to the user to ask what the mother spec 
 open — the exact type of each value object, which invariant lives in the constructor. A
 subagent doesn't see the conversation. Decision recorded in
 `@.claude/decisions/0003-skill-domain-modeling.md`.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Boundary with neighboring skills
 

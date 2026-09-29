@@ -3,8 +3,7 @@ Exemplar of the first entry in the generated project's `.claude/audit-usage/` â€
 by step 8.6 of SKILL.md, right after the README (8.5), from data step 1-8 already
 computed. Not a hook-produced report: `ArchHook.java audit`'s trail only starts once a
 live session opens with this project as its root, and this run happens before that's
-possible (`@.claude/lessons-learned/lessons-learned-004.md` Gap 1,
-`@.claude/decisions/0037-genesis-audit-record.md`). The header saying so stays in the
+possible (`@.claude/lessons-learned/lessons-learned-004.md` Gap 1). The header saying so stays in the
 real file â€” it's the only thing telling a later `/audit-usage` reader this entry has no
 per-tool-call granularity behind it. Everything else in this top comment is cut when
 step 8.6 writes the real file.

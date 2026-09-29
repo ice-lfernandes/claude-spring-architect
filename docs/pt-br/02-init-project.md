@@ -19,8 +19,8 @@ disparado pelo modelo sozinho. Ela mesma não faz o trabalho: delega via `Agent 
 para `project-initializer`, que existe como agent por dois dos três motivos válidos
 (`CLAUDE.md` § Invariant 5) — geração produz saída verbosa que não deveria encher a
 conversa, e roda com um conjunto restrito de tools. `project-initializer` usa
-`model: opus` porque validar um grafo de dependências e reestruturar módulos falha
-caro se o modelo errar.
+`model: sonnet` com `effort: high`: o procedimento é dirigido pelo blueprint, pelo
+Initializr e pelos templates, não por julgamento (decisão 0078).
 
 `project-initializer`, por sua vez, **não reimplementa o procedimento** — ele segue
 `.claude/skills/project-bootstrap/SKILL.md` passo a passo. A skill `project-bootstrap`
@@ -46,7 +46,7 @@ sequenceDiagram
     alt projeto já existe
         CMD-->>U: reporta e sugere /new-feature
     else diretório vazio
-        CMD->>AG: Agent tool (contexto isolado, tools restritos, model opus)
+        CMD->>AG: Agent tool (contexto isolado, tools restritos, model sonnet)
         AG->>AG: interview via AskUserQuestion (máx. 4 perguntas, só o que faltar)
         AG->>BOOT: segue o procedimento definido
         BOOT->>BP: lista .claude/blueprints/*/*.yaml dinamicamente

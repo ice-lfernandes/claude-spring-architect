@@ -1,27 +1,30 @@
 ---
+paths:
+  - "**/src/**/*.java"
+  - "**/db/migration/**"
 status: active
 ---
 
-# Security — personal data at rest and in transit
+# Personal data — at rest and in transit
 
 Single principle: **personal data leaves the process only where something outside it
 genuinely needs that value, and every place it lands is a place it can be found.** A field
 that is masked in the logs and stored in clear in a table, or published in clear on a topic,
 was never protected — it was protected in the one place someone happened to look.
 
-No `paths`: this file has no file territory. Personal data is decided at the boundary where a
-payload is written, and that boundary is a different package in every architecture — cite it
-by path (`@.claude/rules/security.md`) wherever a payload, a column, or a message body is
-designed.
+`paths` is every Java source and every migration, not one boundary package. Where a payload
+is written differs by architecture, but the fields it carries are often decided further in —
+a domain event's fields are what crossed the broker in the observed case. Wherever a payload,
+a column, or a message body is *designed*, before any code exists, cite it by path
+(`@.claude/rules/personal-data.md`).
 
-## Scope of this version
+## Scope
 
-**Personal data at rest and in transit, and nothing else yet.** Secrets and authentication
-and authorization are announced for this file in `@.claude/rules/00-index.md` and are not
-written: there is no observed case for them, and a norm written ahead of its first failure is
-decoration. What is observed is a national identifier serialized in clear into a `jsonb`
-column and published in clear on a broker topic, in a project whose logs masked the same
-field correctly.
+**Personal data at rest and in transit, and nothing else.** Secrets and authentication and
+authorization are separate topics, planned as their own files in
+`@.claude/rules/00-index.md`. What is observed is a national identifier serialized in clear
+into a `jsonb` column and published in clear on a broker topic, in a project whose logs
+masked the same field correctly.
 
 Masking in **logs** is not here either — it has a single owner already,
 `@.claude/rules/logging.md` § Masking candidates. This file starts where that one stops: the

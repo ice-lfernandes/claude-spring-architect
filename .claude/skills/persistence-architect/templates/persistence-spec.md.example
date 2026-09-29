@@ -39,7 +39,7 @@
 No index on `name`: no query filters by it. An index without a query is write cost with
 no return.
 
-**Personal data at rest** — `@.claude/rules/security.md` § At rest. Written for every table
+**Personal data at rest** — `@.claude/rules/personal-data.md` § At rest. Written for every table
 this partial designs, `none` included; a serialized `payload` column is the case schema review
 cannot see into, so it is named explicitly with its retention.
 

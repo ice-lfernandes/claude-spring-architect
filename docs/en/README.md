@@ -1,6 +1,6 @@
 # `claude-spring-architect` workflow
 
-Versão em português: [`docs/`](../README.md).
+Versão em português: [`docs/pt-br/`](../pt-br/README.md).
 
 This folder documents how the pieces of this repository's `.claude/` collaborate to
 run the main commands — `/init-project`, `/new-feature`, `/arch-doctor`,

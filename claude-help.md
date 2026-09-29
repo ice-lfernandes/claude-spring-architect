@@ -5,7 +5,7 @@ the agent: memory, skills, commands, subagents, hooks, MCP, plugins, and model
 configuration. Written with a focus on software development.
 
 Source: official documentation at <https://code.claude.com/docs/en/overview>, checked
-against the snapshot in `.claude/claude-code-docs/` (accessed 2026-09-27). Where the
+against the snapshot in `docs/pt-br/claude-code-docs/` (accessed 2026-09-27). Where the
 docs and this guide diverge, the official docs win. Items the official docs do **not**
 state are marked *"not in official docs"* — they are kept only where this repository
 depends on them.

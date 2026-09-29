@@ -41,7 +41,7 @@ flowchart TB
     end
 
     subgraph L2["Isolated execution — agents"]
-        AG_INITZR["agent: project-initializer\n(model: opus)"]:::agent
+        AG_INITZR["agent: project-initializer\n(model: sonnet)"]:::agent
         AG_DEV["agent: java-spring-boot-developer\n(model: sonnet, effort: max)"]:::agent
         AG_ARCH["agent: archunit-installer\n(model: sonnet, effort: medium)"]:::agent
         AG_LOG["agent: commons-logging-installer\n(model: sonnet, effort: medium)"]:::agent
@@ -59,7 +59,7 @@ flowchart TB
     CLAUDEMD -->|routes via table| SK_AUDIT
     CLAUDEMD -->|routes via table| SK_ADOPT
 
-    SK_INIT -->|Agent tool: context + restricted tools + model opus| AG_INITZR
+    SK_INIT -->|Agent tool: context + restricted tools + model sonnet| AG_INITZR
     AG_INITZR -->|follows the procedure of| SK_BOOT
     SK_BOOT -->|reads and validates| BLUEPRINTS
     SK_BOOT -->|reads and copies into the generated project| RULES

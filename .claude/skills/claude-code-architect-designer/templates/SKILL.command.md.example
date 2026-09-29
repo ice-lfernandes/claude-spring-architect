@@ -5,7 +5,8 @@ description: >
   effect, say so here.> Explicit invocation only.
 argument-hint: "[<argument>] [--<flag> <value>]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
+allowed-tools: Read, Write, Edit, Glob, AskUserQuestion, Bash(<command>:*)
+model: <one of skill_classes.classes.<class>.allowed_models>
 ---
 
 ## <Relevant state, injected before the model reads>
@@ -57,6 +58,12 @@ WHEN THIS FORM:
 - It has a side effect: generates, installs, publishes.
 - DON'T use this form if another piece needs to chain it: the field hides it from the
   model. The five skills of `/new-feature` are Form 1 for this reason (D17).
+
+BASH IN allowed-tools:
+  one `Bash(<command>:*)` per command the body and every `!`…`` injection run — each pipe
+  segment is checked on its own, and a missing one aborts the injection. Bare `Bash` fails
+  `ArchHook.java schema` unless ## Contract carries a `**Unfiltered Bash:** <reason>` line
+  (`skill_classes.unfiltered_bash_marker` in extensions.json).
 
 IF DELEGATING TO A SUBAGENT:
   add `context: fork` + `agent: <name>` to the frontmatter, keep the body thin, and

@@ -17,7 +17,7 @@ with a selectable architecture declared as data, boundaries enforced by hooks an
 the build, a spec-first feature pipeline, and a deterministic audit trail of what every
 skill and agent run cost.**
 
-Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/`](docs/README.md)
+Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/pt-br/`](docs/pt-br/README.md)
 (português). What sets this repository apart from similar ones, with the comparison:
 [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
 
@@ -422,7 +422,7 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
 ```
 /init-project
      │
-     ▼  agent: project-initializer (isolated context, model: opus)
+     ▼  agent: project-initializer (isolated context, model: sonnet)
      │
      ├─ 1. INTERVIEW — blueprint · coordinates · build · features
      ├─ 2. VALIDATES blueprint — 5-rule checklist            [fails fast]
@@ -872,7 +872,7 @@ Not yet in `validate.yml`, known gaps:
 | [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
 | [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
 
-Portuguese versions of every document live under [`docs/`](docs/README.md).
+Portuguese versions of every document live under [`docs/pt-br/`](docs/pt-br/README.md).
 
 ## Contributing
 

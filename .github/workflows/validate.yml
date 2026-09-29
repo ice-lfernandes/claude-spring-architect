@@ -56,6 +56,16 @@ jobs:
       - name: doctor
         run: java .claude/hooks/ArchHook.java doctor
 
+      # Every hook launches the committed ArchHook.jar, which a reviewer cannot read. A
+      # fresh compile under the pinned JDK must reproduce it byte for byte on all three
+      # OSes — the check that tells a tampered jar from a stale one
+      # (.claude/decisions/0075-precompiled-hook-jar.md).
+      - name: committed ArchHook.jar is what the source compiles to
+        run: java .claude/hooks/ArchHook.java build --verify
+
+      - name: the jar runs what the hooks run
+        run: java -jar .claude/hooks/ArchHook.jar doctor
+
       - name: hook blocks forbidden import
         run: java .claude/.ci/BoundaryTest.java
 
@@ -106,7 +116,7 @@ jobs:
 
       # `claude plugin validate` isn't run here: the CLI isn't on the runner, and
       # installing it would add a dependency outside java/git/curl (see CLAUDE.md §
-      # Dependencies). It's a local-only, human-run complement — see docs/07-ci-validate.md.
+      # Dependencies). It's a local-only, human-run complement — see docs/pt-br/07-ci-validate.md.
 
       - name: skill name doesn't shadow a native slash command
         run: |
@@ -261,9 +271,12 @@ jobs:
             [ -z "$GLOBS" ] && continue
             for glob in $GLOBS; do
               # Layout-independent globs: valid in any blueprint, don't have to
-              # match any declared package.
+              # match any declared package. `**/src/**/*.java` is the Java-wide glob since
+              # decision 0082 (`**/*.java` also matched ArchHook.java), and a `.claude/`
+              # glob — 00-index.md's — targets this tree, not a package.
               case "$glob" in
-                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+                '**/*.java'|'**/src/**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+                .claude/*) continue ;;
               esac
               # `**/adapter/in/rest/**` → `adapter.in.rest`, which is how packages.map
               # writes it. A glob shorter than the declared package counts as a match:

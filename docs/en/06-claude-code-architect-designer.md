@@ -513,8 +513,11 @@ failure mode on this list.
 | `paths` | Globs that make the rule auto-load when the matching files are touched |
 | `status` | `active` applies now · `draft` is a proposal, don't apply · `deprecated` only for reading old code |
 
-A rule without `paths` only enters context through explicit citation
-(`@.claude/rules/<file>.md`).
+A rule without `paths` is **not** "citation only": it loads at launch, in every session.
+Every rule declares `paths`, with the narrowest glob that holds it — Java is
+`**/src/**/*.java`, never `**/*.java`, which matches `.claude/hooks/ArchHook.java`.
+Explicit citation (`@.claude/rules/<file>.md`) comes on top, for design done before the
+file exists.
 
 ### `CLAUDE.md`
 

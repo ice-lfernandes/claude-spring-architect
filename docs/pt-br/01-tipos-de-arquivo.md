@@ -105,19 +105,21 @@ convenção de nomes (`naming.md`), taxonomia de exceção (`error-handling.md`)
 Clean Code (`code-quality.md`), e assim por diante. Cada norma tem **um único dono**
 (`CLAUDE.md` § Invariant 2) — quem precisa dela cita o path, nunca copia o conteúdo.
 
-**Quando entra em contexto:** dois mecanismos, e o primeiro é preferível
+**Quando entra em contexto:** dois mecanismos, e os dois valem para toda rule
 (`.claude/rules/00-index.md` § How a rule enters context):
 
 1. **Auto-loading via `paths`** — a rule declara globs no frontmatter, e entra em
    contexto sozinha quando um arquivo correspondente é tocado. Sem depender de alguém
    lembrar de citá-la.
-2. **Citação explícita** — para rules transversais que nenhum glob captura
-   (`00-index.md` em si). Quem precisa cita o path.
+2. **Citação explícita** — quem desenha algo que a rule governa, antes do arquivo
+   existir, cita o path.
 
 Sem `paths`, a rule carrega **na mesma prioridade que o `CLAUDE.md` do projeto**, ou
-seja, toda sessão (`claude-help.md` § 4). Neste repositório, `architecture-ddd.md` é a
-única rule sem `paths` próprio por design: os globs vêm de `architecture_paths` do
-blueprint ativo, e só existem depois que o projeto é gerado.
+seja, toda sessão (`claude-help.md` § 4). Por isso toda rule declara `paths`, com o glob
+mais estreito que a contém — `00-index.md` carrega em `.claude/rules/**`, e Java é
+`**/src/**/*.java`, nunca `**/*.java` (que casa com `.claude/hooks/ArchHook.java`).
+`architecture-ddd.md` tem `paths` de exemplo: o `export` troca pelos `architecture_paths`
+do blueprint ativo.
 
 **Quem invoca:** ninguém invoca uma rule — ela **carrega**, automaticamente (por
 `paths`) ou por citação. Não existe comando `/rule-name`. É por isso que a tabela de
@@ -155,7 +157,7 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 
 | Agent | Contexto | Tools | Model |
 |---|---|---|---|
-| `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restrito. `Skill` está na lista só para invocar `git-publish` depois de um build verde; não abre acesso a nenhuma outra skill do repositório | `opus` — validar grafo de dependências e reestruturar módulos falha caro |
+| `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restrito. `Skill` está na lista só para invocar `git-publish` depois de um build verde; não abre acesso a nenhuma outra skill do repositório | `sonnet` + `effort: high` — o procedimento é dirigido pelo blueprint, pelo Initializr e pelos templates (decisão 0078) |
 | `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: max` — gerar ~19 passos de código compilável |
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
 | `commons-logging-installer` | Mesma forma do `archunit-installer`: traduz treze exemplares de logging/máscara para o package real, edita um POM, compila até ficar verde — onze escritas e um log de build que não precisam voltar ao contexto do `/new-feature` que o disparou | `Read, Write, Edit, Bash` — só dentro de `commons.logging` e do POM correspondente | `sonnet`, `effort: medium` |

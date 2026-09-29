@@ -152,10 +152,15 @@
     "class_marker": "**Class:**",
     "universal_sections": ["## Contract"],
     "why_section": "(?m)^##\\s+Why\\b",
+    "$comment_bash": "`unfiltered_bash_marker`: a skill whose allowed-tools pre-approves bare `Bash` must carry this marker in its body with the reason — otherwise `schema` fails by name. Scoped entries (`Bash(ls *)`) need nothing. Thirteen skills pre-approved every shell command for their whole turn, git-publish included (lessons-learned-015 § F). The four that keep bare Bash run builds, network and docker by design; force push is refused for them by `guard.force_push`, in-repo writes by `guard bash` and `guard sweep`. Design: .claude/decisions/0076-bash-scope-and-force-push-guard.md",
+    "unfiltered_bash_marker": "**Unfiltered Bash:**",
+    "$comment_model": "`universal_fields`: frontmatter fields every skill must declare; `allowed_models` per class: the values `model` may take there. An absent `model` is a silent default — the skill runs on the session's model — the same failure shape as an unknown field (invariant 10). A skill's `model` holds for the rest of the turn, which is why a pin that LOWERS the model on a skill fired mid-turn is a known risk, not an agent: an agent is warranted only when the model must stay inside that work. `haiku` is in no set. `effort` stays optional. Design: .claude/decisions/0081-skill-model-required-per-class.md",
+    "universal_fields": ["model"],
     "classes": {
       "design": {
         "$comment": "Emits one partial of one use case folder and nothing else. Six skills, one shape.",
         "design_phase": true,
+        "allowed_models": ["opus"],
         "write_allow": ["docs/use-cases/UC-*/**", "docs/use-cases/BACKLOG.md"],
         "required_sections": ["## Target", "## How it's invoked", "## Procedure"],
         "skills": [
@@ -166,6 +171,7 @@
       "orchestrator": {
         "$comment": "Chains other skills and owns the consolidated artifact. init-project overrides to an empty territory: everything it does is delegated to the project-initializer agent, which the guard bypasses as an executor.",
         "design_phase": true,
+        "allowed_models": ["opus", "sonnet"],
         "write_allow": ["docs/use-cases/**", "docs/lessons-learned/**"],
         "required_sections": ["## Procedure"],
         "skills": ["new-feature", "init-project"],
@@ -176,6 +182,7 @@
       "build": {
         "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and java-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs.",
         "blocked_during_design": true,
+        "allowed_models": ["opus", "sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure"],
         "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "java-patterns"],
@@ -188,12 +195,14 @@
       },
       "observer": {
         "$comment": "Reads the setup or the trail and writes nothing. The reports under .claude/audit-usage/ are written by the `audit` hook, not by the skill that reads them.",
+        "allowed_models": ["sonnet"],
         "write_allow": [],
         "required_sections": [],
         "skills": ["arch-doctor", "audit-usage"]
       },
       "meta": {
-        "$comment": "Writes the extensions themselves. The only class whose territory is .claude/ — and the reason the guard is registered in this meta-repository at all. `docs/**` and `.github/**` are in the list because they are DERIVED from the extensions: a change to a hook mode or a class rewrites docs/08-audit-usage.md and its English twin, and a new enforcement adds a step to the workflow that runs it. Leaving them out would block the propagation step of the very skill this class holds, which is what the first run of this block did.",
+        "$comment": "Writes the extensions themselves. The only class whose territory is .claude/ — and the reason the guard is registered in this meta-repository at all. `docs/**` and `.github/**` are in the list because they are DERIVED from the extensions: a change to a hook mode or a class rewrites docs/pt-br/08-audit-usage.md and its English twin, and a new enforcement adds a step to the workflow that runs it. Leaving them out would block the propagation step of the very skill this class holds, which is what the first run of this block did.",
+        "allowed_models": ["opus"],
         "write_allow": [
           ".claude/**", "CLAUDE.md", ".mcp.json", "MCP-SETUP.md",
           "docs/**", ".github/**"
@@ -203,6 +212,7 @@
       },
       "ops": {
         "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive.",
+        "allowed_models": ["sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure", "## Failure modes"],
         "skills": ["git-publish"]
@@ -211,10 +221,11 @@
   },
 
   "agent_classes": {
-    "$comment": "Single owner of what class each agent belongs to, what shape its body has, which frontmatter fields it must declare, and what it is allowed to write. The agent-side twin of `skill_classes` above, read by the same two modes: `schema` validates every .claude/agents/*.md, `guard` enforces `write_allow`. It is also the single owner of WHICH AGENTS EXECUTE — `executor: true` replaces the hand-written `guard.executor_agents` list that used to live below, and `schema` still cross-checks it against each file's own `**Executor:** yes` marker in both directions. Territory is keyed on `agent_type`, which the PreToolUse payload of a subagent's write already carries — the field the old unconditional bypass read. That is why an agent's territory needs no phase file, no SubagentStop bookkeeping, and is immune by construction to the two-hook ordering race of lessons-learned-006 § 1: there is nothing to order, the payload names the agent on every single write. Before this block the four agents each documented a prose `**Writes:**`/`**Does not write:**` contract — archunit-installer promising not to touch docker-compose.yml, commons-logging-installer promising to stay inside its own package — and the guard granted all four an unconditional bypass, so none of those promises was enforced by anything. `required_sections` is prefix-matched against H2 lines, exactly as in `skill_classes`, which is what lets `## Input validation (guardrail)` satisfy `## Input validation` and `## Procedure — 4 fixed blocks + 1 conditional` satisfy `## Procedure`. `overrides.<agent>.write_allow` REPLACES the class default: `installer` holds two agents that share a shape and not a territory, so the class default is their intersection (the POMs) and each override states its full territory. commons-logging-installer's package is blueprint-dependent (`commons.logging` here, `shared.logging` in modular-monolith), so its glob matches on the leaf segment instead of on a package name no blueprint guarantees. Design: .claude/decisions/0059-agent-classes-territory-schema.md",
+    "$comment": "Single owner of what class each agent belongs to, what shape its body has, which frontmatter fields it must declare, and what it is allowed to write. The agent-side twin of `skill_classes` above, read by the same two modes: `schema` validates every .claude/agents/*.md, `guard` enforces `write_allow`. It is also the single owner of WHICH AGENTS EXECUTE — `executor: true` replaces the hand-written `guard.executor_agents` list that used to live below, and `schema` still cross-checks it against each file's own `**Executor:** yes` marker in both directions. Territory is keyed on `agent_type`, which the PreToolUse payload of a subagent's write already carries — the field the old unconditional bypass read. That is why an agent's territory needs no phase file, no SubagentStop bookkeeping, and is immune by construction to the two-hook ordering race of lessons-learned-006 § 1: there is nothing to order, the payload names the agent on every single write. Before this block the four agents each documented a prose `**Writes:**`/`**Does not write:**` contract — archunit-installer promising not to touch docker-compose.yml, commons-logging-installer promising to stay inside its own package — and the guard granted all four an unconditional bypass, so none of those promises was enforced by anything. `required_sections` is prefix-matched against H2 lines, exactly as in `skill_classes`, which is what lets `## Input validation (guardrail)` satisfy `## Input validation` and `## Procedure — 4 fixed blocks + 1 conditional` satisfy `## Procedure`. `overrides.<agent>.write_allow` REPLACES the class default: `installer` holds two agents that share a shape and not a territory, so the class default is their intersection (the POMs) and each override states its full territory. commons-logging-installer's package is blueprint-dependent (`commons.logging` here, `shared.logging` in modular-monolith), so its glob matches on the leaf segment instead of on a package name no blueprint guarantees. Design: .claude/decisions/0059-agent-classes-territory-schema.md. `pattern_catalog` (class default, overridable per agent like `write_allow`) decides whether `ArchHook.java context subagent` hands the agent the design-pattern catalog at SubagentStart; `schema` fails an agent whose effective `write_allow` reaches `src/` without one, and cross-checks the body's `pattern_catalog_marker` line against the value in both directions — .claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md",
     "match": ".claude/agents/*.md",
     "class_marker": "**Class:**",
     "executor_marker": "**Executor:** yes",
+    "pattern_catalog_marker": "**Pattern catalog:**",
     "require_h1": true,
     "universal_sections": ["## Contract", "## Procedure"],
     "universal_fields": ["model", "tools"],
@@ -222,23 +233,26 @@
     "why_section": "(?m)^##\\s+Why\\b",
     "classes": {
       "driver": {
-        "$comment": "Interviews the user and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude.",
+        "$comment": "Interviews the user and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude. `pattern_catalog: false`: it writes through project-bootstrap's templates, it designs no Java of its own.",
         "executor": true,
+        "pattern_catalog": false,
         "write_allow": ["**"],
         "required_sections": ["## Interview"],
         "agents": ["project-initializer"]
       },
       "executor": {
-        "$comment": "Implements an approved spec: the spec replaces the interview, so the body carries an input guardrail instead of questions. The one path outside src/ is the single Edit that closes `status: approved` to `status: implemented` — the frozen-folder check in `guard` allows that line and only that line, and the allowlist has to let the file through before that check is even reached. `pom.xml` is here since lessons-learned-013 § 10: Form B needed `spring-kafka`, no participant in the feature pipeline owned the file (the design skills are docs-only, `/new-feature` writes the spec, the two installers have nothing to do with a feature's dependencies) and the run unblocked only because a human edited it outside every territory. The territory is file-level and cannot say `dependency blocks only` — what bounds it is the agent's own body: a dependency the spec's § 3 or § 6 names as a declared requirement, nothing else, and any other change to the file is reported instead of written.",
+        "$comment": "Implements an approved spec: the spec replaces the interview, so the body carries an input guardrail instead of questions. The one path outside src/ is the single Edit that closes `status: approved` to `status: implemented` — the frozen-folder check in `guard` allows that line and only that line, and the allowlist has to let the file through before that check is even reached. `pom.xml` is here since lessons-learned-013 § 10: Form B needed `spring-kafka`, no participant in the feature pipeline owned the file (the design skills are docs-only, `/new-feature` writes the spec, the two installers have nothing to do with a feature's dependencies) and the run unblocked only because a human edited it outside every territory. The territory is file-level and cannot say `dependency blocks only` — what bounds it is the agent's own body: a dependency the spec's § 3 or § 6 names as a declared requirement, nothing else, and any other change to the file is reported instead of written. `pattern_catalog: true`: this is the agent that designs the feature's Java, and the catalog has to be in its context before the first class is written, not after the second occurrence of a symptom.",
         "executor": true,
+        "pattern_catalog": true,
         "required_fields": ["effort"],
         "write_allow": ["src/**", "**/src/**", "docs/use-cases/UC-*/UC-*-spec.md", "pom.xml", "**/pom.xml"],
         "required_sections": ["## Input validation", "## Failure mode", "## References"],
         "agents": ["java-spring-boot-developer"]
       },
       "installer": {
-        "$comment": "One-shot mechanical setup with no interview, returning a structured summary. The class default is the intersection of its two agents' territories — the POMs, which both edit — and each agent replaces it with its own full list.",
+        "$comment": "One-shot mechanical setup with no interview, returning a structured summary. The class default is the intersection of its two agents' territories — the POMs, which both edit — and each agent replaces it with its own full list. `pattern_catalog: false`: both write Java under src/, but copy fixed templates — nothing they write is designed, so a catalog would only cost context.",
         "executor": true,
+        "pattern_catalog": false,
         "required_fields": ["effort"],
         "write_allow": ["pom.xml", "**/pom.xml"],
         "required_sections": ["## Failure mode", "## Summary format", "## References"],
@@ -266,6 +280,19 @@
         }
       }
     }
+  },
+
+  "subagent_context": {
+    "$comment": "Read by ArchHook.java `context subagent`, registered at SubagentStart only in project-bootstrap/templates/settings.json.example — so it runs in generated projects and nowhere here. For an agent whose effective `agent_classes` `pattern_catalog` is true, the mode extracts each heading in `sections` from `file` up to the next H2, prefixes `header`, appends `pointer`, and hands the result to the subagent as `additionalContext` before its first turn. Sections, not the whole file: the runtime caps `additionalContext` at 10 000 characters and above it replaces the text with a path and a preview the model is not asked to read, so `max_chars` keeps a margin under that cap and `schema` renders the text and fails when it grows past it. The file stays the single owner of the catalog — nothing here copies it; renaming one of the headings below empties the injection, and `schema` fails on that by name. Why a hook and not the agent's `skills:` field: a skill with `disable-model-invocation: true` cannot be preloaded, so `skills: java-patterns` never delivered anything. Design: .claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md",
+    "header": "Design-pattern catalog, injected at SubagentStart by `ArchHook.java context subagent` from `.claude/skills/java-patterns/SKILL.md`. Apply a row while designing the code, from a force the approved spec names or a symptom already on disk — the \"When not\" column binds. Never invoke `/java-patterns` from here: it is manual-only, and you are the sole writer of what you implement.",
+    "file": ".claude/skills/java-patterns/SKILL.md",
+    "sections": [
+      "## Why this is a skill and not a rule",
+      "## Catalog",
+      "## Forbidden in this repository"
+    ],
+    "pointer": "Full GoF triage (every pattern, with this repository's verdict on each): `.claude/skills/java-patterns/references/pattern-catalog.md`. Shape exemplars: `.claude/skills/java-patterns/templates/`. Read them only for a force or symptom the table above does not match.",
+    "max_chars": 9000
   },
 
   "compose": {
@@ -309,6 +336,16 @@
         { "name": "rsync", "targets": "last" },
         { "name": "dd", "targets": "prefixed", "operand_prefix": "of=" }
       ]
+    },
+
+    "force_push": {
+      "$comment": "Read by ArchHook.java `guard bash` (bashForcePush), before any write target is looked at: a `git push` carrying one of `long_flags` (exact, or with `=value`), a short-flag cluster containing `short_flag` (`-f`, `-uf`), or an operand starting with `refspec_prefix` (`+main`) exits 2. `permissions.deny: Bash(git push --force:*)` stays as the free first layer, but a prefix rule is blind to `-f`, `--force-with-lease`, `+ref`, `git -C . push --force` and `sh -c \"git push --force\"` — the five variants lessons-learned-015 § H lists and the permission docs confirm. `git_options_with_value` are the global options skipped two words at a time before the subcommand; a `shell_wrappers` head followed by `shell_command_flag` has its string re-parsed, one level. `--force-with-lease` is blocked on purpose: safer than --force, still a rewrite of published history. Not caught, by the same bar 0063 set: a flag held in a variable, a git alias. Design: .claude/decisions/0076-bash-scope-and-force-push-guard.md",
+      "shell_wrappers": ["sh", "bash", "zsh"],
+      "shell_command_flag": "-c",
+      "git_options_with_value": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"],
+      "long_flags": ["--force", "--force-with-lease"],
+      "short_flag": "f",
+      "refspec_prefix": "+"
     }
   },
 
@@ -322,13 +359,28 @@
     "stamp_file": ".claude/.arch-provenance.json"
   },
 
+  "hook_build": {
+    "$comment": "How `ArchHook.java build` turns the source into the jar every hook registration launches, and what `schema` and `doctor` compare to call it stale. `javac_feature` is the pin: `build` refuses under any other JDK feature release, because `--verify` (run by CI) recompiles and compares class bytes, and two javac majors emit different bytes for the same source. `release` is what the classes target — the stated JDK 21+ dependency. `hash_entry` holds the SHA-256 of the source with CRLF normalized to LF: `* text=auto` gives a Windows checkout CRLF, and a raw hash would call a fresh jar stale. Design: .claude/decisions/0075-precompiled-hook-jar.md",
+    "source": ".claude/hooks/ArchHook.java",
+    "jar": ".claude/hooks/ArchHook.jar",
+    "main_class": "ArchHook",
+    "release": 21,
+    "javac_feature": 21,
+    "hash_entry": "META-INF/archhook-source.sha256"
+  },
+
   "export": {
     "$comment": "Single owner of WHAT the `export` mode writes into a target project and HOW each piece is transformed. Read by ArchHook.java `export`; cross-checked by `schema` at sweep time, the same way `guard.executor_agents` is. The failure it exists to close is silent in both directions: a skill added to this repo and forgotten here never reaches any project generated afterwards, and an entry left behind after a rename points at a file that no longer exists — neither breaks anything at generation time, only for whoever reads the dead citation inside the project. That is why `include` and `exclude` together must cover every skill and every agent on disk: not listing one is the bug, and `schema` says so by name. Prose counterpart, which branch `feat/bootstrap-invokes-export` replaces with a call to the mode: project-bootstrap/SKILL.md §§ 6.6, 6.7, 6.8, 7. Design: .claude/decisions/0054-deterministic-export-provenance-plugin.md",
 
     "copy": [
-      { "from": ".claude/hooks/ArchHook.java", "to": ".claude/hooks/ArchHook.java" },
+      { "$comment": "`verbatim`: copied byte for byte, skipping `transform`. The jar below carries the SHA-256 of THIS source, and `schema` compares the two inside the generated project too — a citation cut here would make every exported jar read as stale. Design: .claude/decisions/0075-precompiled-hook-jar.md", "from": ".claude/hooks/ArchHook.java", "to": ".claude/hooks/ArchHook.java", "verbatim": true },
       { "from": ".claude/schemas/extensions.json", "to": ".claude/schemas/extensions.json" },
       { "from": ".claude/skills/project-bootstrap/templates/audit-pricing.json.example", "to": ".claude/audit-usage/pricing.json" }
+    ],
+
+    "$comment_binary": "Copied as bytes, never read as text, never transformed. What every hook registration launches (`java -jar`), so a project that lacked it would have every hook exit 1 — which does not block. Design: .claude/decisions/0075-precompiled-hook-jar.md",
+    "binary_copy": [
+      { "from": ".claude/hooks/ArchHook.jar", "to": ".claude/hooks/ArchHook.jar" }
     ],
 
     "overwrite": [
@@ -345,6 +397,9 @@
 
     "$comment_blueprint": "The active blueprint travels with the project, the catalog does not. Without this the yaml that defines a project's architecture can live only in the fetched tree, which is a temporary directory: the stamp records the id, the next update reads that id, the source does not have it, and the export fails at a point where nobody was ever told to keep a file (lessons-learned-011 § 4). Copied for every blueprint, official or not, because at this layer the mode cannot tell one from the other — the fetched tree holds both by then. `{id}` is the blueprint's id.",
     "blueprint_copy": ".claude/blueprints/{id}/{id}.yaml",
+
+    "$comment_retired": "Paths this repo renamed or dropped, deleted from the target by `export` when present (`--dry-run` names them). Export only ever wrote, so a renamed rule's old copy stayed in every adopted project — the same norm in two files there, the old one loading at launch. Restricted to .claude/; the target's worktree is clean before an export, so a deletion is one `git checkout` from undone. `schema` fails on an entry that still exists here. Design: .claude/decisions/0082-rules-without-paths-load-at-launch.md",
+    "retired": [".claude/rules/security.md"],
 
     "ensure_dirs": [".claude/audit-usage"],
     "$comment_gitignore": "Two lines, opposite decisions, both deliberate. `.claude/audit-usage/` itself is VERSIONED — `history.jsonl`, `nodes.jsonl` and each report belong to the commit of the run that produced them, and `git-publish` stages that directory by default; only the hook's scratch state under `.state/` is ignored. `docs/lessons-learned/` is NOT versioned: those are local notes taken while running the pipeline, not project documentation, and a run that recreates a deleted one writes different text nobody compares. Oscillating between the two is what makes every later diff start dirty — lessons-learned-012 § 15 and § 16.",
@@ -388,9 +443,9 @@
     },
 
     "derived_paths": {
-      "$comment_exempt": "Globs that are valid in any architecture and so need no derivation: they name no package. A rule whose `paths` holds only these is not expected here; one that names a package and is missing from this map would travel with the glob of whichever blueprint happened to be written into the file — gap 8 of lessons-learned-001. `schema` checks both directions.",
-      "derived_paths_exempt_globs": ["**/*.java", "**/src/test/**", "**/db/migration/**"],
-      "$comment": "A rule with a territory auto-loads by `paths`, and a glob naming a package the active blueprint does not use leaves it silently unloaded. The glob is therefore derived from the blueprint's packages.map — the VALUE, not the key, with `.` becoming `/` — and never copied from the original file. `suffix` selects the packages.map entry whose key ends with it; `key` names candidates in order of preference, first hit wins. A selector that matches nothing and is `optional` copies the rule WITHOUT `paths` (still citable); one that matches nothing and is not optional is a failure of the export, not of the project. No defensive union: this blueprint's glob and no other.",
+      "$comment_exempt": "Globs that are valid in any architecture and so need no derivation: they name no package. A rule whose `paths` holds only these is not expected here. Java is `**/src/**/*.java`, never `**/*.java`, which also matches .claude/hooks/ArchHook.java and loads every Java norm on each read of the hook (0082). One that names a package and is missing from this map would travel with the glob of whichever blueprint happened to be written into the file — gap 8 of lessons-learned-001. `schema` checks both directions.",
+      "derived_paths_exempt_globs": ["**/src/**/*.java", "**/src/test/**", "**/db/migration/**", ".claude/rules/**"],
+      "$comment": "A rule with a territory auto-loads by `paths`, and a glob naming a package the active blueprint does not use leaves it silently unloaded. The glob is therefore derived from the blueprint's packages.map — the VALUE, not the key, with `.` becoming `/` — and never copied from the original file. `suffix` selects the packages.map entry whose key ends with it; `key` names candidates in order of preference, first hit wins. A selector that matches nothing and is `optional` keeps the master example globs, inert in that architecture — never strips them, since a rule without `paths` loads at launch in every session (.claude/decisions/0082-rules-without-paths-load-at-launch.md); one that matches nothing and is not optional is a failure of the export, not of the project. No defensive union: this blueprint's glob and no other.",
       "api-rest.md": {
         "suffix": [".rest"],
         "glob": "**/{}/**",
@@ -466,7 +521,7 @@
         {
           "file": ".claude/rules/00-index.md",
           "op": "replace_paragraph",
-          "anchor": "`architecture-ddd.md` is the only one without its own `paths`",
+          "anchor": "`architecture-ddd.md`'s `paths` here is an example",
           "replacement": "`architecture-ddd.md` carries the `paths` fixed at generation time from blueprint\n`{blueprint}`. Changing it by hand disables the auto-loading of that rule."
         },
         {

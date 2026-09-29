@@ -19,8 +19,8 @@ triggered by the model on its own. It doesn't do the work itself: it delegates v
 `Agent tool` to `project-initializer`, which exists as an agent for two of the three
 valid reasons (`CLAUDE.md` § Invariant 5) — generation produces verbose output that
 shouldn't fill the conversation, and it runs with a restricted set of tools.
-`project-initializer` uses `model: opus` because validating a dependency graph and
-restructuring modules fails expensively if the model gets it wrong.
+`project-initializer` uses `model: sonnet` with `effort: high`: the procedure is driven
+by the blueprint, the Initializr and the templates, not by judgment (decision 0078).
 
 `project-initializer`, in turn, **doesn't reimplement the procedure** — it follows
 `.claude/skills/project-bootstrap/SKILL.md` step by step. The `project-bootstrap`
@@ -46,7 +46,7 @@ sequenceDiagram
     alt project already exists
         CMD-->>U: reports and suggests /new-feature
     else empty directory
-        CMD->>AG: Agent tool (isolated context, restricted tools, model opus)
+        CMD->>AG: Agent tool (isolated context, restricted tools, model sonnet)
         AG->>AG: interview via AskUserQuestion (max 4 questions, only what's missing)
         AG->>BOOT: follows the defined procedure
         BOOT->>BP: dynamically lists .claude/blueprints/*/*.yaml

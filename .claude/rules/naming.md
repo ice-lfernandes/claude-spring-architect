@@ -1,6 +1,6 @@
 ---
 paths:
-  - "**/*.java"
+  - "**/src/**/*.java"
 status: active
 ---
 

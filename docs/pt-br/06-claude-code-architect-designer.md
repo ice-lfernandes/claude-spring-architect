@@ -502,8 +502,10 @@ lista.
 | `paths` | Globs que fazem a rule auto-carregar quando os arquivos casados são tocados |
 | `status` | `active` vale agora · `draft` é proposta, não aplica · `deprecated` só pra ler código antigo |
 
-Rule sem `paths` só entra em contexto por citação explícita
-(`@.claude/rules/<file>.md`).
+Rule sem `paths` **não** é "só por citação": carrega no launch, em toda sessão. Toda rule
+declara `paths`, com o glob mais estreito que a contém — Java é `**/src/**/*.java`, nunca
+`**/*.java`, que casa com `.claude/hooks/ArchHook.java`. A citação explícita
+(`@.claude/rules/<file>.md`) vem por cima, no design antes do arquivo existir.
 
 ### `CLAUDE.md`
 

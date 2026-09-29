@@ -4,6 +4,7 @@ description: Installs the ported logging/masking annotations and AOP aspects (Lo
 model: sonnet
 tools: Read, Write, Edit, Bash
 effort: medium
+omitClaudeMd: true
 ---
 
 # `commons-logging-installer` — one-time cross-cutting logging setup
@@ -20,6 +21,10 @@ No tool or model reason applies on its own — reads and writes stay inside the 
 same complexity class as `archunit-installer`, which already uses `sonnet`. Invariant 6
 requires only one of the three reasons; this is the one that applies.
 
+`omitClaudeMd: true`: the root `CLAUDE.md` is a declared input, **Read** explicitly at
+step 2; auto-loading it too paid for the same file twice
+(`@.claude/decisions/0083-unused-ecosystem-fields-and-real-allow-list.md`).
+
 ## Contract
 
 **Class:** installer — the territory is
@@ -33,6 +38,9 @@ every write and refuses a path outside the list with exit 2.
 **Executor:** yes — writes under `src/` while a design phase may still be open. The class
 grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
 that flag in both directions.
+
+**Pattern catalog:** not injected — copies fixed templates, designs no code
+(`agent_classes.installer.pattern_catalog: false`; `schema` cross-checks this line).
 
 **Input (required):** project root. Precondition — the `commons` package/module already
 exists, empty, with its `package-info.java` (written by `project-bootstrap` step 4.7,

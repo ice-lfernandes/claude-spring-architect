@@ -7,7 +7,9 @@ description: >
   service is actually running with no foreign container on its ports and no image tag
   disagreeing with the one the test suite pins. Explicit invocation only.
 disable-model-invocation: true
-allowed-tools: Bash, Read
+allowed-tools: Read, Bash(java:*), Bash(find:*), Bash(sort:*)
+model: sonnet
+effort: high
 ---
 
 ## Diagnosis
@@ -32,11 +34,14 @@ Don't fix anything without the user asking.
 
 ## Why this is a manually-invoked skill
 
-Form 2: the whole body is two `` !`…` `` injections plus how to read them, so it is a
+Form 2: the whole body is two shell injections plus how to read them, so it is a
 procedure (axis 5) fired by a person who wants a verdict (axis 2 — `/arch-doctor`). Form 1
 was rejected because a diagnostic the model reaches on its own runs a JVM and a `find` on
 every session that mentions a hook; Form 3 was rejected because there is nothing to isolate —
 the output is the report, and it is what the user asked to see.
+
+Runs on `sonnet` with `effort: high`: the report is computed, but naming the cause and the
+command that fixes it is judgment (`@.claude/decisions/0080-procedural-skills-on-sonnet.md`).
 
 The name is not `doctor`: `/doctor` is a native command, and a skill folder with that name
 shadows it silently — `@CLAUDE.md` § Known pitfalls.

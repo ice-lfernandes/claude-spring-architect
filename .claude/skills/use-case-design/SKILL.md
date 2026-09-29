@@ -8,7 +8,8 @@ description: >
   actions and it's necessary to know whether it's one use case or several. First piece
   of the `/new-feature` pipeline.
 argument-hint: "[technical description of the use case]"
-allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*), Bash(tail:*)
+model: opus
 ---
 
 ## Already-designed use cases
@@ -59,6 +60,8 @@ files in `docs/use-cases/**` — this repository's default for anything with a s
 effect. The subagent lost by failing the counter-test's three questions; the full
 record, with all four options and the notes, is in
 `@.claude/decisions/0002-skill-use-case-design.md`.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Out of scope — and it's someone else's scope, not a lesser scope
 

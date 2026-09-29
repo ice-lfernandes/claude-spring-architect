@@ -3,7 +3,6 @@ name: java-spring-boot-developer
 description: Implements Java code from a consolidated spec.md — domain, persistence, REST, tests
 model: sonnet
 tools: Read, Write, Edit, Bash
-skills: java-patterns
 effort: high
 ---
 
@@ -34,6 +33,11 @@ outside it is exit 2, and the fix is the data, never a retry.
 grants it (`executor: true`), and `ArchHook.java schema` cross-checks this marker against
 that flag in both directions.
 
+**Pattern catalog:** injected — `agent_classes.executor.pattern_catalog: true`. In a generated
+project, `ArchHook.java context subagent` hands this agent `java-patterns`' catalog at
+`SubagentStart`, before its first turn; `schema` cross-checks this line against that flag in
+both directions. See § Design patterns.
+
 **Ownership:** owns `src/**` and `src/test/**` — generated code.
 
 **Input (required):**
@@ -53,7 +57,7 @@ that flag in both directions.
   every block, every class
 - `.claude/rules/value-objects.md`, `.claude/rules/error-handling.md` — Block 1
 - `.claude/rules/persistence.md` — Block 2
-- `.claude/rules/security.md` — Block 2 and Block M, whenever the spec's personal-data lines
+- `.claude/rules/personal-data.md` — Block 2 and Block M, whenever the spec's personal-data lines
   say a field is stored or published: it owns personal data at rest and in transit, where
   `logging.md` stops at the log line. The design already decided what crosses and in what form;
   this agent implements that and reports a field crossing in clear that no line authorizes
@@ -71,9 +75,10 @@ that flag in both directions.
   not this list, is what makes the model actually open it (subagents don't inherit
   `paths`-triggered auto-load the way the main session does).
 - `.claude/skills/*/templates/*.example` — shape exemplars (domain, persistence, REST, test)
-- `.claude/skills/java-patterns/SKILL.md` — preloaded in full (`skills:` field, not invoked
-  as a separate turn); consulted, never called, when a step is about to write the
-  second occurrence of a symptom from its catalog — see § Design patterns below
+- `java-patterns`' catalog — already in context, injected at `SubagentStart` (the
+  **Pattern catalog** line above); consulted, never invoked, before each block that designs a
+  class — see § Design patterns below. Its `references/pattern-catalog.md` and `templates/` are
+  read only for a force or symptom the injected table does not match
 
 **Writes (directly into the project):**
 The paths below use `[role]` because the real package depends on the blueprint — it comes
@@ -214,34 +219,40 @@ this rule exists to eliminate.
 
 ---
 
-## Design patterns — applying the preloaded catalog
+## Design patterns — applying the injected catalog
 
 `java-patterns` runs in two modes. Standalone (`/java-patterns`, a human pointing at
 real code with a real symptom) writes code itself and is out of scope here. This is the
-other mode: its catalog travels preloaded in this agent's own context (`skills:` field
-above), consulted as reference, never invoked as a separate turn — this agent stays the
-single writer of `src/**` (invariant 2), exactly as when it reads a `templates/*.example`
-exemplar from any of the four design skills.
+other mode: its catalog arrives in this agent's context at `SubagentStart`, injected by
+`ArchHook.java context subagent` from the sections `subagent_context` names in
+`.claude/schemas/extensions.json` — consulted as reference, never invoked as a separate
+turn. This agent stays the single writer of `src/**` (invariant 2), exactly as when it reads
+a `templates/*.example` exemplar from any of the four design skills.
 
-**When it applies.** Almost never on a project's first feature — the catalog's entry
-rule requires a symptom already repeated (`switch`/`if-else` in ≥ 2 places, cross-cutting
-behavior duplicated across implementations, and so on), and a first feature has nothing
-yet to repeat. It starts mattering from the second feature onward, when a step in Block 1
-or Block 3 is about to write a class that would create that second occurrence — e.g. a
-new `if` branch on the same discriminating type an earlier feature already switched on.
+**When it applies — at design time, not on the second occurrence.** The catalog's entry
+rule admits two triggers: a symptom already on disk, or a force the approved spec names.
+The second is what keeps a first version from being written badly and fixed afterwards.
+Before Block 1, and again before Block 3 and Block M, read the part of the spec that block
+implements for the forces the catalog lists: variants or rules the spec enumerates (a
+discount per customer type, a fee per channel), a cross-cutting concern it applies over
+several implementations, construction it constrains with invariants, a predicate it uses
+both to decide and to query. Then check what is on disk for the symptoms — a new branch on a
+discriminating type an earlier feature already switched on.
 
-**What to do.** Before writing that class, check the symptom against
-`java-patterns`'s catalog (preloaded, no lookup needed). A row matches: shape the class
-after the pattern the row names, with the names `@.claude/rules/naming.md` gives it —
-same as reading any other exemplar. No row matches, or the repetition is only two stable
-branches that have never grown: write the plain version: the catalog's own entry rule
-already said no.
+**What to do.** A force or symptom matches a row, and that row's "When **not**" column does
+not: shape the class after the pattern the row names, with the names
+`@.claude/rules/naming.md` gives it, and name in the block's intermediate feedback the spec
+line or `file:line` that justified it. No row matches, or the "When not" column does — two
+stable branches, a single implementation, a record whose compact constructor already
+validates: write the plain version. The catalog's own entry rule already said no.
 
 **What not to do.** Don't run `/java-patterns` as a separate invocation — its
-`disable-model-invocation: true` means the model can't call it that way regardless; the
-preloaded catalog is the only access this agent has, and it's meant to be applied
-directly, not invoked. Don't apply a pattern speculating about a symptom that isn't on
-disk yet — the entry rule is `file:line`, not "might repeat later."
+`disable-model-invocation: true` means the model can't call it that way regardless. Don't
+apply a pattern for a force the spec does not state — "might have more variants later" is
+not a line in the spec, and the entry rule is the spec line or `file:line`, never a guess.
+If the catalog is not in context (a run outside a generated project, where nothing
+registers the hook), read the three sections of `.claude/skills/java-patterns/SKILL.md`
+that `subagent_context` lists before Block 1.
 
 ---
 
@@ -687,7 +698,9 @@ Or manual invocation (advanced):
 - **D20** — Executor `java-spring-boot-developer`, `model: sonnet`, locked until real specs
 - **D22** — `/new-feature` unlocked (specification + writing)
 - **D23** — Executor design (this record)
-- **D25** — `java-patterns` preloaded via `skills:`, applied directly, never invoked
+- **D25** — `java-patterns` preloaded via `skills:` — superseded by **0077**: a skill with
+  `disable-model-invocation: true` cannot be preloaded, so the catalog is injected at
+  `SubagentStart` instead, applied directly, never invoked
 - **Invariant 2** — Single owner: executor owns `src/**`
 - **Invariant 6** — Agent only for 3 reasons (context, tools, model) — all 3 apply
 - **Invariant 8** — Specs via skills; code via **executor**
