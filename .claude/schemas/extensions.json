@@ -24,7 +24,8 @@
         "context",
         "agent",
         "background",
-        "hooks"
+        "hooks",
+        "shell"
       ]
     },
 
@@ -47,7 +48,10 @@
         "background",
         "effort",
         "isolation",
-        "color"
+        "color",
+        "omitClaudeMd",
+        "initialPrompt",
+        "experimental"
       ]
     },
 

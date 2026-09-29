@@ -2406,7 +2406,9 @@ public class ArchHook {
         // the runtime ever interpolating what it wrote.
         String scanned = TICK_SPAN.matcher(FENCE.matcher(content).replaceAll(""))
                 .replaceAll("");
-        for (String l : scanned.split("\n", -1)) {
+        // `\R`, not `\n`: a CRLF checkout (core.autocrlf on Windows) leaves a `\r` on
+        // every line, and the anchored `[ \t]*$` would reject the bare marker line.
+        for (String l : scanned.split("\\R", -1)) {
             if (!l.contains(marker) || alone.matcher(l).matches()) continue;
             if (exempt.stream().anyMatch(p -> p.matcher(l).find())) continue;
             errors.add("  " + rel + ":" + lineOf(content, l.strip()) + " — `" + marker

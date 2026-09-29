@@ -1,11 +1,14 @@
 # Claude Code ecosystem guide
 
 A practical reference to everything Claude Code offers for extending and controlling
-the agent: memory, skills, commands, subagents, hooks, MCP, and plugins. Written with a
-focus on software development.
+the agent: memory, skills, commands, subagents, hooks, MCP, plugins, and model
+configuration. Written with a focus on software development.
 
-Source: official documentation at <https://code.claude.com/docs/en/overview> (accessed
-2026-09-04). Where the docs and this guide diverge, the official docs win.
+Source: official documentation at <https://code.claude.com/docs/en/overview>, checked
+against the snapshot in `.claude/claude-code-docs/` (accessed 2026-09-27). Where the
+docs and this guide diverge, the official docs win. Items the official docs do **not**
+state are marked *"not in official docs"* — they are kept only where this repository
+depends on them.
 
 ---
 
@@ -24,8 +27,9 @@ Source: official documentation at <https://code.claude.com/docs/en/overview> (ac
 11. [Workflows that work](#11-workflows-that-work)
 12. [Context management](#12-context-management)
 13. [Anti-patterns](#13-anti-patterns)
-14. [How this repository uses all of this](#14-how-this-repository-uses-all-of-this)
-15. [Quick command reference](#15-quick-command-reference)
+14. [Model, effort, thinking, output styles](#14-model-effort-thinking-output-styles)
+15. [How this repository uses all of this](#15-how-this-repository-uses-all-of-this)
+16. [Quick command reference](#16-quick-command-reference)
 
 ---
 
@@ -41,16 +45,20 @@ can reach, and what happens automatically.
 | **Auto memory** | Notes Claude writes itself between sessions | `~/.claude/projects/<proj>/memory/` |
 | **Rules** | Modular instructions, optionally scoped by path glob | `.claude/rules/*.md` |
 | **Skills** | Knowledge and workflows loaded on demand; become `/name` | `.claude/skills/<name>/SKILL.md` |
-| **Commands** | Older single-file skill format | `.claude/commands/<name>.md` |
+| **Commands** | Older single-file skill format, still recognized | `.claude/commands/<name>.md` |
 | **Subagents** | Isolated workers with their own context | `.claude/agents/<name>.md` |
 | **Hooks** | Scripts triggered on lifecycle events | `.claude/settings.json` |
 | **MCP** | Protocol for connecting external services | `.mcp.json`, `claude mcp add` |
 | **Plugins** | Packaging of everything above, distributable | directory with `.claude-plugin/plugin.json` |
+| **Output styles** | Replace the coding-focused part of the system prompt | `~/.claude/output-styles/`, `.claude/output-styles/` |
 
 One principle runs through everything else: **the context window is the scarce
 resource**. It holds the entire conversation — every message, every file read, every
 command output. Performance degrades as it fills up. Practically every good practice
 below exists to spend less context, or to spend it better.
+
+Both `CLAUDE.md` and auto memory are **context, not applied configuration**. To block
+an action regardless of what the model decides, use a `PreToolUse` hook.
 
 ---
 
@@ -68,6 +76,7 @@ below exists to spend less context, or to spend it better.
 | Something that must happen **every time, no exceptions** | Hook |
 | Data that lives in an external system (Jira, database, Figma) | MCP |
 | Same setup in a second repository | Plugin |
+| Change how Claude talks and works for every prompt (teaching mode, terse mode) | Output style |
 
 ### Triggers: when to add each thing
 
@@ -104,6 +113,10 @@ that blocks the edit is *enforcement*. If the rule must always hold, make it a h
 provides the knowledge of how to use them well. They combine: MCP connects to the
 database, the skill documents the schema and query patterns.
 
+**Output style vs. CLAUDE.md** — CLAUDE.md is added *on top of* the default system
+prompt as a user message; an output style *replaces* the coding-focused part of the
+system prompt. See [§14](#14-model-effort-thinking-output-styles).
+
 ---
 
 ## 3. CLAUDE.md and memory
@@ -115,13 +128,27 @@ replaced:
 
 | Scope | Location | For |
 |---|---|---|
-| Managed policy | `/Library/Application Support/ClaudeCode/CLAUDE.md` (macOS), `/etc/claude-code/CLAUDE.md` (Linux) | Organization standards, via MDM |
+| Managed policy | macOS `/Library/Application Support/ClaudeCode/CLAUDE.md`; Linux/WSL `/etc/claude-code/CLAUDE.md`; Windows `C:\Program Files\ClaudeCode\CLAUDE.md` | Organization standards, via MDM. Can also be embedded in the `claudeMd` key of `managed-settings.json` |
 | User | `~/.claude/CLAUDE.md` | Your preferences, all projects |
 | Project | `./CLAUDE.md` or `./.claude/CLAUDE.md` | Team, versioned in git |
 | Local | `./CLAUDE.local.md` | Personal to the project, in `.gitignore` |
 
-Files in the current directory **and every directory above it** load at startup. Files
-in subdirectories load on demand, when Claude reads something in there.
+How they load:
+
+- `CLAUDE.md` and `CLAUDE.local.md` in the current directory **and every directory
+  above it** load at startup, concatenated from the filesystem root down to the working
+  directory — the closest file is read last. Within one directory, `CLAUDE.local.md`
+  comes after `CLAUDE.md`.
+- Files in subdirectories below the working directory load on demand, when Claude reads
+  something in there.
+- HTML block comments (`<!-- note -->`) are stripped before injection — maintenance
+  notes at zero token cost.
+- `--add-dir` does **not** load the extra directory's `CLAUDE.md` unless
+  `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`.
+- A file above 4 MiB is ignored entirely.
+- `claudeMdExcludes` (globs against absolute paths) skips other teams' `CLAUDE.md` in a
+  monorepo; the arrays add up across settings layers. A managed `CLAUDE.md` can't be
+  excluded by individual settings.
 
 ### Writing an effective CLAUDE.md
 
@@ -142,10 +169,19 @@ Claude make a mistake?"* If not, cut it.
 Diagnostic signs:
 
 - Claude repeats a mistake despite the rule existing → the file is too long, the rule
-  got lost.
-- Claude asks something that's already in CLAUDE.md → the phrasing is ambiguous.
+  got lost. Check `/context` → **Memory files** to confirm it loaded at all.
+- Claude asks something that's already in CLAUDE.md → the phrasing is ambiguous, or two
+  rules contradict each other and it picked one arbitrarily.
 - Need to emphasize? Use `IMPORTANT` **on a single line**. Emphasize ten things and
   none stand out.
+- The content enters as a user message after the system prompt — there is no
+  guarantee of compliance. If it must happen every time, make it a hook.
+- After `/compact`, the root `CLAUDE.md` is re-read from disk and reinjected; nested
+  files and rules with `paths` come back when Claude reads a matching file. What only
+  existed in the conversation is lost.
+- Too large: warning at startup and in `/status`; `/doctor` proposes cuts for a
+  committed `CLAUDE.md`.
+- The `InstructionsLoaded` hook logs which instruction files loaded, when, and why.
 
 Treat it like code: review when something goes wrong, review regularly, version it in
 git.
@@ -160,15 +196,38 @@ See @README for an overview and @package.json for the npm commands.
 ```
 
 Relative paths resolve from the file that imports them. Maximum depth: 4 hops. To cite
-a path **without** importing it, use backticks: `` `@README` ``.
+a path **without** importing it, use backticks: `` `@README` `` — imports inside code
+spans and code blocks are ignored.
 
 Import doesn't reduce context — the imported file loads alongside it at startup. It's
 for organization, not savings. To save context, use rules with `paths:` or skills.
 
+An import pointing **outside** the working directory from a project file opens an
+approval dialog the first time. User-scope files (`~/.claude/...`) are trusted without
+a dialog, except in Cowork desktop sessions.
+
 ### AGENTS.md
 
-Claude Code reads `CLAUDE.md`, not `AGENTS.md`. If the repository already uses
-`AGENTS.md` for other agents:
+Since v2.1.277 Claude Code reads `AGENTS.md` directly:
+
+| Repository has | Claude reads |
+|---|---|
+| `AGENTS.md`, no `CLAUDE.md`/`CLAUDE.local.md` on the path | `AGENTS.md` |
+| Both | Only the `CLAUDE.md` files |
+| `CLAUDE.md` that imports `AGENTS.md` | `CLAUDE.md`, with the import expanded |
+
+To change it: `/config` → **Project instructions**: `claude-md-or-agents-md`
+(default), `claude-md-and-agents-md`, `claude-md`, `managed-only`. Also configurable
+through `pluginConfigs` of the built-in `agents-md@builtin` plugin (ignored in project
+and local settings).
+
+Differences from `CLAUDE.md`: `InstructionsLoaded` hooks don't fire for an `AGENTS.md`
+read through this setting; `--add-dir` doesn't load `AGENTS.md`; `AGENTS.local.md`,
+`AGENTS.override.md`, and `.agents/` are never read.
+
+To share one file across tools, prefer `@AGENTS.md` inside a `CLAUDE.md` over a
+symlink — on Windows a committed symlink becomes a one-line text file without
+`core.symlinks`:
 
 ```markdown
 @AGENTS.md
@@ -180,20 +239,26 @@ Use plan mode for changes to `src/billing/`.
 ### Auto memory
 
 Claude writes its own notes between sessions, in
-`~/.claude/projects/<project>/memory/`. Four types: `user` (who you are), `feedback`
-(corrections you've given), `project` (work in progress), `reference` (external links).
-It skips whatever can be derived from the code.
+`~/.claude/projects/<project>/memory/`. Four types, marked in the note's frontmatter:
+`user` (who you are), `feedback` (corrections you've given and confirmed approaches),
+`project` (work in progress, deadlines, decisions not derivable from code), `reference`
+(where to find information outside the project). It skips whatever can be derived from
+the codebase and whatever `CLAUDE.md` already says.
 
-`MEMORY.md` is the index — the first 200 lines (or 25KB) load every session. Topic
-files load on demand.
+- `MEMORY.md` is the index — the first 200 lines (or 25 KB) load every session. Topic
+  files load on demand.
+- The directory is derived from the git repository, so **all worktrees share it**.
+- Machine-local: not synced between machines or into cloud sessions.
+- Excluded from the retention sweep (`cleanupPeriodDays`) that deletes old transcripts.
+- Subagents can have their own memory through the `memory` frontmatter field.
 
-Enabled by default. To disable: `/memory` → toggle, or `autoMemoryEnabled: false` in
-settings, or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.
+Enabled by default. To disable: `/memory` → toggle, `autoMemoryEnabled: false` in
+settings, or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. `autoMemoryDirectory` relocates it.
 
 ### Useful commands
 
 - `/init` — generates an initial CLAUDE.md from the existing code.
-- `/memory` — lists and opens the memory files.
+- `/memory` — lists and opens the memory files, toggles auto memory.
 - `/context` — shows what **actually** loaded in this session. Use it to diagnose.
 - `/doctor` — checkup of the Claude Code setup: diagnoses and fixes configuration
   issues. Native; unrelated to this repo's `/arch-doctor`.
@@ -213,13 +278,14 @@ For large projects, break instructions into topic files:
     └── security.md
 ```
 
-All `.md` files are discovered recursively. Rules **without** a `paths` frontmatter
-load at startup, at the same priority as `.claude/CLAUDE.md`.
+All `.md` files are discovered recursively (`rules/frontend/react.md` works). Rules
+**without** a `paths` frontmatter load at startup, at the same priority as
+`.claude/CLAUDE.md`.
 
 ### Path-scoped rules
 
-The real gain is here: the rule only enters context when Claude touches matching
-files.
+The real gain is here: the rule only enters context when Claude reads a file that
+matches the glob.
 
 ```markdown
 ---
@@ -241,14 +307,26 @@ paths:
 | `*.md` | Markdown at the root |
 | `src/components/*.tsx` | Components in a specific directory |
 
-Rules can be symlinks — useful for sharing a set across projects:
+Details that bite:
+
+- `paths` is the **only** field Claude Code reads from a rule. Any other field is
+  ignored without error. This repository's `status` field is validated by its own hook,
+  not by the runtime.
+- Invalid YAML makes the rule load as if it had no `paths` — always on. `claude --debug`
+  shows the parse error.
+- Brace expansion (`{ts,tsx}`) has a budget of 1,000 expanded patterns and 4 MiB per
+  rule.
+- `[` starts a bracket expression; escape a literal one: `photos \[2024/**`.
+- Symlinks are supported (circular ones handled safely). A symlink pointing outside the
+  working directory follows the external-import rule. Network paths (UNC
+  `\\server\share`, `/net`, `/Network`) are not followed.
 
 ```bash
 ln -s ~/company-standards/security.md .claude/rules/security.md
 ```
 
 Personal rules in `~/.claude/rules/` apply to every project and load **before** the
-project's own (the project's take priority).
+project's own. Neither overrides the other — keep them consistent.
 
 ---
 
@@ -329,24 +407,31 @@ the project root, versioned as regular code, cited in `CLAUDE.md` between backti
 
 | Location | Path | Applies to |
 |---|---|---|
+| Enterprise (managed) | Managed settings directory, `skills/<name>/SKILL.md` | Everyone in the organization |
 | Personal | `~/.claude/skills/<name>/SKILL.md` | All your projects |
 | Project | `.claude/skills/<name>/SKILL.md` | Only this project |
+| Nested | `<subdir>/.claude/skills/<name>/SKILL.md` | Monorepo: available once Claude reads or edits a file in that subdirectory |
+| `--add-dir` | `<dir>/.claude/skills/` | The added directory |
 | Plugin | `<plugin>/skills/<name>/SKILL.md` | Wherever the plugin is active |
+| claude.ai synced | Skills synced from claude.ai | `/anthropic-skills:<name>` |
 
-Name conflict resolution: managed > personal > project. Plugin skills are namespaced
-(`/my-plugin:deploy`), so they never collide.
-
-Skills also load from `.claude/skills/` nested below the working directory — useful in
-a monorepo. They become available the first time Claude reads or edits a file in that
-subdirectory.
+Name conflict resolution: **enterprise > personal > project**. A skill beats a
+`.claude/commands/` file with the same name; a project skill also overrides a bundled
+command of the same name (aliases excluded). Plugin skills are namespaced
+(`/my-plugin:deploy`), so they never collide. In a monorepo the nested skill is
+`/apps/web:deploy` and the root one is `/deploy`. The names `synced` and
+`anthropic-skills` are reserved.
 
 **Live detection:** editing a `SKILL.md` is picked up in the current session, no
-restart needed. Creating a `skills/` directory that didn't exist at session start
-requires a restart.
+restart needed (except in `--bare` mode). A `skills/` directory that didn't exist at
+session start needs `/reload-skills`. Plugin hooks, `.mcp.json`, and agents need
+`/reload-plugins`.
 
 ### Frontmatter
 
-All fields are optional; only `description` is recommended.
+All fields are optional; only `description` is recommended. Frontmatter is read only
+when `---` is the **first line** of the file. Unknown fields are ignored silently.
+Booleans accept `true/false`, `yes/no`, `on/off`, `1/0` (v2.1.218+).
 
 ```yaml
 ---
@@ -366,7 +451,7 @@ Main fields:
 
 | Field | Effect |
 |---|---|
-| `description` | How Claude decides to use the skill. **Put the main use case first** — the text is truncated at 1,536 characters in the listing |
+| `description` | How Claude decides to use the skill. **Put the main use case first** — `description` + `when_to_use` are truncated at 1,536 characters in the listing |
 | `when_to_use` | Extra context: trigger phrases, example requests |
 | `argument-hint` | Autocomplete hint, e.g. `[issue-number]` |
 | `arguments` | Positional names for `$name` substitution |
@@ -380,6 +465,12 @@ Main fields:
 | `background` | With `fork`, `false` = wait for the result in the same turn |
 | `paths` | Globs that limit when the skill auto-activates |
 | `hooks` | Hooks registered when the skill is invoked |
+| `shell` | `bash` (default) or `powershell` — the shell that runs `` !`command` `` injections |
+
+Accepted by the runtime but **not acted on**: `license`, `compatibility`, `metadata`
+(Agent Skills spec fields). This repository forbids `metadata` on top of that — it
+invites contracts that enforce nothing, see
+`@.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`.
 
 ### Arguments
 
@@ -400,10 +491,11 @@ Fix issue $ARGUMENTS following our standards.
 | `$ARGUMENTS` | All arguments, as typed |
 | `$0`, `$1`, `$2` | Argument by position (equivalent to `$ARGUMENTS[N]`) |
 | `$name` | Named argument, declared in `arguments:` |
-| `${CLAUDE_SKILL_DIR}` | Directory of the `SKILL.md` — use for embedded scripts |
-| `${CLAUDE_PROJECT_DIR}` | Project root |
+| `${CLAUDE_SKILL_DIR}` | Directory of the `SKILL.md` — use for embedded scripts. Also expands in `allowed-tools` Bash rules |
+| `${CLAUDE_PROJECT_DIR}` | Project root. Also expands in `allowed-tools` Bash rules |
 | `${CLAUDE_SESSION_ID}` | Session ID, useful for logs |
 | `${CLAUDE_EFFORT}` | Current effort level |
+| `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}` | Plugin skills only: the plugin's directory and its persistent data directory |
 
 Skills can be stacked: `/write-tests /fix-issue 123` loads both and passes `123` as
 the argument to each.
@@ -441,18 +533,25 @@ git status --short
 
 Watch out for:
 
-- A command that fails (exit ≠ 0) **aborts the entire skill invocation**. Append
-  `|| true` to commands that legitimately exit non-zero.
+- `!` is only recognized at the start of a line or after whitespace.
+- Each command runs **once**, at invocation, in the session's working directory, in the
+  session's shell (or the one `shell:` names). stderr is merged into the output.
 - Default timeout: 2 minutes.
+- A command that fails **aborts the entire skill invocation** with
+  `Shell command failed for pattern "..."`. Exit 1 is tolerated for search and compare
+  commands (`grep` with no matches); elsewhere append `|| true` to commands that
+  legitimately exit non-zero.
 - The command never asks for permission. If the permission check doesn't return
-  "allow," the invocation aborts — pre-approve with `allowed-tools`.
-- `!` is only recognized at the start of a line or after a space.
+  "allow," the invocation aborts — pre-approve with `allowed-tools`. A pipeline is
+  checked **per segment**: `` !`a | b | c` `` needs a rule for `a`, `b`, and `c`.
+- `disableSkillShellExecution: true` in settings turns injection off entirely. Skills
+  synced from claude.ai never run shell commands.
 
 ### Running the skill isolated (`context: fork`)
 
 ```yaml
 ---
-name: deep-research
+name: research-topic
 description: Researches a topic in depth
 context: fork
 agent: Explore
@@ -465,8 +564,13 @@ Research $ARGUMENTS in depth:
 ```
 
 The skill's content becomes the subagent's prompt. It does **not** see the
-conversation history. Runs in background by default; the result arrives when it's
-done.
+conversation history. Without `agent`, the subagent type is `general-purpose`.
+
+Runs in the background by default (v2.1.218+); the result arrives when it's done.
+`background: false` blocks the turn until it returns. It also blocks when running in
+`-p` mode, when `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` is set, when another
+background task is already running, or when scheduled. A background fork has a reduced
+tool set.
 
 ⚠️ `context: fork` only makes sense for skills with actionable instructions. A skill
 that just says "use these API conventions" without a task gives the subagent nothing
@@ -479,23 +583,37 @@ there for subsequent turns**. Claude doesn't re-read the file afterward. So writ
 permanent instructions ("always do X throughout this task"), not one-time steps. And
 keep the body lean — every line is a recurring cost.
 
+Invoking the same skill again with identical content gets "already loaded" — nothing
+is re-injected. After compaction, skills are re-attached up to 5,000 tokens each and
+25,000 tokens combined.
+
 Unlike the content, `allowed-tools` permission **expires** on your next message.
 
 ### Bundled skills
 
-Ship with Claude Code, invoked like any skill:
+Ship with Claude Code, invoked like any skill. `disableBundledSkills: true` turns them
+all off:
 
 | Skill | For |
 |---|---|
 | `/code-review [level] [--fix] [--comment] [pr#]` | Reviews the diff or PR: correctness bugs and simplifications |
+| `/simplify` | Reviews the diff for reuse, quality, and efficiency, then fixes what it finds |
 | `/verify` | Builds and runs the app to confirm the change actually works |
 | `/run` | Launches and drives the app to see the change working |
 | `/run-skill-generator` | Teaches `/run` and `/verify` to build and launch this project |
 | `/batch <instruction>` | Distributes a large change across 5-30 subagents, each with its own PR |
 | `/loop [interval] [prompt]` | Repeats a prompt while the session is open |
+| `/debug` | Diagnoses the current session from its debug log |
 | `/doctor` | Setup checkup: diagnoses and fixes configuration issues |
 | `/fewer-permission-prompts` | Analyzes transcripts and proposes a permission allowlist |
-| `/deep-research <question>` | Fan-out web searches with cross-verification and a cited report |
+| `/update-config` | Edits settings from a description |
+| `/design` | Design and UI work |
+| `/dataviz` | Charts and data visualization |
+| `/claude-api` | Guidance for building on the Claude API |
+| `/workflow-authoring` | Writes reusable workflows, listed by `/workflows` |
+
+`/deep-research` is **not** a bundled skill: it is a dynamic workflow, listed and run
+through `/workflows`.
 
 ### Diagnostics
 
@@ -504,9 +622,12 @@ Ship with Claude Code, invoked like any skill:
 | Skill doesn't fire | `description` missing the words you actually use. Test with "what skills exist?" |
 | Skill fires too often | `description` too generic, or missing `disable-model-invocation: true` |
 | `/name` works but Claude never picks it | Malformed YAML: the body loads, the metadata doesn't. Run with `--debug` |
-| Truncated descriptions | Too many skills competing for budget (1% of the window). Use `skillOverrides: "name-only"` |
+| A skill should be hidden from the model or from the menu | `skillOverrides` in settings: `"off"` or `"user-invocable-only"` per skill |
+| Deny all skills or one skill | `permissions.deny`: `Skill`, `Skill(commit)`, `Skill(review-pr *)`, `Skill(anthropic-skills:pdf)` |
 
-Validation: `claude plugin validate .claude/skills`.
+Validation: `/skill-doctor` (official) reviews a skill's description and triggers.
+`claude plugin validate .claude/skills` (*not in official docs*; used in this repo)
+catches malformed YAML only — it does not check field names.
 
 ---
 
@@ -515,7 +636,7 @@ Validation: `claude plugin validate .claude/skills`.
 **Custom commands have been merged with skills.** `.claude/commands/deploy.md` and
 `.claude/skills/deploy/SKILL.md` both create `/deploy` and work the same way. Files in
 `.claude/commands/` keep working; skills add a directory for supporting files and
-automatic invocation by the model.
+automatic invocation by the model. When both exist with the same name, the skill wins.
 
 Differences:
 
@@ -523,7 +644,7 @@ Differences:
 |---|---|---|
 | Command name | File name | Directory name |
 | Supporting files | No | Yes |
-| Frontmatter | Same, except `name` and `paths` (ignored) | Full |
+| Frontmatter | Same syntax; the docs don't list fields it ignores — assume the skill set | Full |
 | Invoked by the model | Yes | Yes |
 
 **Recommendation:** use `skills/` for new things. Keep `commands/` only for what
@@ -573,7 +694,7 @@ The frontmatter defines the metadata; the markdown body becomes the **system pro
 | `description` | ✅ | When to delegate. Short — all descriptions combined have a 15k-token ceiling |
 | `tools` | ➖ | Comma-separated list. Without the field, inherits everything |
 | `disallowedTools` | ➖ | Removes from the inherited list. Accepts `mcp__*` |
-| `model` | ➖ | `sonnet`, `opus`, `haiku`, full ID, or `inherit` |
+| `model` | ➖ | `sonnet`, `opus`, `haiku`, `fable`, full ID, or `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Maximum turns before stopping |
 | `skills` | ➖ | Skills preloaded **in full** at startup |
@@ -584,6 +705,9 @@ The frontmatter defines the metadata; the markdown body becomes the **system pro
 | `effort` | ➖ | `low`…`max` |
 | `isolation` | ➖ | `worktree` = runs in an isolated git worktree |
 | `color` | ➖ | Display color |
+| `omitClaudeMd` | ➖ | `true` = starts without the `CLAUDE.md` hierarchy and git status, like `Explore`/`Plan` |
+| `initialPrompt` | ➖ | Text sent as the subagent's first user message before the delegation |
+| `experimental.cacheTtl` | ➖ | Prompt-cache lifetime for the subagent: `5m` or `1h` |
 
 ### Where they live (priority order)
 
@@ -591,11 +715,16 @@ The frontmatter defines the metadata; the markdown body becomes the **system pro
 2. `--agents` flag (current session only)
 3. `.claude/agents/` (project — version it in git for the team)
 4. `~/.claude/agents/` (personal, all projects)
-5. Plugin `agents/` (namespaced: `my-plugin:agent`)
+5. Plugin `agents/` (namespaced: `plugin:folder:name`)
 
-Both directories are scanned recursively; subdirectories don't affect the name.
+Both directories are scanned recursively; subdirectories don't affect the name. The
+identity is the `name` field: two files with the same `name` load only one, and
+`/doctor` reports the duplicate. Plugin subagents ignore `hooks`, `mcpServers`, and
+`permissionMode`.
+
 Changes are detected within seconds, no restart needed — except when **creating** the
-`agents/` directory for the first time.
+`agents/` directory for the first time, for directories added with `--add-dir`, and
+when running with `--disable-slash-commands`.
 
 ### How to invoke
 
@@ -613,13 +742,16 @@ claude --agent code-reviewer
 claude --agents '{"reviewer": {"description": "...", "prompt": "...", "tools": ["Read"]}}'
 ```
 
+`Ctrl+B` sends a running foreground subagent to the background.
+
 ### What the subagent sees (and doesn't)
 
 **Doesn't see:** conversation history, main session's auto memory, what you read
 before.
 
-**Sees:** its own system prompt, the CLAUDE.md hierarchy (except Explore/Plan), git
-status (except Explore/Plan), the delegation message, preloaded skills.
+**Sees:** its own system prompt, the CLAUDE.md hierarchy and git status (except
+`Explore`, `Plan`, and any subagent with `omitClaudeMd: true`), the delegation
+message, preloaded skills.
 
 ### Forks
 
@@ -633,33 +765,43 @@ from scratch:
 Sees the full history, system prompt, tools, and model. Only the final result returns
 to the main conversation — tool calls stay out of your context.
 
+Forking is on by default in interactive sessions and off in `-p` and the SDK.
+`CLAUDE_CODE_FORK_SUBAGENT=1` / `=0` forces it either way. To forbid it:
+`permissions.deny` → `Agent(fork)`.
+
 ### Bundled subagents
 
-| Name | For |
-|---|---|
-| `Explore` | Fast, read-only search and analysis. Skips CLAUDE.md and git status |
-| `Plan` | Research for plan mode. Read-only |
-| `general-purpose` | Complex multi-step tasks, all tools |
-| `claude` | Catch-all with every tool |
+| Name | Model | For |
+|---|---|---|
+| `Explore` | Inherits the conversation's model; capped at Opus on the API | Fast, read-only search and analysis. Skips CLAUDE.md and git status |
+| `Plan` | — | Research for plan mode. Read-only |
+| `general-purpose` | `CLAUDE_CODE_SUBAGENT_MODEL`, else the conversation's | Complex multi-step tasks, all tools |
+| `claude` | — | Catch-all with every tool |
+| `statusline-setup` | Sonnet | Configures the status line (`/statusline`) |
+| `claude-code-guide` | Haiku | Answers questions about Claude Code, the SDK, and the API |
+
+To restrict built-ins: `permissions.deny` on `Agent` or on a specific type,
+`CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1`, or in the SDK
+`CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`. Which agents an agent may spawn:
+`tools: Agent(worker, researcher), Read, Bash`.
 
 ### Limits
 
-- **Depth:** 3 levels of nesting by default
-  (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`).
-- **Concurrency:** 20 simultaneous (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`).
+- **Concurrency:** 20 simultaneous. Beyond that: `Concurrent subagent limit reached`.
 - **Descriptions:** combined ceiling of 15,000 tokens for custom subagents.
+- A background subagent has a smaller tool set than a foreground one.
 
 ### Cost control
 
 ```json
 {
   "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
-    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
   }
 }
 ```
 
+Sets the model for `general-purpose` and for any subagent without its own `model`.
 Haiku for read-only work (search, reading, summarizing) is cheap and effective.
 Reserve Opus for complex reasoning.
 
@@ -675,11 +817,9 @@ memory: project
 While reviewing, update your memory with patterns, conventions, and recurring issues.
 ```
 
-| Scope | Location |
-|---|---|
-| `user` | `~/.claude/agent-memory/<name>/` |
-| `project` | `.claude/agent-memory/<name>/` — shareable via git |
-| `local` | `.claude/agent-memory-local/<name>/` — don't commit |
+Three scopes: `user` (all projects), `project` (shareable via git), `local` (this
+machine only). The exact directories are not stated in the official docs; check
+`/memory` or the subagent's own output rather than assuming a path.
 
 ### Files silently ignored
 
@@ -687,7 +827,8 @@ Claude Code **skips** a subagent file when: it has no `name` field (treated as
 documentation); the opening `---` isn't on the first line; `name` starts with `-` or
 contains `:`; it has `name` but no `description`; the YAML doesn't parse.
 
-Check beforehand: `claude plugin validate ~/.claude/agents`.
+Check with `/doctor` (reports duplicates and parse problems) or `/agents`. In this
+repository `java .claude/hooks/ArchHook.java schema` also validates the field names.
 
 ---
 
@@ -699,13 +840,27 @@ model decides. That's the difference between asking and guaranteeing.
 
 ### Events
 
-- **Once per session:** `SessionStart`, `SessionEnd`
-- **Once per turn:** `UserPromptSubmit`, `Stop`, `StopFailure`
-- **On every tool call:** `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
-  `PermissionRequest`, `PermissionDenied`
-- **Others:** `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`,
-  `Notification`, `FileChanged`, `InstructionsLoaded`, `TaskCreated`, `TaskCompleted`,
-  `WorktreeCreate`, `ConfigChange`, `CwdChanged`, among others
+- **Session:** `SessionStart`, `Setup`, `SessionEnd`
+- **Per turn:** `UserPromptSubmit`, `UserPromptExpansion`, `Stop`, `StopFailure`
+- **Per tool call:** `PreToolUse`, `PermissionRequest`, `PermissionDenied`,
+  `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`
+- **Subagents and tasks:** `SubagentStart`, `SubagentStop`, `TaskCreated`,
+  `TaskCompleted`, `TeammateIdle`
+- **Context:** `PreCompact`, `PostCompact`, `InstructionsLoaded`
+- **Environment:** `ConfigChange`, `CwdChanged`, `DirectoryAdded`, `FileChanged`,
+  `WorktreeCreate`, `WorktreeRemove`
+- **Model and UI:** `PreModelSwitch`, `PostModelSwitch`, `Notification`,
+  `MessageDisplay`, `Elicitation`, `ElicitationResult`
+
+### Types
+
+| `type` | Runs | Notes |
+|---|---|---|
+| `command` | A process | `command` + optional `args` (exec form) |
+| `http` | An HTTP request | Body is the hook input JSON |
+| `mcp_tool` | An MCP tool | |
+| `prompt` | A single model call | Returns `{"ok": ..., "reason": ...}`; `"impossible": true` and `continueOnBlock` refine blocking |
+| `agent` | A subagent (experimental) | 60 s, up to 50 turns |
 
 ### Configuration
 
@@ -729,24 +884,36 @@ model decides. That's the difference between asking and guaranteeing.
 }
 ```
 
-Matchers: `"*"` or omitted matches everything; plain text matches exactly or a list
-(`Edit|Write`); other characters become a JavaScript regex (`^Notebook`, `mcp__.*`).
+Matchers are **case-sensitive**: `"*"` or omitted matches everything; plain text
+matches exactly or a list (`Edit|Write`, `Edit, Write`); other characters become a
+JavaScript regex (`^Notebook`, `mcp__.*`).
 
-**Exec form** (with `args`): direct executable, no shell — portable across Linux,
-macOS, and Windows, and doesn't need an execute bit. **Shell form** (without `args`):
-string passed to the shell, with expansion and quoting.
+**Exec form** (with `args`, even `"args": []`): direct executable, no shell — portable
+across Linux, macOS, and Windows, and doesn't need an execute bit. **Shell form**
+(without `args`): string passed to the shell, with expansion and quoting.
+
+Hooks from every settings layer **add up** — a project hook doesn't replace a user
+hook. Matching hooks run in parallel; when they disagree, the most restrictive answer
+wins (`deny > defer > ask > allow` on `PreToolUse`). A `PreToolUse` hook fires before
+the permission-mode check, but cannot override a settings `deny` rule or a tool's
+`requiresUserInteraction`. When several hooks return `updatedInput`, the last one wins.
+`disableAllHooks: true` turns everything off.
 
 ### Exit codes
 
 | Code | Behavior |
 |---|---|
-| `0` | Success. Output JSON is parsed if valid |
-| `2` | **Blocks the action** (on events that support it). stderr becomes the reason |
-| Other | Non-blocking error; the action proceeds |
+| `0` | No objection. Output JSON is parsed if valid. On `PreToolUse` it does **not** approve — the normal permission flow continues. On `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, and `PostModelSwitch` plain stdout is added to context |
+| `2` | **Blocks the action** (on events that support it). stderr becomes the reason shown to Claude |
+| Other | Non-blocking error; the action proceeds, stderr shown to the user |
 
 Where `2` blocks: `PreToolUse` (blocks the call), `UserPromptSubmit` (rejects the
 prompt), `Stop` (forces continuation), `PostToolBatch` (stops the loop). In
 `PostToolUse` it doesn't block — the tool already ran — but stderr is shown to Claude.
+
+`Stop` hooks are capped at 8 consecutive blocks per turn
+(`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`); the input carries `stop_hook_active` so a hook can
+tell it is being re-run.
 
 ### Structured JSON output
 
@@ -756,11 +923,25 @@ prompt), `Stop` (forces continuation), `PostToolBatch` (stops the loop). In
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
     "permissionDecisionReason": "Blocked by policy",
-    "additionalContext": "Extra context for Claude",
-    "systemMessage": "Message visible to the user"
+    "additionalContext": "Extra context for Claude"
   }
 }
 ```
+
+`permissionDecision` accepts `allow`, `deny`, `ask`, `defer`. The shape changes by
+event: `UserPromptSubmit` returns `hookSpecificOutput.additionalContext`;
+`PostToolUse` and `Stop` block with a top-level `"decision": "block"` plus `reason`;
+`PermissionRequest` answers with `hookSpecificOutput.decision.behavior`. There is no
+`systemMessage` field in the documented output.
+
+### Timeouts
+
+| Type | Default |
+|---|---|
+| `command`, `http`, `mcp_tool` | 10 min — 30 s on `UserPromptSubmit`, `PreModelSwitch`, `PostModelSwitch`; 10 s on `MessageDisplay` |
+| `prompt` | 30 s |
+| `agent` | 60 s |
+| any, on `SessionEnd` | 1.5 s |
 
 ### Example: blocking edits to protected files
 
@@ -784,8 +965,9 @@ prompt), `Stop` (forces continuation), `PostToolBatch` (stops the loop). In
 }
 ```
 
-The `if` field filters by permission rule before running the hook — avoids spawning a
-process for every edit.
+The `if` field filters by **permission-rule syntax** before running the hook — avoids
+spawning a process for every edit. It only applies to tool events and is best-effort:
+a filter the runtime can't evaluate lets the hook run.
 
 ### Where to configure
 
@@ -801,9 +983,13 @@ process for every edit.
 
 - Ask Claude to write the hook: *"write a hook that runs eslint after every file
   edit"*.
-- `/hooks` shows what's configured.
-- Debug: `CLAUDE_CODE_DEBUG=hooks claude`.
+- `/hooks` shows what's configured (read-only). Settings are read at startup: after
+  editing them, restart.
+- Debug: `claude --debug` (or `claude --debug=hooks`), `--debug-file <path>`, and
+  `/debug` inside the session.
 - Path placeholders: `${CLAUDE_PROJECT_DIR}`, `${CLAUDE_PLUGIN_ROOT}`.
+- A `SessionStart` hook can persist environment variables for the session by writing
+  `export` lines to the file named in `$CLAUDE_ENV_FILE`.
 
 ---
 
@@ -825,7 +1011,13 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
 # Local process (stdio). The -- separates the option flags from the server command
 claude mcp add --env API_KEY=value --transport stdio myserver \
   -- npx -y @example/mcp-server
+
+# From a JSON definition
+claude mcp add-json myserver '{"type":"http","url":"https://example.com/mcp"}'
 ```
+
+Transports: `stdio`, `http` (alias `streamable-http`), `sse`, `ws`; `sdk` exists only
+for the Agent SDK. A `stdio` server receives `CLAUDE_PROJECT_DIR` in its environment.
 
 ### Scopes
 
@@ -835,7 +1027,8 @@ claude mcp add --env API_KEY=value --transport stdio myserver \
 | `project` | `.mcp.json` | Yes, via git |
 | `user` | `~/.claude.json` | No, but applies to all projects |
 
-Precedence: local > project > user.
+Precedence when names collide, silently: **managed > local > project > user > plugin >
+claude.ai connectors**.
 
 ```json
 {
@@ -852,61 +1045,73 @@ Precedence: local > project > user.
 
 Variable expansion (`${VAR}`, `${VAR:-default}`) works in `command`, `args`, `env`,
 `url`, and `headers`. An unset variable with no default doesn't fail startup: the server
-loads with the literal `${VAR}` text and fails to connect: `claude mcp list` surfaces the
+loads with the literal `${VAR}` text and fails to connect; `claude mcp list` surfaces the
 warning.
 
 ### Credentials beyond a static header
 
-- **`oauth`** — `clientId`, `callbackPort`, `authServerMetadataUrl`, `scopes`. Lets
-  `claude mcp add`/`login` drive an OAuth 2.0 flow instead of a token pasted into
-  `headers`.
+- **OAuth** — `claude mcp add` then `/mcp` → authenticate drives the OAuth 2.0 flow;
+  `claude mcp logout <name>` and `claude mcp remove` drop the tokens. The `oauth`
+  sub-keys (`clientId`, `callbackPort`, `authServerMetadataUrl`, `scopes`) are *not in
+  official docs*; this repository's `extensions.json` still accepts the key.
 - **`headersHelper`** — path to a script; its stdout (JSON) supplies headers at connect
   time. For Kerberos, SSO, or any credential that can't sit still in a file. For a
   `project`- or `local`-scope server this only runs after the workspace-trust prompt is
   accepted.
-- **`alwaysLoad`** — `true` keeps a server's tools loaded even under tool search, instead
-  of deferring them until first use.
+- **`alwaysLoad`** — *not in official docs*; kept in `extensions.json` so an existing
+  declaration doesn't fail validation. Don't rely on it.
 
 ### Managing
 
 ```bash
 claude mcp list                    # servers and status, including pending approval
 claude mcp get notion              # details
-claude mcp remove notion
-claude mcp login sentry            # OAuth
-claude mcp reset-project-choices   # forget this project's per-server approve/reject choices
+claude mcp remove notion           # also deletes stored OAuth tokens
+claude mcp logout sentry           # drop OAuth tokens, keep the server
 ```
 
-In-session: `/mcp` to view status, toggle, and authenticate.
+`claude mcp reset-project-choices` is *not in official docs*. In-session: `/mcp` to
+view status, toggle, and authenticate.
 
 ### Project-scope approval
 
 The first time Claude Code sees a server declared in a project's `.mcp.json`, it prompts
 for approval — the trust boundary that stops a cloned repository from launching
-processes on your machine without consent. Settings that affect this, in
-`.claude/settings.json`:
+processes on your machine without consent. The prompt only appears after the
+workspace itself is trusted. `-p` mode, the SDK, and cloud sessions never prompt: they
+load only what was already approved, or nothing. Settings that affect this:
 
 | Key | For what |
 |---|---|
 | `enabledMcpjsonServers` | Array — pre-approves specific `.mcp.json` servers by name |
 | `disabledMcpjsonServers` | Array — rejects specific `.mcp.json` servers by name |
 | `enableAllProjectMcpServers` | Boolean — approves every `.mcp.json` server with no prompt at all. Removes the one human checkpoint the mechanism exists for |
-| `allowedMcpServers` / `deniedMcpServers` | Organization-level allow/deny list (managed settings) |
-| `managedMcpServers` | Organization-provided servers, alongside whatever the user adds |
+| `--strict-mcp-config` | Flag — load only the servers from `--mcp-config`, ignore every file |
+| `--setting-sources` without `project` | Flag — `.mcp.json` is not read at all |
+| `allowedMcpServers` / `deniedMcpServers` | *Not in official docs*; kept in `extensions.json` for existing managed setups |
+| `disableClaudeAiConnectors` | Boolean — don't load connectors from claude.ai |
 
 ### Tool names
 
 ```
-mcp__<server>__<tool>     e.g.: mcp__github__create_pr
+mcp__<server>__<tool>                     e.g.: mcp__github__create_pr
+mcp__plugin_<plugin>_<server>__<tool>     e.g.: mcp__plugin_my-plugin_db__query
 ```
 
-Use this pattern in permission rules and in `disallowedTools`.
+Use this pattern in permission rules and in `disallowedTools`. Globs are allowed after
+the server prefix (`mcp__github__*`); `deny` and `ask` accept `mcp__*` for every
+server. A server can flag a tool `requiresUserInteraction`, which no hook can bypass.
+Reserved server names: `workspace`, `claude-in-chrome`, `computer-use`, `Claude
+Preview`, `Claude Browser`.
 
 ### Cost and security
 
 Tool search is on by default: only the **names** load at startup; full schemas are
-deferred until use. `/context all` shows how many tokens each loaded MCP tool
-consumes.
+deferred until use (`ENABLE_TOOL_SEARCH` controls it;
+`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` disables the beta behind it). Tool
+descriptions are truncated at 2,048 characters
+(`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`). `MCP_DISCOVERY_CACHE=1` caches discovery
+between sessions. `/context all` shows how many tokens each loaded MCP tool consumes.
 
 ⚠️ An MCP server can read files, call APIs, and **inject prompts**. Only connect
 servers you trust. Prefer OAuth over a token pasted into config.
@@ -943,11 +1148,7 @@ my-plugin/
 │   └── review/SKILL.md
 ├── agents/
 ├── hooks/hooks.json
-├── .mcp.json
-├── .lsp.json            # language servers (code intelligence)
-├── monitors/monitors.json
-├── bin/                 # executables added to PATH
-└── settings.json        # defaults applied when the plugin activates
+└── .mcp.json
 ```
 
 ⚠️ **Common mistake:** don't put `skills/`, `agents/`, or `hooks/` **inside**
@@ -963,37 +1164,53 @@ plugin's root.
 }
 ```
 
+Only `name` is required. Other component types (`.lsp.json`, `monitors/`, `bin/`,
+`settings.json`) circulate in third-party examples but are *not in the official
+plugins docs* — don't count on them. Plugin subagents ignore `hooks`, `mcpServers`,
+and `permissionMode`.
+
+Inside a plugin, `${CLAUDE_PLUGIN_ROOT}` is the plugin's directory and
+`${CLAUDE_PLUGIN_DATA}` a persistent data directory — both plugin-only.
+
+### What a plugin costs
+
+Every enabled plugin costs per session: its skills' descriptions and its subagents'
+descriptions in context, its MCP servers as running processes, its hooks running as
+you, with your permissions. The **Marketplaces** tab of `/plugin` shows a *Context
+cost* per plugin. Disable what you don't use: `claude plugin disable <plugin>`.
+
 ### Developing and testing
 
 ```bash
-claude plugin init my-tool          # scaffold in ~/.claude/skills/my-tool/
 claude --plugin-dir ./my-plugin     # load without installing
 claude --plugin-dir ./p1 --plugin-dir ./p2
-claude plugin validate ./my-plugin  # validate before distributing
+claude --plugin-dir ./skills-dir    # a bare skills directory, loaded as <name>@skills-dir
+claude plugin eval ./my-plugin      # run the plugin's eval suite
 ```
 
-`/reload-plugins` reloads without restarting the session.
+`/skill-doctor` reviews a skill's triggering. `/reload-plugins [--force]` reloads
+without restarting the session. `claude plugin init` and `claude plugin validate` are
+*not in official docs* — this repository uses `validate` for YAML syntax only.
 
 ### Installing
 
 ```
 /plugin                                          # browse the marketplace
 /plugin marketplace add anthropics/claude-plugins-official
-/plugin install skill-creator@claude-plugins-official
+/plugin install mcp-server-dev@claude-plugins-official
 /plugin uninstall <plugin>@<marketplace>
 ```
 
-Two public marketplaces: `claude-plugins-official` (curated by Anthropic, registered
-automatically) and `claude-community` (third-party submissions, after review).
+A marketplace is a repository with `.claude-plugin/marketplace.json`. The official
+marketplace (`claude-plugins-official`) is added on the first interactive session.
+Three tiers: **Official** and **Community** (only for marketplaces under
+`github.com/anthropics/`) and **Third-party**. For your team: host the marketplace in a
+**private repository**.
 
-For your team: host the marketplace in a **private repository**.
-
-### A plugin useful for skill authors
-
-`skill-creator` automates skill evaluation: generates test cases in
-`evals/evals.json`, runs each one in an isolated subagent, A/B tests between versions,
-measures the `description`'s hit rate, and produces an HTML report. Worth it for any
-skill the team is going to depend on.
+Scopes: **User** (default, all projects), **Project** (`.claude/settings.json`,
+shared via git), **Local**. Cloud sessions don't load locally installed plugins. Three
+layers must agree: settings (enabled), disk (`~/.claude/plugins/`), and the session
+(loaded). Organizations can lock this down with `strictPluginOnlyCustomization`.
 
 ---
 
@@ -1132,10 +1349,11 @@ Refine the prompt on the first 2-3 files before releasing it on the whole set.
 
 ### Parallel sessions
 
-- **Worktrees** — CLI sessions in isolated git checkouts, no edit collisions.
+- **Worktrees** — CLI sessions in isolated git checkouts, no edit collisions
+  (`claude --worktree`).
 - **Desktop app** — multiple local sessions, each in its own worktree, visually.
 - **Claude Code on the web** — cloud sessions, for long-running tasks.
-- **Cross-session messaging** — sessions pass findings to each other.
+- **Cross-session messaging** — sessions pass findings to each other (`/list-agents`).
 
 ---
 
@@ -1155,6 +1373,7 @@ of thousands of tokens, and performance drops as it fills up.
 | `Esc` | Stops Claude mid-action, preserving context |
 | `Esc Esc` or `/rewind` | Rewinds conversation and/or code to a checkpoint |
 | `/btw <question>` | Side question whose answer does **not** enter the history |
+| `/recap` | Summary of the session so far, without compacting |
 | `/usage` | Token statistics |
 
 ### Practical rules
@@ -1183,14 +1402,29 @@ of thousands of tokens, and performance drops as it fills up.
 | Subagents | When created | **Isolated** from the session |
 | Hooks | On the event | **Zero**, unless they return output |
 
+### Prompt cache
+
+Each request reuses the cached prefix of the previous one. Actions that **invalidate**
+the cache (the next request pays full price): switching model, changing effort,
+toggling fast mode, connecting or removing an MCP server, enabling or disabling a
+plugin, denying a whole tool, compaction, sending many images, updating Claude Code.
+Actions that **preserve** it: editing repository files, editing `CLAUDE.md`, switching
+permission mode, changing output style, invoking skills, `/recap`, rewinding.
+
+Cache lifetime is `5m` by default, `1h` when configured; a subagent can pin its own
+with `experimental.cacheTtl`.
+
 ### Checkpoints
 
 Every prompt creates a checkpoint. `Esc Esc` or `/rewind` restores conversation, code,
 or both. This changes the posture: instead of planning every move, tell it to try
-something risky — if it doesn't work, roll back.
+something risky — if it doesn't work, roll back. Checkpoints are independent of git
+and survive `--resume`.
 
 ⚠️ Checkpoints only track changes made through Claude's own editing tools. Changes via
-Bash or external processes are **not** captured. It doesn't replace git.
+Bash, external processes, or background subagents are **not** captured; symlinks and
+hard links are not followed; remote actions (API calls, deploys) can't be undone. It
+doesn't replace git.
 
 ---
 
@@ -1206,14 +1440,66 @@ Bash or external processes are **not** captured. It doesn't replace git.
 
 ---
 
-## 14. How this repository uses all of this
+## 14. Model, effort, thinking, output styles
+
+### Choosing a model
+
+Aliases: `default`, `best`, `fable`, `sonnet`, `opus`, `haiku`, `sonnet[1m]` and
+`opus[1m]` (1M-token context), `opusplan` (Opus in plan mode, Sonnet otherwise). Pin
+a full id to freeze it (`claude-opus-5-5`). `ANTHROPIC_BASE_URL` changes the
+destination, not the model.
+
+Where to set it, in precedence order: `/model` in the session (`Enter` sets the
+default, `s` sets only this session), `--model` flag, `model` in settings,
+`ANTHROPIC_MODEL` env var. The cache is per model — switching mid-session pays a cold
+prefix. Related settings: `availableModels`, `modelPicker`, `modelOverrides`,
+`fallbackModel`; `/autocompact` and `--autocompact`.
+
+### Effort
+
+`low`, `medium`, `high`, `xhigh`, `max` — supported on Fable 5.1/5, Opus 5.5/5,
+Sonnet 5, Opus 4.8/4.7. Opus 4.6 and Sonnet 4.6 have no `xhigh`. An unsupported level
+falls back to the highest level below it.
+
+Precedence: `CLAUDE_CODE_EFFORT_LEVEL` / `--effort` / `/effort` → settings
+(`modelSettings`, `effortLevel`) → default (`high`; `medium` on Opus 5.5; `xhigh` on
+Opus 4.7). `max` is session-only unless set through the env var. `ultracode` is a
+separate switch: `/effort ultracode`, `--effort ultracode`, or `"ultracode": true`.
+
+### Thinking, fast mode, advisor
+
+- Toggle extended thinking with `Option+T` / `Alt+T`; `alwaysThinkingEnabled` in
+  settings; `MAX_THINKING_TOKENS=0` disables it — except on Opus 5.5 and Fable, where
+  thinking can't be turned off. `Ctrl+O` shows or hides the thinking.
+- Fast mode: `/fast`, `--fast`. Same Opus model with faster output; toggling it
+  invalidates the cache.
+- Advisor: `/advisor <model|off>`, `--advisor` — a second model consulted on hard
+  steps.
+
+### Output styles
+
+Replace the coding-focused part of the system prompt while keeping the tools.
+Built-in: **Default**, **Proactive**, **Concise**, **Explanatory**, **Learning**.
+Switch with `/output-style [name]` or `outputStyle` in settings (case-sensitive).
+Custom styles are markdown files in `~/.claude/output-styles/` or
+`.claude/output-styles/`.
+
+| | CLAUDE.md | Output style | Hook | Skill |
+|---|---|---|---|---|
+| Changes | Adds a user message after the system prompt | Replaces the coding part of the system prompt | Runs code on an event | Adds content on demand |
+| Applies | Every session | Every session, once selected | Deterministically | When invoked |
+| Use for | Project facts and rules | How Claude talks and works | Enforcement | Procedures |
+
+---
+
+## 15. How this repository uses all of this
 
 `claude-spring-architect` is a live example of the ecosystem applied to Spring Boot project
 scaffolding. Mapping between the theory above and the files here:
 
 ```
 CLAUDE.md                          # always-on context: invariants + routing
-CONTEXT.md                         # continuity log, not loaded by the runtime
+claude-help.md                     # this guide; cited from CLAUDE.md, not imported
 .claude/
 ├── rules/                         # modular norms, loaded by paths
 │   ├── 00-index.md                # index: which norm covers what
@@ -1221,17 +1507,19 @@ CONTEXT.md                         # continuity log, not loaded by the runtime
 │   ├── naming.md                  # paths: **/*.java
 │   ├── code-quality.md
 │   ├── error-handling.md
-│   ├── api-rest.md                # paths: **/adapter/in/rest/**
+│   ├── api-rest.md                # paths rewritten from the blueprint at generation
 │   ├── lombok.md
 │   ├── value-objects.md
 │   ├── persistence.md
 │   ├── testing.md
 │   ├── observability.md
-│   └── logging.md
+│   ├── logging.md
+│   └── messaging.md
 ├── skills/
 │   ├── init-project/SKILL.md              # /init-project — disable-model-invocation
 │   ├── arch-doctor/SKILL.md               # /arch-doctor  — disable-model-invocation
-│   ├── claude-code-architect-designer/    # designs this .claude/ itself
+│   ├── audit-usage/SKILL.md               # /audit-usage  — reads the execution trail
+│   ├── claude-code-architect-designer/    # designs this .claude/ itself; references/, templates/
 │   ├── project-bootstrap/                 # SKILL.md + templates/ + references/
 │   ├── use-case-design/                   # pipeline 1/5
 │   ├── domain-modeling/                   # pipeline 2/5
@@ -1239,31 +1527,40 @@ CONTEXT.md                         # continuity log, not loaded by the runtime
 │   ├── rest-api-architect/                # pipeline 4/5
 │   ├── test-architect/                    # pipeline 5/5
 │   ├── new-feature/                       # orchestrates the 5 above
+│   ├── messaging-architect/               # Kafka producer/consumer adapters
 │   ├── java-patterns/                     # preloaded into the executor agent
-│   └── docker-architect/                  # extends docker-compose after bootstrap
+│   ├── docker-architect/                  # extends docker-compose after bootstrap
+│   └── git-publish/                       # chained after /init-project and the executor
 ├── agents/
-│   ├── project-initializer.md     # subagent: interviews, validates, delegates
+│   ├── project-initializer.md         # subagent: interviews, validates, delegates
 │   ├── java-spring-boot-developer.md  # /new-feature's executor
-│   └── archunit-installer.md      # test-architect's setup mode, isolated context
+│   ├── archunit-installer.md          # test-architect's setup mode, isolated context
+│   └── commons-logging-installer.md   # /new-feature's pre-flight, isolated context
 ├── hooks/
-│   └── ArchHook.java              # boundary enforcement, exec form
+│   └── ArchHook.java              # check · format · tests · schema · audit · guard · compose · doctor
+├── schemas/
+│   └── extensions.json            # single owner of recognized frontmatter + .mcp.json fields
 ├── blueprints/                    # declarative data, not instructions
 │   ├── _schema.md
-│   ├── hexagonal/hexagonal.yaml
+│   ├── README.md · README.pt-br.md
+│   ├── references/
+│   ├── hexagonal/                 # hexagonal.yaml + references/
 │   ├── clean-architecture-multi-module/
 │   ├── clean-architecture-single-module/
-│   ├── layered/layered.yaml
-│   ├── modular-monolith/modular-monolith.yaml
-│   ├── onion/onion.yaml
-│   ├── custom-template/
-│   └── vertical-slice/  # folder only, .yaml not written yet
-├── decisions/                     # history — why each piece is shaped as it is
-└── settings.json                  # hook registration
+│   ├── layered/
+│   ├── modular-monolith/
+│   ├── onion/
+│   ├── vertical-slice/
+│   └── custom-template/custom.template.yaml
+├── .ci/BoundaryTest.java          # CI proof that the hook blocks a forbidden import
+└── settings.json                  # hooks + permissions + enabledPlugins
 ```
 
 There's no `.claude/commands/`: slash commands and skills were merged, and keeping
-both would duplicate the concept. `/init-project` and `/arch-doctor` are skills with
-`disable-model-invocation: true` — same `/name`, plus a support folder.
+both would duplicate the concept. `/init-project`, `/arch-doctor`, and `/audit-usage`
+are skills with `disable-model-invocation: true` — same `/name`, plus a support folder.
+`CLAUDE.md` cites `.claude/decisions/` for history; that directory is not versioned
+here and is not read by the runtime.
 
 Decisions in this repository that illustrate the guide's principles well:
 
@@ -1273,26 +1570,40 @@ Decisions in this repository that illustrate the guide's principles well:
 - **One norm, one owning file.** Skills and agents **cite** it by path
   (`@.claude/rules/x.md`) and never reproduce the content. A norm written in two
   places has diverged — that's a bug.
+- **Recognized fields are data with one owner.** `.claude/schemas/extensions.json`
+  lists the frontmatter fields and `.mcp.json` server fields the hook accepts;
+  `frontmatter-fields.md` and §5/§7 here are derived from it. The runtime ignores an
+  unknown field silently, and `claude plugin validate` lets it through — so the check
+  is a hook (invariant 10 of `CLAUDE.md`).
 - **Enforcement in a hook, not in a prompt.** The prohibition on importing Spring in
-  the `domain` module isn't a request in markdown: it's `ArchHook.java` reading
-  `.claude/forbidden-imports.txt` and blocking. Matches the principle "if the rule must
-  always hold, make it a hook."
+  the `domain` module isn't a request in markdown: `ArchHook.java check` reads
+  `.claude/forbidden-imports.txt` — written into the generated project by
+  `project-bootstrap` from the blueprint's `depends_on` — and blocks. Here that file
+  doesn't exist and the hook exits 0, by design. `.claude/.ci/BoundaryTest.java`
+  proves the block on every OS.
 - **Hook in exec form, no shell.** `command: java` + `args`, a Java file in
   single-file source mode — identical on Linux, macOS, and Windows, no `chmod`.
-- **`Stop` hook as a verification gate.** `ArchHook.java tests` runs on the `Stop`
-  event: the turn doesn't end without the tests passing. It's level 3 of the escalation
-  described in
+- **`if` instead of a matcher regex.** `schema` runs on `PreToolUse` for `Write` and
+  on `PostToolUse` for `Edit`, filtered by `if: "Write(.claude/**/*.md)"` and
+  `if: "Edit(.mcp.json)"` — no process spawned for a Java edit. `format` and `check`
+  run on `PostToolUse` with matcher `Write|Edit`.
+- **`Stop` hook as a verification gate.** `ArchHook.java tests` (and `schema`) run on
+  the `Stop` event: the turn doesn't end without the tests passing. It's level 3 of the
+  escalation described in
   [Give Claude a way to verify its own work](#give-claude-a-way-to-verify-its-own-work).
-  The `format` and `check` modes run on `PostToolUse` with matcher `Write|Edit`.
 - **Secrets denied by permission, not by convention.** `permissions.deny` blocks
-  `Read(./**/*.env)`, `Read(./**/secrets/**)`, and `Bash(git push --force:*)` — the
-  CLAUDE.md invariant "secrets never in versioned files" has a real gate behind it.
+  `Read(./**/*.env)`, `Read(./**/secrets/**)`, `Read(./**/application-prod.yml)`,
+  `Read(./**/application-prod.yaml)`, `Read(./**/*.pem)`, `Read(./**/*.p12)`, and
+  `Bash(git push --force:*)` — the CLAUDE.md invariant "no literal secret in a
+  versioned file" has a real gate behind it, and `schema` scans `.mcp.json`'s
+  `headers`/`env` for spelled-out tokens.
 - **Data outside the instructions.** The blueprints are declarative YAML. Adding a new
   architecture doesn't require touching any skill, agent, or command — if it did, the
   design would be broken.
 - **Command with dynamic context.** `skills/init-project/SKILL.md` uses
-  `` !`find .claude/blueprints -mindepth 2 -maxdepth 2 -name '*.yaml'` `` to list the
-  available architectures at invocation time, instead of a fixed list that goes stale.
+  `` !`find .claude/blueprints -mindepth 2 -maxdepth 2 -name '*.yaml' 2>/dev/null | xargs -n1 basename | sed 's/\.yaml$//'` ``
+  to list the available architectures at invocation time, instead of a fixed list that
+  goes stale. It has no `allowed-tools` Bash filter, so the pipeline passes as a whole.
 - **Skill with exemplars, not molds.** `project-bootstrap/templates/` holds real,
   compilable files; `SKILL.md` says to read the shape and write the equivalent, not
   mechanically substitute placeholders.
@@ -1306,10 +1617,13 @@ Decisions in this repository that illustrate the guide's principles well:
 - **Versions resolved at runtime.** Spring Initializr is the oracle for versions; the
   skill explicitly forbids writing versions from memory. The model's knowledge is
   out of date by construction.
+- **Observers don't leave a trail.** `audit` mode records every skill and agent run in
+  the *generated* project; `/audit-usage` and `/arch-doctor` are listed in
+  `audit.exclude_skills` so reading the trail doesn't append to it.
 
 ---
 
-## 15. Quick command reference
+## 16. Quick command reference
 
 ### Session and context
 
@@ -1318,12 +1632,15 @@ Decisions in this repository that illustrate the guide's principles well:
 | `/clear [name]` | New conversation, empty context |
 | `/compact [instructions]` | Summarizes to free up context |
 | `/context [all]` | Context usage as a grid |
+| `/recap` | Summary of the session so far |
 | `/rewind` | Rewinds code and conversation to a checkpoint |
 | `/resume` | Resumes a previous conversation |
+| `/rename [name]` | Names the session |
 | `/branch [name]` | Branches the conversation to try another direction |
 | `/btw [question]` | Side question, outside the history |
 | `/export [file]` | Exports the conversation |
-| `/usage` | Token statistics |
+| `/add-dir <path>` · `/cd <path>` | Adds a working directory · changes the current one |
+| `/usage` · `/status` | Token statistics · session, model, and setup summary |
 
 ### Configuration
 
@@ -1331,14 +1648,16 @@ Decisions in this repository that illustrate the guide's principles well:
 |---|---|
 | `/init` | Generates a CLAUDE.md from the project |
 | `/memory` | Edits CLAUDE.md and toggles auto memory |
-| `/skills` | Manages skills; `Space` cycles visibility, `Esc` saves |
+| `/skills` · `/reload-skills` · `/skill-doctor` | Lists skills · picks up a new skills directory · reviews a skill |
 | `/agents` | Manages subagents |
 | `/hooks` | Views configured hooks |
-| `/plugin` | Manages plugins |
+| `/plugin` · `/reload-plugins` | Manages plugins · reloads them without restarting |
 | `/mcp` | Status, authentication, and toggling of MCP servers |
 | `/permissions` | Allow/ask/deny rules |
 | `/config` | Settings interface |
-| `/doctor` | Setup checkup, diagnoses and fixes |
+| `/model` · `/effort` · `/fast` · `/advisor` | Model, effort, fast mode, advisor model |
+| `/output-style` · `/statusline` | Output style · status line setup |
+| `/doctor` · `/debug` | Setup checkup · diagnoses the session from its debug log |
 
 ### Work
 
@@ -1346,11 +1665,12 @@ Decisions in this repository that illustrate the guide's principles well:
 |---|---|
 | `/plan [description]` | Enters plan mode directly from the prompt |
 | `/goal <condition>` | Claude works until the condition is met |
-| `/code-review` | Reviews the diff in a fresh subagent |
-| `/security-review` | Checks the diff for vulnerabilities |
-| `/verify` | Builds and runs the app to confirm the change |
-| `/run` | Launches and drives the app |
+| `/loop [interval] [prompt]` | Repeats a prompt while the session is open |
+| `/code-review` · `/security-review` · `/simplify` | Reviews the diff: bugs · vulnerabilities · simplifications |
+| `/verify` · `/run` | Builds and runs the app to confirm the change · launches and drives it |
 | `/batch <instruction>` | Fans out a large change across subagents |
+| `/subtask <task>` | Forks a subagent that inherits the conversation |
+| `/workflows` | Lists and runs dynamic workflows (e.g. `/deep-research`) |
 | `/diff` | Reviews the working tree |
 | `/tasks` | Session's background work |
 | `/list-agents` | Subagents and sessions Claude can message |
@@ -1362,10 +1682,13 @@ Decisions in this repository that illustrate the guide's principles well:
 | `Shift+Tab` | Cycles permission modes (includes plan mode) |
 | `Esc` | Interrupts Claude, preserving context |
 | `Esc Esc` | Rewind menu |
+| `Ctrl+B` | Sends the running subagent to the background |
 | `Ctrl+G` | Opens the plan in a text editor |
+| `Ctrl+O` | Shows or hides thinking |
+| `Ctrl+R` | Searches the prompt history |
+| `Option+T` / `Alt+T` | Toggles extended thinking |
 | `@` | References a file or subagent |
 | `!` | Runs a shell command directly in the session |
-| `#` | Tells Claude to memorize something |
 
 ### CLI
 
@@ -1374,15 +1697,30 @@ claude                                  # interactive session
 claude -p "prompt"                      # non-interactive
 claude --continue                       # resumes the last session
 claude --resume                         # choose from a list
+claude --fork-session                   # resume into a copy
+claude --worktree                       # isolated git worktree
 claude --permission-mode plan           # starts in plan mode
+claude --model opus --effort high       # model and effort for the session
+claude --fast                           # fast mode
 claude --agent code-reviewer            # entire session as a subagent
 claude --add-dir ../shared              # access to an extra directory
 claude --plugin-dir ./my-plugin         # loads a local plugin
 claude --allowedTools "Edit,Bash(git commit *)"
-claude --debug                          # load diagnostics
-claude mcp add|list|get|remove|login
-claude plugin init|validate|marketplace
+claude --setting-sources user,project   # which settings layers load
+claude --mcp-config ./mcp.json --strict-mcp-config
+claude --bare                           # no hooks, skills, or plugins
+claude --debug[=hooks] --debug-file ./claude.log
+claude doctor                           # setup diagnosis from the shell
+claude project purge [path]             # deletes a project's local data
+claude ultrareview [target]             # multi-agent cloud review of a branch or PR
+claude mcp add|add-json|list|get|remove|logout
+claude plugin eval|disable
 ```
+
+Print-mode flags: `--output-format text|json|stream-json`, `--input-format`,
+`--include-partial-messages`, `--json-schema`, `--max-turns`, `--max-budget-usd`,
+`--verbose`. Permission flags: `--dangerously-skip-permissions`, `--disallowedTools`,
+`--tools`, `--permission-prompt-tool`, `--restricted`, `--safe-mode`.
 
 ---
 
@@ -1398,4 +1736,7 @@ claude plugin init|validate|marketplace
 - Plugins — <https://code.claude.com/docs/en/plugins>
 - Memory and CLAUDE.md — <https://code.claude.com/docs/en/memory>
 - Commands and bundled skills — <https://code.claude.com/docs/en/commands>
+- Model configuration — <https://code.claude.com/docs/en/model-config>
+- Output styles — <https://code.claude.com/docs/en/output-styles>
+- Prompt caching — <https://code.claude.com/docs/en/prompt-caching>
 - Full documentation index — <https://code.claude.com/docs/llms.txt>

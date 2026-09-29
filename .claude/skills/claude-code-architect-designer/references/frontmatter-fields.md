@@ -47,6 +47,12 @@ Design, exit codes, and commit order:
 | `agent` | Which subagent type to use with `context: fork` |
 | `background` | With `fork`, `false` = waits for the result in the same turn |
 | `hooks` | Hooks registered when invoking the skill — Form 7b. Events and entry fields: `hook-events.md` |
+| `shell` | `bash` (default) or `powershell` — the shell that runs `` !`command` `` injections |
+
+Accepted by the runtime but **not acted on**: `license`, `compatibility`, `metadata`.
+They are Agent Skills spec fields, not behavior. `metadata` stays forbidden here
+(`forbidden_everywhere`) because it invites contracts that enforce nothing; the other
+two are not in the JSON either — add them there first if a plugin ever needs them.
 
 The **folder name** becomes the command: `.claude/skills/arch-doctor/` → `/arch-doctor`.
 The frontmatter `name` follows the folder; diverging is guaranteed confusion during
@@ -58,7 +64,9 @@ diagnosis.
 `${CLAUDE_SKILL_DIR}` · `${CLAUDE_PROJECT_DIR}` · `${CLAUDE_SESSION_ID}` ·
 `${CLAUDE_EFFORT}`.
 
-Work in the markdown body and inside `allowed-tools` rules.
+Work in the markdown body. `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PROJECT_DIR}` also
+expand inside `allowed-tools` Bash rules. `${CLAUDE_PLUGIN_ROOT}` and
+`${CLAUDE_PLUGIN_DATA}` exist only in plugin skills.
 
 ### Dynamic context injection
 
@@ -80,7 +88,7 @@ user only wanted to read the skill.
 | `description` | ✅ | When to delegate. Short — the sum of descriptions has a 15k-token ceiling |
 | `tools` | ➖ | Comma-separated list. Without the field, inherits everything |
 | `disallowedTools` | ➖ | Removes from the inherited list. Accepts `mcp__*` |
-| `model` | ➖ | `sonnet`, `opus`, `haiku`, full ID, or `inherit` |
+| `model` | ➖ | `sonnet`, `opus`, `haiku`, `fable`, full ID, or `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Maximum turns before stopping |
 | `skills` | ➖ | Skills preloaded **in full** at startup |
@@ -91,6 +99,9 @@ user only wanted to read the skill.
 | `effort` | ➖ | `low` … `max` |
 | `isolation` | ➖ | `worktree` = runs in an isolated git worktree |
 | `color` | ➖ | Display color |
+| `omitClaudeMd` | ➖ | `true` = starts without the `CLAUDE.md` hierarchy and git status, like the built-in `Explore`/`Plan` |
+| `initialPrompt` | ➖ | Text sent as the subagent's first user message before the delegation |
+| `experimental` | ➖ | Only sub-key `cacheTtl` (`5m` or `1h`, prompt-cache lifetime). The hook validates the top-level key; the nesting is the runtime's |
 
 Watch the **camelCase** here (`disallowedTools`, `permissionMode`, `maxTurns`) against
 the **kebab-case** of skills (`disallowed-tools`, `disable-model-invocation`). Swapping
