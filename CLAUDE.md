@@ -26,7 +26,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Show what an agent receives at `SubagentStart` — the pattern catalog, or nothing | `echo '{"agent_type":"java-spring-boot-developer"}' \| java .claude/hooks/ArchHook.java context subagent` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
 | Write a target project's `.claude/` from this one, transformed for a blueprint | `java .claude/hooks/ArchHook.java export <dest> --blueprint <id> [--dry-run]` |
-| Validate frontmatter of all extension files, `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
+| Validate frontmatter of all extension files (a skill named after a native command, a rule without `paths`), `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
 | Rebuild `.claude/hooks/ArchHook.jar` — what every hook launches — from the source, under the JDK `hook_build.javac_feature` pins | `java .claude/hooks/ArchHook.java build` |
 | Check the committed jar is byte for byte what the source compiles to (CI runs it) | `java .claude/hooks/ArchHook.java build --verify` |
 | List and inspect this repo's MCP servers | `claude mcp list` · `/mcp` |
@@ -273,6 +273,10 @@ source.
   jar — under the JDK major `hook_build.javac_feature` pins, or `build` refuses, since only the
   same `javac` reproduces the committed bytes that CI's `build --verify` compares. Here a
   `PostToolUse` entry rebuilds it on every edit of the source; `schema` and `doctor` report a
-  jar built from another version of it. Design: `@.claude/decisions/0075-precompiled-hook-jar.md`.
+  jar built from another version of it. The jar is **committed**: `.gitignore` ignores `*.jar`
+  and un-ignores this one path — drop that line and CI fails on every OS with the jar
+  "missing", which is how PR #39 first failed. Every `.claude/.ci/*Test.java` runs the jar,
+  after `build --verify`. Design: `@.claude/decisions/0075-precompiled-hook-jar.md`,
+  `@.claude/decisions/0084-ci-covers-jar-and-post-0075-guards.md`.
 - **This repository does not run `./mvnw`.** `ArchHook` exits 0 when it finds no wrapper; here
   that is expected, not a failure.

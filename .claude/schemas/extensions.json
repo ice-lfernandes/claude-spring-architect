@@ -7,6 +7,14 @@
     "skill": {
       "match": ".claude/skills/*/SKILL.md",
       "case": "kebab",
+      "native_commands": [
+        "add-dir", "agents", "bug", "clear", "compact", "config", "context", "cost",
+        "doctor", "effort", "exit", "export", "fast", "feedback", "help", "hooks", "ide",
+        "init", "install-github-app", "login", "logout", "mcp", "memory", "model",
+        "output-style", "permissions", "plugin", "pr-comments", "privacy-settings",
+        "release-notes", "resume", "review", "rewind", "sandbox", "security-review",
+        "skills", "status", "statusline", "terminal-setup", "todos", "upgrade", "usage", "vim"
+      ],
       "required": ["name", "description"],
       "allowed": [
         "name",
@@ -57,7 +65,7 @@
 
     "rule": {
       "match": ".claude/rules/*.md",
-      "required": ["status"],
+      "required": ["status", "paths"],
       "allowed": ["paths", "status"],
       "enum": {
         "status": ["active", "draft", "deprecated"]

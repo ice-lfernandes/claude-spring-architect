@@ -17,7 +17,7 @@ import java.util.regex.*;
 public class InjectionPathTest {
 
     public static void main(String[] args) throws Exception {
-        Path hook = Paths.get(".claude/hooks/ArchHook.java").toAbsolutePath();
+        Path hook = Paths.get(".claude/hooks/ArchHook.jar").toAbsolutePath();
         Path schema = Paths.get(".claude/schemas/extensions.json").toAbsolutePath();
 
         // The real schema, so the test proves what production reads — not a fixture that
@@ -131,7 +131,7 @@ public class InjectionPathTest {
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "schema");
+                "-jar", hook.toString(), "schema");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -166,7 +166,7 @@ public class InjectionPathTest {
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "schema");
+                "-jar", hook.toString(), "schema");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();

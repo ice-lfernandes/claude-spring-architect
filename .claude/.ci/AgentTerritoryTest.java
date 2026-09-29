@@ -22,7 +22,7 @@ import java.nio.file.*;
 public class AgentTerritoryTest {
 
     public static void main(String[] args) throws Exception {
-        Path hook = Paths.get(".claude/hooks/ArchHook.java").toAbsolutePath();
+        Path hook = Paths.get(".claude/hooks/ArchHook.jar").toAbsolutePath();
         String session = "ci-agent-territory-" + System.nanoTime();
 
         int failures = 0;
@@ -126,7 +126,7 @@ public class AgentTerritoryTest {
                    int wanted, String label) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "guard", phase);
+                "-jar", hook.toString(), "guard", phase);
         pb.environment().put("CLAUDE_PROJECT_DIR", Paths.get("").toAbsolutePath().toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();

@@ -26,7 +26,9 @@ dono único em `.claude/schemas/extensions.json` e estão descritos em
 **Uma skill não pode ter o nome de um comando nativo.** O nome da pasta vira o comando, e
 `/doctor`, `/init`, `/context`, `/memory` já existem no runtime. É por isso que a skill de
 diagnóstico deste repositório se chama `arch-doctor`. Sombrear um comando nativo não gera
-erro — executa o comando errado.
+erro — executa o comando errado. `ArchHook.java schema` reprova a pasta pelo nome, contra a
+lista `types.skill.native_commands` de `.claude/schemas/extensions.json` — que precisa
+crescer quando o runtime ganha comando novo.
 
 **`$ARGUMENTS` no corpo de uma skill é interpolado em toda ocorrência**, não apenas sob
 `## Target`. Uma frase que *fala sobre* o argumento chega ao modelo com o valor real dentro

@@ -19,19 +19,24 @@ flowchart TD
     T[push / pull_request / workflow_dispatch] --> J1
     T --> J2
     T --> J3
+    T --> J4
 
     subgraph J1["hooks-cross-platform (matrix: ubuntu · macos · windows)"]
         H1[ArchHook.java doctor]
+        H0[build --verify — committed ArchHook.jar = what the source compiles to]
         H2[BoundaryTest.java — forbidden import → exit 2]
         H3[InjectionPathTest.java — cwd-relative injection → exit 2]
         H4[ComposeTagTest.java — image tag disagreeing with src/test → reported]
         H5[SkillTerritoryTest.java — write outside the class's write_allow → exit 2]
         H6[AgentTerritoryTest.java — agent_type outside its class's write_allow → exit 2]
+        H7[BashGuardTest.java — force push / shell write outside the phase → exit 2]
+        H8[SweepTest.java — this turn's out-of-territory write → exit 2 at Stop]
+        H9[ComposeGateTest.java — published port advertised only in-network → exit 2]
+        H10[SubagentContextTest.java — catalog to pattern_catalog agents only]
     end
 
     subgraph J2["design (ubuntu-latest)"]
-        D1[schema — frontmatter]
-        D3[shadow of a native slash command]
+        D1[schema — frontmatter, native-command shadow, rule paths]
         D4[blueprint doesn't touch prompts]
         D5[rules is a leaf]
         D6[norm has no code boilerplate]
@@ -52,18 +57,29 @@ flowchart TD
         E2[every import in a .java.example resolves in the classpath]
         E3[no symbol denylisted as deprecated]
     end
+
+    subgraph J4["export-determinism (ubuntu-latest)"]
+        X1[export twice per blueprint → identical trees]
+        X2[exported tree carries ArchHook.jar, byte-identical, and only what a project needs]
+        X3[exported jar runs schema + doctor on its own tree]
+        X4[re-export deletes every export.retired path]
+    end
 ```
 
 ## What each check covers
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest`, `SkillTerritoryTest` and `AgentTerritoryTest` on all three OSes | Decision D8 — "cross-platform" as a fact, not a claim |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then nine tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
+| `committed ArchHook.jar is what the source compiles to` | `build --verify` recompiles under the pinned `hook_build.javac_feature` and compares byte for byte | Decision 0075 — an edit to `ArchHook.java` without a rebuild changes nothing any hook executes. Runs before the tests, so they exercise reviewed bytes |
+| `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 16 cases: every force-push spelling in `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) refused, a redirect / `sed -i` outside a design phase's territory refused, a plain `sed`, an unresolvable `$OUT` target and `ls` let through | Decision 0076. The mode runs before every shell command in every session: it fails expensively in both directions, and the parser is data a JSON edit can change |
+| `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` in a throwaway git repo: a file dirty before the prompt is never named, an out-of-territory write in the turn exits 2, `stop_hook_active` does not block twice, an in-territory write is silent | Decision 0065 — the sweep is only as good as the `guard prompt` baseline, and a broken baseline fails quietly either way |
+| `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` exits 2 naming the advertised-address line, `stop_hook_active` exits 0, a `localhost` listener clears that line, no compose file is silent | Decision 0064. Needs no Docker — the advertised-address check reads the file |
+| `context subagent hands the catalog to pattern_catalog agents only` | `SubagentContextTest.java`: `java-spring-boot-developer` gets a `## Catalog` within `subagent_context.max_chars`; installers and `general-purpose` get nothing | Decision 0077. `SubagentStart` cannot block, so a catalog that stops arriving — or arrives everywhere — is silent |
 | `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` runs the `guard` mode over the real `extensions.json` across 13 cases: no phase open restricts nothing, inside and outside the `write_allow`, `agent_type` winning over the open phase, the refusal of `Skill(<build>)` while a design phase is open, the callee's narrower territory, and the phase surviving an `Agent` call until the next prompt | "Deny by default" is the kind of claim that rots in silence: it holds until one `write_allow` entry is widened by accident. The case that motivated the whole thing — a design run writing `docker-compose.yml`, a file no denylist named — is one of the 13 |
 | `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` runs the same mode over `agent_classes` across 18 cases: each installer inside and outside its narrow list, the single- and multi-module spellings of the same path, the executor reaching the one spec line it closes, the driver writing anything, and an unclassed agent falling back to the caller's phase | Each agent used to promise its territory in prose (`**Does not write:** docker-compose.yml`) while the guard gave all four an unconditional bypass. The promise is data now, and the two blocks that matter most — `archunit-installer` refused `docker-compose.yml`, and refused main source — are cases in this file |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` builds a throwaway project holding a `docker-compose.yml` and a `DockerImageName.parse(...)` under `src/test`, and requires `ArchHook.java compose` to report the divergence, expand `${VAR:-default}`, and stay quiet when the tags agree | The suite passing against an engine version nobody runs. It runs on all three OSes because question 3 of the `compose` mode compares two files and needs no Docker — which also proves the `src/test/` path match survives Windows' separator |
-| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored by the runtime. The same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
-| `skill name doesn't shadow a native slash command` | skill folder name against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
+| `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored by the runtime. The same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted — fails a skill folder named after a native slash command (`types.skill.native_commands`; until 0084 a YAML-only step a generated project never ran), and fails a rule without `paths` (`types.rule.required`; decision 0082 — a rule without it loads at launch every session) |
 | `new blueprint doesn't touch prompts` | adding a blueprint leaves `.claude/skills` and `.claude/agents` untouched | Invariant 7 — architectures are data |
 | `rules is a leaf of the graph` | no rule mentions "skill", "agent", "subagent" | Invariant 1 |
 | `norm contains no code boilerplate` | no `class`/`record`/`interface`/`enum` declaration inside `rules/` | Invariant 3 |
@@ -76,6 +92,7 @@ flowchart TD
 | `every rule, skill and agent has a row in the bootstrap copy list` | every file in `rules/` has a row in § 6.6 of `project-bootstrap/SKILL.md`, and every skill and agent has a row marked ✅ or ❌ in §§ 6.7/6.8 | Invariant 9 — those tables **are** the copy lists that make the generated project self-contained. A new norm missing from § 6.6 breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
 | `decisions/ doesn't grow paths or enter 00-index.md` | no file in `decisions/` declares `paths:`; none is listed in `rules/00-index.md` | `decisions/` is history, not a rule — see Known pitfalls |
 | `no hardcoded Spring/Java version outside decisions/` | no `Spring Boot X.Y` / `Java NN` written as fact in `rules/`, `skills/`, `blueprints/`, `CLAUDE.md` | Invariant 8 — versions are resolved via Spring Initializr, never written from memory. Excludes the `JDK 21+` minimum-requirement line and dated "Tested to compile" notes in exemplars, which record a past verification, not a version to use |
+| `export-determinism` (whole job) | two exports per blueprint produce identical trees; the tree carries `ArchHook.jar` byte-identical to the verified one and nothing only this repo needs; the **exported jar** runs `schema` and `doctor` against its own tree; seeding every `export.retired` path and re-exporting deletes each one | Invariant 9 and decision D54. The retired-path step is decision 0082's rename: without the delete, an updated project keeps a norm nobody owns. The blueprint id is read from the stamp with `sed`, not `python3` — D7 |
 | `exemplar-imports` (whole job) | every `import` in a `.java.example` resolves against JARs from a real `start.spring.io` request, and none uses a name denylisted as deprecated | Gaps 4, 5, 9 of `decisions/0024-lessons-learned-001-remediation.md` — an exemplar that "compiles in the head of whoever wrote it" |
 
 Note on "each norm has a single owner": the check tests a fixed list of literal

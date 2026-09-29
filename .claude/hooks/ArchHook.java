@@ -1965,6 +1965,29 @@ public class ArchHook {
     }
 
     /**
+     * A skill folder named after a built-in slash command. The folder name is the command, and
+     * the runtime resolves the collision without a word — one of the two stops being reachable,
+     * which is why this repository's diagnostic is `arch-doctor` and not `doctor`.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, motivated by axis 8: the check used to be
+     * a `NATIVE="…"` string in `.github/workflows/validate.yml`, so a generated project — which
+     * has no copy of the workflow — never ran it, and the list had gone stale beside the
+     * runtime. The list is data now, `types.skill.native_commands` (invariant 10). The closest
+     * rejected form was refreshing the YAML list: same staleness, same blind spot downstream.
+     * Design: .claude/decisions/0084-ci-covers-jar-and-post-0075-guards.md
+     */
+    static void checkNativeShadow(Map<String, Object> sch, String rel, String skill,
+                                  List<String> errors) {
+        if (asStrList(get(sch, "types", "skill", "native_commands")).contains(skill)) {
+            errors.add("  " + rel + " — skill `" + skill + "` shadows the native /" + skill
+                    + " command; one of the two silently stops being reachable. Rename the"
+                    + " folder (and `name:`), e.g. `arch-" + skill + "` — see"
+                    + " docs/pt-br/11-pitfalls.md. List: types.skill.native_commands in "
+                    + SCHEMA_FILE);
+        }
+    }
+
+    /**
      * One skill body against its class: the `**Class:** <c>` line agrees with the data, and
      * every required section is present. A section is matched as a PREFIX of an H2 line, so
      * `## Procedure — design mode` satisfies `## Procedure`; order is not checked. The
@@ -1973,10 +1996,11 @@ public class ArchHook {
      */
     static void checkSkillBody(Map<String, Object> sch, String rel, String content,
                                List<String> errors) {
-        Map<String, Object> sc = asMap(sch.get("skill_classes"));
-        if (sc == null) return;
         String skill = skillNameOf(rel);
         if (skill == null) return;
+        checkNativeShadow(sch, rel, skill, errors);
+        Map<String, Object> sc = asMap(sch.get("skill_classes"));
+        if (sc == null) return;
 
         Map<String, Object> classes = asMap(sc.get("classes"));
         if (classes == null) return;

@@ -33,6 +33,8 @@ buildNumber.properties
 
 # Package Files #
 *.jar
+# Every hook launches it, and CI compares it byte for byte with the source — .claude/decisions/0075
+!.claude/hooks/ArchHook.jar
 *.war
 *.nar
 *.ear

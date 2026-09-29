@@ -30,7 +30,7 @@ public class ComposeTagTest {
     static final String MISMATCH = "image tag mismatch for";
 
     public static void main(String[] args) throws Exception {
-        Path hook = Paths.get(".claude/hooks/ArchHook.java").toAbsolutePath();
+        Path hook = Paths.get(".claude/hooks/ArchHook.jar").toAbsolutePath();
 
         String composePostgres16 = """
                 services:
@@ -101,7 +101,7 @@ public class ComposeTagTest {
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "compose");
+                "-jar", hook.toString(), "compose");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
