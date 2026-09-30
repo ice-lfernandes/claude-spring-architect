@@ -105,11 +105,22 @@ someone else's cleanup, a deletion made by hand, a half-finished edit, an untrac
 previous run. **Read from `git status --porcelain`, not from the index alone** — an unstaged
 edit and an untracked file are invisible to `git diff --cached` and `git add -A` commits them
 anyway (lessons-learned-014 § 11).
+**`.claude/audit-usage/**` never counts toward this state**: step 2.3 stages it with every
+run, and the previous run's report lands after that run's commit by construction
+(lessons-learned-016 § 8). A worktree whose only extra paths are under it is the plain
+dirty state, not this one.
 Deciding it silently is what went wrong in lessons-learned-012 § 7 — 1.503 staged
 deletions rode along with a feature commit, and only a manual read of the list caught it.
 Show the paths, say which of them the caller named, and ask with those two options. On
 "only this run's paths", stage with `git add -- <paths>` and never `git add -A`; the rest
-stays dirty and is reported as left behind, not reverted. `/new-feature`'s guardrail step
+stays dirty and is reported as left behind, not reverted. On "everything that is dirty",
+**two commits, one gate, one push**: first the run's paths plus `.claude/audit-usage/` with
+the run's message (step 2.4), then the rest with `git add -A` and
+`chore: commit changes from before this run`, whose body lists every path it carries. One
+commit for both gives the run's type to content the run did not write — a
+`docs(UC-…): approved spec` once shipped a build-plugin change and a new compose service
+(lessons-learned-016 § 9). The secret scan of step 2.2 covers both sets before either is
+staged. `/new-feature`'s guardrail step
 2 already flags this at the start of the run and **hands over the list itself** — when it did,
 use that list instead of rediscovering it, and diff it against what is dirty now: what the
 guardrail saw is what the run did not produce.
@@ -182,6 +193,7 @@ it can read.
 
 ```
 ✅ Committed <short-hash> — "<message>"
+<✅ Committed <short-hash> — "chore: commit changes from before this run" (<n> paths) — only on "everything that is dirty">
 <✅ Pushed to <remote-url> (branch <name>) | ⏭️ Local only, not pushed>
 ```
 

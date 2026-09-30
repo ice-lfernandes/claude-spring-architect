@@ -45,9 +45,13 @@ flowchart LR
     class SRC,MAN data
 ```
 
-**The skill writes no file.** It answers three questions a deterministic mode cannot —
-which source, which blueprint, and whether it is safe to write — and then gets out of the
-way. Every byte is written by the `export` mode, from a manifest of data.
+**The skill writes one file by itself.** It answers three questions a deterministic mode
+cannot — which source, which blueprint, and whether it is safe to write — and then gets
+out of the way. Almost every byte is written by the `export` mode, from a manifest of
+data; the exception is the project's bounded context (step 8): when the root `CLAUDE.md`
+has no `Bounded context:` line, the skill asks once — the first segment of the existing
+topics, or the build file's `artifactId` when there are none — and writes the line with the
+text of the fetched `root.CLAUDE.md.example`. The skill's territory now includes that file.
 
 That split replaced the previous model, where the copy tables lived as prose inside
 `project-bootstrap/SKILL.md` §§ 6.6–6.8: a markdown table is copied by a model, row by
@@ -88,7 +92,7 @@ All of it is the `export` block of `@.claude/schemas/extensions.json` — data, 
 | `blueprint_copy` | **only the active blueprint**, never the catalog |
 | `ensure_dirs` | `.claude/audit-usage/` — creating the directory is what switches the trail on |
 | `gitignore_lines` | `.claude/audit-usage/.state/` and `docs/lessons-learned/` |
-| `body_transforms` | cuts citations to `.claude/decisions/` (which do not exist inside a project) and rewrites the sentences that depend on the blueprint |
+| `body_transforms` | cuts citations to `.claude/decisions/` (which do not exist inside a project); blueprint citations are left as written — the active blueprint travels with the project (`blueprint_copy`) |
 | `retired` | files this repository renamed or dropped (a rule, the old `java-patterns/` skill), deleted from the target when present — `export` only ever wrote, so without it an adopted project kept both copies |
 
 Two decisions in that manifest that look like inconsistencies and are not:
@@ -122,6 +126,7 @@ Schema ....... exit 0
 Provenance ... ⚠️ 2 files edited locally since the stamp:
                .claude/rules/persistence.md
                .claude/settings.json
+Bounded ctx .. already declared
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
@@ -147,10 +152,11 @@ the 7 official blueprints on every change to the manifest.
 - **Doesn't generate a project.** With no `pom.xml`/`build.gradle`, `/init-project` is what
   you want.
 - **Doesn't write business code**, and never touches `src/`.
-- **Doesn't write outside `.claude/` itself.** When the build file has no SonarQube scanner,
-  its last step chains `sonarqube-setup`, which writes the build file and the workflow under
-  its own territory. On an install, run `/reload-skills` first — the skill's directory did
-  not exist when the session started.
+- **Doesn't write outside `.claude/` itself — with one exception.** The bounded-context line
+  of the root `CLAUDE.md`, in step 8. Beyond that, when the build file has no SonarQube
+  scanner, its last step chains `sonarqube-setup`, which writes the build file and the
+  workflow under its own territory. On an install, run `/reload-skills` first — the skill's
+  directory did not exist when the session started.
 - **Doesn't commit.** It leaves the tree with the diff ready for review, and says how to
   undo it.
 - **Doesn't ask for a blueprint when the stamp already records one** — on an update, the

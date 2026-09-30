@@ -16,8 +16,8 @@
 
 | Job | Kind | Calls | Trigger | Cadence property | On/off property | Coordination | Missed run | Per pass |
 |---|---|---|---|---|---|---|---|---|
-| `OutboxRelayJob` | polling pass | `RelayOutboxEvents.relayPending()` | `fixedDelay` | `app.outbox.poll-interval: PT1S` | `app.outbox.enabled` | row claim (§ 3) | next pass is the catch-up | `app.outbox.batch-size` rows; a failing row is marked and the pass continues |
-| `OutboxPruneJob` | calendar-anchored | `PruneOutboxEvents.prunePublished()` | `cron = "0 30 3 * * *"`, `zone = "America/Sao_Paulo"` | `app.outbox.prune.cron` | `app.outbox.prune.enabled` | lock (§ 3) | skipped — the next night deletes the backlog too | batches of `app.outbox.prune.batch-size` until a batch deletes fewer |
+| `OutboxRelayJob` | polling pass | `RelayOutboxEvents.relayPending(RelayOutboxEventsCommand)` | `fixedDelay` | `app.outbox.poll-interval: PT1S` | `app.outbox.enabled` | row claim (§ 3) | next pass is the catch-up | `app.outbox.batch-size` rows; a failing row is marked and the pass continues |
+| `OutboxPruneJob` | calendar-anchored | `PruneOutboxEvents.prunePublished(PruneOutboxEventsCommand)` | `cron = "0 30 3 * * *"`, `zone = "America/Sao_Paulo"` | `app.outbox.prune.cron` | `app.outbox.prune.enabled` | lock (§ 3) | skipped — the next night deletes the backlog too | batches of `app.outbox.prune.batch-size` until a batch deletes fewer |
 
 ## 2 · Technology
 

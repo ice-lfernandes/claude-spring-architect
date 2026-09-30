@@ -316,6 +316,12 @@ invisible to the index and are swept into the commit by `git add -A` all the sam
 the guardrail reported a clean start (lessons-learned-014 § 11). Harmless there, since
 `git-publish` commits the audit trail with the run on purpose; the shape is not.
 
+**`.claude/audit-usage/**` is never pre-existing work** — leave those paths out of the list.
+The previous run's report and its `history.jsonl` line are written at `Stop` and on the next
+prompt, both after that run's commit, so every run starts with them dirty by construction;
+`git-publish` stages the directory with this run's commit anyway (lessons-learned-016 § 8).
+Reporting them would make every start look dirty and teach the reader to ignore the report.
+
 This is the cheap moment to decide: at the end of the flow the run's own deliverable is mixed
 into the same worktree, and separating them costs a reset nobody planned. lessons-learned-012
 § 7: 1.503 staged deletions from before the run only surfaced at `git-publish`, and the
@@ -480,9 +486,8 @@ only when step 4b wasn't):
    | Scheduling technology, a job's trigger and cadence (the relay's poll interval included), coordination across instances and the replica count, overlap and missed-run policy, on/off property, job metrics, the prune job | `35-jobs.md`. A claim strategy in `20-persistencia.md` that does not meet `35-jobs.md` § 3's replica count is not settled by precedence — it is a guarantee dropped by a shape decision: **stop and ask** |
    | Aggregate name, value object, port, event | `10-dominio.md` |
    | Exception class and `errorCode` | `10-dominio.md` |
-| Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
+   | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
    | Name and level of each test | `40-testes.md` |
-   | A design pattern and the classes it creates | The partial of the layer those classes live in. Two partials adopting different patterns for the same class is not settled by precedence: **stop and ask** |
    | A design pattern and the classes it creates | The partial of the layer those classes live in. Two partials adopting different patterns for the same class is not settled by precedence: **stop and ask** |
 
    `UC-NNN-spec.md` carries **a single value per fact** — the winner — across all
@@ -494,6 +499,14 @@ only when step 4b wasn't):
    A divergence the table doesn't resolve — two facts from the same owner, or a
    business-rule contradiction — **stops the pipeline** and asks. Don't invent it or
    stack it.
+
+   **A downstream partial never edits an upstream one's fact — it asks for it.** A requirement
+   born downstream and landing upstream — `20-persistencia.md` bounding the producer's send
+   time so the outbox lease outlives any send, a value `25-mensageria.md` owns — travels as a
+   named requirement in the downstream partial, and this step resolves it like any other
+   divergence: the owner's block in `UC-NNN-spec.md` carries the new value, and
+   `## Resolved divergences` records who asked. Carried silently into the owner's block, it is
+   a fact with two authors and no record of the second.
 
    **And one shape the table resolves only in appearance:** a column decision that changes
    behaviour. `20-persistencia.md` wins on the column, always — but when dropping a column

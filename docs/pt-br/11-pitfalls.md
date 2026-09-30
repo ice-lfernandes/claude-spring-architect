@@ -282,7 +282,11 @@ resolvida por precedência (`.claude/decisions/0087-jobs-architect-skill.md`).
 **O bounded context é um fato do projeto, não uma resposta por caso de uso.** É o primeiro
 segmento de todo nome de tópico, perguntado junto com as coordenadas no `/init-project` e
 escrito no `CLAUDE.md` raiz do projeto gerado. Um prefixo escolhido dentro de um caso de uso
-dá a um sistema dois namespaces.
+dá a um sistema dois namespaces. Um projeto adotado por `/arch-adopt`, ou gerado antes de a
+pergunta existir, recebe a pergunta no step 8 dessa skill — mas só na **segunda** execução
+de `/arch-adopt` depois que a mudança for publicada: a primeira roda a cópia antiga da
+skill, que ainda não tem o step. Até lá, escrever a linha à mão é o jeito imediato de
+resolver. Design: `.claude/decisions/0093-lessons-learned-016-fact-sources.md`.
 
 ### Rules e decisions
 

@@ -189,9 +189,12 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    that made Form B apply is `@.claude/rules/messaging.md` § Publication timing, and it
    isn't re-litigated here — `messaging-architect` owns it.
 
-   **The column set is this step's, and the exemplar is its only source** — `event_id`,
+   **The column set is this step's, and the exemplar is its starting point** — `event_id`,
    `aggregate_id`, `event_type`, `payload`, `occurred_at`, `published_at`, `attempts`,
-   `last_error`, `dead_lettered`, plus the partial index. So is **the pacing those columns
+   `last_error`, `dead_lettered`, plus the partial index. That set is right for one relay
+   instance retrying on every pass. A column the claim strategy or the pacing chosen below
+   needs — a lease column, `next_attempt_at` for per-row backoff — is this step's to add, and
+   § 1 names it next to the guarantee it serves; nothing else adds one. So is **the pacing those columns
    encode**: whether a row is retried on every pass or backs off per row, the batch size and
    the attempt ceiling are decided here, together with the claim query, because the column set
    is what makes either possible. **How often a pass runs is not** — the poll interval, the
@@ -223,12 +226,18 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    what the method name promises: a method called `claimPending` that does not claim is renamed
    or made true, never left to be read as a guarantee.
 
-   **Read that guarantee before choosing the shape.** If it cannot hold with the exemplar's
-   columns — per-row exponential backoff has nowhere to record the next attempt — that is
-   not a shape decision to make quietly: stop the pipeline and ask, the same way
+   **Read that guarantee before choosing the shape.** A guarantee the exemplar's columns
+   cannot hold — per-row exponential backoff has nowhere to record the next attempt — is met
+   by adding the column, as above, not by stopping. Stop the pipeline and ask only when **no**
+   column or query this step may write makes the declared guarantee hold, the same way
    `/new-feature`'s consolidation requires for a divergence its precedence table doesn't
    resolve. Behaviour settled by whoever owns table shape is the exact failure this split
-   exists to prevent.
+   exists to prevent; behaviour **delivered** by that owner, once declared upstream, is not.
+
+   **A requirement this step places on another partial is a divergence, never an edit.**
+   Bounding the producer's send time so the lease outlives any send (`max.block.ms`,
+   `delivery.timeout.ms` on `25-mensageria.md`'s producer) is legitimate and often necessary
+   — it goes into § 1 as a requirement on that partial, and consolidation resolves it.
 
    Two boundaries this step does **not** cross. `OutboxRelayGateway` and
    `OutboxEventRecord` are declared in `messaging-architect`'s

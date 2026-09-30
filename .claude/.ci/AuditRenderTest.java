@@ -75,6 +75,12 @@ public class AuditRenderTest {
                         "{\"type\":\"tool_use\",\"id\":\"ta2\",\"name\":\"Grep\",\"input\":{}}")) + "\n");
 
         run(hook, repo, "agent", "{\"session_id\":\"s1\",\"agent_type\":\"demo-agent\",\"agent_id\":\"abc\"}");
+        // 0094: the answer event keeps each question and its answer, through the same redaction.
+        run(hook, repo, "ask", "{\"session_id\":\"s1\",\"tool_name\":\"AskUserQuestion\"}");
+        run(hook, repo, "answer", "{\"session_id\":\"s1\",\"tool_name\":\"AskUserQuestion\","
+                + "\"tool_response\":{\"questions\":[{\"question\":\"Which prefix?\",\"header\":\"Context\"},"
+                + "{\"question\":\"Credential | scope?\",\"header\":\"Auth\"}],"
+                + "\"answers\":{\"Which prefix?\":\"banking\",\"Credential | scope?\":\"password=hunter2x\"}}}");
         run(hook, repo, "close", "{\"session_id\":\"s1\",\"transcript_path\":\"" + tp + "\"}");
 
         Path report;
@@ -95,6 +101,9 @@ public class AuditRenderTest {
         must(md, "exit 1 · error: token=[REDACTED] rejected", "Bash exit line joined with what failed, redacted");
         mustNot(md, "supersecret123", "no secret reaches the versioned report");
         mustNot(md, "third line", "one line of an error, not the whole output");
+        must(md, "| 1 | Context | Which prefix? | banking |", "asked: question and answer kept (0094)");
+        must(md, "| 2 | Auth | Credential / scope? | password=[REDACTED] |", "asked: redacted, pipe made table-safe");
+        mustNot(md, "hunter2x", "no secret from an answer reaches the versioned report");
 
         String history = Files.readString(trail.resolve("history.jsonl"));
         must(history, "\"tool_calls\":\"Grep:2,Bash:1,Edit:1,Read:1\"", "history: run total of tool calls");

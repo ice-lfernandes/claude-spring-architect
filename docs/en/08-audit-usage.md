@@ -49,7 +49,7 @@ The trail turns on and off by the **existence of the directory** `.claude/audit-
 |---|---|---|
 | `UserPromptSubmit` | `audit prompt` | Opens a run if the prompt is `/<audited skill>`; keeps the last free-form prompt (redacted) to attribute tokens to the piece the model opens next |
 | `PreToolUse` `Skill\|Task\|Agent` | `audit call` | Chain node; opens an implicit run (`origin: model`) when none is open |
-| `PreToolUse` `AskUserQuestion` / `PostToolUse` `AskUserQuestion` | `audit ask` / `audit answer` | Waiting on the user, discounted from active duration |
+| `PreToolUse` `AskUserQuestion` / `PostToolUse` `AskUserQuestion` | `audit ask` / `audit answer` | Waiting on the user, discounted from active duration; `audit answer` also keeps each question and its answer — through `audit.redact`, cut at 160 characters — in the report's 💬 Asked section (decision 0094) |
 | `PostToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit` | `audit file` | File touched |
 | `PostToolUseFailure` | `audit fail` | Tool that failed (rework) |
 | `PermissionRequest` / `PermissionDenied` | `audit perm` | Permission requested or denied |
@@ -142,6 +142,10 @@ session transcript:
 
 ### 📏 Peak context
 Largest single request: **217,617** tokens (input + cache read + cache write) — `/demo` at 2026-09-30T08:41:01.327Z.
+
+## 💬 Asked
+| # | Topic | Question | Answer |
+| 1 | Contexto | Qual bounded context? | banking |
 
 ## 🔁 Rework
 | Piece | Tool | × | First line of the error (redacted) |

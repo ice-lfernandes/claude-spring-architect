@@ -50,7 +50,7 @@ the caller's (`test-architect`'s) to check before invoking; this agent doesn't r
 it.
 
 **Reads:** root POM, module POMs, `docker-compose.yml` (tag comparison only), the
-project's own `CLAUDE.md` and module `CLAUDE.md` files (for `packages.map`),
+active blueprint's YAML (for `packages.map` and the naming-convention comment),
 `.claude/forbidden-imports.txt`, `.claude/rules/testing.md`, `.claude/rules/naming.md`,
 `.claude/rules/code-quality.md`, `.claude/skills/test-architect/templates/ArchitectureTest.java.example`,
 `.claude/skills/test-architect/templates/PersistenceIT.java.example` (image tag
@@ -103,20 +103,19 @@ back to the caller.
    one-class-per-role-per-package shape (`outbound_ports_are_interfaces`,
    `use_case_implementations`'s `Service` suffix); another architecture puts things
    differently. The real packages **and vocabulary** are in the active blueprint's own
-   `packages.map` and its naming-convention comment (`.claude/blueprints/<id>/<id>.yaml`)
-   — read the comment, not just the map, before writing a suffix rule. A rule that names
+   `packages.map` and its naming-convention comment — read the comment, not just the map,
+   before writing a suffix rule. A rule that names
    a package that doesn't exist gets deleted, not forced into fitting.
 
-   **A package that co-locates two roles needs an explicit exception, not a
-   single-suffix rule.** `clean-architecture-single-module`/`-multi-module`'s
-   `application.usecase` holds both `<Verb><Noun>UseCase` and its `<Verb><Noun>Command`
-   in the same package (the blueprint's own comment says so) — a rule requiring every
-   class there to end in `UseCase` blocks every command the moment real code lands
-   (lessons-learned-006 § 5). Translate `.and().haveSimpleNameNotEndingWith("package-info")`
-   into `.and().haveSimpleNameNotEndingWith("package-info").and().haveSimpleNameNotEndingWith("Command")`
-   (or the exception the vocabulary comment names) whenever the blueprint documents a
-   second role sharing that package — don't carry the exemplar's single-suffix
-   assumption into a blueprint whose own comment says otherwise.
+   **Records are exempt from every package-based role rule — keep the exemplar's
+   `.and().areNotAssignableTo(Record.class)` when translating.** A record is a value
+   carrier living next to the role it serves: `clean-architecture-*`'s `<Verb><Noun>Command`
+   in `application.usecase`, a port's result record, a record nested in a port interface.
+   A suffix rule without it blocks every command the moment real code lands
+   (lessons-learned-006 § 5), and "ports are interfaces" fails on the record the port
+   returns (lessons-learned-016 § 11). **A second role that is not a record** still needs
+   an explicit exception, the one the vocabulary comment names — don't carry the
+   exemplar's single-suffix assumption into a blueprint whose own comment says otherwise.
 
 5. One direction rule per boundary the project declares — the same ones in
    `.claude/forbidden-imports.txt` and in the POMs' `depends_on`. Don't invent

@@ -27,7 +27,12 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
 - A framework repository interface (Spring Data) is an internal adapter detail. What the
   inner layers know is the outbound port they declare
 - Zero `@Transactional` in the adapter. The transaction opens and closes in the
-  application layer — `@.claude/rules/architecture-ddd.md`
+  application layer — `@.claude/rules/architecture-ddd.md`. **One exception, and this line
+  owns it:** a write no use case's transaction covers — a relay's per-row mark after a
+  broker send, one bounded batch of a prune — carries its own `@Transactional` on that
+  adapter method and nowhere else. The application-layer pass that drives it opens none,
+  since a transaction held across a broker call is the long transaction the outbox exists
+  to avoid
 - One repository per aggregate. A repository that returns pieces of two aggregates is a
   query, and a query has its own port
 - **One subpackage per aggregate inside the persistence adapter**, always — including

@@ -48,8 +48,8 @@ per the active blueprint's `packages.map` entry `commons.logging`) — is the ca
 (`/new-feature`'s pre-flight check) to verify before invoking; this agent doesn't
 re-derive it, only fails loudly if it isn't there.
 
-**Reads:** root POM, module POMs (multi-module only), the project's own `CLAUDE.md` and
-module `CLAUDE.md` files (for the real `commons.logging` package — modular-monolith
+**Reads:** root POM, module POMs (multi-module only), the active blueprint's
+`packages.map` (for the real `commons.logging` package — modular-monolith
 names it `shared.logging` instead, see its own blueprint comment), `.claude/rules/logging.md`,
 `.claude/skills/new-feature/templates/commons/*.example` (the thirteen exemplars: twelve
 `.java.example` plus `AutoConfiguration.imports.example`).

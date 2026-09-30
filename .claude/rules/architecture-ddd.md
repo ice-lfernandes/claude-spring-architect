@@ -35,7 +35,8 @@ case, service) is the active blueprint's decision, see `packages.map`.
 
 - Depends on abstractions (interfaces), never on concrete implementations
 - One inbound abstraction per use case; fat interfaces are a smell
-- The transaction opens and closes here. Never in the adapter, never in the domain
+- The transaction opens and closes here. Never in the adapter, never in the domain — the
+  one exception is `@.claude/rules/persistence.md` § Boundary's
 - No HTTP, JPA, or messaging types in signatures
 - Spring Data's `Pageable`, `Page`, and `Sort` are framework types too, same as
   `org.springframework.data.*`: an inbound or outbound port that paginates takes and

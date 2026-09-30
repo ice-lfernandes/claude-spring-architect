@@ -470,18 +470,20 @@ from `35-jobs.md`:
 - `[Event]Payload.java` + the outbound port's implementation — writes an outbox row **inside
   the caller's transaction** instead of sending. No `@Transactional` of its own: the use case
   owns the transaction, and a new one here reopens the gap Form B closes
-- `RelayOutboxEvents` (inbound port) + `RelayOutboxEventsService` — one pass: claims a batch
-  through the application-layer gateway, sends through `OutboxEventSender`, marks, and returns
-  a `RelayOutcome`. No `@Scheduled`, no `@Transactional`, no Kafka type
+- `RelayOutboxEvents` (inbound port) + `RelayOutboxEventsCommand` + `RelayOutboxEventsService`
+  — one pass: takes the command (batch size, attempt ceiling), claims a batch through the
+  application-layer gateway, sends through `OutboxEventSender`, marks, and returns a
+  `RelayOutcome`. No `@Scheduled`, no `@Transactional`, no Kafka type. The command is the use
+  case's input, placed where the blueprint puts every Command — never a settings bean injected
+  at construction, never a record nested in the use case
 - `OutboxEventSender` (outbound port) + `KafkaOutboxEventSender` — the **only** class in the
   project that imports `KafkaTemplate`. Never inside the appending transaction, and never
   through the persistence adapter's entity or repository
-- `OutboxProperties.java` + `OutboxRelayConfig.java` — bind `app.outbox.batch-size` and
-  `max-attempts` and expose them as `OutboxRelaySettings`; the service itself is a `@Service`,
-  never built by hand in a `@Configuration`. `poll-interval` and `enabled` are not bound: both
-  are read by the trigger's annotations, in Block J. **One `app.outbox` map in
-  `application.yml`**: Block M writes its two keys, Block J merges its own into the same map —
-  never a second `app:` root
+- The messaging adapter binds nothing of `app.outbox.*`: `batch-size` and `max-attempts` are
+  bound in Block J by the relay job's `OutboxProperties`, which builds the command. The service
+  itself is a `@Service`, never built by hand in a `@Configuration`. **One `app.outbox` map in
+  `application.yml`**: Block M writes the two keys `20-persistencia.md` names, Block J merges its
+  own into the same map — never a second `app:` root
 - The dependency of § 7 in `pom.xml` — `spring-boot-starter-kafka`, because Spring Boot 4
   autoconfigures no Kafka from `spring-kafka` alone. One `<dependency>`, no version when the
   parent manages it, and only what § 7 names
@@ -688,6 +690,17 @@ happen there, not in this agent.
 The spec is approved and immutable. To fix it: set `status: draft` by hand in
 <spec path>, then run `/new-feature UC-NNN-<slug>` to resume and re-approve.
 ```
+
+**`ArchitectureTest` fails on a record** — `does not have simple name ending with …` or `is no
+interface`, naming a `*Command`, a port's result record, or a record nested in a port. A
+project installed before the rule changed carries role rules that treat a value carrier as a
+role; the current exemplar exempts records
+(`.claude/skills/test-architect/templates/ArchitectureTest.java.example`). Add
+`.and().areNotAssignableTo(Record.class)` to the failing rule's `that()` chain, and say so in
+the report. Never rename the record, nest it in the use case, or move it out of the package the
+spec names to escape the rule — that is how one run's `Settings` ended up nested inside its use
+case (lessons-learned-016 § 11). A **non-record** class the rule reports is a real violation:
+fix the class.
 
 **Compilation breaks:**
 ```

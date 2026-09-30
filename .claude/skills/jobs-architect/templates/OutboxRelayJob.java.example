@@ -26,12 +26,19 @@
  * GATE. `app.outbox.enabled`, defaulted on, `false` in `application-test.yml`: every `*IT` boots
  * this context, and an ungated relay polls the test database, blocks on a broker no test starts,
  * and marks rows under tests that assert on them (lessons-learned-013 § 3). A test that wants a
- * pass calls `RelayOutboxEvents.relayPending()` directly.
+ * pass calls `RelayOutboxEvents.relayPending(new RelayOutboxEventsCommand(…))` directly.
  *
  * CADENCE. `app.outbox.poll-interval` is read by the placeholder and by nothing else — it is not
- * a field of `OutboxProperties` (lessons-learned-013 § 2). Batch size and attempt ceiling are
- * `20-persistencia.md`'s values: the messaging adapter binds them and hands them to the pass as
- * `OutboxRelaySettings` — this job never sees them.
+ * a field of `OutboxProperties` (lessons-learned-013 § 2): `@Scheduled` resolves its placeholder
+ * before any bean exists, so a bound value would be read by nothing while the schedule fell back
+ * to its default. `enabled` is not there either — `@ConditionalOnProperty` reads it itself.
+ *
+ * THE PASS'S INPUT. Batch size and attempt ceiling are `20-persistencia.md`'s values. This job
+ * binds them (`OutboxProperties`, below) and hands them to every pass as
+ * `RelayOutboxEventsCommand` — the use case's input, the role the clean-architecture convention
+ * names `Command`. Built once: the record is immutable and the properties do not change at
+ * runtime. Not a settings bean the use case receives at construction — no blueprint names that
+ * role, and a real run nested one to escape a suffix rule (lessons-learned-016 § 11).
  *
  * PACKAGE: the scheduling package (`packages.map` entry ending in `.scheduling`), next to the
  * project's single `SchedulingConfig` — `ScheduledJob.java.example`, which also defines
@@ -65,24 +72,30 @@ package com.example.demo.adapter.in.scheduling;
 
 import com.example.demo.application.port.in.RelayOutboxEvents;
 import com.example.demo.application.port.in.RelayOutboxEvents.RelayOutcome;
+import com.example.demo.application.port.in.RelayOutboxEventsCommand;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "app.outbox.enabled", matchIfMissing = true)
+@EnableConfigurationProperties(OutboxProperties.class)
 class OutboxRelayJob {
 
     private final RelayOutboxEvents relay;
+    private final RelayOutboxEventsCommand command;
     private final JobRunRecorder recorder;
     private final Counter deadLettered;
 
-    OutboxRelayJob(RelayOutboxEvents relay, JobRunRecorder recorder, MeterRegistry meters) {
+    OutboxRelayJob(RelayOutboxEvents relay, OutboxProperties properties, JobRunRecorder recorder,
+            MeterRegistry meters) {
         this.relay = relay;
+        this.command = new RelayOutboxEventsCommand(properties.batchSize(), properties.maxAttempts());
         this.recorder = recorder;
         // An event declared "must not be lost" whose failure path only logs is loss made silent
         // and permanent (lessons-learned-013 § 6). The counter says it happened; the gauge says
@@ -99,8 +112,28 @@ class OutboxRelayJob {
     @Scheduled(fixedDelayString = "${app.outbox.poll-interval:PT1S}")
     void run() {
         recorder.run("outbox-relay", () -> {
-            RelayOutcome outcome = relay.relayPending();
+            RelayOutcome outcome = relay.relayPending(command);
             deadLettered.increment(outcome.deadLettered());
         });
+    }
+}
+
+// --- OutboxProperties.java (scheduling package — the relay pass's two numbers)
+package com.example.demo.adapter.in.scheduling;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+/*
+ * `app.outbox.*` bound once, next to the only class that reads it. WHICH VALUES exist and what
+ * they should be is `persistence-architect`'s call for batch size and attempt ceiling — it owns
+ * the table and the pacing the columns encode — and `jobs-architect`'s for the switch and the
+ * poll interval, which are deliberately not fields here (see CADENCE above).
+ */
+@ConfigurationProperties(prefix = "app.outbox")
+record OutboxProperties(int batchSize, int maxAttempts) {
+
+    OutboxProperties {
+        batchSize = batchSize > 0 ? batchSize : 100;
+        maxAttempts = maxAttempts > 0 ? maxAttempts : 5;
     }
 }

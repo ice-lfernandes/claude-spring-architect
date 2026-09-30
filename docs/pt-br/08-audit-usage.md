@@ -48,7 +48,7 @@ A trilha liga e desliga pela **existência do diretório** `.claude/audit-usage/
 |---|---|---|
 | `UserPromptSubmit` | `audit prompt` | Abre uma execução se o prompt é `/<skill auditada>`; guarda o último prompt livre (redigido) para atribuir tokens à peça que o modelo abrir em seguida |
 | `PreToolUse` `Skill\|Task\|Agent` | `audit call` | Nó de encadeamento; abre uma execução implícita (`origem: modelo`) se nenhuma está aberta |
-| `PreToolUse` `AskUserQuestion` / `PostToolUse` `AskUserQuestion` | `audit ask` / `audit answer` | Espera pelo usuário, descontada da duração ativa |
+| `PreToolUse` `AskUserQuestion` / `PostToolUse` `AskUserQuestion` | `audit ask` / `audit answer` | Espera pelo usuário, descontada da duração ativa; `audit answer` também guarda cada pergunta e a resposta — mascaradas por `audit.redact` e cortadas em 160 caracteres — na seção 💬 Asked do report (decisão 0094) |
 | `PostToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit` | `audit file` | Arquivo tocado |
 | `PostToolUseFailure` | `audit fail` | Ferramenta que falhou (retrabalho) |
 | `PermissionRequest` / `PermissionDenied` | `audit perm` | Permissão pedida ou negada |
@@ -143,6 +143,10 @@ replay sobre o transcript de uma sessão real:
 
 ### 📏 Peak context
 Largest single request: **217,617** tokens (input + cache read + cache write) — `/demo` at 2026-09-30T08:41:01.327Z.
+
+## 💬 Asked
+| # | Topic | Question | Answer |
+| 1 | Contexto | Qual bounded context? | banking |
 
 ## 🔁 Rework
 | Piece | Tool | × | First line of the error (redacted) |

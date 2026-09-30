@@ -91,9 +91,11 @@
  *
  * WIRING. The pass is a use case like any other, so it is wired like one — `@Service` in the
  * application layer, exactly as `domain-modeling/templates/UseCasePort.java.example` does.
- * Its two numbers arrive as `OutboxRelaySettings`, an application-owned record, which the
- * messaging adapter produces from `app.outbox.*`. No `@Configuration` anywhere builds the
- * service by hand.
+ * Its two numbers arrive with each call, as `RelayOutboxEventsCommand` — the use case's input,
+ * built by the relay job from `app.outbox.*` (`jobs-architect/templates/OutboxRelayJob.java.example`).
+ * Not a settings bean injected at construction: no blueprint names that role, and the
+ * clean-architecture convention already has one for a use case's input — `Command`, next to its
+ * `UseCase` (lessons-learned-016 § 11). No `@Configuration` anywhere builds the service by hand.
  *
  * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
  */
@@ -182,7 +184,7 @@ import java.util.Optional;
 public interface RelayOutboxEvents {
 
     /** One pass: claim a batch, send each row, mark it. Never throws for a single row's failure. */
-    RelayOutcome relayPending();
+    RelayOutcome relayPending(RelayOutboxEventsCommand command);
 
     /** How far behind delivery is — empty when nothing is pending. Feeds the pending-age gauge. */
     Optional<Duration> oldestPendingAge();
@@ -212,16 +214,28 @@ public interface OutboxEventSender {
     }
 }
 
-// --- OutboxRelaySettings.java (application layer — the pass's two numbers, no framework type)
-package com.example.demo.application.service;
+// --- RelayOutboxEventsCommand.java (application layer — one pass's input, no framework type)
+package com.example.demo.application.port.in;
 
-/** Values are `20-persistencia.md`'s; the messaging adapter binds them from `app.outbox.*`. */
-public record OutboxRelaySettings(int batchSize, int maxAttempts) {}
+/**
+ * Values are `20-persistencia.md`'s; the relay job binds them from `app.outbox.*` and passes
+ * them on every call. Next to the inbound port here; in the clean-architecture blueprints, next
+ * to `RelayOutboxEventsUseCase` in `application.usecase`, as that convention places every Command.
+ */
+public record RelayOutboxEventsCommand(int batchSize, int maxAttempts) {
+
+    public RelayOutboxEventsCommand {
+        if (batchSize <= 0 || maxAttempts <= 0) {
+            throw new IllegalArgumentException("batchSize and maxAttempts must be positive");
+        }
+    }
+}
 
 // --- RelayOutboxEventsService.java (application layer — one pass; no scheduling, no Kafka)
 package com.example.demo.application.service;
 
 import com.example.demo.application.port.in.RelayOutboxEvents;
+import com.example.demo.application.port.in.RelayOutboxEventsCommand;
 import com.example.demo.application.port.out.OutboxEventRecord;
 import com.example.demo.application.port.out.OutboxEventSender;
 import com.example.demo.application.port.out.OutboxEventSender.SendResult;
@@ -242,24 +256,19 @@ public class RelayOutboxEventsService implements RelayOutboxEvents {
     private final OutboxRelayGateway gateway;
     private final OutboxEventSender sender;
     private final Clock clock;
-    private final int batchSize;
-    private final int maxAttempts;
 
-    public RelayOutboxEventsService(
-            OutboxRelayGateway gateway, OutboxEventSender sender, Clock clock, OutboxRelaySettings settings) {
+    public RelayOutboxEventsService(OutboxRelayGateway gateway, OutboxEventSender sender, Clock clock) {
         this.gateway = gateway;
         this.sender = sender;
         this.clock = clock;
-        this.batchSize = settings.batchSize();
-        this.maxAttempts = settings.maxAttempts();
     }
 
     @Override
-    public RelayOutcome relayPending() {
+    public RelayOutcome relayPending(RelayOutboxEventsCommand command) {
         int published = 0;
         int failed = 0;
         int deadLettered = 0;
-        for (OutboxEventRecord event : gateway.claimPending(batchSize)) {
+        for (OutboxEventRecord event : gateway.claimPending(command.batchSize())) {
             SendResult result = sender.send(event);
             switch (result.status()) {
                 case SENT -> {
@@ -275,7 +284,7 @@ public class RelayOutboxEventsService implements RelayOutboxEvents {
                 case FAILED -> {
                     // The send may well have succeeded; the consumer's dedupe is what makes the
                     // retry safe. One poisoned row must not stall the batch.
-                    if (gateway.markFailed(event.eventId(), result.reason(), maxAttempts)) {
+                    if (gateway.markFailed(event.eventId(), result.reason(), command.maxAttempts())) {
                         deadLettered++;
                     } else {
                         failed++;
@@ -331,54 +340,10 @@ class KafkaOutboxEventSender implements OutboxEventSender {
     }
 }
 
-// --- outbox/OutboxProperties.java (adapter-local binding of `app.outbox.*`)
-package com.example.demo.adapter.out.messaging.outbox;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
-/*
- * `app.outbox.*` bound once, instead of an `@Value` per constant. WHICH VALUES exist and what
- * they should be is `persistence-architect`'s call for batch size and attempt ceiling — it owns
- * the table and the pacing the columns encode (`.claude/decisions/0057-lessons-learned-012-inferences.md`,
- * item 9) — and `jobs-architect`'s for the on/off switch and the poll interval.
- *
- * `pollInterval` is NOT in this record and cannot be: `@Scheduled(fixedDelayString = ...)` on
- * `OutboxRelayJob` is read by the annotation processor before any bean exists, so it resolves
- * the property placeholder directly. A value bound here would be read by nothing while the
- * schedule quietly fell back to its default (lessons-learned-013 § 2). `enabled` is not here
- * either: it gates the job with `@ConditionalOnProperty`, which reads the property itself.
- */
-@ConfigurationProperties(prefix = "app.outbox")
-record OutboxProperties(int batchSize, int maxAttempts) {
-
-    OutboxProperties {
-        batchSize = batchSize > 0 ? batchSize : 100;
-        maxAttempts = maxAttempts > 0 ? maxAttempts : 5;
-    }
-}
-
-// --- outbox/OutboxRelayConfig.java (adapter-local wiring — turns the binding into the settings)
-package com.example.demo.adapter.out.messaging.outbox;
-
-import com.example.demo.application.service.OutboxRelaySettings;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-/*
- * Produces the settings, never the service: `RelayOutboxEventsService` is a `@Service` and
- * Spring builds it. Not gated — the pass is harmless until something calls it; what must not
- * run under the integration tests is the TRIGGER, gated where it lives.
- */
-@Configuration
-@EnableConfigurationProperties(OutboxProperties.class)
-class OutboxRelayConfig {
-
-    @Bean
-    OutboxRelaySettings outboxRelaySettings(OutboxProperties properties) {
-        return new OutboxRelaySettings(properties.batchSize(), properties.maxAttempts());
-    }
-}
+// This adapter binds nothing of `app.outbox.*`. `batch-size` and `max-attempts` are bound by the
+// relay job, which builds `RelayOutboxEventsCommand` from them on every pass —
+// `jobs-architect/templates/OutboxRelayJob.java.example`. No `@Configuration` here turns them
+// into a bean for the use case.
 
 /*
  * TESTS (`40-testes.md`), none of them deferrable, all without a broker:

@@ -274,7 +274,11 @@ declared guarantee stops the pipeline instead of being settled by precedence
 **The bounded context is a project fact, not a per-use-case answer.** First segment of every
 topic name, asked with the coordinates in `/init-project` and written into the generated
 project's root `CLAUDE.md`. A prefix chosen inside one use case gives one system two
-namespaces.
+namespaces. A project adopted through `/arch-adopt`, or generated before the question
+existed, gets it in that skill's step 8 — but only on the **second** `/arch-adopt` run
+after the change ships: the first runs the skill's old copy, which does not have the step
+yet. Until then, writing the line by hand is the immediate fix. Design:
+`.claude/decisions/0093-lessons-learned-016-fact-sources.md`.
 
 ### Rules and decisions
 
