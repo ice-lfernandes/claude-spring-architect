@@ -33,6 +33,12 @@ Covers only what no other rule already covers. Layer SRP and DIP live in
   parameter, or collection. Empty collection, never `null`.
 - Mutability is an explicit decision: `record` or immutable class by default.
 - A hidden side effect is a bug — a function whose name says it queries doesn't write.
+- A `switch` over a sealed type lists every permitted subtype and has **no `default`**:
+  exhaustiveness is the compiler's job, and a `default` switches it off — the next subtype
+  added to `permits` compiles and falls into the `default` in silence. Checkstyle's
+  `MissingSwitchDefault` does not apply to a switch with pattern labels; it never requires
+  that `default`. A switch over an open type (`String`, an enum you don't own, a non-sealed
+  interface) keeps its `default`.
 
 ## Comments
 

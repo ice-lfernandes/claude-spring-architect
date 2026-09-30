@@ -77,6 +77,34 @@ below.
 - Assert the exception **and** its stable code, never just the type. Two different
   rules that throw the same type pass a test that looks only at the type —
   `@.claude/rules/error-handling.md`.
+- The lambda passed to `assertThatThrownBy` makes **exactly one call**: the call under
+  test. Its arguments are built in the arrange block. A builder or factory that throws
+  inside the lambda passes the test for the wrong reason.
+
+## Assertions
+
+- `allSatisfy`, `allMatch` and `noneMatch` are preceded by `isNotEmpty()` (or an exact
+  `hasSize`) unless an empty collection is itself a valid pass. On an empty collection
+  they pass vacuously — the misconfiguration the test exists to catch.
+- One `assertThat` per subject, chained: `assertThat(x).isNotNull().contains(…)`, not two
+  statements about the same `x`.
+- The dedicated assertion over `isEqualTo` on a derived value: `hasToString(…)` not
+  `assertThat(x.toString()).isEqualTo(…)`, `hasSize(n)` not `assertThat(list.size())`.
+- AssertJ, Mockito and BDDMockito entry points are statically imported —
+  `verify(…)`, never `org.mockito.Mockito.verify(…)` spelled out.
+- Cases that differ only in their input are one `@ParameterizedTest`, not N copies of a
+  method.
+- A fixture method that exists only to carry an annotation says so in a comment inside
+  its empty body.
+
+## Asynchronous effects
+
+- A test that waits for something asynchronous — a record on a topic, a row a scheduled
+  pass writes, a relay's mark — waits with **Awaitility**
+  (`await().atMost(…).untilAsserted(…)`), declared as a test dependency with no version:
+  the Spring Boot parent manages it. Never a hand-rolled deadline loop over
+  `System.currentTimeMillis()`, never `Thread.sleep`: the loop that returns from its first
+  iteration, or sleeps a fixed guess, is how a test passes without waiting for anything.
 
 ## Test data
 

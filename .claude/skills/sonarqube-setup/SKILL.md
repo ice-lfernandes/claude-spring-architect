@@ -67,7 +67,9 @@ Two questions in the same call:
    - *Token in `SONAR_TOKEN`* (default) — the variable name only; the value lives in the
      developer's shell and in the CI secret of the same name.
    - *Anonymous* — the server allows analysis without a token. Rare outside a local
-     container; say so.
+     container; say so. On a local SonarQube it is **not** the default: three server
+     settings have to change first, and the report lists them (§ Report). Without them the
+     scan fails only at its end, after a full `verify`, one missing setting per run.
 
 When a caller already passed an answer in its one-line context, don't ask it again.
 
@@ -98,6 +100,11 @@ is the URL from step 2, or `http://localhost:9000` for the local container.
 `sonar.organization` only for SonarCloud. Coverage needs no property: the scanner's
 default report paths are exactly where the JaCoCo setup `project-bootstrap` writes puts
 them (`target/site/jacoco/jacoco.xml`, `build/reports/jacoco/test/jacocoTestReport.xml`).
+
+The `sonar.issue.ignore.multicriteria` entries go in as written, whether or not the files
+they name exist yet: each is scoped to one rule and one file, a file absent from the project
+matches nothing, and the idempotency templates that produce those files point back at them.
+Don't add an entry of your own here — a finding in the project's code is fixed, not muted.
 
 ### 4 · Local server — only when step 2 answered *None*
 
@@ -132,13 +139,36 @@ Server ...... <url> · auth: <SONAR_TOKEN | anonymous>
 Compose ..... <sonarqube added by docker-architect, tag <tag> | not touched — external server>
 CI .......... <step added, runs when secret SONAR_TOKEN is set | skipped — local server | skipped — no workflow>
 
-Run: <./mvnw -B verify sonar:sonar | ./gradlew build sonar>
+Access check (before any scan):
+  curl -s <url>/api/authentication/validate      → {"valid":true} when anonymous is allowed
+  (or SONAR_TOKEN is exported — the scanner reads it)
+
+First run:  <./mvnw -B verify sonar:sonar | ./gradlew build sonar>
+Rerun:      <./mvnw -B sonar:sonar | ./gradlew sonar>   — same build output, no tests again
 ```
+
+The access check moves an authentication failure from the end of the scan to its start:
+`validate` answers in milliseconds, the scan fails only after `verify` has run every test.
+The rerun line is for a change on the server side — a setting, a permission, a quality
+profile — where the code and `target/` (or `build/`) are unchanged.
 
 For the local container, add three lines the person needs on day one: start it with
 `docker compose up -d sonarqube`, the first login is `admin`/`admin` and forces a
 password change, and a token is created under *My Account → Security*, then exported as
-`SONAR_TOKEN`. For an external server, the one thing to do by hand: create the
+`SONAR_TOKEN`.
+
+When step 2 answered *Anonymous* for the local container, replace the token line with the
+three settings, in this order, and say they are for a local container only — each one
+opens the server to anyone who can reach it:
+
+1. *Administration → Configuration → General Settings → Security* — **Force user
+   authentication** off. On by default; with it on, `validate` answers `{"valid":false}`.
+2. *Administration → Security → Global Permissions*, group **Anyone** — **Execute
+   Analysis**. Without it the scanner fails with *"You're not authorized to analyze this
+   project or the project doesn't exist on SonarQube and you're not authorized to create
+   it."*
+3. Same page, same group — **Create Projects**. Needed for the first scan only, while the
+   project key does not exist yet. For an external server, the one thing to do by hand: create the
 `SONAR_TOKEN` repository secret.
 
 ## Contract

@@ -173,8 +173,14 @@ what's left to cover outside of transport.
    scenario, which port gets substituted and with what value. Fixed clock wherever
    there's time involved.
 
+   **Name the test dependencies** in § 5 of the partial: every library a test uses that
+   the build does not declare yet — Awaitility for a test that waits on something
+   asynchronous (`@.claude/rules/testing.md` § Asynchronous effects), a Testcontainers
+   module per engine or broker started. Check the build file first; a dependency already
+   there is not repeated. The executor adds exactly these and nothing else.
+
 7. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/40-testes.md`, from
-   `templates/test-spec.md.example`. Four blocks, all mandatory.
+   `templates/test-spec.md.example`. Five blocks, all mandatory.
 
 8. **Report and stop.** File path, invariants from `10-dominio.md` left without a
    named test (if any, it's a gap to close before implementing), and what's left for
@@ -213,7 +219,7 @@ check in. Run it after this mode pins the tag.
 
 ## What the partial contains
 
-Four blocks. A block with no content is written as "none" — deleting it hides a
+Five blocks. A block with no content is written as "none" — deleting it hides a
 question nobody asked.
 
 | Block | Fixes | Shape exemplar |
@@ -222,6 +228,7 @@ question nobody asked.
 | Cases per test class | Class name, each method's name, what it asserts | `UseCaseTest.java.example` · `ControllerTest.java.example` · `PersistenceIT.java.example` |
 | Data and doubles | Factories, meaningful fields, substituted ports, clock | `TestFixtures.java.example` |
 | Coverage and gaps | Invariants with no test, and what's deliberately left uncovered | `@.claude/rules/testing.md` § Coverage |
+| Test dependencies | Test-scoped libraries the build doesn't declare yet — the executor's only license to add them | `@.claude/rules/testing.md` § Asynchronous effects |
 
 The HTTP contract's cases aren't repeated here: they're cited from `30-rest.md`. The
 **shape** of the class that verifies them belongs to this skill —

@@ -104,7 +104,8 @@ from the destination map surveyed in the guardrail, never from a path written he
   § Migrations
 - `src/main/resources/` — application-[feature].yml
 - `pom.xml` — **only** a dependency the spec declares as a requirement (the messaging
-  partial's § 7, the jobs partial's § 7, or the persistence one's equivalent), one `<dependency>` element per row,
+  partial's § 7, the jobs partial's § 7, the persistence one's equivalent, or the tests
+  partial's § 5 — test scope), one `<dependency>` element per row,
   with no version when the Boot parent manages it. Nothing else in the file: not a plugin,
   not a property, not a version bump. Until lessons-learned-013 § 10 no participant in the
   pipeline owned this file — the design skills are docs-only, `/new-feature` writes the spec,

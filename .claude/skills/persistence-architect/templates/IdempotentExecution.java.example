@@ -31,6 +31,9 @@ import com.example.demo.application.port.out.StoredResponse;
 
 // Executed: the effect ran now, the adapter builds a fresh response from the result.
 // Replayed: a prior request already finished, the adapter returns its response verbatim.
+// `R` is never named in the interface body — it exists so both records share one sealed
+// type. Sonar's java:S2326 on it is suppressed for this file by
+// `sonar.issue.ignore.multicriteria` (`sonarqube-setup/templates/pom-sonar.xml.example`).
 public sealed interface IdempotentOutcome<R> {
     record Executed<R>(R result) implements IdempotentOutcome<R> {}
     record Replayed<R>(StoredResponse response) implements IdempotentOutcome<R> {}

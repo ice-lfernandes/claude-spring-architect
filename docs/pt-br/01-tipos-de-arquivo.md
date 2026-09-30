@@ -174,7 +174,7 @@ e **quais caminhos**:
 |---|---|---|
 | `driver` | `project-initializer` | `**` — escreve a árvore de um projeto que ainda não existe |
 | `executor` | `java-spring-boot-developer` | `src/**`, os POMs (só para uma dependência que a spec declara), e o seu `UC-*-spec.md` — onde a regra de pasta congelada admite só o fechamento do `status:` e os toggles do checklist |
-| `installer` | `archunit-installer`, `commons-logging-installer` | `overrides` por agent: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` no primeiro; POMs + `**/logging/**` + `META-INF/spring/*.imports` no segundo |
+| `installer` | `archunit-installer`, `commons-logging-installer` | `overrides` por agent: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` no primeiro; POMs + `**/logging/**` (main e test) + `META-INF/spring/*.imports` no segundo |
 
 O território vale por `agent_type`, que o payload `PreToolUse` de toda escrita de subagent já
 carrega — então nenhuma fase de skill aberta o alarga nem o estreita. Antes disso os quatro

@@ -26,11 +26,11 @@ interview:
 |---|---|---|
 | 9 | Nothing in the build loop runs Sonar's rules | **Done in `0097`** (imports went to Spotless only, not Checkstyle). Chosen here: **option 1 only, offline:** `spotless:check` bound to `verify`; Checkstyle gains `UnusedImports` and `IllegalIdentifierName`; a second, lighter Checkstyle execution over `src/test`. **No** Sonar step in `java-spring-boot-developer` |
 | 8 | `record` as a variable name | **Done in `0097`** — covered by § 9's answer (`IllegalIdentifierName`, plus the `src/test` execution) |
-| 5a | No `default` on a switch over a sealed type | Not yet answered |
-| 6 | Rule line "one call per `assertThatThrownBy` lambda" in `rules/testing.md` | Not yet answered — only the templates are fixed here |
-| 7 | Kafka "record arrives" tool, `isNotEmpty()` before `allSatisfy`, aspect test templates for `commons` | Not yet answered |
-| 10 | Anonymous access steps, pre-flight access check, rerun command in `sonarqube-setup` | Not yet answered |
-| 2, 3 | `java:S2326` on `IdempotentOutcome<R>` and `java:S112` on `IdempotencyAspect#aroundIdempotent` — both accepted by design, both still reported | **Deferred by the user, to be decided later.** Options 23.1 (multicriteria in the Sonar build templates, 7), 23.2 (`@SuppressWarnings("java:Sxxx")`, 7) and 23.3 (`// NOSONAR`, 4) stay on record below; the templates carry no suppression and no pointer to one until that decision is made |
+| 5a | No `default` on a switch over a sealed type | **Done in `0098`** |
+| 6 | Rule line "one call per `assertThatThrownBy` lambda" in `rules/testing.md` | **Done in `0098`** |
+| 7 | Kafka "record arrives" tool, `isNotEmpty()` before `allSatisfy`, aspect test templates for `commons` | **Done in `0098`** |
+| 10 | Anonymous access steps, pre-flight access check, rerun command in `sonarqube-setup` | **Done in `0098`** |
+| 2, 3 | `java:S2326` on `IdempotentOutcome<R>` and `java:S112` on `IdempotencyAspect#aroundIdempotent` — both accepted by design, both still reported | **Deferred by the user here; decided in `0098` — option 23.1 (F).** Options 23.1 (multicriteria in the Sonar build templates, 7), 23.2 (`@SuppressWarnings("java:Sxxx")`, 7) and 23.3 (`// NOSONAR`, 4) stay on record below |
 
 ## Reproduced on disk before classifying
 
