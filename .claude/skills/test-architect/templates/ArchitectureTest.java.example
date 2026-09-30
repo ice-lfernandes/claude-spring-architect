@@ -94,9 +94,16 @@ class ArchitectureTest {
             .should().haveSimpleNameEndingWith("Impl")
             .because("the name says the role, not that it's the implementation of something");
 
+    // `.and().areNotAssignableTo(Record.class)` on the two package-based role rules: a
+    // record is a value carrier — a use case's `*Command`, a port's `*Record` or result —
+    // never a role, and it lives next to the role it serves. ArchUnit imports nested
+    // classes too, so without it a `SendResult` declared inside the port interface fails
+    // "should be interfaces", and a `Command` fails the suffix rule. A plain class out of
+    // pattern still fails both.
     @ArchTest
     static final ArchRule outbound_ports_are_interfaces = classes()
             .that().resideInAPackage("..application.port.out..")
+            .and().areNotAssignableTo(Record.class)
             .should().beInterfaces();
 
     // `.and().haveSimpleNameNotEndingWith("package-info")` on every rule below:
@@ -108,6 +115,7 @@ class ArchitectureTest {
     static final ArchRule use_case_implementations = classes()
             .that().resideInAPackage("..application.service..")
             .and().haveSimpleNameNotEndingWith("package-info")
+            .and().areNotAssignableTo(Record.class)
             .should().haveSimpleNameEndingWith("Service");
 
     @ArchTest

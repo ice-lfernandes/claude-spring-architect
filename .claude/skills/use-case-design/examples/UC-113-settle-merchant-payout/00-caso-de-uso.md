@@ -2,7 +2,6 @@
 
 > Parent spec. Fixes the boundary and the names; **doesn't** detail any layer.
 > Per-layer detail lives in this folder's partials, each with its own owner.
-> Partial status: `10-dominio.md` ❌ · `20-persistencia.md` ❌ · `25-mensageria.md` ❌ · `30-rest.md` ❌ · `40-testes.md` ❌
 >
 > **Example spec** — see `.claude/skills/use-case-design/examples/README.md`. Written
 > to exercise `/new-feature` and `java-spring-boot-developer`; the durability requirement

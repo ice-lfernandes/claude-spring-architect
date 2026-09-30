@@ -18,10 +18,11 @@ Pulls this architecture into the project the session is rooted at. One operation
 starting states: the project has no `.claude/` of this shape yet (install), or it has one
 and is behind (update). The difference is the provenance stamp, not a different command.
 
-**Writes nothing by itself.** Every file is written by `ArchHook.java export`, from the
-copy it just fetched. This skill decides *which* source, *which* blueprint, and *whether
-it is safe to write* — three questions a deterministic mode cannot answer — and then
-gets out of the way.
+**Writes one line by itself.** Every file under `.claude/` is written by `ArchHook.java
+export`, from the copy it just fetched. This skill decides *which* source, *which*
+blueprint, and *whether it is safe to write* — three questions a deterministic mode cannot
+answer — and then gets out of the way. The one exception is the project's bounded
+context, a user's answer no mode can derive (step 8).
 
 ## Procedure
 
@@ -177,12 +178,35 @@ Grep the root build file for the scanner: `sonar-maven-plugin` in `pom.xml`,
 `org.sonarqube` in `build.gradle`. Found → skip this step and say "already configured" in
 the report. Not found → invoke `sonarqube-setup` through the `Skill` tool; it asks its own
 question (an existing server, or a local container) and writes outside `.claude/` under
-its own territory, not this skill's. This skill still writes nothing but `.claude/`.
+its own territory, not this skill's. This skill still writes nothing outside `.claude/`
+but step 8's line.
 
 On an **install** the skill did not exist when the session started — `.claude/skills/`
 was created by step 5 — so the runtime has not listed it yet. Ask the user to run
 `/reload-skills`, then invoke it; on an update it is picked up live. Only schema exit 0
 reaches this step: a broken `.claude/` is reported first.
+
+### 8 · Bounded context, when the root `CLAUDE.md` has none
+
+The bounded context is the first segment of every topic name — a project fact, like the
+base package. `/init-project` asks for it at creation; a project adopted here, or
+generated before it did, never got the question, and the first messaging design stops on
+the missing line four skills into a run (lessons-learned-016 § 2). This step is the one
+place that asks for it outside creation.
+
+```bash
+grep -i "bounded context" CLAUDE.md 2>/dev/null
+grep -rhoE "^ *(topic|topics?\.[a-z-]+): *[a-z0-9.-]+" src/main/resources/ 2>/dev/null
+```
+
+Found in `CLAUDE.md` → skip, and say "already declared" in the report. Not found → one
+`AskUserQuestion`: the first segment of the existing topics when there are any (a
+project that already publishes has already chosen), otherwise the build file's
+`artifactId`; the other as the second option when they differ. Then write the
+`**Bounded context:` paragraph of `$SRC/.claude/skills/project-bootstrap/templates/root.CLAUDE.md.example`
+with `{{boundedContext}}` filled — that template owns the wording — right below the
+first heading of the root `CLAUDE.md`, or as the whole file when there is none. Never a
+prefix you chose: the answer is the user's.
 
 ## Report
 
@@ -195,6 +219,7 @@ Warnings ..... <none | the surviving-citation lines, verbatim>
 Schema ....... <exit 0 | the failure>
 Provenance ... <the doctor line>
 SonarQube .... <already configured | configured by sonarqube-setup — <its first line> | pending: run /reload-skills, then /sonarqube-setup>
+Bounded ctx .. <already declared | written: <name>>
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
@@ -220,8 +245,9 @@ Pinned to `opus`: it merges into a project it did not write, and may write the o
 ## Contract
 
 **Class:** build — the territory is `skill_classes.build`'s override for this skill in
-`@.claude/schemas/extensions.json`: the target project's `.claude/` tree and its
-`.gitignore`, nothing else. `ArchHook.java guard` enforces it.
+`@.claude/schemas/extensions.json`: the target project's `.claude/` tree, its
+`.gitignore`, and its root `CLAUDE.md` for step 8's bounded-context line, nothing else.
+`ArchHook.java guard` enforces it.
 
 **Unfiltered Bash:** adoption fetches the source (`git ls-remote`, `curl`, `tar`), inspects the worktree (`git status`, `git rev-parse`, `find`), and runs `java … export` — spread over two tools that fetch from the network and a command list that grows with the source's layout. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
@@ -229,9 +255,11 @@ Pinned to `opus`: it merges into a project it did not write, and may write the o
 memory), `.claude/.arch-provenance.json` when it exists, `src/main/java/**` to detect the
 layout, and the fetched source's `.claude/blueprints/*/*.yaml`.
 
-**Writes** nothing directly in the project: `ArchHook.java export` does, and the list of
-what it writes is the `export` block of the fetched `extensions.json`. May write
-`$SRC/**` — the fetched tree, including a `custom.template.yaml` built in step 4.
+**Writes** one thing directly in the project: the bounded-context line of the root
+`CLAUDE.md` (step 8), only when absent, worded by the fetched `root.CLAUDE.md.example`.
+Everything else `ArchHook.java export` writes, and the list of what it writes is the
+`export` block of the fetched `extensions.json`. May write `$SRC/**` — the fetched tree,
+including a `custom.template.yaml` built in step 4.
 
 **Refuses** a dirty worktree, a directory that is not a git repository, and a fetch it
 cannot authenticate. Never prints the value of `source.auth_env`, and never commits.

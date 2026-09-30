@@ -113,7 +113,15 @@ what's left to cover outside of transport.
    ```bash
    ls src/test/java 2>/dev/null
    grep -rln "@SpringBootTest\|@DataJpaTest\|@WebMvcTest" --include='*.java' src/test/ 2>/dev/null
+   grep -rL '@ActiveProfiles("test")' $(grep -rl "@SpringBootTest" --include='*.java' src/test/ 2>/dev/null) 2>/dev/null
    ```
+
+   The last command lists every `@SpringBootTest` that runs without the test profile
+   (`@.claude/rules/testing.md` § Slices and context). Each one becomes a change in this
+   partial — `@ActiveProfiles("test")` added — in § Impact on approved use cases when an
+   approved case wrote it, in § 1 otherwise. The generator's own `*ApplicationTests` is
+   usually the first,
+   and the case that adds a project's first job is usually the one that finds them.
 
    A data factory that already exists gets reused. Two factories for the same
    aggregate is exactly the duplication the rule forbids.

@@ -1236,7 +1236,8 @@ public class ArchHook {
     // Writes a target project's `.claude/` from this repository's, transformed for one
     // blueprint: rules with their `paths` derived from `packages.map`, skills and agents
     // without the subdirectories that only serve the meta-repo, and every citation to
-    // `decisions/` or `blueprints/` cut, since neither exists inside a project.
+    // `decisions/` cut, since it does not exist inside a project. The active blueprint
+    // does — `blueprint_copy` ships it — so a citation to it is left as written.
     //
     // Form 7c of `claude-code-architect-designer`, motivated by axis 7 of its interview:
     // the transformation runs unattended on other people's machines — `arch-adopt` pulls
@@ -3258,7 +3259,8 @@ public class ArchHook {
     //   prompt    UserPromptSubmit               opens a run when the prompt is `/<skill>` of this project
     //   call      PreToolUse Skill|Task|Agent    a node of the open run; with no run open, opens one (origin: model)
     //   ask       PreToolUse AskUserQuestion     the run starts waiting for the user
-    //   answer    PostToolUse AskUserQuestion    the wait ends — measured apart from work
+    //   answer    PostToolUse AskUserQuestion    the wait ends — measured apart from work;
+    //                                            each question and its answer kept, redacted
     //   file      PostToolUse Write|Edit         file touched — feeds rule inference by glob
     //   fail      PostToolUseFailure             rework counter
     //   stopfail  StopFailure                    the turn ended in error
@@ -3322,7 +3324,7 @@ public class ArchHook {
             case "call"     -> auditCall(log, in);
             case "file"     -> auditFile(log, in);
             case "ask"      -> append(log, ev("ask"));
-            case "answer"   -> append(log, ev("answer"));
+            case "answer"   -> auditAnswer(log, in);
             case "fail"     -> append(log, ev("fail", "tool", asStr(get(in, "tool_name"))));
             case "stopfail" -> append(log, ev("stop_fail"));
             case "perm"     -> append(log, ev("perm",
@@ -3511,6 +3513,39 @@ public class ArchHook {
                 "path", relative(Paths.get(f))));
     }
 
+    /**
+     * Ends the wait, then keeps what was asked and what was answered — one `asked` event per
+     * question, each field through {@link #clip}. Registered on `PostToolUse AskUserQuestion`,
+     * the event whose `tool_response` carries both the questions and the `answers` map keyed
+     * by question text. A lessons-learned file needs exactly this and it is what a compaction
+     * summary loses first; before this the trail kept only the wait's timestamps and the
+     * questions had to be dug out of the raw transcript (lessons-learned-016 § 12). Kept in
+     * the existing mode rather than a new one: the registration already fired on this event.
+     * Design: decisions/0094.
+     */
+    static void auditAnswer(Path log, Object in) {
+        append(log, ev("answer"));
+        Object resp = get(in, "tool_response");
+        List<Object> qs = asList(get(resp, "questions"));
+        if (qs == null || qs.isEmpty()) qs = asList(get(in, "tool_input", "questions"));
+        if (qs == null) return;
+        Map<String, Object> answers = asMap(get(resp, "answers"));
+        for (Object q : qs) {
+            String text = asStr(get(q, "question"));
+            if (text == null) continue;
+            Object a = answers == null ? null : answers.get(text);
+            append(log, ev("asked", "header", clip(asStr(get(q, "header"))),
+                    "q", clip(text), "a", clip(a == null ? "—" : String.valueOf(a))));
+        }
+    }
+
+    /** Redacted, table-safe, at most 160 chars — every free text the report carries goes through here. */
+    static String clip(String text) {
+        if (text == null) return null;
+        String red = redact(text.strip()).replace('\n', ' ').replace('|', '/').replace('`', '\'');
+        return red.length() > 160 ? red.substring(0, 159) + "…" : red;
+    }
+
     /** One NDJSON event. A null value is dropped instead of written as "null". */
     static String ev(String name, String... kv) {
         StringBuilder b = new StringBuilder("{\"t\":").append(System.currentTimeMillis())
@@ -3680,6 +3715,7 @@ public class ArchHook {
         int compacts = 0, manualCompacts = 0;
         List<Long> ticks = new ArrayList<>();
         List<long[]> waits = new ArrayList<>();
+        List<String[]> asked = new ArrayList<>();
         long askAt = 0;
         boolean errored = false;
         // Stack of tool_use_ids of agents opened and not yet closed — depth is its size
@@ -3714,6 +3750,8 @@ public class ArchHook {
                     ops.merge(orDash(asStr(e.get("op"))), 1, Integer::sum);
                 }
                 case "ask" -> askAt = t;
+                case "asked" -> asked.add(new String[] {orDash(asStr(e.get("header"))),
+                        orDash(asStr(e.get("q"))), orDash(asStr(e.get("a")))});
                 case "answer" -> {
                     if (askAt > 0) waits.add(new long[] {askAt, t});
                     askAt = 0;
@@ -4040,6 +4078,16 @@ public class ArchHook {
               .append(String.join("\n", touched)).append("\n```\n\n");
         }
 
+        if (!asked.isEmpty()) {
+            md.append("## 💬 Asked\n\n| # | Topic | Question | Answer |\n|---|---|---|---|\n");
+            for (int i = 0; i < asked.size(); i++) {
+                String[] a = asked.get(i);
+                md.append("| ").append(i + 1).append(" | ").append(a[0]).append(" | ")
+                  .append(a[1]).append(" | ").append(a[2]).append(" |\n");
+            }
+            md.append("\n> Redacted and cut at 160 characters. What the run decided without asking is in its partials.\n\n");
+        }
+
         md.append("## 🔁 Rework\n\n");
         if (fails.isEmpty() && allSpend.errors.isEmpty()) {
             md.append("No tool failed. 🎉\n\n");
@@ -4332,8 +4380,7 @@ public class ArchHook {
         // The line after it is what actually failed.
         Matcher exit = Pattern.compile("Exit code (\\d+)").matcher(first);
         if (exit.matches() && lines.size() > 1) first = "exit " + exit.group(1) + " · " + lines.get(1);
-        String red = redact(first).replace('|', '/').replace('`', '\'');
-        return red.length() > 160 ? red.substring(0, 159) + "…" : red;
+        return clip(first);
     }
 
     static List<Turn> usageTurns(Path p) { return scan(p).turns(); }

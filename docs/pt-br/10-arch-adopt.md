@@ -45,10 +45,14 @@ flowchart LR
     class SRC,MAN data
 ```
 
-**A skill não escreve nenhum arquivo.** Ela responde três perguntas que um modo
+**A skill escreve um arquivo por conta própria.** Ela responde três perguntas que um modo
 determinístico não consegue responder — qual fonte, qual blueprint, e se é seguro
-escrever — e sai da frente. Todo byte é escrito pelo modo `export`, a partir de um
-manifesto de dados.
+escrever — e sai da frente. Quase todo byte é escrito pelo modo `export`, a partir de um
+manifesto de dados; a exceção é o bounded context do projeto (step 8): quando o `CLAUDE.md`
+raiz não tem uma linha `Bounded context:`, a skill pergunta uma vez — o primeiro segmento
+dos tópicos já existentes, senão o `artifactId` do build file — e escreve a linha com o
+texto do `root.CLAUDE.md.example` buscado. O território da skill passa a incluir esse
+arquivo.
 
 Essa separação é o que substituiu o modelo anterior, em que as tabelas de cópia viviam em
 prosa dentro de `project-bootstrap/SKILL.md` §§ 6.6–6.8: uma tabela em markdown é copiada
@@ -89,7 +93,7 @@ Tudo isto é o bloco `export` de `@.claude/schemas/extensions.json` — dado, n�
 | `blueprint_copy` | **só o blueprint ativo**, nunca o catálogo |
 | `ensure_dirs` | `.claude/audit-usage/` — criar o diretório é o que liga a trilha |
 | `gitignore_lines` | `.claude/audit-usage/.state/` e `docs/lessons-learned/` |
-| `body_transforms` | corta citações a `.claude/decisions/` (que não existem dentro do projeto) e reescreve as frases que dependem do blueprint |
+| `body_transforms` | corta citações a `.claude/decisions/` (que não existem dentro do projeto); citações ao blueprint ficam como estão escritas — o blueprint ativo viaja com o projeto (`blueprint_copy`) |
 | `retired` | arquivos que este repositório renomeou ou removeu (uma rule, a antiga skill `java-patterns/`), apagados do alvo quando presentes — o `export` só escrevia, então sem isso um projeto adotado ficava com as duas cópias |
 
 Duas decisões desse manifesto que parecem inconsistências e não são:
@@ -123,6 +127,7 @@ Schema ....... exit 0
 Provenance ... ⚠️ 2 files edited locally since the stamp:
                .claude/rules/persistence.md
                .claude/settings.json
+Bounded ctx .. already declared
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
@@ -147,7 +152,8 @@ oficiais a cada mudança do manifesto.
 
 - **Não gera projeto.** Sem `pom.xml`/`build.gradle`, é `/init-project` que você quer.
 - **Não escreve código de negócio**, nem toca `src/`.
-- **Não escreve fora do `.claude/` por conta própria.** Quando o build file não tem o
+- **Não escreve fora do `.claude/` por conta própria — com uma exceção.** A linha de
+  bounded context do `CLAUDE.md` raiz, no step 8. Além disso, quando o build file não tem o
   scanner do SonarQube, o último step encadeia `sonarqube-setup`, que escreve o build file e
   o workflow sob o território dela. Numa instalação, rode `/reload-skills` antes — o
   diretório da skill não existia quando a sessão começou.

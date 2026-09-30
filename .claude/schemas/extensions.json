@@ -196,7 +196,7 @@
         "overrides": {
           "project-bootstrap": { "write_allow": ["**"] },
           "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**"] },
-          "arch-adopt": { "write_allow": [".claude/**", ".gitignore"] },
+          "arch-adopt": { "write_allow": [".claude/**", ".gitignore", "CLAUDE.md"] },
           "gof-design-patterns": { "write_allow": ["src/**", "**/src/**"] },
           "sonarqube-setup": { "write_allow": ["pom.xml", "build.gradle", ".github/workflows/**"] }
         }
@@ -523,17 +523,8 @@
       "residue_markers": [".claude/decisions/", ".claude/blueprints/", "****", "— —", "—."],
       "$comment_exempt": "Two files name these directories on purpose and are not dead paths. `ArchHook.java`'s `export` mode prints them in its own usage and errors, and that mode refuses to run inside a project anyway (no `export` block there). `arch-adopt` talks about the tree it FETCHES, under /tmp, where blueprints/ does exist — cutting those sentences would delete the instructions instead of a citation.",
       "residue_exempt": [".claude/hooks/ArchHook.java", ".claude/skills/arch-adopt/SKILL.md"],
-      "replace": [
-        {
-          "find": "the active blueprint's `packages.map`",
-          "with": "the project's packages, documented in the root `CLAUDE.md` and the module `CLAUDE.md` files"
-        },
-        {
-          "$comment": "Wrapped across three lines in the source, so the `find` carries the line breaks and the list indentation with it. Brittle by nature — which is what `residue_markers` is for: change the sentence upstream and the export reports the dead path instead of shipping it.",
-          "find": "the active blueprint's own\n   `packages.map` and its naming-convention comment (`.claude/blueprints/<id>/<id>.yaml`)\n   — read the comment, not just the map,",
-          "with": "the project's own packages\n   and vocabulary, in the root `CLAUDE.md`, the module `CLAUDE.md` files, and\n   `.claude/rules/naming.md` § Architecture vocabulary — read the vocabulary, not just\n   the package table,"
-        }
-      ],
+      "$comment_replace": "Literal find/with pairs applied to every copied file. Empty on purpose: the two pairs that lived here rewrote \"the active blueprint's `packages.map`\" into a pointer at the root `CLAUDE.md`, on the premise that no blueprint exists inside a project — false since `blueprint_copy` ships the active one, and the literal match missed every wrapped occurrence, so one exported skill cited two sources (lessons-learned-016 § 3). Design: .claude/decisions/0093-lessons-learned-016-fact-sources.md",
+      "replace": [],
       "rewrite": [
         {
           "file": ".claude/rules/naming.md",

@@ -173,9 +173,9 @@ the decision.
    No fourth answer. "The tests construct the state" is not a satisfier — a fixture that
    fabricates a state no production path can reach is the signature of this defect, not the
    solution to it.
-5. **Derive the real paths** from the active blueprint's `packages.map` — in the
-   generated project, from the packages documented in the root `CLAUDE.md` and the
-   module `CLAUDE.md` files. Never write a generic path when the real one is knowable.
+5. **Derive the real paths** from the active blueprint's `packages.map` — the same YAML in
+   a generated project, which carries its own copy. Never write a generic path when the
+   real one is knowable.
 6. **Fix the canonical names** per `@.claude/rules/naming.md`: the use case and its
    ports in the active blueprint's vocabulary (§ Architecture vocabulary — in this
    repository, the naming comment in the blueprint's YAML), aggregate as a noun. Never

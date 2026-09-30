@@ -43,7 +43,10 @@ below.
   Outside the slice, the collaborator is a double.
 - `@SpringBootTest` with a real `webEnvironment` is reserved for the startup test: that
   the graph assembles and the configuration is valid. One per application is enough.
-- Its own test profile, never the production one. Sensitive configuration doesn't go
+- Its own test profile, never the production one, **active on every `@SpringBootTest`**
+  through `@ActiveProfiles("test")`. A profile no test activates never loads:
+  `application-test.yml` is then a file of switches nothing reads, and every scheduled
+  job it turns off runs under test anyway. Sensitive configuration doesn't go
   into a versioned file.
 - Zero `Thread.sleep` to wait for something async. Wait on a condition, with a declared
   timeout.
