@@ -165,7 +165,8 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    (`@.claude/rules/value-objects.md`). Fix in writing, column by column: name, type,
    nullability, default, `UNIQUE`, foreign key. A type that isn't Hibernate's default
    inference for the field (`char(n)`, `smallint`) names its `@JdbcTypeCode` in the
-   same row, and an assigned id names `Persistable` — both per
+   same row, and an assigned id names `Persistable` through the shared
+   `AssignedIdEntity` (`templates/JpaEntity.java.example`, last block) — both per
    `@.claude/rules/persistence.md` § Mapping and § Identity and keys.
 
    **4a. Idempotency, when `30-rest.md` requires it and step 2 found no

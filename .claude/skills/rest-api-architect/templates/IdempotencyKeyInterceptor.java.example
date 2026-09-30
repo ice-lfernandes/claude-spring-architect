@@ -59,16 +59,20 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (!requiresKey(request)) {
-            return true;
+        // One return, always `true`: a rejection is a thrown exception, so the error body
+        // comes from `ApiExceptionHandler`. Two `return true` branches read to Sonar as a
+        // method that "always returns the same value" (java:S3516), a BLOCKER.
+        if (requiresKey(request)) {
+            requireValidKey(request);
         }
+        return true;
+    }
 
+    private static void requireValidKey(HttpServletRequest request) {
         String key = request.getHeader(HEADER);
         if (key == null || !isUuid(key)) {
             throw new MissingIdempotencyKeyException("Header " + HEADER + " missing or malformed");
         }
-
-        return true;
     }
 
     private boolean requiresKey(HttpServletRequest request) {
@@ -115,7 +119,8 @@ public class MissingIdempotencyKeyException extends RuntimeException {
 
 /*
  * ANNOTATION-BASED VARIANT — only `requiresKey` and its supporting field change;
- * `preHandle`, `isUuid`, and the `WebMvcConfig` registration above stay as written.
+ * `preHandle`, `requireValidKey`, `isUuid`, and the `WebMvcConfig` registration above stay
+ * as written.
  *
  * Switch to this once `IdempotencyAspect.java.example` is the project's chosen strategy
  * (rest-api-architect's SKILL.md § "Fix pagination and idempotency": second

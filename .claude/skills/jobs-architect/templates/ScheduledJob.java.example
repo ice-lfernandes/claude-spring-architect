@@ -85,8 +85,8 @@ class JobRunRecorder {
 
     /*
      * Runs one pass and records it. A failure still escapes to the scheduler's error handler,
-     * which logs it — no `catch (RuntimeException)` here, Checkstyle's IllegalCatch refuses it
-     * and the log line already exists. What this adds is what the log line never gives: a rate
+     * which logs it — no catch of the base runtime exception here: Checkstyle's IllegalCatch
+     * refuses it, and the log line already exists. What this adds is what the log line never gives: a rate
      * to alarm on, and the time of the last success. The tag set is closed — job name and
      * outcome — so the cardinality is the job count times two (`observability.md` § Metrics).
      */

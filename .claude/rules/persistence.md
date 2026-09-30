@@ -114,8 +114,10 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
   waiting for an id
 - **An entity whose `@Id` is assigned (no `@GeneratedValue`) implements
   `Persistable<T>`**, with a `@Transient boolean isNew = true` flipped to `false` by
-  `@PostLoad` and `@PostPersist`. It holds whether or not the entity has `@Version`: a
-  primitive version counts as absent. Without it Spring Data sees a non-null id, calls
+  `@PostLoad` and `@PostPersist`. The flag and both callbacks are written once per
+  project, in one `@MappedSuperclass` every such entity extends — never copied into each
+  entity, where they are the same 14 lines per table. It holds whether or not the entity
+  has `@Version`: a primitive version counts as absent. Without it Spring Data sees a non-null id, calls
   `merge()` instead of `persist()`, pays a `SELECT` before every `INSERT`, and never
   raises the primary-key collision — code that relies on that collision for concurrency
   control is silently broken, with no compiler or test signal until the race happens
