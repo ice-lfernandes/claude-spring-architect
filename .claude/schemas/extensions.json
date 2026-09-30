@@ -219,7 +219,7 @@
         "skills": ["claude-code-architect-designer"]
       },
       "ops": {
-        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive. `audited: false`: a run of its own would render its report at the `Stop` AFTER the commit it made, so every publish left the tree dirty with a report about publishing (lessons-learned-012 § 15). Typed as `/git-publish` it now closes the run in progress first — that run's report and ledger lines land on disk before the commit, and go into it. Chained inside another run it stays a node of that run, with its own tokens, like any nested piece. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive. `audited: false`: a run of its own would render its report at the `Stop` AFTER the commit it made, so every publish left the tree dirty with a report about publishing (lessons-learned-012 § 15). Typed as `/git-publish` it now closes the run in progress first — that run's report and ledger lines land on disk before the commit, and go into it. Chained inside another run it stays part of that run, with its own tokens, like any nested piece. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
         "audited": false,
         "allowed_models": ["sonnet"],
         "write_allow": [],
