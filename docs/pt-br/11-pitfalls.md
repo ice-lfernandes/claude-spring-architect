@@ -150,6 +150,16 @@ de design só escreve docs e não pode nem *chamar* uma skill de classe `build` 
 materializado depois por `/docker-architect`. Sem fase de skill aberta, o território é livre,
 e é por isso que editar um arquivo à mão nunca é bloqueado.
 
+**Uma skill que encadeia outra da mesma classe soma o território dela; de outra classe, troca.**
+Mesma classe — `arch-adopt` → `sonarqube-setup` → `docker-architect`, todas `build` — e a fase
+guarda as três, então cada uma escreve os próprios caminhos e quem chamou continua escrevendo
+depois que a chamada volta. Outra classe — `/new-feature` chamando uma skill de design — e a
+fase se estreita para a chamada, que é o que mantém um passo de design só em docs. A regra
+mantinha só o território de quem chamou numa chamada da mesma classe, supondo que uma classe
+é um território; `build` dá um território a cada skill, e o `sonarqube-setup` encadeado pelo
+`arch-adopt` teve o `pom.xml` recusado. Design:
+`.claude/decisions/0092-guard-same-class-chain-sums-territories.md`.
+
 **A escrita de um subagent é julgada por `agent_classes`, não pela fase de quem o chamou.**
 Toda escrita carrega o seu `agent_type`, e `guard` confere o caminho contra o `write_allow`
 do próprio agent, então uma fase de design aberta nem amplia nem estreita o território dele.
@@ -255,7 +265,7 @@ property, um bump de versão — é reportada, nunca escrita.
 
 **Fora de uma rodada de feature, as linhas `sonar.*` do build file raiz são do
 `sonarqube-setup`.** Ele escreve o plugin do scanner e as properties uma vez — encadeado pelo
-último step do `project-bootstrap` ou pelo `arch-adopt` — e para numa segunda execução quando
+step 8.4 do `project-bootstrap` ou pelo `arch-adopt` — e para numa segunda execução quando
 o scanner já está lá. O serviço `sonarqube` do compose continua sendo do `docker-architect`, e
 o token não fica em arquivo nenhum: o scanner lê `SONAR_TOKEN` do ambiente. Design:
 `.claude/decisions/0091-sonarqube-setup-skill.md`.

@@ -161,7 +161,7 @@ when the server is external.
 **Delegates** the `sonarqube` compose service to `docker-architect`, the single owner of
 every service block.
 
-**Chained by** `project-bootstrap` (step 8.7, its last) and `arch-adopt` (step 7), and invocable
+**Chained by** `project-bootstrap` (step 8.4, after Verify) and `arch-adopt` (step 7), and invocable
 by hand. **Travels into the generated project** (`export.skills.include`): `arch-adopt`
 runs inside the project, where `project-bootstrap` does not exist, and needs this skill
 there.

@@ -4837,7 +4837,8 @@ public class ArchHook {
     //   write    PreToolUse Write|Edit    blocks (exit 2) what the three boundaries forbid
     //
     // The phase is one file per session in the OS temp dir — never in the project, so it
-    // can't be committed. It holds the active skill's NAME; the class, its territory and
+    // can't be committed. It holds the active skills' NAMES, one per line — the opener, then
+    // every same-class skill it chained (decision 0092); the class, the territories and
     // which agents execute are data (`skill_classes`, `agent_classes` and `guard` in
     // extensions.json — invariants 7, 10). Territory is deny-by-default: while a phase is
     // open, a write is allowed only where the active skill's `write_allow` says so. No phase
@@ -4919,12 +4920,19 @@ public class ArchHook {
             String cls = skillClassOf(sch, skill);
             if (cls == null) return;                       // plugin skill: not our territory
             guardRefuseBuildCall(sch, state, skill, cls);
-            // A phase is never replaced by a skill of its own class. Two skills of one class
-            // share a territory, so narrowing to the callee buys nothing — and it would
-            // silently shrink the caller's territory for the rest of the turn, which is what
-            // happens when project-bootstrap chains docker-architect in its step 4.10 and
-            // then keeps writing src/.
-            if (Files.isRegularFile(state) && cls.equals(skillClassOf(sch, readOrNull(state)))) {
+            // A skill of the phase's own class JOINS the phase instead of replacing it: the
+            // territory becomes the union of both. Replacing would shrink the caller's
+            // territory for the rest of the turn — project-bootstrap chains docker-architect
+            // in its step 4.10 and then keeps writing src/. Keeping only the caller's, the rule
+            // before decision 0092, assumed two skills of one class share a territory, which
+            // `build` does not: each of its skills carries its own override, so arch-adopt
+            // (`.claude/**`) chaining sonarqube-setup refused every write the callee exists
+            // for, and so did sonarqube-setup chaining docker-architect. A skill of another
+            // class still replaces the phase — that narrowing is what keeps a design skill
+            // called from `/new-feature` inside docs.
+            List<String> active = phaseSkills(state);
+            if (!active.isEmpty() && cls.equals(skillClassOf(sch, active.get(0)))) {
+                if (!active.contains(skill)) guardJoin(state, skill);
                 return;
             }
             guardOpen(state, skill);
@@ -4942,8 +4950,9 @@ public class ArchHook {
     static void guardRefuseBuildCall(Map<String, Object> sch, Path state, String skill, String cls)
             throws IOException {
         if (!Boolean.TRUE.equals(get(sch, "skill_classes", "classes", cls, "blocked_during_design"))) return;
-        if (!Files.isRegularFile(state)) return;
-        String active = readOrNull(state);
+        List<String> phase = phaseSkills(state);
+        if (phase.isEmpty()) return;
+        String active = phase.get(0);
         String activeCls = skillClassOf(sch, active);
         if (activeCls == null
                 || !Boolean.TRUE.equals(get(sch, "skill_classes", "classes", activeCls, "design_phase"))) {
@@ -4959,6 +4968,22 @@ public class ArchHook {
     static void guardOpen(Path state, String skill) throws IOException {
         Files.createDirectories(state.getParent());
         Files.writeString(state, skill, StandardCharsets.UTF_8);
+    }
+
+    /** Adds a same-class callee to the open phase, one skill name per line. */
+    static void guardJoin(Path state, String skill) throws IOException {
+        Files.writeString(state, "\n" + skill, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    }
+
+    /**
+     * The skills of the open phase, opener first — empty when no phase is open. Every name
+     * after the first joined through {@link #guardCall} and shares the opener's class, so the
+     * class is read from the first and the territory is the union of all.
+     */
+    static List<String> phaseSkills(Path state) {
+        String raw = readOrNull(state);
+        if (raw == null) return List.of();
+        return Arrays.stream(raw.split("\n")).map(String::strip).filter(s -> !s.isEmpty()).toList();
     }
 
     static void guardWrite(Map<String, Object> sch, Path state, Object in) throws IOException {
@@ -5022,10 +5047,14 @@ public class ArchHook {
                 out.add("agent_classes." + agentCls + " in " + SCHEMA_FILE + " — retrying will not help.");
                 return out;
             }
-        } else if (Files.isRegularFile(state)) {
-            String active = readOrNull(state);
-            String cls = skillClassOf(sch, active);
-            List<String> allow = writeAllowOf(sch, active);
+        } else if (!phaseSkills(state).isEmpty()) {
+            List<String> phase = phaseSkills(state);
+            String active = String.join("` + `", phase);
+            String cls = skillClassOf(sch, phase.get(0));
+            List<String> allow = new ArrayList<>();
+            for (String s : phase) {
+                for (String g : writeAllowOf(sch, s)) if (!allow.contains(g)) allow.add(g);
+            }
             if (cls != null && !matchesAny(allow, rel)) {
                 out.add("❌ `" + active + "` is class `" + cls + "` — " + rel
                         + " is outside its territory.");

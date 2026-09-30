@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-30
 - **Scenario:** "quero adicionar uma nova skill para ser injetada no agent java-spring-boot-developer de boas praticas de codigos java baseado em regras do sonarqube" — revised mid-interview to: "na verdade nao há configuracao de sonarqube para avaliacao real. Ao invés de criar algo antecipado, vamos inserir a configuracao do sonarqube na skill que cria o projeto do zero e na atualizacao do arch-adopt, caso o projeto nao tenha. Durante a configuracao do sonarqube, pergunte se ja existe alguma url e/ou autenticacao, se nao existir, deve-se adicionar no docker-compose do projeto a imagem do sonar"
-- **Decision:** option 1 — Form 1, `.claude/skills/sonarqube-setup/SKILL.md`, chained by `project-bootstrap` step 8.7 and `arch-adopt` step 7
+- **Decision:** option 1 — Form 1, `.claude/skills/sonarqube-setup/SKILL.md`, chained by `project-bootstrap` step 8.4 and `arch-adopt` step 7
 - **State:** approved by Lucas Fernandes, 2026-09-30 — CI step only for an external server; local container on embedded H2
 - **Goes to the generated project:** yes — `export.skills.include`
 
@@ -59,10 +59,10 @@
    `docker-architect`'s.
 
 **Callers.**
-- `project-bootstrap`: step 8.7, its last — the build file, the workflow (6.5) and
-  `docker-compose.yml` (4.10) already exist, and nothing after it rewrites them. Last
-  also keeps the guard's phase bookkeeping trivial: no bootstrap write follows the chained
-  skill.
+- `project-bootstrap`: step 8.4, after Verify and before the README (8.5), so the
+  README's report carries the `SonarQube:` line. Placed last (8.7) at first, to dodge the
+  guard keeping only the caller's territory on a same-class chain; that rule was the bug
+  decision 0092 fixed, and the step moved once the territories summed.
 - `arch-adopt`: new step after 6 · Verify — detect the plugin in the build file; missing →
   offer `sonarqube-setup`. Install case: `.claude/skills/` did not exist at session start,
   so the report asks for `/reload-skills` first (`@claude-help.md` § Live detection).
@@ -126,12 +126,12 @@ review stay unmeasured.
 | `.claude/skills/sonarqube-setup/templates/` | `pom-sonar.xml.example`, `build-gradle-sonar.example`, `ci-sonar-step.yml.example` |
 | `.claude/skills/docker-architect/templates/sonarqube-service.yml.example` | new — community tag, embedded H2, healthcheck on `/api/system/status` |
 | `.claude/skills/docker-architect/SKILL.md` | chained-from-`sonarqube-setup` path in step 2 and § How it's invoked; § Service catalog row |
-| `.claude/skills/project-bootstrap/SKILL.md` | step 8.7; `SonarQube:` line in the output contract; `Chains` in § Contract; `Skill` in `allowed-tools` |
+| `.claude/skills/project-bootstrap/SKILL.md` | step 8.4; `SonarQube:` line and next step 3 in the output contract; `Chains` in § Contract; `Skill` in `allowed-tools` |
 | `.claude/skills/arch-adopt/SKILL.md` | step 7 (detect scanner, chain, `/reload-skills` on install); report line; `Chains` in § Contract; `Skill` in `allowed-tools` |
 | `.claude/schemas/extensions.json` | `skill_classes.build.skills` + `overrides.sonarqube-setup.write_allow` (`pom.xml`, `build.gradle`, `.github/workflows/**`); `export.skills.include` |
 | `CLAUDE.md` | routing row |
 | `docs/pt-br/11-pitfalls.md`, `docs/en/11-pitfalls.md` | ownership of the `sonar.*` lines outside a feature run |
-| `docs/*/01-*.md`, `docs/*/02-init-project.md`, `docs/*/10-arch-adopt.md`, `README.md` | class table, step 8.7, arch-adopt's chained step, skill lists |
+| `docs/*/01-*.md`, `docs/*/02-init-project.md`, `docs/*/10-arch-adopt.md`, `README.md` | class table, step 8.4, arch-adopt's chained step, skill lists |
 
 Goes to the generated project: **yes** — `export.skills.include`; `docker-architect`'s new
 template travels with it. Written by the main thread, not delegated: axis 8 was

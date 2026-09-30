@@ -277,6 +277,18 @@ Everything in this step branches on the same build tool resolved before step 3 �
 **Read `references/verify-and-report.md` now** — it holds steps 8 to 8.6. Done when the
 build passes, or when the report says why it failed.
 
+### 8.4 · Configure SonarQube → skill `sonarqube-setup`
+
+Invoke `sonarqube-setup` via the `Skill` tool, with a one-line context: build tool and
+coordinates. It owns the one question this step asks — an existing server (URL,
+authentication) or a local container — and the scanner in the root build file, the CI
+step for an external server, and, for a local one, the `sonarqube` service it hands to
+`docker-architect`. After Verify, so the build it touches is already known green; before
+the README, so step 8.5's `{{outputContractBlock}}` carries its `SonarQube:` line. The
+chained skill joins this phase instead of replacing it — same class, territories summed
+(`@.claude/decisions/0092-guard-same-class-chain-sums-territories.md`) — so the steps after
+it still write. Don't write any `sonar.*` line here.
+
 ### 8.5 · Generate the project README → `references/verify-and-report.md` § 8.5
 
 `README.md` (English) and `README.pt-br.md`, after Verify.
@@ -284,15 +296,6 @@ build passes, or when the report says why it failed.
 ### 8.6 · Write the audit genesis record → `references/verify-and-report.md` § 8.6
 
 `.claude/audit-usage/GENESIS.md`, once.
-
-### 8.7 · Configure SonarQube → skill `sonarqube-setup`
-
-Invoke `sonarqube-setup` via the `Skill` tool, with a one-line context: build tool and
-coordinates. It owns the one question this step asks — an existing server (URL,
-authentication) or a local container — and the scanner in the root build file, the CI
-step for an external server, and, for a local one, the `sonarqube` service it hands to
-`docker-architect`. Last on purpose: the build file, the workflow and `docker-compose.yml`
-already exist, and nothing after it rewrites them. Don't write any `sonar.*` line here.
 
 ## Output contract
 
@@ -327,6 +330,10 @@ Next steps:
      `test-architect` skill as soon as business classes exist. Until then boundaries
      are guaranteed only by the hook (inside Claude Code)<, and by the POMs'
      `depends_on` (in the build) — only if `layout: multi-module`>.
+  3. SonarQube — <local: `docker compose up -d sonarqube`, log in at http://localhost:9000
+     as admin/admin (a password change is forced), create a token under My Account →
+     Security, `export SONAR_TOKEN=…`, then `<./mvnw -B verify sonar:sonar | ./gradlew build sonar>`
+     | external: create the `SONAR_TOKEN` repository secret; CI analyses from the next push>
 ```
 
 The part between `<>` in line 2 only appears if the blueprint is `layout:
@@ -435,7 +442,7 @@ other skill touches these files:
 
 `.gitignore` is deliberately left out — it comes from the Initializr (step 6.5).
 
-**Chains** `sonarqube-setup` in step 8.7 — the `sonar.*` lines of the root build file,
+**Chains** `sonarqube-setup` in step 8.4 — the `sonar.*` lines of the root build file,
 the workflow's analysis step and the `sonarqube` compose service are that skill's (and,
 for the service, `docker-architect`'s), even though they land in files this skill wrote.
 

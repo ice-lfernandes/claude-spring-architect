@@ -67,11 +67,11 @@
       prometheus:
         condition: service_healthy
 
-# --- Named volumes: merge into docker-compose.yml's top-level `volumes:` ----------------
-# volumes:
-#   tempo-data:
-#   prometheus-data:
-#   grafana-data:
+# Named volumes — add under docker-compose.yml's top-level `volumes:`.
+volumes:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
 
 # --- Delta to apply to docker/init/otel-collector/otel-collector-config.yml -------------
 # Not a second copy of that file: only what changes. One collector config exemplar stays

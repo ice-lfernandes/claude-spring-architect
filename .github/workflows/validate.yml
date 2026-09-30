@@ -10,6 +10,7 @@ name: validate
 #   4. adding a blueprint doesn't require touching skills, agents or commands
 #   5. the transformation into a project's `.claude/` is reproducible, carries the jar, and
 #      deletes what `export.retired` names (decision D54, 0082)
+#   6. every service template docker-architect merges yields a valid compose file (0092)
 on:
   push: { branches: [main] }
   pull_request:
@@ -254,6 +255,38 @@ jobs:
       # Only within rules/: duplication between NORMS is the bug. A skill citing the
       # norm is the correct direction of the graph, and an exemplar may repeat the
       # text of the invariant it illustrates.
+      # Every service template docker-architect merges, merged at once into the base compose
+      # project-bootstrap writes, and parsed by `docker compose config`. Nothing else reads
+      # these files before a generated project's `docker compose up`: a wrong indentation or a
+      # named volume a template uses without declaring surfaced only there. Needs the Compose
+      # plugin the Ubuntu runner ships, no daemon. A template that starts its service at column
+      # 0 is re-indented, since the skill merges "indentation matched to the file's own".
+      - name: compose service templates merge and parse
+        run: |
+          set -euo pipefail
+          T=.claude/skills/docker-architect/templates
+          OUT=$(mktemp -d)/docker-compose.yml
+          service() {
+            awk '/^# ---/{exit} /^volumes:/{exit} {print}' "$1" \
+              | awk 'BEGIN{i=-1} /^[^#[:space:]]/{if(i<0)i=0} /^  [^#[:space:]]/{if(i<0)i=2} {print (i==0 && $0 !~ /^#/ ? "  " $0 : $0)}'
+          }
+          volumes() {
+            awk '/^# ---/{exit} /^volumes:/{v=1;next} v&&/^[^[:space:]]/{v=0} v&&/^  [A-Za-z0-9_.-]+:/' "$1"
+          }
+          {
+            grep -v '^#' .claude/skills/project-bootstrap/templates/docker-compose.yml.example
+            for f in "$T"/*-service.yml.example; do service "$f"; done
+            echo "volumes:"
+            for f in "$T"/*-service.yml.example; do volumes "$f"; done | sort -u
+          } > "$OUT"
+          if ! docker compose -f "$OUT" config -q; then
+            echo "❌ A service template in $T does not merge into a valid compose file."
+            echo "   Fix the template, not this step: a named volume it uses goes under its own"
+            echo "   top-level \`volumes:\`, and the service block is a key under \`services:\`."
+            exit 1
+          fi
+          echo "✅ $(ls "$T"/*-service.yml.example | wc -l | tr -d ' ') service templates merge into the base compose and parse."
+
       - name: each norm has a single owner
         run: |
           FAIL=0

@@ -86,9 +86,9 @@ sequenceDiagram
 | 6.6 | Writes the project's `.claude/` in one command — `ArchHook.java export <project> --blueprint <id>`, driven by the `export` manifest of `extensions.json` | Every rule (package `paths` rewritten from `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (with `guard`, `audit` and `context` wired); the active blueprint; `.claude/audit-usage/` + `pricing.json`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` only if a server was designed for the generated project |
 | 7 | Nothing to run — what the enforcement just installed does, for the final report | — |
 | 8 | Verifies | `./mvnw clean verify`, boundary test, `lombok.config` test, autonomy test |
+| 8.4 | Configures SonarQube — chains `sonarqube-setup`, which asks whether a server exists | scanner + `sonar.*` properties in the root build file; CI step for an external server; a `sonarqube` compose service (via `docker-architect`) otherwise |
 | 8.5 | Generates the project README | `README.md` (English) + `README.pt-br.md` |
 | 8.6 | Writes the trail's genesis record | `.claude/audit-usage/GENESIS.md` |
-| 8.7 | Configures SonarQube — chains `sonarqube-setup`, which asks whether a server exists | scanner + `sonar.*` properties in the root build file; CI step for an external server; a `sonarqube` compose service (via `docker-architect`) otherwise |
 
 Step 8 is the only quality gate: if the build fails, **fix it before reporting** — a
 bootstrap that delivers a red build isn't finished.
