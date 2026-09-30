@@ -1,0 +1,120 @@
+<!--
+Exemplar of `docs/lessons-learned/sonar-NNN.md`, written by step 5 of sonar-lessons/SKILL.md.
+Every {{…}} is filled from steps 2-4; this comment is cut from the real file. Shape taken
+from the hand-written Sonar lessons-learned this skill replaces: a snapshot, the issues by
+origin, one section per finding group, the structural lesson, and the change list for the
+meta-repository. This file is the complete record — project paths, lines and excerpts
+belong here. What leaves the project is the issue body, written separately at step 6.
+-->
+
+# Sonar lessons {{NNN}} — {{one line: what this analysis was, e.g. "after UC-001..UC-003"}}
+
+Run date: {{YYYY-MM-DD}}. Analysis: `{{./mvnw -B -q verify sonar:sonar | ./gradlew -q build sonar}}`
+against `{{host}}`, task `{{ceTaskId}}`. Build: {{green | red — see § 1}}.
+Generated from claude-spring-architect `{{stamp.ref}}` (`{{stamp.commit, short}}`), blueprint
+`{{stamp.blueprint}}`.
+
+Dashboard: `{{host}}/dashboard?id={{projectKey}}`
+
+The goal of this file is the next analysis: each section names the piece of `.claude/` that
+produced a group of issues and the change that removes the group at its source.
+
+---
+
+## Snapshot
+
+| Measure | Value | Previous (`sonar-{{NNN-1}}`) | Δ |
+|---|---|---|---|
+| Quality gate | **{{OK / ERROR}}**. {{Failing conditions: `metric` actual > threshold, …}} | {{OK / ERROR}} | {{=, fixed, broke}} |
+| `new_coverage` | {{x}} % (threshold {{t}} %) | {{x}} % | {{±x}} |
+| `new_duplicated_lines_density` | {{x}} % (threshold {{t}} %) | {{x}} % | {{±x}} |
+| Coverage (overall) | {{x}} % — {{uncovered_lines}} uncovered lines | {{x}} % | {{±x}} |
+| Lines of code | {{ncloc}} | {{n}} | {{±n}} |
+| Bugs (reliability) | {{n}}. Rating **{{A-E}}** | {{n}} | {{±n}} |
+| Vulnerabilities / Security hotspots | {{n}} / {{n}} | {{n}} / {{n}} | {{±n}} |
+| Code smells (maintainability) | {{n}}. Rating {{A-E}} | {{n}} | {{±n}} |
+| Duplicated lines | {{x}} %. {{n}} blocks in {{n}} files | {{x}} % | {{±x}} |
+| Open issues | **{{total}}**: {{main}} in `src/main`, {{test}} in `src/test` | {{total}} | **{{±n}}** |
+
+First run (no previous `sonar-*.md`): drop the two right-hand columns.
+
+Issues by origin:
+
+| Origin in `.claude/` | Issues | Sections |
+|---|---|---|
+| Template copied verbatim | {{n}} | {{§ …}} |
+| Norm that allows or requires it | {{n}} | {{§ …}} |
+| Checkstyle / build configuration | {{n}} | {{§ …}} |
+| Test template teaches the pattern | {{n}} | {{§ …}} |
+| Code the bootstrap generated (`project-bootstrap`) | {{n}} | {{§ …}} |
+| Nothing — the model decided alone | {{n}} | {{§ …}} |
+
+---
+
+## § {{N}} · {{owner file or gap}} — {{what it produces}} ({{n}} issues, {{new | recurring — was § M of sonar-NNN-1}})
+
+| Rule | Quality · severity | Location in project | Message |
+|---|---|---|---|
+| `{{java:Sxxxx}}` | {{MAINTAINABILITY · MEDIUM}} | `{{path}}:{{line}}` | {{message}} |
+
+**What happened.** {{The construct, how many times, main vs test. Quote the rule's
+`root_cause` in one sentence when it explains the risk better than the message.}}
+
+**Recurring.** {{Only for a recurring group whose previous file already proposed the fix at
+the owner: say where that fix stands — not merged upstream, or merged and not pulled here
+with `/arch-adopt`. Omit otherwise.}}
+
+**Why.** {{The owner, by path and line inside `.claude/`, and how the construct reaches the
+project from there: copied verbatim, prescribed by the norm, missing from Checkstyle, or
+not covered by anything. If `doctor` reports the owner as edited since the export, say so —
+the meta-repository's version may not carry the defect.}}
+
+**Fix at the owner.** {{The file in `.claude/`, the change, and the enforcement that keeps it
+from coming back: a Checkstyle check, an ArchUnit rule, a line in the norm. Concrete — a
+path and the shape of the change.}}
+
+**Fix here.** {{Optional: what to change in this project now, through `/new-feature` or by
+hand. Omit when the fix at the owner is enough.}}
+
+Rejected alternative: {{muting the rule, `sonar.issue.ignore`, `// NOSONAR` — and why it hides
+the signal instead of removing the cause. Omit when nobody would propose one.}}
+
+---
+
+## Gone since `sonar-{{NNN-1}}`
+
+{{Rule keys and counts of every group the previous file had and this analysis does not, with
+the change that removed it when known. Omit on the first run.}}
+
+---
+
+## § {{last}} · The structural lesson
+
+{{What in `.claude/` would have caught this whole class of issue before the analysis did —
+the gap between what `verify` checks and what Sonar checks. One section, even when the
+answer is "nothing is missing".}}
+
+---
+
+## Appendix A · All {{total}} open issues
+
+| # | Rule | Scope | Location | Message | § |
+|---|---|---|---|---|---|
+| 1 | `{{java:Sxxxx}}` | {{MAIN / TEST}} | `{{path}}:{{line}}` | {{message}} | {{§}} |
+
+## Appendix B · Duplications
+
+| Block | Files | Lines | § |
+|---|---|---|---|
+| 1 | `{{path}}` · `{{path}}` | {{from}}–{{to}} ({{size}}) | {{§}} |
+
+## Appendix C · Change list for claude-spring-architect
+
+| # | File in `.claude/` | Change | Removes |
+|---|---|---|---|
+| 1 | `{{.claude/skills/…/templates/….example}}` | {{change}} | {{n}} issues ({{rule keys}}) |
+
+## Issue
+
+{{Written by step 6, on every path out of it: the issue URL | declined | left for a manual
+edit — `gh issue create …` | not created — <reason>.}}

@@ -1,0 +1,77 @@
+name: Sonar lessons
+description: SonarQube findings in a generated project, traced to the .claude/ piece that produced them.
+title: "sonar-lessons: "
+labels: ["sonar-lessons"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Usually filed by `/sonar-lessons` from inside a generated project, which reads this
+        form and fills one `### <label>` section per field below. Filing by hand works the
+        same way.
+
+        **This repository is public; the project that produced these findings may not be.**
+        Every field carries the trace to this repository only: Sonar rule keys, counts, and
+        paths inside `.claude/`. Never a path under `src/`, a package or class name of the
+        project, a code excerpt, the project key, or the SonarQube server URL.
+
+  - type: input
+    id: source
+    attributes:
+      label: Source version
+      description: From the project's `.claude/.arch-provenance.json` — `ref`, short `commit`, and `blueprint`.
+      placeholder: "v1.4.0 (a1b2c3d) · blueprint clean-arch-single-module"
+    validations:
+      required: true
+
+  - type: textarea
+    id: snapshot
+    attributes:
+      label: Snapshot
+      description: |
+        Quality gate status and its failing conditions, then counts only — open issues
+        (main / test), bugs, vulnerabilities, code smells, coverage, duplication. No
+        project key, no URL.
+    validations:
+      required: true
+
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings by owner
+      description: |
+        One row per finding group: Sonar rule key and name, issue count, the owner in
+        `.claude/` (path, and line when known), and the origin — template copied
+        verbatim, norm, Checkstyle/build, test template, `project-bootstrap`, or "the
+        model decided alone". Name the owner by its path in this repository.
+      placeholder: |
+        | Rule | Issues | Owner in .claude/ | Origin |
+        |---|---|---|---|
+        | `java:S1192` | 7 | `.claude/skills/persistence-architect/templates/JpaEntity.java.example:127` | template |
+    validations:
+      required: true
+
+  - type: textarea
+    id: changes
+    attributes:
+      label: Proposed changes
+      description: |
+        The change list for this repository — file in `.claude/`, the change, and the
+        issues it removes. Include the enforcement that keeps each one from coming back
+        (Checkstyle check, ArchUnit rule, a line in a norm) when there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: structural
+    attributes:
+      label: Structural lesson
+      description: What in `.claude/` would have caught this whole class of issue before the analysis did.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This issue names no path, package, class, excerpt, project key or server URL of the analyzed project.
+          required: true

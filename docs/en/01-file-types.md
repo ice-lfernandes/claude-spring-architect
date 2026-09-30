@@ -74,7 +74,7 @@ today: skills here prefer to explicitly delegate via the `Agent tool` to a named
 **The skill's class — the part the runtime knows nothing about.** The runtime has no
 notion of "which files this skill may write" or "which sections its body must carry".
 Here that is data, in the `skill_classes` block of `.claude/schemas/extensions.json`:
-every skill belongs to exactly one of six classes, and the class declares both.
+every skill belongs to exactly one of seven classes, and the class declares both.
 
 | Class | Skills | Write territory |
 |---|---|---|
@@ -84,6 +84,7 @@ every skill belongs to exactly one of six classes, and the class declares both.
 | `observer` | `arch-doctor`, `audit-usage` | nothing |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish` | nothing — its effect is `git`, over Bash |
+| `report` | `sonar-lessons` | `docs/lessons-learned/**` — and, after a confirmation, an issue outside the tree, over `gh` |
 
 `ArchHook.java schema` enforces the structure (the class declared in the body as
 `**Class:** <c>`, every required section present) and `guard` enforces the territory,
