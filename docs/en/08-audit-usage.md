@@ -71,11 +71,17 @@ Plugin skills (`caveman:*`) and runtime agents (`Explore`, `general-purpose`) fa
 by construction — they have no file. Skills preloaded via `skills:` in an agent's
 frontmatter appear under that agent as `preloaded`, with no tokens of their own.
 
-Two exceptions, `audit-usage` and `arch-doctor`, both in the `observer` class of `extensions.json` → `skill_classes`, which declares `audited: false` — the class, not a list, decides:
-they are observers — invoking one **closes** the run in progress (which
-is the only way, inside a live session, to get a report that isn't `⏳ in progress`)
-and opens no run of its own. Without that, reading the trail would produce a report
-about reading the trail.
+Three exceptions, decided by class in `extensions.json` → `skill_classes`, never by a list:
+a class that declares `audited: false` leaves no run of its own for any skill it lists.
+
+- **`observer`** — `audit-usage` and `arch-doctor`. Invoking one **closes** the run in
+  progress (which is the only way, inside a live session, to get a report that isn't
+  `⏳ in progress`) and opens no run of its own. Without that, reading the trail would
+  produce a report about reading the trail.
+- **`ops`** — `git-publish`. Its own report could only be written after the commit it
+  makes, so every publish would end with a dirty tree. Typed as `/git-publish`, it closes
+  the run in progress first, so that run's report goes into the commit. Chained inside
+  another run it is still a node of that run, with its own tokens.
 
 ## Anatomy of a report
 

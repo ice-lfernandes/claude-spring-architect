@@ -3,10 +3,10 @@
 - **Date:** 2026-09-30
 - **Scenario:** "verifique quem é responsável por dizer qual skill ou agent deve gerar o
   audit-usage" — and, once the answer was on the table, "faça a opção a e depois a b".
-- **Decision:** `audited: false` on the `observer` class of `skill_classes` (readable on any
+- **Decision:** `audited: false` on the `observer` and `ops` classes of `skill_classes` (readable on any
   class of `agent_classes` too), read by `ArchHook.java isAuditExcluded`; `audit.exclude_skills`
   removed. Preceded by option a: stale comments corrected.
-- **State:** approved by Lucas Fernandes, on 2026-09-30 — options a then b
+- **State:** approved by Lucas Fernandes, on 2026-09-30 — options a then b; extended to `ops` the same day
 
 ## What the verification found
 
@@ -70,6 +70,32 @@ Cheapest diff after a, and it closes the silent drift. It also makes the duplica
 permanent: every new observer is two edits, and the check exists only to police a list that
 has no reason to exist.
 
+## Extended the same day: `ops` (`git-publish`) declares `audited: false` too
+
+Asked right after the list of audited pieces was shown: "git-publish não deveria ser
+auditada". Two questions settled what that means:
+
+| Question | Answer |
+|---|---|
+| Scope | **No run of its own** — `/git-publish` typed, or called by the model with no run open, writes no report and no `history.jsonl` line. Chained inside another run it stays a node of that run, with its own tokens, like any nested piece. "Vanishing entirely" was offered and rejected: it needs a Java change in `auditCall`, and its tokens would fall into the previous piece, hiding a cost the demo measured at 23 % of the trail |
+| Why | Its own report could only be rendered at the `Stop` that follows the commit it makes, so every publish ended with the tree dirty — the oscillation lessons-learned-012 § 15 described |
+
+**Zero Java:** the flag is data on `ops`, the class `git-publish` is the only member of,
+and `isAuditExcluded` already reads it. A second `ops` skill would inherit it; that is the
+class's statement about effect-outside-the-tree skills, not about this one name.
+
+**Side effect, wanted:** as an excluded piece, `/git-publish` typed mid-session **closes**
+the run in progress before it runs, so that run's report and ledger lines are on disk
+before the commit and go into it.
+
+**What it does not fix:** when `git-publish` is chained inside another run (the model calls
+it at the end of `/new-feature`), that parent run is still open at the commit, and its
+report is re-rendered at the next `Stop` — after the commit. That tree still ends dirty by
+the parent's report; closing it would need the parent's render to run before the commit,
+which no event offers.
+
+`AuditRenderTest` covers both entry points; removing the flag from `ops` fails it.
+
 ## References
 
 | Claim | Source |
@@ -86,9 +112,9 @@ has no reason to exist.
 |---|---|
 | `.claude/hooks/ArchHook.java` | Option a: `audit` mode header rewritten. Option b: `isAuditExcluded(kind, name)` reads the class flag; both call sites pass the kind |
 | `.claude/hooks/ArchHook.jar` | Rebuilt |
-| `.claude/schemas/extensions.json` | `audit.exclude_skills` removed; `audit.$comment` points at the class; `skill_classes.classes.observer` gains `audited: false` and says why in its `$comment` |
+| `.claude/schemas/extensions.json` | `audit.exclude_skills` removed; `audit.$comment` points at the class; `skill_classes.classes.observer` and `skill_classes.classes.ops` gain `audited: false`, each saying why in its `$comment` |
 | `.claude/.ci/AuditRenderTest.java` | An observer typed mid-run closes the run and leaves no report; a model call to one with no run open opens none. Mutation-checked: removing the flag fails both |
-| `.claude/skills/arch-doctor/SKILL.md`, `.claude/skills/audit-usage/SKILL.md` | Name the class flag instead of the list |
+| `.claude/skills/arch-doctor/SKILL.md`, `.claude/skills/audit-usage/SKILL.md`, `.claude/skills/git-publish/SKILL.md` | Name the class flag instead of the list |
 | `claude-help.md`, `docs/en/08-audit-usage.md`, `docs/pt-br/08-audit-usage.md` | Same |
 
 Goes to the generated project: **yes** — `ArchHook.java`, the jar, `extensions.json` and both

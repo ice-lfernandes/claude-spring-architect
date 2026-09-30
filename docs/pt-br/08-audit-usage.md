@@ -71,11 +71,17 @@ Qualquer nome que resolva para `.claude/skills/<n>/SKILL.md` ou
 pré-carregadas via `skills:` no frontmatter de um agent aparecem sob esse agent como
 `preloaded`, sem tokens próprios.
 
-Duas exceções, `audit-usage` e `arch-doctor`, ambas na classe `observer` de `extensions.json` → `skill_classes`, que declara `audited: false` — quem decide é a classe, não uma lista:
-são observadores — invocar um deles **fecha** a execução em andamento
-(que é o único jeito, dentro de uma sessão viva, de obter um relatório que não esteja
-`⏳ in progress`) e não abre execução própria. Sem isso, ler a trilha geraria um
-relatório sobre ler a trilha.
+Três exceções, decididas pela classe em `extensions.json` → `skill_classes`, nunca por uma
+lista: uma classe que declara `audited: false` não abre run próprio para nenhuma skill dela.
+
+- **`observer`** — `audit-usage` e `arch-doctor`. Invocar um deles **fecha** a execução em
+  andamento (que é o único jeito, dentro de uma sessão viva, de obter um relatório que não
+  esteja `⏳ in progress`) e não abre execução própria. Sem isso, ler a trilha geraria um
+  relatório sobre ler a trilha.
+- **`ops`** — `git-publish`. O relatório próprio só poderia ser escrito depois do commit que
+  ela faz, então todo publish terminaria com o tree sujo. Digitada como `/git-publish`, fecha
+  antes a execução em andamento, e o relatório dessa execução entra no commit. Encadeada
+  dentro de outra execução, continua como nó dela, com tokens próprios.
 
 ## Anatomia de um relatório
 

@@ -142,7 +142,7 @@
   },
 
   "audit": {
-    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup). Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md and .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup) and `ops` (`git-publish`: its own report would land after its commit). Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md and .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
@@ -219,7 +219,8 @@
         "skills": ["claude-code-architect-designer"]
       },
       "ops": {
-        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive.",
+        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive. `audited: false`: a run of its own would render its report at the `Stop` AFTER the commit it made, so every publish left the tree dirty with a report about publishing (lessons-learned-012 § 15). Typed as `/git-publish` it now closes the run in progress first — that run's report and ledger lines land on disk before the commit, and go into it. Chained inside another run it stays a node of that run, with its own tokens, like any nested piece. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+        "audited": false,
         "allowed_models": ["sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure", "## Failure modes"],

@@ -134,6 +134,22 @@ public class AuditRenderTest {
         check(!Files.exists(trail.resolve(".state/s3.ndjson")),
                 "a model call to an observer with no run open opens none");
 
+        // `ops` declares `audited: false` too: git-publish's own report would land after its
+        // commit and leave the tree dirty on every publish (lessons-learned-012 § 15).
+        Files.createDirectories(repo.resolve(".claude/skills/git-publish"));
+        Files.writeString(repo.resolve(".claude/skills/git-publish/SKILL.md"),
+                "---\nname: git-publish\ndescription: fixture\n---\n\nbody\n");
+        run(hook, repo, "prompt", "{\"session_id\":\"s4\",\"prompt\":\"/git-publish\"}");
+        run(hook, repo, "flush", "{\"session_id\":\"s4\"}");
+        run(hook, repo, "call", "{\"session_id\":\"s5\",\"tool_name\":\"Skill\",\"tool_use_id\":\"t5\","
+                + "\"tool_input\":{\"skill\":\"git-publish\"}}");
+        boolean publishReport;
+        try (var s = Files.list(trail)) {
+            publishReport = s.anyMatch(f -> f.getFileName().toString().endsWith("--git-publish.md"));
+        }
+        check(!publishReport && !Files.exists(trail.resolve(".state/s5.ndjson")),
+                "git-publish opens no run of its own, typed or called by the model");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " check(s) failed — `audit` is NOT rendering where the run"
                     + " spent, is leaking an unredacted error into the versioned trail, or is recording"
