@@ -56,6 +56,22 @@ public class BashGuardTest {
                 "unresolvable target — skipped, by design");
         failures += bash(hook, session, "ls -la", 0, "innocent command — allowed");
 
+        // sonar-lessons (decision 0100) keeps the scan's output short with `-q` precisely
+        // because a redirect to a log file is a write outside its territory. Both halves are
+        // pinned: if `guard bash` ever reads `./mvnw` itself as a writer of target/, the skill
+        // stops working in every generated project, with nothing in review to show it.
+        String report = "ci-bash-report-" + System.nanoTime();
+        failures += run(hook, "prompt", report,
+                "{\"session_id\":\"%s\",\"prompt\":\"/sonar-lessons\"}",
+                0, "prompt opens sonar-lessons' report phase");
+        failures += bash(hook, report, "./mvnw -B -q verify sonar:sonar", 0,
+                "the scan itself — allowed");
+        failures += bash(hook, report, "./mvnw -B verify sonar:sonar > target/scan.log", 2,
+                "the scan redirected to target/ — blocked");
+        failures += bash(hook, report,
+                "gh issue create -R o/r --title t --body-file docs/lessons-learned/sonar-001.issue.md",
+                0, "publishing the body file — allowed");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `guard bash` is NOT"
                     + " enforcing what guard.force_push and guard.bash_write_shapes declare.");

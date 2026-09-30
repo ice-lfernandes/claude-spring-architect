@@ -140,6 +140,38 @@ public class SkillTerritoryTest {
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
                 2, "the union is still deny-by-default outside it");
 
+        // `report` (decision 0100): the class default is the whole territory, with no
+        // override. sonar-lessons runs a full build and publishes outward — the one file it
+        // may leave behind is its lessons-learned, never the build file or code.
+        String report = "ci-territory-report-" + System.nanoTime();
+        failures += run(hook, "prompt", report,
+                "{\"session_id\":\"%s\",\"prompt\":\"/sonar-lessons\"}",
+                0, "prompt opens sonar-lessons' report phase");
+
+        failures += run(hook, "write", report,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"docs/lessons-learned/sonar-001.md\"}}",
+                0, "docs/lessons-learned/ — allowed");
+
+        failures += run(hook, "write", report,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"pom.xml\"}}",
+                2, "pom.xml is not a report's — blocked");
+
+        failures += run(hook, "write", report,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
+                2, "src/ is not a report's — blocked");
+
+        // `blocked_during_design`: a report is a full build, so a design run cannot reach it.
+        String reportMidDesign = "ci-territory-report-design-" + System.nanoTime();
+        failures += run(hook, "prompt", reportMidDesign,
+                "{\"session_id\":\"%s\",\"prompt\":\"/new-feature add a use case\"}",
+                0, "prompt opens the orchestrator phase");
+
+        failures += run(hook, "call", reportMidDesign,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"sonar-lessons\"}}",
+                2, "report-class Skill call refused mid-design");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — the territory guard is NOT"
                     + " enforcing what skill_classes declares.");
@@ -147,7 +179,8 @@ public class SkillTerritoryTest {
         }
         System.out.println("✅ Skill territory enforced: deny by default while a phase is open,"
                 + " agent_type judged by its own class, build-class calls refused mid-design,"
-                + " same-class chains summing territories, and no restriction with no phase open.");
+                + " same-class chains summing territories, report-class runs held to"
+                + " docs/lessons-learned/, and no restriction with no phase open.");
     }
 
     /** Runs one `guard <phase>` with the given stdin and checks the exit code. */

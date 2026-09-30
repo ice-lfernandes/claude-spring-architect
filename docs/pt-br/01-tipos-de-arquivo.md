@@ -73,7 +73,7 @@ quando isolamento é necessário (ver § Agent abaixo).
 **Classe da skill — a parte que o runtime não conhece.** O runtime não tem nenhuma noção
 de "que arquivos esta skill pode escrever" nem de "que seções o corpo dela precisa ter".
 Aqui isso é dado, no bloco `skill_classes` de `.claude/schemas/extensions.json`: cada
-skill pertence a exatamente uma das seis classes, e a classe declara duas coisas.
+skill pertence a exatamente uma das sete classes, e a classe declara duas coisas.
 
 | Classe | Skills | Território de escrita |
 |---|---|---|
@@ -83,6 +83,7 @@ skill pertence a exatamente uma das seis classes, e a classe declara duas coisas
 | `observer` | `arch-doctor`, `audit-usage` | nada |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish` | nada — o efeito é `git`, via Bash |
+| `report` | `sonar-lessons` | `docs/lessons-learned/**` — e, depois de confirmação, uma issue fora da árvore, via `gh` |
 
 `ArchHook.java schema` cobra a estrutura (classe declarada no corpo com `**Class:** <c>`,
 seções obrigatórias presentes) e `guard` cobra o território, com exit 2 em qualquer
