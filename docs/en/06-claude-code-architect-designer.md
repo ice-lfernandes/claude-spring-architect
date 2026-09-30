@@ -247,7 +247,7 @@ the first session: its name alone costs context at startup.
 Same file, one line of difference. This repo's practical rule:
 
 - **Writes files in the user's project and is triggered by their decision → Form 2.**
-  E.g. `arch-doctor`, `init-project`, `project-bootstrap`, `java-patterns`, and this
+  E.g. `arch-doctor`, `init-project`, `project-bootstrap`, `gof-design-patterns`, and this
   skill itself.
 - **Part of a pipeline another piece chains → Form 1**, even when writing files.
   `disable-model-invocation` hides the skill from the model, and what the model
@@ -492,7 +492,7 @@ confusion during diagnosis.
 | `model` | ➖ | `sonnet`, `opus`, `haiku`, full ID, or `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Maximum turns before stopping |
-| `skills` | ➖ | Skills preloaded **in full** at startup |
+| `skills` | ➖ | Skills preloaded **in full** at startup — never one with `disable-model-invocation: true`, which is skipped without a word (decision 0077) |
 | `mcpServers` | ➖ | MCP servers only for this subagent |
 | `hooks` | ➖ | Hooks only while the subagent runs |
 | `memory` | ➖ | `user`, `project`, or `local` |

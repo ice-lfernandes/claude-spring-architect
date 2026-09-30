@@ -52,6 +52,13 @@ Every injection in this repo resolves paths from `"${CLAUDE_PROJECT_DIR:-.}"`, a
 `ArchHook.java schema` blocks one that doesn't — a genuinely cwd-independent injection needs a
 regex in `injections.exempt_patterns`.
 
+**A skill with `disable-model-invocation: true` listed in an agent's `skills:` is not
+preloaded — and nothing warns.** The agent starts without it, and a body saying "catalog
+preloaded" tells it to apply something the model never received. That was
+`gof-design-patterns` (then `java-patterns`) in `java-spring-boot-developer`. To hand a
+manual skill's content to an agent, inject it at `SubagentStart` (`ArchHook.java context
+subagent`, decision 0077), not through `skills:`.
+
 **Everything the model must obey lives in the body of the file**, never in frontmatter.
 `metadata.*` was removed from skills and agents: ownership, `reads`, `handoff` and contracts
 live in the body's `## Contract` section. Do not put `metadata:` back into a `SKILL.md` — it
@@ -80,10 +87,15 @@ throws — exits 0 through `main`'s catch, looks like it passed. `schema` catche
 three, from the `settings` block of `.claude/schemas/extensions.json`; the fourth only by
 running the mode by hand.
 
+**An `if` with a path only matches through `Edit(...)` or `Read(...)`.** `Edit` covers every
+built-in tool that writes a file, `Write` included; an `"if": "Write(.claude/**/*.md)"` looks
+like a filter and filters nothing. Source: `docs/pt-br/claude-code-docs/07-settings-permissoes-e-seguranca.md`.
+
 **Only the hook-protocol modes of `ArchHook.java` read stdin** — `check`, `format`, `tests`,
-`schema`, `audit`, `guard`. Invoking one of those by hand without `</dev/null` blocks until
-something closes stdin, with no output: a command that looks hung, not failed. `export`,
-`doctor` and `compose` are invoked by people and read nothing.
+`schema`, `audit`, `guard`, `context`, and `compose gate`. Invoking one of those by hand without
+`</dev/null` blocks until something closes stdin, with no output: a command that looks hung,
+not failed. `export`, `doctor`, `build` and the bare `compose` are invoked by people and read
+nothing.
 
 ## `AskUserQuestion`
 

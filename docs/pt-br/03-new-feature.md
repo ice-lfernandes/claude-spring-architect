@@ -13,8 +13,8 @@ pronto para o agent executor implementar depois que o usuário aprovar. **Este c
 existe dentro de um projeto já gerado** por `/init-project`: lê `pom.xml`,
 `.claude/forbidden-imports.txt` e descobre o package de domínio no projeto real.
 
-Quatro fronteiras valem em toda execução, e nenhuma delas é prosa — o hook `guard`
-bloqueia com `exit 2`:
+Estas fronteiras valem em toda execução, e nenhuma delas é prosa — o hook `guard`
+bloqueia com `exit 2`, `permissions.ask` pergunta, ou a consolidação para:
 
 - **Um run escreve só em `docs/`.** Território é allowlist, deny por default: cada skill
   do pipeline só escreve o `write_allow` da classe dela (`skill_classes` em
@@ -30,15 +30,21 @@ bloqueia com `exit 2`:
   própria seção `## Impact on approved use cases`, e uma linha no `CHANGELOG.md` da pasta
   de cada caso alterado. O `guard` congela os arquivos — e libera exatamente esse
   `CHANGELOG.md`, então o log que a pasta congelada deve receber é a única escrita que ela
-  ainda aceita (`guard.frozen_exempt_basenames`).
+  ainda aceita (`guard.frozen_exempt_basenames`), além do fechamento do `status:` da própria
+  spec e dos toggles do checklist.
 - **Uma impact row que adiciona precondição nomeia quem a satisfaz.** Coluna
   `Satisfied by`: um `UC-NNN` aprovado, o próprio caso, ou um caso do backlog **nomeado** —
   e nesse último caso a spec e o relatório final dizem que o caso anterior fica inalcançável
   ponta a ponta até o outro entrar. Sem satisfator, a consolidação para. Fixture que fabrica
   o estado não conta como satisfator.
-- **O relatório final carrega três achados que ninguém deve ter de reconstruir:** caso
-  aprovado que este run deixou inalcançável, garantia de dedupe delegada a consumidor externo
-  sem contrato, e dado pessoal que cruza fronteira em claro com seu destinatário.
+- **O relatório final carrega quatro achados que ninguém deve ter de reconstruir:** caso
+  aprovado que este run deixou inalcançável, todo item que uma parcial adiou com o dono a quem
+  o deixou, garantia de dedupe delegada a consumidor externo sem contrato, e dado pessoal que
+  cruza fronteira em claro com seu destinatário.
+- **Design patterns são decididos no desenho, não pelo executor.** Toda parcial de design
+  carrega uma seção `## Design patterns` — `none` quando nada se aplica, e a ausência para a
+  consolidação — nomeando a linha da spec ou o `file:line` que força cada padrão e as classes
+  que ele cria.
 
 ## Por que é uma skill manual, não um agent
 
@@ -116,7 +122,7 @@ sequenceDiagram
                 NF->>LOG: Agent commons-logging-installer, em turno separado
             end
             NF->>DEV: caminho do spec
-            DEV-->>NF: build verde, status: implemented
+            DEV-->>NF: build verde, status: implemented (ou implemented-blocked)
             NF->>GIT: feat(UC-NNN-slug) — dois portões
         else agora não
             NF->>GIT: só os docs do spec aprovado — dois portões
@@ -150,8 +156,17 @@ persistência escrito, e persistência rodava duas vezes.
 falta no `docker-compose.yml`, registra a pendência na parcial e reporta o comando
 `/docker-architect`, que o usuário roda depois em um prompt próprio. O modo `guard` do
 `ArchHook.java` recusa a chamada enquanto a fase de design está aberta —
-`.claude/decisions/0058-skill-classes-territory-schema.md`. `java-patterns` viaja
-pré-carregado dentro do executor.
+`.claude/decisions/0058-skill-classes-territory-schema.md`.
+
+**Os design patterns também são decididos nessa fase.** `domain-modeling`,
+`persistence-architect`, `rest-api-architect`, `messaging-architect` e `jobs-architect`
+leem `gof-design-patterns` § Design-time use — lida, nunca invocada: é uma skill `build` — e
+escrevem uma seção `## Design patterns` na própria parcial: a linha da spec ou o `file:line`
+que força o padrão, o padrão, as classes e interfaces que ele cria, o "When not" conferido. A
+consolidação junta todas as linhas na `## Design patterns` da spec, então as classes que um
+padrão cria estão no que o usuário aprova. O executor implementa essas linhas, e adota um
+padrão por conta própria só para um sintoma já em disco; o catálogo chega a ele no
+`SubagentStart` (`.claude/decisions/0089-design-patterns-decided-at-design-time.md`).
 
 ## Pre-flight — infraestrutura instalada uma vez, no primeiro "implementar agora"
 
@@ -179,6 +194,10 @@ fase numa chamada `Agent`.
 | `draft` | `new-feature` | na consolidação |
 | `approved` | `new-feature` | só com aprovação explícita do usuário |
 | `implemented` | `java-spring-boot-developer` | com `./mvnw verify` verde |
+| `implemented-blocked` | `java-spring-boot-developer` | com build verde, quando o run deixou um caso aprovado inalcançável ponta a ponta — o `Satisfied by` que a spec nomeou ainda não existe |
+
+Qualquer dos dois estados fechados pode voltar a `approved` — a saída de que precisa um run
+que fechou por engano (`.claude/decisions/0066-spec-state-machine.md`).
 
 Defeito de spec encontrado pelo executor num spec aprovado: o usuário muda `status:
 draft` à mão, e `/new-feature UC-NNN-slug` retoma e reaprova.
@@ -210,10 +229,12 @@ escreve um spec único em que cada linha cita a fonte — um spec aprovado ou um
 | Classe de exceção e `errorCode` | `10-dominio.md` |
 | Fronteira do caso de uso, invariantes, situações de erro | `00-caso-de-uso.md` |
 | Nome e nível de cada teste | `40-testes.md` |
+| Um design pattern e as classes que ele cria | A parcial da camada onde essas classes vivem — duas parciais adotando padrões diferentes para a mesma classe **param** o pipeline |
 
 O spec é consolidado **por referência**: cada bloco traz as decisões finais e o caminho
 do partial, nunca a cópia das tabelas. Valores descartados vão para
-`## Resolved divergences`.
+`## Resolved divergences`. `## Impact on approved use cases` e `## Design patterns` juntam
+todas as linhas da mesma seção de cada parcial.
 
 ## Disciplina de custo
 
@@ -230,8 +251,9 @@ background, `new-feature/SKILL.md` manda oferecer manter a máquina acordada
 
 ## Entrada em projetos gerados
 
-`/new-feature` viaja para todo projeto gerado por `/init-project` (passo 6.7 do
-`project-bootstrap`), junto com o hook `guard` (passo 7). Com `pedidos-api` existindo,
+`/new-feature` viaja para todo projeto gerado por `/init-project` (passo 6.6 do
+`project-bootstrap`, que escreve skills, agents e hooks via `ArchHook.java export`), com o
+hook `guard` ligado. Com `pedidos-api` existindo,
 `/new-feature <descrição>` roda **dentro** dele, sem `claude-spring-architect` na
 máquina.
 

@@ -48,7 +48,7 @@ validado por `ArchHook.java schema` — `CLAUDE.md` § Invariant 10):
 ```
 name, description, when_to_use, argument-hint, arguments,
 disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,
-model, effort, paths, context, agent, background, hooks
+model, effort, paths, context, agent, background, hooks, shell
 ```
 
 Um campo fora dessa lista (por exemplo `metadata:`) não gera erro — o runtime **ignora
@@ -79,7 +79,7 @@ skill pertence a exatamente uma das seis classes, e a classe declara duas coisas
 |---|---|---|
 | `design` | as 7 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
 | `orchestrator` | `new-feature`; `init-project` | `docs/**` do caso de uso; `init-project` não escreve nada (delega) |
-| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `java-patterns` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/` |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/` |
 | `observer` | `arch-doctor`, `audit-usage` | nada |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish` | nada — o efeito é `git`, via Bash |
@@ -89,6 +89,10 @@ seções obrigatórias presentes) e `guard` cobra o território, com exit 2 em q
 escrita fora dele. Uma skill que não está em nenhuma classe não tem território — e o
 `schema` falha pelo nome dela. Detalhes em
 [08-audit-usage.md § Hook `guard`](08-audit-usage.md).
+
+A classe também fixa o modelo: todo `SKILL.md` declara `model`, dentro dos
+`allowed_models` da classe — `design` e `meta` só `opus`, `observer` e `ops` só `sonnet` —
+e `schema` reprova uma skill sem ele (`.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ---
 
@@ -158,7 +162,7 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 | Agent | Contexto | Tools | Model |
 |---|---|---|---|
 | `project-initializer` | Saída verbosa da extração do `starter.tgz`, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restrito. `Skill` está na lista só para invocar `git-publish` depois de um build verde; não abre acesso a nenhuma outra skill do repositório | `sonnet` + `effort: high` — o procedimento é dirigido pelo blueprint, pelo Initializr e pelos templates (decisão 0078) |
-| `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: max` — gerar ~19 passos de código compilável |
+| `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Edit, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: high` — gerar ~19 passos de código compilável |
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
 | `commons-logging-installer` | Mesma forma do `archunit-installer`: traduz treze exemplares de logging/máscara para o package real, edita um POM, compila até ficar verde — onze escritas e um log de build que não precisam voltar ao contexto do `/new-feature` que o disparou | `Read, Write, Edit, Bash` — só dentro de `commons.logging` e do POM correspondente | `sonnet`, `effort: medium` |
 
@@ -169,7 +173,7 @@ e **quais caminhos**:
 | Classe | Agents | Território (`write_allow`) |
 |---|---|---|
 | `driver` | `project-initializer` | `**` — escreve a árvore de um projeto que ainda não existe |
-| `executor` | `java-spring-boot-developer` | `src/**` mais a única linha `status:` do `UC-*-spec.md` que ele fecha |
+| `executor` | `java-spring-boot-developer` | `src/**`, os POMs (só para uma dependência que a spec declara), e o seu `UC-*-spec.md` — onde a regra de pasta congelada admite só o fechamento do `status:` e os toggles do checklist |
 | `installer` | `archunit-installer`, `commons-logging-installer` | `overrides` por agent: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` no primeiro; POMs + `**/logging/**` + `META-INF/spring/*.imports` no segundo |
 
 O território vale por `agent_type`, que o payload `PreToolUse` de toda escrita de subagent já
@@ -182,15 +186,18 @@ docker-compose.yml`) não era verificada por nada (ver
 `paths` (agents não têm esse campo). **Não vê** o histórico da conversa principal, nem
 a memória automática da sessão principal, nem o que foi lido antes (`claude-help.md` §
 What the subagent sees). Vê: o próprio system prompt, a hierarquia de `CLAUDE.md`, git
-status, a mensagem de delegação, e skills pré-carregadas via o campo `skills:` do seu
-próprio frontmatter — é assim que `java-spring-boot-developer` carrega o catálogo de
-`java-patterns` inteiro, sem invocá-lo como turno separado.
+status, a mensagem de delegação, skills pré-carregadas via o campo `skills:` do seu próprio
+frontmatter, e o que um hook de `SubagentStart` entrega como `additionalContext` — é assim que
+`java-spring-boot-developer` recebe o catálogo de `gof-design-patterns` num projeto gerado:
+uma skill com `disable-model-invocation: true` não pode ser pré-carregada via `skills:`
+(decisão 0077).
 
 **Quem invoca:** sempre outra peça do sistema, nunca o usuário diretamente por
 `/nome-do-agent` — não existe esse comando. Aqui, é sempre uma skill que delega via
 `Agent tool`: `init-project` delega para `project-initializer`, `new-feature` delega
 para `java-spring-boot-developer` após consolidar a spec, `test-architect` delega para
-`archunit-installer` no modo setup (sem argumento).
+`archunit-installer` no modo setup (sem argumento), e o pre-flight de `new-feature` delega
+para `commons-logging-installer` quando `commons` está vazio.
 
 **Fork — um caso diferente de agent:** um *fork* herda a conversa inteira em vez de
 começar do zero (`claude-help.md` § Forks). Só o resultado final volta à conversa
@@ -203,7 +210,7 @@ propósito, porque o ponto é justamente **não** herdar o ruído da conversa de
 ```
 name, description, tools, disallowedTools, model, permissionMode,
 maxTurns, skills, mcpServers, hooks, memory, background, effort,
-isolation, color
+isolation, color, omitClaudeMd, initialPrompt, experimental
 ```
 
 **Arquivos silenciosamente ignorados:** um agent sem `name`, com `---` fora da
@@ -254,7 +261,7 @@ não é este arquivo."* Confundir os dois é o erro mais comum ao editar este re
 ## Hook
 
 **Onde mora:** `.claude/settings.json` (configuração) + `.claude/hooks/ArchHook.java`
-(lógica).
+(lógica), compilado no `.claude/hooks/ArchHook.jar` commitado que toda entrada executa.
 
 **O que é:** um script disparado em eventos do ciclo de vida — "determinístico:
 sempre acontece no evento, independente do que o modelo decide. Essa é a diferença
@@ -263,26 +270,29 @@ modelo **não pode** optar por pular.
 
 **Propósito:** tudo que precisa valer sempre, sem depender de o modelo lembrar —
 `CLAUDE.md` § Invariant 6: *"se uma regra precisa valer sempre, é um hook ou
-`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem nove modos:
+`permissions.deny` — não prosa em markdown."* `ArchHook.java` tem onze modos, e toda
+entrada lança o `.claude/hooks/ArchHook.jar` pré-compilado a partir dele (`java -jar`):
 
 | Modo | Evento | Bloqueia? | O que faz | Ligado aqui? |
 |---|---|---|---|---|
-| `check` | `PostToolUse` (Write\|Edit) | Sim (exit 2) | Imports proibidos (via `.claude/forbidden-imports.txt`) + compilação incremental do módulo tocado | Sim |
-| `format` | `PostToolUse` (Write\|Edit) | Nunca | `spotless:apply` no módulo tocado | Sim |
+| `check` | `PostToolUse` (Write\|Edit\|MultiEdit\|NotebookEdit, `if: Edit(**/*.java)`) | Sim (exit 2) | Imports proibidos (via `.claude/forbidden-imports.txt`) + compilação incremental do módulo tocado | Sim |
+| `format` | `PostToolUse` (mesmo matcher e `if`) | Nunca | `spotless:apply` no módulo tocado | Sim |
 | `tests` | `Stop` | Sim (exit 2) | Roda testes dos módulos alterados desde `HEAD` | Sim |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules, o **corpo** de cada `SKILL.md` contra a classe dela (`skill_classes`), os campos de `.mcp.json` com scan de segredos em `headers`/`env`, as entradas de hook de `settings.json`, e o manifesto `export` contra o disco | Sim |
-| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Sim (exit 2) | Cada skill escreve só o território da própria classe (allowlist, deny por default); skill de classe `build` é inalcançável durante um run de design; pasta de spec `approved`/`implemented` é imutável | Sim, nos dois |
-| `audit` | 10 eventos do ciclo de vida | Nunca | Trilha de execução de toda skill e agent: relatório Markdown por invocação + ledgers | Só no projeto gerado — liga pela existência de `.claude/audit-usage/` |
-| `compose` | Manual; dobrado em `doctor` | Nunca | Todo serviço do compose está `running`; nenhum container alheio publica uma porta que este projeto declara; nenhuma tag de `image:` divergindo da que `src/test` fixa | Sim |
+| `schema` | `PreToolUse` + `PostToolUse` (em `.claude/**/*.md`, `.mcp.json`, `settings.json`) + `Stop` | Sim (exit 2) | Valida frontmatter de skills/agents/rules, o **corpo** de cada `SKILL.md` contra a classe dela (`skill_classes`), cada agent contra `agent_classes`, os campos de `.mcp.json` com scan de segredos em `headers`/`env`, as entradas de hook de `settings.json`, e o manifesto `export` contra o disco | Sim |
+| `guard` | `UserPromptSubmit` (`prompt`) + `PreToolUse` (Skill\|Agent\|Task → `call`; Write\|Edit\|MultiEdit\|NotebookEdit → `write`; Bash → `bash`) + `Stop` (`sweep`) | Sim (exit 2) | Cada skill escreve só o território da própria classe, cada subagent só o território de `agent_classes` (allowlist, deny por default); skill de classe `build` é inalcançável durante um run de design; pasta de spec `approved`/`implemented`/`implemented-blocked` é congelada, exceto o fechamento do status, os toggles do checklist e `CHANGELOG.md`; escritas de shell que ele consegue ler literalmente passam pelas mesmas checagens, e force push é recusado; no `Stop`, o que o turno mudou em disco é varrido contra as mesmas regras | Sim, nos dois |
+| `audit` | 11 eventos do ciclo de vida | Nunca | Trilha de execução de toda skill e agent: relatório Markdown por invocação + ledgers | Só no projeto gerado — liga pela existência de `.claude/audit-usage/` |
+| `compose` | Manual; dobrado em `doctor`; `compose gate` no `Stop` | O gate: sim (exit 2) | Todo serviço do compose está `running`; nenhum container alheio publica uma porta que este projeto declara; nenhuma tag de `image:` divergindo da que `src/test` fixa; nenhuma porta publicada anunciada só pelo nome da rede do compose | Sim, nos dois |
+| `context` | `SubagentStart` (`context subagent`) | Nunca | Entrega as seções do catálogo de `gof-design-patterns` que `subagent_context` nomeia a todo agent cuja classe declara `pattern_catalog: true`, como `additionalContext` antes do primeiro turno | Só no projeto gerado |
 | `doctor` | Manual (`/arch-doctor`) | Nunca | Diagnóstico do setup na máquina | Sim |
 | `export` | Manual (invocado por `/arch-adopt`) | Nunca | Escreve o `.claude/` de um projeto-alvo a partir do manifesto `export`, transformado para o blueprint ativo, e grava o stamp de proveniência | Sim — ver [10-arch-adopt.md](10-arch-adopt.md) |
+| `build` | `PostToolUse` numa edição de `ArchHook.java`; manual | Nunca | Reconstrói `ArchHook.jar` a partir do fonte sob o major do JDK que `hook_build.javac_feature` fixa; `build --verify` (rodado pelo CI) confere que o jar commitado é byte a byte o que o fonte compila | Só neste repo |
 
 Os modos `guard` e `audit` estão detalhados em [08-audit-usage.md](08-audit-usage.md).
 Toda lista que o hook lê — campos reconhecidos, skills excluídas da auditoria, padrões
 de redação, caminhos guardados — é dado em `extensions.json`, nunca constante no Java.
 
 **Quando entra em contexto:** hooks não "entram em contexto" como texto — rodam como
-**processo externo** (aqui, `java ArchHook.java <modo>`), e o que volta para o modelo é
+**processo externo** (aqui, `java -jar .claude/hooks/ArchHook.jar <modo>`), e o que volta para o modelo é
 saída estruturada (stderr vira a razão do bloqueio) ou JSON (`claude-help.md` §
 Structured JSON output). O campo `if` em cada entrada de `settings.json` filtra por
 regra de permissão **antes** de instanciar a JVM — sem isso, cada `Write` pagaria o
@@ -315,7 +325,9 @@ arquivo já foi escrito: a escrita aconteceu, mas o modelo é avisado para corri
 lugar usado aqui — não há `~/.claude/settings.json` pessoal nem
 `.claude/settings.local.json` específicos deste fluxo (`claude-help.md` § Where to
 configure lista as demais opções, incluindo hooks por frontmatter de skill/subagent,
-não usados neste repositório).
+não usados neste repositório). No projeto gerado, o mesmo arquivo é escrito por
+`project-bootstrap` a partir de `templates/settings.json.example`, com `audit` e `context`
+ligados a mais.
 
 ---
 

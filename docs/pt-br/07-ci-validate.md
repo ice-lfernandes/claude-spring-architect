@@ -33,10 +33,11 @@ flowchart TD
         H8[SweepTest.java — escrita do turno fora do território → exit 2 no Stop]
         H9[ComposeGateTest.java — porta publicada anunciada só na rede interna → exit 2]
         H10[SubagentContextTest.java — catálogo só para agents pattern_catalog]
+        H11[AuditRenderTest.java — onde a execução gastou, erros redigidos, classes observer puladas]
     end
 
     subgraph J2["design (ubuntu-latest)"]
-        D1[schema — frontmatter, shadow de comando nativo, paths de rule]
+        D1[schema — frontmatter, shadow de comando nativo, manifesto de export vs disco]
         D4[blueprint não toca prompts]
         D5[rules é folha]
         D6[norma sem boilerplate de código]
@@ -48,8 +49,6 @@ flowchart TD
         D12[decisions/ isolado]
         D13[sem versão hardcoded]
         D14[paths bate com blueprint]
-        D15[norma está na tabela de derivação]
-        D16[toda rule, skill e agent tem linha na lista de cópia]
     end
 
     subgraph J3["exemplar-imports (ubuntu-latest)"]
@@ -70,12 +69,13 @@ flowchart TD
 
 | Job / passo | Verifica | Contra o quê |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois nove testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois dez testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompila sob o `hook_build.javac_feature` fixado e compara byte a byte | Decisão 0075 — editar `ArchHook.java` sem rebuild não muda nada que um hook executa. Roda antes dos testes, para que exercitem bytes revisados |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 16 casos: toda grafia de force push de `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) recusada, redirect / `sed -i` fora do território de uma fase de design recusados, `sed` simples, alvo `$OUT` irresolvível e `ls` liberados | Decisão 0076. O modo roda antes de todo comando de shell em toda sessão: falha caro nas duas direções, e o parser é dado que uma edição de JSON muda |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` num repo git descartável: arquivo sujo antes do prompt nunca é nomeado, escrita fora do território no turno sai 2, `stop_hook_active` não bloqueia duas vezes, escrita dentro do território fica calada | Decisão 0065 — o sweep vale o que vale a baseline do `guard prompt`, e uma baseline quebrada falha calada nos dois sentidos |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` sai 2 nomeando a linha de endereço anunciado, `stop_hook_active` sai 0, um listener `localhost` limpa a linha, sem compose fica calado | Decisão 0064. Não precisa de Docker — a checagem de endereço anunciado lê o arquivo |
 | `context subagent hands the catalog to pattern_catalog agents only` | `SubagentContextTest.java`: `java-spring-boot-developer` recebe um `## Catalog` dentro de `subagent_context.max_chars`; installers e `general-purpose` não recebem nada | Decisão 0077. `SubagentStart` não bloqueia, então catálogo que para de chegar — ou chega em todo lugar — é silencioso |
+| `audit renders where the run spent, redacts tool errors, skips observer-class pieces` | `AuditRenderTest.java` num projeto descartável com cópia do `extensions.json` real: chamadas de tool por peça (incluindo o transcript próprio de um subagent), os turnos mais caros, o pico de contexto, a primeira linha de cada erro de tool redigida, os campos de ledger que `audit summary` agrega, e nenhum relatório para peça cuja classe declara `audited: false` | Decisões 0041, 0085, 0086. Todo número é extraído de um layout de transcript não documentado e um render que lança exceção sai com 0 — o relatório só para de atualizar; a linha de erro cai num arquivo versionado, então um token ecoado vazaria (invariante 11) |
 | `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` roda o modo `guard` sobre o `extensions.json` real em 13 casos: sem fase aberta nada restringe, dentro e fora do `write_allow`, o `agent_type` prevalecendo sobre a fase aberta, a recusa de `Skill(<build>)` com fase de design aberta, o território mais estreito do callee, e a fase sobrevivendo a uma chamada `Agent` até o próximo prompt | O território ser allowlist é o tipo de alegação que apodrece em silêncio: vale até alguém alargar uma entrada de `write_allow` sem perceber. O caso que motivou tudo — um run de design escrevendo `docker-compose.yml`, arquivo que nenhuma denylist nomeava — é um dos 13 |
 | `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` roda o mesmo modo sobre `agent_classes` em 18 casos: cada installer dentro e fora da sua lista estreita, as grafias single- e multi-module do mesmo caminho, o executor alcançando a única linha de spec que ele fecha, o driver escrevendo qualquer coisa, e um agent sem classe caindo na fase do chamador | Cada agent prometia o próprio território em prosa (`**Does not write:** docker-compose.yml`) enquanto o guard dava bypass irrestrito aos quatro. A promessa agora é dado, e os dois bloqueios que mais importam — `archunit-installer` recusado no `docker-compose.yml`, e recusado no source principal — são casos deste arquivo |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` monta um projeto descartável com `docker-compose.yml` e um `DockerImageName.parse(...)` em `src/test`, e exige que `ArchHook.java compose` reporte a divergência, expanda `${VAR:-default}` e fique calado quando as tags batem | A suíte passar contra uma versão de engine que ninguém roda. Roda nas três OSes porque a pergunta 3 do modo `compose` compara dois arquivos e não precisa de Docker — o que também prova que o casamento de `src/test/` sobrevive ao separador do Windows |
@@ -88,8 +88,8 @@ flowchart TD
 | `blueprint-declared templates exist on disk` | todo `templates.<role>` de um blueprint resolve a um arquivo real | Blueprint apontando para template renomeado ou apagado |
 | `each norm has a single owner` | lista fixa de termos conhecidos aparece em no máximo um arquivo sob `rules/` | Invariante 2 — estreito por construção, ver nota abaixo |
 | `no dependencies outside the Java ecosystem` | nenhum `pip install`, `npm install`, `node `, `python` solto em `.claude/` | Decisão D7 |
-| `every norm paths matches some blueprint` / `norm is in the bootstrap's derivation table` | o glob `paths` de uma rule nomeia um pacote que algum blueprint declara, e o passo 6.6 de `project-bootstrap` sabe reescrevê-lo | Gap 8 de `decisions/0024-lessons-learned-001-remediation.md` — rule que nunca carrega sozinha, em silêncio |
-| `every rule, skill and agent has a row in the bootstrap copy list` | todo arquivo de `rules/` tem linha em § 6.6 de `project-bootstrap/SKILL.md`, e toda skill e agent tem linha marcada ✅ ou ❌ em § 6.7/6.8 | Invariante 9 — essas tabelas **são** as listas de cópia que tornam o projeto gerado self-contained. Uma norma nova ausente de § 6.6 não quebra nada na geração: quebra para quem clona o projeto depois e segue uma citação para um arquivo que nunca foi copiado |
+| `every norm paths matches some blueprint` | o glob `paths` de uma rule nomeia um pacote que algum blueprint declara | Gap 8 de `decisions/0024-lessons-learned-001-remediation.md` — rule que nunca carrega sozinha, em silêncio |
+| o manifesto de export bate com o disco (dentro de `frontmatter schema`) | toda skill e agent em disco está no `include` ou `exclude` do bloco `export`; toda rule cujo `paths` nomeia um pacote tem entrada em `export.derived_paths` | Invariante 9 — esse manifesto **é** a lista de cópia que torna o projeto gerado self-contained. As duas checagens faziam grep nas tabelas de cópia em prosa de `project-bootstrap` §§ 6.6–6.8; as tabelas sumiram (D54) e o `schema` é dono da checagem, então ela também dispara localmente a cada edição em `.claude/`. Uma norma nova ausente do manifesto não quebra nada na geração: quebra para quem clona o projeto depois e segue uma citação para um arquivo que nunca foi copiado |
 | `decisions/ doesn't grow paths or enter 00-index.md` | nenhum arquivo em `decisions/` declara `paths:`; nenhum está listado em `rules/00-index.md` | `decisions/` é histórico, não é rule — ver Known pitfalls |
 | `no hardcoded Spring/Java version outside decisions/` | nenhum `Spring Boot X.Y` / `Java NN` escrito como fato em `rules/`, `skills/`, `blueprints/`, `CLAUDE.md` | Invariante 8 — versão é resolvida via Spring Initializr, nunca escrita de memória. Exclui a linha de requisito mínimo `JDK 21+` e notas datadas de "Tested to compile" em exemplares, que registram uma verificação passada, não uma versão a usar |
 | `export-determinism` (job inteiro) | dois exports por blueprint geram árvores idênticas; a árvore leva `ArchHook.jar` idêntico ao verificado e nada que só este repo precisa; o **jar exportado** roda `schema` e `doctor` na própria árvore; semear cada caminho de `export.retired` e re-exportar apaga cada um | Invariante 9 e decisão D54. O passo de retired é o rename da decisão 0082: sem o delete, projeto atualizado fica com norma sem dono. O id do blueprint é lido do stamp com `sed`, não `python3` — D7 |
@@ -167,8 +167,9 @@ de todo jeito.
 ## O que ainda não está aqui
 
 - Invariante 9 (o projeto gerado é self-contained) está coberto **pela metade**: o passo
-  `every rule, skill and agent has a row in the bootstrap copy list` prova que as
-  tabelas de §§ 6.6/6.7/6.8 cobrem o disco — a parte cujo modo de falha era silencioso.
+  `schema` prova que o manifesto de `export` cobre o disco, e `export-determinism` prova
+  que a árvore exportada é estável e passa no próprio `schema` e `doctor` — as partes cujo
+  modo de falha era silencioso.
   Que o projeto gerado *de fato* compile e não tenha caminho morto continua verificado à
   mão, pelo bloco de comandos em `project-bootstrap/SKILL.md` § 8 ("Verify"): exige gerar
   um projeto de verdade contra o Initializr, e esse custo não foi automatizado.

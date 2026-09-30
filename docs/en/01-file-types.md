@@ -48,7 +48,7 @@ validated by `ArchHook.java schema` — `CLAUDE.md` § Invariant 10):
 ```
 name, description, when_to_use, argument-hint, arguments,
 disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,
-model, effort, paths, context, agent, background, hooks
+model, effort, paths, context, agent, background, hooks, shell
 ```
 
 A field outside this list (e.g. `metadata:`) doesn't raise an error — the runtime
@@ -80,7 +80,7 @@ every skill belongs to exactly one of six classes, and the class declares both.
 |---|---|---|
 | `design` | the 7 that write use-case partials | the UC folder + `BACKLOG.md` |
 | `orchestrator` | `new-feature`; `init-project` | the use case's `docs/**`; `init-project` writes nothing (it delegates) |
-| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `java-patterns` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only |
 | `observer` | `arch-doctor`, `audit-usage` | nothing |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish` | nothing — its effect is `git`, over Bash |
@@ -90,6 +90,10 @@ every skill belongs to exactly one of six classes, and the class declares both.
 with exit 2 on any write outside it. A skill in no class has no territory — and `schema`
 fails by its name. Details in
 [08-audit-usage.md § The `guard` hook](08-audit-usage.md).
+
+The class also fixes the model: every `SKILL.md` declares `model`, from the class's
+`allowed_models` — `design` and `meta` only `opus`, `observer` and `ops` only `sonnet` —
+and `schema` fails a skill without it (`.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ---
 
@@ -160,7 +164,7 @@ an agent` (or `## Why this is Form 3`) section, which reason applies:
 | Agent | Context | Tools | Model |
 |---|---|---|---|
 | `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restricted. `Skill` is on the list only to invoke `git-publish` after a green build; it doesn't open access to any other skill in the repository | `sonnet` + `effort: high` — the procedure is driven by the blueprint, the Initializr and the templates (decision 0078) |
-| `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: max` — generating ~19 steps of compilable code |
+| `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Edit, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: high` — generating ~19 steps of compilable code |
 | `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
 | `commons-logging-installer` | Same shape as `archunit-installer`: translates thirteen logging/masking exemplars into the real package, edits a POM, compiles until green — eleven writes and a build log that don't need to land in the context of the `/new-feature` run that triggered it | `Read, Write, Edit, Bash` — inside `commons.logging` and the matching POM only | `sonnet`, `effort: medium` |
 
@@ -171,7 +175,7 @@ and **which paths**:
 | Class | Agents | Territory (`write_allow`) |
 |---|---|---|
 | `driver` | `project-initializer` | `**` — it writes the tree of a project that does not exist yet |
-| `executor` | `java-spring-boot-developer` | `src/**` plus the single `status:` line of the `UC-*-spec.md` it closes |
+| `executor` | `java-spring-boot-developer` | `src/**`, the POMs (only for a dependency the spec declares), and its `UC-*-spec.md` — where the frozen-folder rule admits only the `status:` close and checklist toggles |
 | `installer` | `archunit-installer`, `commons-logging-installer` | Per-agent `overrides`: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` for the first; POMs + `**/logging/**` + `META-INF/spring/*.imports` for the second |
 
 Territory is keyed on `agent_type`, which the `PreToolUse` payload of every subagent write
@@ -184,15 +188,18 @@ docker-compose.yml`) was enforced by nothing (see
 (agents don't have that field). It **doesn't see** the main conversation's history,
 nor the main session's auto memory, nor what was read before (`claude-help.md` § What
 the subagent sees). It does see: its own system prompt, the `CLAUDE.md` hierarchy,
-git status, the delegation message, and skills preloaded via its own frontmatter's
-`skills:` field — that's how `java-spring-boot-developer` loads the entire
-`java-patterns` catalog without invoking it as a separate turn.
+git status, the delegation message, skills preloaded via its own frontmatter's `skills:`
+field, and whatever a `SubagentStart` hook hands it as `additionalContext` — that's how
+`java-spring-boot-developer` receives the `gof-design-patterns` catalog in a generated
+project: a skill with `disable-model-invocation: true` cannot be preloaded through `skills:`
+(decision 0077).
 
 **Who invokes it:** always another piece of the system, never the user directly via
 `/agent-name` — that command doesn't exist. Here, it's always a skill that delegates
 via the `Agent tool`: `init-project` delegates to `project-initializer`,
 `new-feature` delegates to `java-spring-boot-developer` after consolidating the spec,
-`test-architect` delegates to `archunit-installer` in setup mode (no argument).
+`test-architect` delegates to `archunit-installer` in setup mode (no argument), and
+`new-feature`'s pre-flight delegates to `commons-logging-installer` when `commons` is empty.
 
 **Fork — a different kind of agent:** a *fork* inherits the entire conversation
 instead of starting from scratch (`claude-help.md` § Forks). Only the final result
@@ -206,7 +213,7 @@ the design conversation.
 ```
 name, description, tools, disallowedTools, model, permissionMode,
 maxTurns, skills, mcpServers, hooks, memory, background, effort,
-isolation, color
+isolation, color, omitClaudeMd, initialPrompt, experimental
 ```
 
 **Silently ignored files:** an agent with no `name`, with `---` not on the first
@@ -259,7 +266,7 @@ this repository.
 ## Hook
 
 **Lives at:** `.claude/settings.json` (configuration) + `.claude/hooks/ArchHook.java`
-(logic).
+(logic), compiled into the committed `.claude/hooks/ArchHook.jar` that every entry runs.
 
 **What it is:** a script triggered on lifecycle events — "deterministic: it always
 happens on the event, regardless of what the model decides. That's the difference
@@ -268,26 +275,29 @@ system the model **cannot** opt to skip.
 
 **Purpose:** everything that must always hold, without depending on the model
 remembering — `CLAUDE.md` § Invariant 6: *"if a rule must always hold, it's a hook or
-`permissions.deny` — not prose in markdown."* `ArchHook.java` has nine modes:
+`permissions.deny` — not prose in markdown."* `ArchHook.java` has eleven modes, and every
+entry launches the precompiled `.claude/hooks/ArchHook.jar` built from it (`java -jar`):
 
 | Mode | Event | Blocks? | What it does | Wired here? |
 |---|---|---|---|---|
-| `check` | `PostToolUse` (Write\|Edit) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module | Yes |
-| `format` | `PostToolUse` (Write\|Edit) | Never | `spotless:apply` on the touched module | Yes |
+| `check` | `PostToolUse` (Write\|Edit\|MultiEdit\|NotebookEdit, `if: Edit(**/*.java)`) | Yes (exit 2) | Forbidden imports (via `.claude/forbidden-imports.txt`) + incremental compile of the touched module | Yes |
+| `format` | `PostToolUse` (same matcher and `if`) | Never | `spotless:apply` on the touched module | Yes |
 | `tests` | `Stop` | Yes (exit 2) | Runs tests of the modules changed since `HEAD` | Yes |
-| `schema` | `PreToolUse` (Write) + `PostToolUse` (Edit) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter, each `SKILL.md`'s **body** against its class (`skill_classes`), `.mcp.json` fields with a secret scan over `headers`/`env`, `settings.json`'s hook entries, and the `export` manifest against disk | Yes |
-| `guard` | `UserPromptSubmit` + `PreToolUse` (Skill\|Agent\|Write\|Edit) | Yes (exit 2) | Every skill writes only its own class's territory (allowlist, deny by default); a `build`-class skill is unreachable during a design run; a spec folder that is `approved`/`implemented` is immutable | Yes, in both |
-| `audit` | 10 lifecycle events | Never | Execution trail of every skill and agent: one Markdown report per invocation + ledgers | Generated project only — switched on by the existence of `.claude/audit-usage/` |
-| `compose` | Manual; folded into `doctor` | Never | Every compose service is `running`; no foreign container publishes a port this project declares; no `image:` tag disagrees with the one `src/test` pins | Yes |
+| `schema` | `PreToolUse` + `PostToolUse` (on `.claude/**/*.md`, `.mcp.json`, `settings.json`) + `Stop` | Yes (exit 2) | Validates skills/agents/rules frontmatter, each `SKILL.md`'s **body** against its class (`skill_classes`), each agent against `agent_classes`, `.mcp.json` fields with a secret scan over `headers`/`env`, `settings.json`'s hook entries, and the `export` manifest against disk | Yes |
+| `guard` | `UserPromptSubmit` (`prompt`) + `PreToolUse` (Skill\|Agent\|Task → `call`; Write\|Edit\|MultiEdit\|NotebookEdit → `write`; Bash → `bash`) + `Stop` (`sweep`) | Yes (exit 2) | Every skill writes only its own class's territory, every subagent only its `agent_classes` territory (allowlist, deny by default); a `build`-class skill is unreachable during a design run; a spec folder `approved`/`implemented`/`implemented-blocked` is frozen except for its status close, checklist toggles and `CHANGELOG.md`; shell writes it can read literally get the same checks, and a force push is refused; on `Stop`, what the turn changed on disk is swept against the same rules | Yes, in both |
+| `audit` | 11 lifecycle events | Never | Execution trail of every skill and agent: one Markdown report per invocation + ledgers | Generated project only — switched on by the existence of `.claude/audit-usage/` |
+| `compose` | Manual; folded into `doctor`; `compose gate` on `Stop` | The gate: yes (exit 2) | Every compose service is `running`; no foreign container publishes a port this project declares; no `image:` tag disagrees with the one `src/test` pins; no published port is advertised only at a compose-network name | Yes, in both |
+| `context` | `SubagentStart` (`context subagent`) | Never | Hands the sections of the `gof-design-patterns` catalog that `subagent_context` names to every agent whose class declares `pattern_catalog: true`, as `additionalContext` before its first turn | Generated project only |
 | `doctor` | Manual (`/arch-doctor`) | Never | Diagnoses the setup on this machine | Yes |
 | `export` | Manual (invoked by `/arch-adopt`) | Never | Writes a target project's `.claude/` from the `export` manifest, transformed for the active blueprint, and writes the provenance stamp | Yes — see [10-arch-adopt.md](10-arch-adopt.md) |
+| `build` | `PostToolUse` on an edit of `ArchHook.java`; manual | Never | Rebuilds `ArchHook.jar` from the source under the JDK major `hook_build.javac_feature` pins; `build --verify` (run by CI) checks the committed jar is byte for byte what the source compiles to | This repo only |
 
 The `guard` and `audit` modes are detailed in [08-audit-usage.md](08-audit-usage.md).
 Every list the hook reads — recognized fields, skills excluded from auditing, redaction
 patterns, guarded paths — is data in `extensions.json`, never a constant in the Java.
 
 **When it enters context:** hooks don't "enter context" as text — they run as an
-**external process** (here, `java ArchHook.java <mode>`), and what returns to the model
+**external process** (here, `java -jar .claude/hooks/ArchHook.jar <mode>`), and what returns to the model
 is structured output (stderr becomes the block reason) or JSON (`claude-help.md` §
 Structured JSON output). The `if` field in each `settings.json` entry filters by
 permission rule **before** spawning the JVM — without it, every `Write` would pay for
@@ -320,7 +330,9 @@ has already been written: the write happened, but the model is warned to fix it.
 only location used here — there's no personal `~/.claude/settings.json` nor
 `.claude/settings.local.json` involved in this flow (`claude-help.md` § Where to
 configure lists the other options, including hooks via skill/subagent frontmatter,
-not used in this repository).
+not used in this repository). In a generated project the same file is written by
+`project-bootstrap` from `templates/settings.json.example`, with `audit` and `context`
+wired on top.
 
 ---
 

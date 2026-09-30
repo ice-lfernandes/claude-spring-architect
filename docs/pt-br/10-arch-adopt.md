@@ -80,6 +80,7 @@ Tudo isto é o bloco `export` de `@.claude/schemas/extensions.json` — dado, n�
 | Grupo | Conteúdo |
 |---|---|
 | `copy` | `ArchHook.java`, `extensions.json`, o exemplar de `audit-pricing.json` |
+| `binary_copy` | `ArchHook.jar` — o que todo hook dispara, copiado como bytes, nunca transformado |
 | `overwrite` | o `settings.json` do projeto, do template de `project-bootstrap` |
 | `optional_copy` | `.mcp.json` e o doc de setup de MCP, quando existem |
 | `rules` | todas as normas de `rules/`, com os globs de `paths` reescritos para os pacotes do blueprint ativo (`derived_paths`) |
@@ -89,6 +90,7 @@ Tudo isto é o bloco `export` de `@.claude/schemas/extensions.json` — dado, n�
 | `ensure_dirs` | `.claude/audit-usage/` — criar o diretório é o que liga a trilha |
 | `gitignore_lines` | `.claude/audit-usage/.state/` e `docs/lessons-learned/` |
 | `body_transforms` | corta citações a `.claude/decisions/` (que não existem dentro do projeto) e reescreve as frases que dependem do blueprint |
+| `retired` | arquivos que este repositório renomeou ou removeu (uma rule, a antiga skill `java-patterns/`), apagados do alvo quando presentes — o `export` só escrevia, então sem isso um projeto adotado ficava com as duas cópias |
 
 Duas decisões desse manifesto que parecem inconsistências e não são:
 

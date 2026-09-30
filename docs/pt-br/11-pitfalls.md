@@ -57,14 +57,14 @@ injeção genuinamente independente de cwd precisa de uma regex em
 
 **Uma skill com `disable-model-invocation: true` listada no `skills:` de um agent não é
 pré-carregada — e nada avisa.** O agent sobe sem ela e o corpo que diz "catálogo pré-carregado"
-passa a mandar aplicar algo que o modelo nunca recebeu. Foi o caso de `java-patterns` em
+passa a mandar aplicar algo que o modelo nunca recebeu. Foi o caso de `gof-design-patterns` (então `java-patterns`) em
 `java-spring-boot-developer`. Para entregar conteúdo de uma skill manual a um agent, o caminho
 é injetar no `SubagentStart` (`ArchHook.java context subagent`, decisão 0077), não o
 `skills:`.
 
 **Tudo que o modelo deve obedecer mora no corpo do arquivo**, nunca no frontmatter.
 `metadata.*` foi removido de skills e agents: ownership, `reads`, `handoff` e contratos vivem
-na seção `## Contrato` do corpo. Não devolva `metadata:` a um `SKILL.md` — custa tokens em
+na seção `## Contract` do corpo. Não devolva `metadata:` a um `SKILL.md` — custa tokens em
 toda invocação e não impõe nada.
 
 ## Frontmatter e validação
@@ -94,9 +94,9 @@ nativa que escreve arquivo, `Write` incluído; um `"if": "Write(.claude/**/*.md)
 filtro e não filtra nada. Fonte: `docs/pt-br/claude-code-docs/07-settings-permissoes-e-seguranca.md`.
 
 **Só os modos de protocolo de hook do `ArchHook.java` leem stdin** — `check`, `format`,
-`tests`, `schema`, `audit`, `guard`, `context`. Invocar um deles à mão sem `</dev/null` bloqueia até
-algo fechar o stdin, sem saída: um comando que parece pendurado, não falho. `export`,
-`doctor`, `compose` e `build` são invocados por pessoas e não leem nada.
+`tests`, `schema`, `audit`, `guard`, `context` e `compose gate`. Invocar um deles à mão sem
+`</dev/null` bloqueia até algo fechar o stdin, sem saída: um comando que parece pendurado, não
+falho. `export`, `doctor`, `build` e o `compose` puro são invocados por pessoas e não leem nada.
 
 ## `AskUserQuestion`
 

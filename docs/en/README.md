@@ -35,18 +35,19 @@ the others.
 
 ```
 .claude/
-├── hooks/ + settings.json   enforcement infra — deterministic
-├── schemas/                 what the hook reads: valid fields, skill classes,
+├── hooks/ + settings.json   enforcement infra — deterministic (ArchHook.java → ArchHook.jar)
+├── schemas/                 what the hook reads: valid fields, skill and agent classes,
 │                            write territory, the export manifest
 ├── skills/                  procedure + exemplars
 ├── agents/                  isolated execution
 ├── rules/ + blueprints/     norms and data (leaves — call nobody)
-└── decisions/               decision history — outside the runtime graph
+├── .ci/                     CI tests that drive the hook (ArchHook.jar) end to end
+└── decisions/ + lessons-learned/   history, versioned — outside the runtime graph
 ```
 
 This is the same dependency graph described in `CLAUDE.md` § Architecture of the AI
 files, applied to the `.claude/` folder itself as Clean Architecture. The documents in
-this folder detail how that graph behaves across the three commands above.
+this folder detail how that graph behaves across the commands above.
 
 ## What this documentation is not
 

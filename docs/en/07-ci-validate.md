@@ -33,10 +33,11 @@ flowchart TD
         H8[SweepTest.java — this turn's out-of-territory write → exit 2 at Stop]
         H9[ComposeGateTest.java — published port advertised only in-network → exit 2]
         H10[SubagentContextTest.java — catalog to pattern_catalog agents only]
+        H11[AuditRenderTest.java — where the run spent, redacted errors, observer classes skipped]
     end
 
     subgraph J2["design (ubuntu-latest)"]
-        D1[schema — frontmatter, native-command shadow, rule paths]
+        D1[schema — frontmatter, native-command shadow, export manifest vs disk]
         D4[blueprint doesn't touch prompts]
         D5[rules is a leaf]
         D6[norm has no code boilerplate]
@@ -48,8 +49,6 @@ flowchart TD
         D12[decisions/ is isolated]
         D13[no hardcoded version]
         D14[paths matches a blueprint]
-        D15[norm is in the derivation table]
-        D16[every rule, skill and agent has a copy-list row]
     end
 
     subgraph J3["exemplar-imports (ubuntu-latest)"]
@@ -70,12 +69,13 @@ flowchart TD
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then nine tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then ten tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompiles under the pinned `hook_build.javac_feature` and compares byte for byte | Decision 0075 — an edit to `ArchHook.java` without a rebuild changes nothing any hook executes. Runs before the tests, so they exercise reviewed bytes |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 16 cases: every force-push spelling in `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) refused, a redirect / `sed -i` outside a design phase's territory refused, a plain `sed`, an unresolvable `$OUT` target and `ls` let through | Decision 0076. The mode runs before every shell command in every session: it fails expensively in both directions, and the parser is data a JSON edit can change |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` in a throwaway git repo: a file dirty before the prompt is never named, an out-of-territory write in the turn exits 2, `stop_hook_active` does not block twice, an in-territory write is silent | Decision 0065 — the sweep is only as good as the `guard prompt` baseline, and a broken baseline fails quietly either way |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` exits 2 naming the advertised-address line, `stop_hook_active` exits 0, a `localhost` listener clears that line, no compose file is silent | Decision 0064. Needs no Docker — the advertised-address check reads the file |
 | `context subagent hands the catalog to pattern_catalog agents only` | `SubagentContextTest.java`: `java-spring-boot-developer` gets a `## Catalog` within `subagent_context.max_chars`; installers and `general-purpose` get nothing | Decision 0077. `SubagentStart` cannot block, so a catalog that stops arriving — or arrives everywhere — is silent |
+| `audit renders where the run spent, redacts tool errors, skips observer-class pieces` | `AuditRenderTest.java` in a throwaway project holding a copy of the real `extensions.json`: tool calls per piece (a subagent's own transcript included), the costliest turns, the peak context, each tool error's first line redacted, the ledger fields `audit summary` aggregates, and no report for a piece whose class declares `audited: false` | Decisions 0041, 0085, 0086. Every number is parsed from an undocumented transcript layout and a render that throws exits 0 — the report just stops updating; the error line lands in a versioned file, so a token it echoes would leak (invariant 11) |
 | `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` runs the `guard` mode over the real `extensions.json` across 13 cases: no phase open restricts nothing, inside and outside the `write_allow`, `agent_type` winning over the open phase, the refusal of `Skill(<build>)` while a design phase is open, the callee's narrower territory, and the phase surviving an `Agent` call until the next prompt | "Deny by default" is the kind of claim that rots in silence: it holds until one `write_allow` entry is widened by accident. The case that motivated the whole thing — a design run writing `docker-compose.yml`, a file no denylist named — is one of the 13 |
 | `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` runs the same mode over `agent_classes` across 18 cases: each installer inside and outside its narrow list, the single- and multi-module spellings of the same path, the executor reaching the one spec line it closes, the driver writing anything, and an unclassed agent falling back to the caller's phase | Each agent used to promise its territory in prose (`**Does not write:** docker-compose.yml`) while the guard gave all four an unconditional bypass. The promise is data now, and the two blocks that matter most — `archunit-installer` refused `docker-compose.yml`, and refused main source — are cases in this file |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` builds a throwaway project holding a `docker-compose.yml` and a `DockerImageName.parse(...)` under `src/test`, and requires `ArchHook.java compose` to report the divergence, expand `${VAR:-default}`, and stay quiet when the tags agree | The suite passing against an engine version nobody runs. It runs on all three OSes because question 3 of the `compose` mode compares two files and needs no Docker — which also proves the `src/test/` path match survives Windows' separator |
@@ -88,8 +88,8 @@ flowchart TD
 | `blueprint-declared templates exist on disk` | every `templates.<role>` in a blueprint resolves to a real file | A blueprint pointing at a renamed or deleted template |
 | `each norm has a single owner` | a fixed list of known terms appears in at most one file under `rules/` | Invariant 2 — narrow by construction, see note below |
 | `no dependencies outside the Java ecosystem` | no `pip install`, `npm install`, `node `, bare `python` in `.claude/` | Decision D7 |
-| `every norm paths matches some blueprint` / `norm is in the bootstrap's derivation table` | a rule's `paths` glob names a package some blueprint declares, and step 6.6 of `project-bootstrap` knows to rewrite it | Gap 8 of `decisions/0024-lessons-learned-001-remediation.md` — a rule that silently never auto-loads |
-| `every rule, skill and agent has a row in the bootstrap copy list` | every file in `rules/` has a row in § 6.6 of `project-bootstrap/SKILL.md`, and every skill and agent has a row marked ✅ or ❌ in §§ 6.7/6.8 | Invariant 9 — those tables **are** the copy lists that make the generated project self-contained. A new norm missing from § 6.6 breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
+| `every norm paths matches some blueprint` | a rule's `paths` glob names a package some blueprint declares | Gap 8 of `decisions/0024-lessons-learned-001-remediation.md` — a rule that silently never auto-loads |
+| the export manifest matches disk (inside `frontmatter schema`) | every skill and agent on disk is in the `export` block's `include` or `exclude`; every rule whose `paths` names a package has an `export.derived_paths` entry | Invariant 9 — that manifest **is** the copy list that makes the generated project self-contained. These two checks used to grep the prose copy tables of `project-bootstrap` §§ 6.6–6.8; the tables are gone (D54) and `schema` owns the check, so it also fires locally on every edit under `.claude/`. A new norm missing from the manifest breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
 | `decisions/ doesn't grow paths or enter 00-index.md` | no file in `decisions/` declares `paths:`; none is listed in `rules/00-index.md` | `decisions/` is history, not a rule — see Known pitfalls |
 | `no hardcoded Spring/Java version outside decisions/` | no `Spring Boot X.Y` / `Java NN` written as fact in `rules/`, `skills/`, `blueprints/`, `CLAUDE.md` | Invariant 8 — versions are resolved via Spring Initializr, never written from memory. Excludes the `JDK 21+` minimum-requirement line and dated "Tested to compile" notes in exemplars, which record a past verification, not a version to use |
 | `export-determinism` (whole job) | two exports per blueprint produce identical trees; the tree carries `ArchHook.jar` byte-identical to the verified one and nothing only this repo needs; the **exported jar** runs `schema` and `doctor` against its own tree; seeding every `export.retired` path and re-exporting deletes each one | Invariant 9 and decision D54. The retired-path step is decision 0082's rename: without the delete, an updated project keeps a norm nobody owns. The blueprint id is read from the stamp with `sed`, not `python3` — D7 |
@@ -169,8 +169,9 @@ happens anyway.
 ## What's not here yet
 
 - Invariant 9 (the generated project is self-contained) is now **half** covered: the
-  `every rule, skill and agent has a row in the bootstrap copy list` step proves the
-  tables of §§ 6.6/6.7/6.8 cover the disk — the part whose failure mode was silent.
+  `schema` step proves the `export` manifest covers the disk, and `export-determinism`
+  proves the exported tree is stable and passes its own `schema` and `doctor` — the parts
+  whose failure mode was silent.
   That the generated project *actually* compiles and holds no dead path stays a manual
   check, via the command block at `project-bootstrap/SKILL.md` § 8 ("Verify"): it
   requires generating a real project against the Initializr, and that cost hasn't been

@@ -80,31 +80,39 @@ ArchUnit. Somam-se Checkstyle na fase `validate` e `lombok.config` com
 `flagUsage = ERROR` para `@Data`/`@Setter`. Nenhuma dessas camadas depende do modelo
 lembrar a regra.
 
-### 4 · Enforcement em um único arquivo Java, nove modos, sem shell
+### 4 · Enforcement em um único arquivo Java, onze modos, sem shell
 
-`.claude/hooks/ArchHook.java` roda em modo single-file (`java ArchHook.java <modo>`),
-invocado em forma exec (`command: java`, `args: [...]`) — nenhum shell, nenhum
-`chmod`, idêntico em Linux, macOS e Windows. Zero Python, zero `.sh`/`.ps1` em
-paralelo. Os nove modos:
+`.claude/hooks/ArchHook.java` é a fonte única; todo hook dispara o
+`.claude/hooks/ArchHook.jar` pré-compilado a partir dela (`java -jar ArchHook.jar <modo>`,
+~0,3 s contra ~3,3 s de um launch pelo fonte), invocado em forma exec (`command: java`,
+`args: [...]`) — nenhum shell, nenhum `chmod`, idêntico em Linux, macOS e Windows. O jar é
+commitado, e o CI exige que ele seja byte a byte o que o fonte compila sob o JDK fixado.
+Zero Python, zero `.sh`/`.ps1` em paralelo. Os onze modos:
 
 | Modo | Evento | Bloqueia? | O que faz |
 |---|---|---|---|
-| `check` | `PostToolUse` Write\|Edit | sim | imports proibidos + `test-compile` incremental do módulo tocado |
-| `format` | `PostToolUse` Write\|Edit | não | `spotless:apply` no módulo |
+| `check` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | sim | imports proibidos + `test-compile` incremental do módulo tocado |
+| `format` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | não | `spotless:apply` no módulo |
 | `tests` | `Stop` | sim | testes dos módulos alterados desde `HEAD` |
 | `schema` | `PreToolUse`/`PostToolUse`/`Stop` | sim | frontmatter e **corpo** de skills/agents/rules, `.mcp.json` com scan de segredos, entradas de hook, manifesto de export — tudo contra `extensions.json` |
-| `guard` | `UserPromptSubmit`, `PreToolUse` | sim | cada skill escreve só o território da classe dela; classe `build` inalcançável em run de design; spec aprovado é imutável |
-| `audit` | 10 eventos do ciclo de vida | não | trilha de execução de toda skill e agent |
-| `compose` | manual, e dentro de `doctor` | não | todo serviço do compose está `running`, nenhum container alheio nas portas, nenhuma tag divergindo de `src/test` |
+| `guard` | `UserPromptSubmit`, `PreToolUse` (`Write`/`Edit`, `Bash`, `Skill`/`Agent`), `Stop` | sim | cada skill escreve só o território da classe dela, cada agent o seu; escrita via shell lida do comando; force push recusado em qualquer grafia; classe `build` inalcançável em run de design; spec aprovado é imutável; `sweep` no `Stop` reconfere o que o turno escreveu em disco |
+| `audit` | 11 eventos do ciclo de vida | não | trilha de execução de toda skill e agent (só no projeto gerado) |
+| `compose` | manual, dentro de `doctor`, e `compose gate` no `Stop` | o gate, sim | todo serviço do compose está `running`, nenhum container alheio nas portas, nenhuma tag divergindo de `src/test`, nenhuma porta publicada anunciada só na rede interna |
+| `context` | `SubagentStart` (só no projeto gerado) | não | entrega o catálogo de design patterns a todo agent cuja classe declara `pattern_catalog: true` |
 | `doctor` | manual (`/arch-doctor`) | não | diagnóstico do setup |
 | `export` | manual (via `/arch-adopt`) | não | escreve o `.claude/` de um projeto-alvo a partir de manifesto, com stamp de proveniência |
+| `build` | `PostToolUse` em `ArchHook.java` (só neste repositório), e à mão | não | reconstrói o jar sob o JDK fixado; `build --verify` é a comparação byte a byte do CI |
 
-O CI roda `doctor` e quatro testes que injetam a violação e exigem o bloqueio, nos três
-sistemas operacionais: `BoundaryTest` (import proibido → `exit 2`), `InjectionPathTest`
-(injection relativa ao cwd → `exit 2`), `ComposeTagTest` (tag de `image:` divergente da
-que `src/test` fixa → reportada) e `SkillTerritoryTest` (escrita fora do `write_allow`
-da classe ativa → `exit 2`, em 11 casos). "Multiplataforma" é fato verificado, não
+O CI roda `doctor`, `build --verify` e dez testes que injetam a violação e exigem o
+bloqueio, nos três sistemas operacionais — todos contra o jar que os hooks disparam:
+`BoundaryTest` (import proibido → `exit 2`), `InjectionPathTest` (injection relativa ao cwd
+→ `exit 2`), `ComposeTagTest` (tag de `image:` divergente da que `src/test` fixa →
+reportada), `SkillTerritoryTest` e `AgentTerritoryTest` (escrita fora do `write_allow` da
+classe → `exit 2`), `BashGuardTest` (force push, escrita via shell fora da fase),
+`SweepTest`, `ComposeGateTest`, `SubagentContextTest` e `AuditRenderTest`. A lista completa
+está em [07-ci-validate.md](07-ci-validate.md). "Multiplataforma" é fato verificado, não
 alegação.
+
 
 Ver [01-tipos-de-arquivo.md § Hook](01-tipos-de-arquivo.md#hook).
 
@@ -132,7 +140,8 @@ Ver [08-audit-usage.md](08-audit-usage.md).
 → `test-architect`, mais `messaging-architect` condicional e `jobs-architect`
 condicional — tecnologia de scheduling, cadência, coordenação entre instâncias, e o
 próprio schedule do relay de outbox), consolida num
-`UC-NNN-spec.md` com ciclo `draft → approved → implemented`, pede aprovação e só então
+`UC-NNN-spec.md` com ciclo `draft → approved → implemented` (ou `implemented-blocked`),
+pede aprovação e só então
 oferece o executor `java-spring-boot-developer` — um agent separado, com tools
 restritas, que só escreve em `src/`.
 
@@ -140,16 +149,19 @@ Quatro fronteiras deixaram de ser prosa depois de serem violadas em execuções 
 
 - **Design escreve só a pasta do caso de uso** — território é allowlist, deny por
   default: o `guard` recusa `Write`/`Edit` em qualquer caminho fora do `write_allow` da
-  classe da skill ativa, exceto de dentro de um agent executor. A denylist anterior
+  classe da skill ativa; a escrita de um subagent é julgada pelo território do próprio
+  `agent_classes`, qualquer que seja a fase que o chamador deixou aberta. A denylist anterior
   (`src/**`) não via o arquivo que vazou — um run de design escreveu um serviço no
   `docker-compose.yml`, e o arquivo que vaza nunca é o que alguém listou.
 - **Um run de design não materializa arquivo nenhum** — o `guard` recusa a própria
   *chamada* a uma skill de classe `build` enquanto o run está aberto. O serviço que falta
   é registrado na parcial, com o comando que o cria, e materializado depois.
 - **Spec aprovado é imutável** — o `guard` congela a pasta `docs/use-cases/UC-*/` cujo
-  spec está `approved` ou `implemented`.
+  spec está `approved`, `implemented` ou `implemented-blocked`, exceto a linha `status:` do
+  spec, um toggle de checklist e o `CHANGELOG.md` da pasta.
 - **Git só por `git-publish`**, atrás de dois `AskUserQuestion`; `git push` é sempre
-  `ask` e `git push --force` é `deny`.
+  `ask`, e o `guard bash` recusa force push em toda grafia que consegue ler (`-f`,
+  `--force-with-lease`, `+ref`, `git -C … push`, `sh -c "…"`).
 
 Ver [03-new-feature.md](03-new-feature.md).
 
@@ -192,9 +204,9 @@ tools, model); quem não se justifica vira skill. As duas formas que executam �
 `decisions/`: um hook que bloqueia dispara para todo mundo, inclusive quando está errado.
 
 Cada peça deste repositório nasceu de um sintoma observado em execução real, registrado
-em `lessons-learned/` e remediado por uma decisão numerada em `decisions/`. Esses dois
-diretórios ficam fora do repositório público de propósito (`.gitignore`): são história
-do mantenedor, não norma.
+em `lessons-learned/` e remediado por uma decisão numerada em `decisions/`. Os dois
+diretórios são versionados (desde 2026-09-28) e ficam fora do projeto gerado: são
+história do mantenedor, não norma.
 
 Ver [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md).
 
@@ -208,8 +220,9 @@ Ver [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md)
   carregar, em silêncio.
 - `metadata:` foi banido do frontmatter (custa tokens a cada invocação e não impõe
   nada); contratos vivem no corpo, onde são instrução de fato.
-- Skills de design viajam preloaded no executor (`java-patterns` via `skills:`), sem
-  turno próprio.
+- Design patterns são decididos no desenho, no parcial da camada que moldam, e o catálogo
+  chega ao executor no `SubagentStart` para sintomas achados em disco — nunca como turno
+  próprio.
 
 ### 10 · Transversais que já vêm resolvidos
 

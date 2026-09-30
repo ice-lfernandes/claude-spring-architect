@@ -48,7 +48,7 @@ right there — it never proceeds with a made-up value.
 | `build.tool` | ✅ | `maven` \| `gradle` | Overridable at initialization |
 | `modules[]` | ✅ | list | See § `modules[]` below |
 | `packages.base` | ✅ | string | Template, e.g. `{{groupId}}.{{artifactName}}` |
-| `packages.map` | ✅ | map | Logical role → package suffix |
+| `packages.map` | ✅ | map | Logical role → package suffix. A role ending in `.scheduling` is where `jobs-architect` puts every job trigger — without one it stops and names the missing line |
 | `architecture_paths` | ✅ | string[] | Globs identifying the code covered by `rules/architecture-ddd.md`. They go **verbatim** into the `paths` of the file the bootstrap generates at `<project>/.claude/rules/architecture-ddd.md` — not inferred from `modules[].path` |
 | `dependency_rules.direction` | ✅ | `inward` \| `explicit` | |
 | `dependency_rules.forbidden[]` | ✅ | list | `{from, to[], reason}` |
@@ -99,9 +99,10 @@ Corollary for whoever writes a blueprint: adding a feature means adding a line t
 6. `architecture_paths` exists and is not empty.
 
 **There's no external validator, nothing to install** — this template assumes only
-JDK, Maven, git, curl, and bash. The final arbiter is the build: a blueprint with
-poorly declared boundaries produces POMs that don't compile. It fails later than a
-validator would, but it fails cleanly and without installing anything.
+the JDK, git, and curl — the Maven wrapper comes in the Initializr's `starter.tgz`. The
+final arbiter is the build: a blueprint with poorly declared boundaries produces POMs
+that don't compile. It fails later than a validator would, but it fails cleanly and
+without installing anything.
 
 ## Real example — `hexagonal.yaml` (summary)
 

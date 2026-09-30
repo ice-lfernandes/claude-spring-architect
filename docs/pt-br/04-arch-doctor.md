@@ -25,7 +25,7 @@ dois comandos:
 !`java "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/ArchHook.java" doctor 2>&1`
 
 ## AI files
-!`find .claude -maxdepth 2 -type f | sort`
+!`find "${CLAUDE_PROJECT_DIR:-.}/.claude" -maxdepth 2 -type f | sort`
 ```
 
 O modelo então lê o resultado já pronto e o interpreta em 2-3 frases — não roda nada
@@ -48,6 +48,7 @@ sequenceDiagram
     HOOK->>FS: procura mvnw / mvnw.cmd
     HOOK->>FS: conta linhas válidas em .claude/forbidden-imports.txt
     HOOK->>FS: valida .claude/schemas/extensions.json (se existir)
+    HOOK->>FS: compara o hash do fonte gravado no ArchHook.jar com o ArchHook.java
     HOOK->>FS: conta relatórios em .claude/audit-usage/ e testa a inferência de regras
     HOOK->>FS: valida .mcp.json (se existir)
     HOOK->>FS: docker compose ps + docker ps (se houver compose e docker no PATH)
@@ -65,10 +66,11 @@ sequenceDiagram
 | `OS` | — informativo | No Windows, nota que roda em exec form (sem shell) |
 | `Java` | — informativo | versão da JVM em uso |
 | `Project root` | — informativo | resolvido de `CLAUDE_PROJECT_DIR` ou diretório atual |
-| `CLAUDE_PROJECT_DIR` | variável setada | ⚠️ não setada — hooks usam o diretório atual |
+| `CLAUDE_PROJECT_DIR` | variável setada | ❌ não setada — hooks usam o diretório atual |
 | `Maven wrapper` | `mvnw`/`mvnw.cmd` encontrado | ❌ ausente — rodar `/init-project` (o `starter.tgz` já traz o wrapper) |
 | `Boundaries` | ≥ 1 regra válida em `.claude/forbidden-imports.txt` | ❌ 0 regras — enforcement OFF, gerado por `/init-project` |
 | `Schema` | todos os arquivos de extensão passam | ❌ N arquivos com frontmatter inválido, ou ⚠️ sem `extensions.json` — validação OFF |
+| `Hook jar` | `.claude/hooks/ArchHook.jar` carrega o hash do `ArchHook.java` atual | ❌ ausente, ilegível ou desatualizado — construído de outra versão do fonte, então todo hook roda o código antigo; `java .claude/hooks/ArchHook.java build` o reconstrói |
 | `Audit` | N execuções registradas em `.claude/audit-usage/` (avisa se `pricing.json` falta) | ⚪ sem o diretório — trilha OFF (opcional; é o caso deste meta-repo) |
 | `Audit rule inference` | a inferência de regras renderiza sem erro para um `.java` sintético | ❌ `auditRules()` lança — todo relatório congelaria assim que uma execução tocasse `src/**` |
 | `MCP` | N servidores declarados em `.mcp.json`, todos válidos | ❌ N problemas — rodar `java ArchHook.java schema`; ou "no .mcp.json" (opcional) |
@@ -77,6 +79,7 @@ sequenceDiagram
 | `Compose` | todo serviço do compose `running`, nenhuma porta declarada ocupada por container alheio, nenhuma tag de `image:` divergindo da que `src/test` fixa em `DockerImageName.parse`, e toda porta publicada no host anunciada em um endereço que o host resolve | ❌ serviço em `created`/`exited`, porta publicada por outro projeto, tag divergente, ou serviço que publica porta anunciando só o hostname da rede do compose — detalhe linha a linha. A comparação de tags e a checagem de endereço anunciado não precisam de Docker: leem os arquivos |
 | `git HEAD` | existe pelo menos 1 commit | ❌ sem commits — o hook `tests` não roda (`git diff HEAD` falha) |
 | `UC references` | toda pasta `docs/use-cases/UC-NNN-slug/` citada por um arquivo versionado existe no disco | ❌ citação órfã, com arquivo e linha — apagar ou renomear um caso de uso deixa as citações para trás, e cada uma estava correta no commit que a escreveu. Sem `docs/use-cases/`, "nothing to check (optional)" — é o caso deste meta-repo |
+| `BL references` | todo `BL-NN` que uma spec cita existe em `docs/use-cases/BACKLOG.md`, na tabela ativa ou na de aposentados | ❌ N citações nomeiam uma linha de backlog que o arquivo não tem, listadas uma por linha. Mesmo bloco de dados (`doctor.bl_references`); sem `docs/use-cases/`, "nothing to check (optional)" |
 
 A linha final resume: `✅ Setup operational.` só aparece quando **ao mesmo tempo**
 `Boundaries` tem regras > 0 **e** o wrapper do Maven foi encontrado. Qualquer outra
@@ -97,6 +100,7 @@ ArchHook doctor
   Maven wrapper       ✅ ./mvnw
   Boundaries          ✅ 9 active rules
   Schema              ✅ all extension files pass
+  Hook jar .......... ✅ built from the current .claude/hooks/ArchHook.java
   Audit ............. ✅ 3 execution(s) recorded — pricing.json missing, no cost estimate
   Audit rule inference ✅ renders without error on a touched .java file
   MCP ................ no .mcp.json — nothing declared (optional)
