@@ -166,6 +166,18 @@ consequência de um merge.
 status check* na branch protection de `main`. Sem isso, o job falha e o merge acontece
 de todo jeito.
 
+## O workflow vizinho: `templates.yml`
+
+Filtrado por paths: roda só quando um PR mexe nos arquivos que ele testa, porque os dois jobs
+baixam do Maven Central, do GitHub ou do `start.spring.io`. Não é required check — um required
+check num workflow filtrado por paths fica pendente em todo PR que ele pula. Design:
+`.claude/decisions/0099-ci-tests-for-verbatim-templates.md`.
+
+| Job | Verifica | Contra o quê |
+|---|---|---|
+| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` e `checkstyle-test.xml.example` rodando no Checkstyle **mais recente** (resolvido no Maven Central, jar `-all` da release no GitHub) sobre três fixtures — arquivo limpo passa nos dois, `record` e `permits` como nome falham nos dois com `IllegalIdentifierName` | Decisão 0097 — o `format` default do Checkstyle 14 só rejeita `var`; uma config que dependia dele passou quatro variáveis `record` com 0 violações, e a config nunca roda neste repositório |
+| `java-templates` | `JavaTemplatesTest.java`: todo arquivo de `new-feature/templates/commons/` mais os blocos `// --- ` de `JpaEntity.java.example` (`AssignedIdEntity` incluído) num projeto novo do `start.spring.io`, depois `./mvnw test` sobre os três templates `*Test` | Decisões 0096 e 0098 — esses templates são copiados como arquivo, não lidos como forma: um que para de compilar quebra o `commons-logging-installer` em todo projeto. `exemplar-imports` prova que cada import existe; este prova que os arquivos compilam juntos e que os testes enviados passam |
+
 ## O que ainda não está aqui
 
 - Invariante 9 (o projeto gerado é self-contained) está coberto **pela metade**: o passo
@@ -174,7 +186,9 @@ de todo jeito.
   modo de falha era silencioso.
   Que o projeto gerado *de fato* compile e não tenha caminho morto continua verificado à
   mão, pelo bloco de comandos em `project-bootstrap/SKILL.md` § 8 ("Verify"): exige gerar
-  um projeto de verdade contra o Initializr, e esse custo não foi automatizado.
+  um projeto de verdade contra o Initializr, e esse custo não foi automatizado. Uma fatia
+  foi: o workflow vizinho `templates.yml` (abaixo) compila, num projeto novo do Initializr,
+  os templates que o projeto recebe **como arquivo**, e roda os testes que vêm com eles.
 - `claude plugin validate .claude/skills` — o CLI não está instalado no runner do
   GitHub Actions, e instalá-lo puxaria uma dependência fora de `java`/`git`/`curl`
   (ver `CLAUDE.md` § Dependencies). Rode à mão antes de abrir um PR; é uma checagem
@@ -192,6 +206,9 @@ java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/ComposeTagTest.java
 java .claude/.ci/SkillTerritoryTest.java
 java .claude/.ci/AgentTerritoryTest.java
+# templates.yml — rede, ~1 min com cache Maven quente:
+java .claude/.ci/CheckstyleConfigTest.java
+java .claude/.ci/JavaTemplatesTest.java
 ```
 
 Um `git push` sem rodar isso antes ainda passa pelo hook local (`settings.json`), mas

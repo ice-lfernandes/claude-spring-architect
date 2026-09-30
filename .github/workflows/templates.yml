@@ -1,0 +1,75 @@
+name: templates
+
+# Proves what the templates a generated project receives verbatim claim about themselves —
+# the part `validate` cannot see, because a template never runs in this repository:
+#   1. the two Checkstyle configs parse on the current Checkstyle and reject what they claim
+#      to reject (lessons-learned-017 § 8: a default `format` passed `record` with 0
+#      violations — decision 0097)
+#   2. the Java templates copied as files compile in a fresh Initializr project, and the tests
+#      shipped with them pass (decisions 0096, 0098)
+# Design: .claude/decisions/0099-ci-tests-for-verbatim-templates.md
+#
+# Path-filtered on purpose: both jobs download from Maven Central, GitHub and
+# start.spring.io, and the second runs a Maven build. A PR that touches none of the files
+# below has nothing for them to prove. This workflow is not a required check — a required
+# check on a path-filtered workflow stays pending forever on the PRs it skips.
+on:
+  push:
+    branches: [main]
+    # Same list under both triggers — keep them identical.
+    paths:
+      - '.claude/skills/project-bootstrap/templates/checkstyle*.xml.example'
+      - '.claude/skills/new-feature/templates/commons/**'
+      - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
+      - '.claude/.ci/CheckstyleConfigTest.java'
+      - '.claude/.ci/JavaTemplatesTest.java'
+      - '.github/workflows/templates.yml'
+  pull_request:
+    paths:
+      - '.claude/skills/project-bootstrap/templates/checkstyle*.xml.example'
+      - '.claude/skills/new-feature/templates/commons/**'
+      - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
+      - '.claude/.ci/CheckstyleConfigTest.java'
+      - '.claude/.ci/JavaTemplatesTest.java'
+      - '.github/workflows/templates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: templates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkstyle-configs:
+    name: checkstyle configs reject what they claim
+    runs-on: ubuntu-latest
+    # One download and six Checkstyle runs over three small files.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: checkstyle.xml and checkstyle-test.xml against fixtures
+        run: java .claude/.ci/CheckstyleConfigTest.java
+
+  java-templates:
+    name: verbatim Java templates compile and their tests pass
+    runs-on: ubuntu-latest
+    # A cold Maven repository: the Boot, JPA and test dependencies download once per run.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: commons templates + AssignedIdEntity in a fresh Initializr project
+        run: java .claude/.ci/JavaTemplatesTest.java
