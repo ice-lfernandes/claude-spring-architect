@@ -26,7 +26,9 @@ single owner in `.claude/schemas/extensions.json` and are described in
 **A skill cannot have the name of a native slash command.** The folder name becomes the
 command, and `/doctor`, `/init`, `/context`, `/memory` already exist in the runtime. That is
 why this repo's diagnostic skill is called `arch-doctor`. Shadowing a native command produces
-no error — it runs the wrong command.
+no error — it runs the wrong command. `ArchHook.java schema` fails the folder by name, against
+`types.skill.native_commands` in `.claude/schemas/extensions.json` — a list that has to grow
+when the runtime gains a command.
 
 **`$ARGUMENTS` in the body of a skill is interpolated at every occurrence**, not only under
 `## Target`. A sentence that talks *about* the argument reaches the model with the real value

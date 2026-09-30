@@ -6,12 +6,14 @@ description: >
   and verify the build. Explicit invocation only.
 argument-hint: "[--blueprint <id>] [--build maven|gradle] [--groupId <groupId>] [--name <artifactId>] [--bounded-context <name>]"
 disable-model-invocation: true
-allowed-tools: Agent, Read, Write, Bash, Glob, AskUserQuestion
+allowed-tools: Agent, Read, Write, Glob, AskUserQuestion, Bash(find:*), Bash(sort:*), Bash(ls:*), Bash(head:*)
+model: sonnet
+effort: low
 ---
 
 ## Available blueprints
 
-!`find "${CLAUDE_PROJECT_DIR:-.}/.claude/blueprints" -mindepth 2 -maxdepth 2 -name '*.yaml' 2>/dev/null | xargs -n1 basename | sed 's/\.yaml$//'`
+!`find "${CLAUDE_PROJECT_DIR:-.}/.claude/blueprints" -mindepth 2 -maxdepth 2 -name '*.yaml' 2>/dev/null | sort`
 
 ## Directory state
 
@@ -41,6 +43,8 @@ interview it leads to cannot be triggered by inference from a sentence. Form 1 w
 for exactly that: a skill that can scaffold a whole tree on the model's own judgment is a
 directory rewritten by accident. Form 3 was rejected here and used one level down instead —
 the isolation belongs to the generation, which is why `project-initializer` exists.
+
+Runs on `sonnet` with `effort: low`: everything it does is delegated to `project-initializer`, which declares its own model; this skill parses the arguments and relays the report (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Contract
 

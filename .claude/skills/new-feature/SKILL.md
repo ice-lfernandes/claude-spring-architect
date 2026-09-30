@@ -3,6 +3,7 @@ name: new-feature
 description: Orchestrates the feature pipeline — one use case per run, 5 design skills → spec.md for the executor, and implements an already-approved spec on the same argument
 disable-model-invocation: true
 argument-hint: "<feature description> | UC-NNN-slug | empty to list"
+model: opus
 ---
 
 # `/new-feature` — Feature pipeline orchestrator
@@ -18,6 +19,8 @@ requested manual invocation. Subagent rejected — none of the three reasons app
 of running it, print the exact command for the user to type — don't attempt the call.
 
 ---
+
+Pinned to `opus`: consolidating the partials and settling their divergences is design, and the executor it chains declares its own model (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Contract
 
@@ -502,7 +505,7 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      this was a line in the **final report** — detection after the spec is approved, after the
      code is written and after the commit, and in the observed run it appeared there only because
      the executor volunteered it, for a CPF already published in clear on a topic
-     (lessons-learned-014 § 8, `@.claude/rules/security.md` § In transit)
+     (lessons-learned-014 § 8, `@.claude/rules/personal-data.md` § In transit)
    - **A deferred row leaves the run with an owner, or consolidation stops.** Each partial's
      `Deferred` block carries what it decided not to do, the norm that requires it, and an
      intended owner. `checklist` → add the item to this spec's checklist; the run implements it.
@@ -515,7 +518,7 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      7-day retention for `outbox_events`, left a commented `DELETE` in the migration, kept
      `app.outbox.prune-after` out of `application.yml` on purpose, and handed the job to nobody,
      over a table whose payload carries personal data (lessons-learned-014 § 9,
-     `@.claude/rules/security.md` § At rest)
+     `@.claude/rules/personal-data.md` § At rest)
    - **Every case named in that section gets a line in its own `CHANGELOG.md`**, at
      `docs/use-cases/UC-XXX-<slug>/CHANGELOG.md` — created on the first change, appended
      afterwards. One line: date, the `UC-NNN` making the change, and what changed

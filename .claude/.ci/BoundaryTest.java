@@ -23,13 +23,13 @@ public class BoundaryTest {
                 class Violator {}
                 """);
 
-        Path hook = Paths.get(".claude/hooks/ArchHook.java").toAbsolutePath();
+        Path hook = Paths.get(".claude/hooks/ArchHook.jar").toAbsolutePath();
         String json = "{\"tool_input\":{\"file_path\":\""
                 + bad.toAbsolutePath().toString().replace("\\", "\\\\") + "\"}}";
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "check");
+                "-jar", hook.toString(), "check");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();

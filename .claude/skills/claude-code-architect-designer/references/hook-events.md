@@ -51,7 +51,7 @@ it.
 | `PostToolBatch` | After a batch of tool calls | ✅ |
 | `PermissionRequest` | When a permission prompt is about to be shown | ✅ |
 | `PermissionDenied` | When one is refused | ✅ |
-| `SubagentStart` / `SubagentStop` | Around a subagent's run | ✅ |
+| `SubagentStart` / `SubagentStop` | Around a subagent's run. `SubagentStart` cannot block, but `hookSpecificOutput.additionalContext` lands in the subagent's own conversation before its first turn — capped at 10 000 characters, above which the model gets a file path and a 2 000-char preview it is not asked to read | ✅ agent type |
 | `PreCompact` / `PostCompact` | Around a context compaction | ✅ |
 | `Notification` | On a notification | ✅ |
 | `FileChanged` | A watched file changed on disk | ➖ |
@@ -73,7 +73,7 @@ and then into this table.
 | `type` | ✅ | `command`. The runtime also serves http/mcp/prompt/agent hooks; this repo runs commands only, and `entry_types` in the schema says so |
 | `command` | ✅ | The **bare executable**, e.g. `java`. A pipe, `&&`, or redirect here is a shell string in the executable's slot — rejected |
 | `args` | ➖ | Arguments, one per array entry. This is exec form: no shell, no quoting, no execute bit, portable to Windows |
-| `if` | ➖ | A permission rule (`Edit(.claude/**/*.md)`) evaluated **before** the process is spawned. The single cheapest thing in a hook |
+| `if` | ➖ | A permission rule (`Edit(.claude/**/*.md)`) evaluated **before** the process is spawned. The single cheapest thing in a hook. A path is matched only through `Edit(...)` or `Read(...)`; `Edit` covers every built-in tool that writes a file, `Write` included, so `Write(<path>)` never narrows anything |
 | `timeout` | ➖ | Seconds, positive. Past it the hook is killed |
 | `statusMessage` | ➖ | What the user sees while it runs |
 

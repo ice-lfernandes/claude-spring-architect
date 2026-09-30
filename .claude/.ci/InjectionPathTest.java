@@ -17,7 +17,7 @@ import java.util.regex.*;
 public class InjectionPathTest {
 
     public static void main(String[] args) throws Exception {
-        Path hook = Paths.get(".claude/hooks/ArchHook.java").toAbsolutePath();
+        Path hook = Paths.get(".claude/hooks/ArchHook.jar").toAbsolutePath();
         Path schema = Paths.get(".claude/schemas/extensions.json").toAbsolutePath();
 
         // The real schema, so the test proves what production reads — not a fixture that
@@ -25,6 +25,7 @@ public class InjectionPathTest {
         String relative = """
                 ---
                 name: probe-skill
+                model: sonnet
                 description: >
                   A skill whose injection resolves paths from the cwd.
                 ---
@@ -49,6 +50,7 @@ public class InjectionPathTest {
         String fenced = """
                 ---
                 name: probe-skill
+                model: sonnet
                 description: >
                   A skill that only shows an injection as an example.
                 ---
@@ -74,6 +76,7 @@ public class InjectionPathTest {
         String prose = """
                 ---
                 name: probe-skill
+                model: sonnet
                 description: >
                   A skill that talks about injections without carrying one.
                 ---
@@ -124,10 +127,11 @@ public class InjectionPathTest {
         Files.writeString(tmp.resolve(".claude/skills/probe-skill/SKILL.md"), skill);
         stubAgents(schema, tmp);
         stubSkillClass(tmp);
+        copySubagentContext(schema, tmp);
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "schema");
+                "-jar", hook.toString(), "schema");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -162,7 +166,7 @@ public class InjectionPathTest {
 
         ProcessBuilder pb = new ProcessBuilder(
                 ProcessHandle.current().info().command().orElse("java"),
-                hook.toString(), "schema");
+                "-jar", hook.toString(), "schema");
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -195,6 +199,10 @@ public class InjectionPathTest {
                 + "\"agents\"\\s*:\\s*\\[([^]]*)]", Pattern.DOTALL).matcher(json);
         while (cls.find()) {
             boolean executor = cls.group(2).contains("\"executor\": true");
+            // The body's marker must say what the class's `pattern_catalog` says, in both
+            // directions — a class that declares none gets no marker.
+            Matcher catalog = Pattern.compile("\"pattern_catalog\"\\s*:\\s*(true|false)")
+                    .matcher(cls.group(2));
             List<String> sections = new ArrayList<>();
             Matcher sec = Pattern.compile("\"(## [^\"]+)\"").matcher(cls.group(2));
             while (sec.find()) sections.add(sec.group(1));
@@ -208,11 +216,30 @@ public class InjectionPathTest {
                         .append("` — CI stub\n\n## Why this is an agent (Form 3)\n\nStub.\n\n"
                                 + "## Contract\n\n**Class:** ").append(cls.group(1)).append("\n");
                 if (executor) b.append("\n**Executor:** yes\n");
+                if (catalog.find(0)) {
+                    b.append("\n**Pattern catalog:** ")
+                            .append(catalog.group(1).equals("true") ? "injected" : "not injected")
+                            .append("\n");
+                }
                 b.append("\n## Procedure\n\nStub.\n");
                 for (String s : sections) b.append("\n").append(s).append("\n\nStub.\n");
                 Files.writeString(tmp.resolve(".claude/agents/" + name.group(1) + ".md"), b);
             }
         }
+    }
+
+    /**
+     * `schema` renders `subagent_context` and fails when its `file` is missing. The real file
+     * is copied rather than stubbed: its section headings are what the render looks for, and
+     * a stub would have to repeat them here.
+     */
+    static void copySubagentContext(Path schema, Path tmp) throws IOException {
+        Matcher m = Pattern.compile("\"subagent_context\"\\s*:\\s*\\{[^}]*?\"file\"\\s*:\\s*\"([^\"]+)\"",
+                Pattern.DOTALL).matcher(Files.readString(schema, StandardCharsets.UTF_8));
+        if (!m.find()) return;
+        Path target = tmp.resolve(m.group(1));
+        Files.createDirectories(target.getParent());
+        Files.copy(Paths.get(m.group(1)).toAbsolutePath(), target);
     }
 
     /**

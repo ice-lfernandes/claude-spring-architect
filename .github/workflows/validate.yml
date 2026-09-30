@@ -1,10 +1,15 @@
 name: validate
 
-# Proves the four claims this template makes about itself:
-#   1. the hooks run on Linux, macOS and Windows (decision D8)
-#   2. each norm has a single owning file
-#   3. adding a blueprint doesn't require touching skills, agents or commands
-#   4. the transformation into a project's `.claude/` is reproducible (decision D54)
+# Proves the claims this template makes about itself:
+#   1. the hooks run on Linux, macOS and Windows (decision D8) — and what runs is the
+#      committed ArchHook.jar, byte for byte what the source compiles to (0075)
+#   2. every guard mode blocks what it claims and lets the rest through, exercised against
+#      that jar: territory, `guard bash`, `guard sweep`, `compose gate`, `context subagent`
+#      (0084)
+#   3. each norm has a single owning file
+#   4. adding a blueprint doesn't require touching skills, agents or commands
+#   5. the transformation into a project's `.claude/` is reproducible, carries the jar, and
+#      deletes what `export.retired` names (decision D54, 0082)
 on:
   push: { branches: [main] }
   pull_request:
@@ -56,6 +61,18 @@ jobs:
       - name: doctor
         run: java .claude/hooks/ArchHook.java doctor
 
+      # Every hook launches the committed ArchHook.jar, which a reviewer cannot read. A
+      # fresh compile under the pinned JDK must reproduce it byte for byte on all three
+      # OSes — the check that tells a tampered jar from a stale one
+      # (.claude/decisions/0075-precompiled-hook-jar.md).
+      - name: committed ArchHook.jar is what the source compiles to
+        run: java .claude/hooks/ArchHook.java build --verify
+
+      - name: the jar runs what the hooks run
+        run: java -jar .claude/hooks/ArchHook.jar doctor
+
+      # Every test below spawns `java -jar .claude/hooks/ArchHook.jar`, the exact command the
+      # registrations run — the step above is what makes that the same thing as the source.
       - name: hook blocks forbidden import
         run: java .claude/.ci/BoundaryTest.java
 
@@ -82,6 +99,26 @@ jobs:
       - name: guard keeps each agent inside its class's territory
         run: java .claude/.ci/AgentTerritoryTest.java
 
+      # Runs before EVERY shell command in every session: too loose and a `-uf` or
+      # `sh -c "…"` walks past the force-push refusal 0076 promised, too tight and it blocks
+      # `ls`. Both directions are data in `guard.force_push` / `guard.bash_write_shapes`.
+      - name: guard bash refuses force pushes and holds shell writes to the phase
+        run: java .claude/.ci/BashGuardTest.java
+
+      # The only filesystem-shaped guard (0065). Needs `git`, which every runner has.
+      - name: guard sweep reports this turn's writes, never pre-existing dirt
+        run: java .claude/.ci/SweepTest.java
+
+      # The advertised-address half of the gate reads the file, so it blocks on all three
+      # OSes whether or not a Docker daemon is present (0064).
+      - name: compose gate blocks a published service no host client can reach
+        run: java .claude/.ci/ComposeGateTest.java
+
+      # SubagentStart cannot block and an empty stdout is legal: a catalog that stops
+      # arriving, or starts arriving everywhere, fails silently (0077).
+      - name: context subagent hands the catalog to pattern_catalog agents only
+        run: java .claude/.ci/SubagentContextTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest
@@ -106,23 +143,11 @@ jobs:
 
       # `claude plugin validate` isn't run here: the CLI isn't on the runner, and
       # installing it would add a dependency outside java/git/curl (see CLAUDE.md §
-      # Dependencies). It's a local-only, human-run complement — see docs/07-ci-validate.md.
-
-      - name: skill name doesn't shadow a native slash command
-        run: |
-          NATIVE="doctor init context memory clear compact cost bug config model permissions agents mcp hooks output-style add-dir terminal-setup vim resume rewind todos usage statusline login logout"
-          FAIL=0
-          for d in .claude/skills/*/; do
-            n=$(basename "$d")
-            for native in $NATIVE; do
-              if [ "$n" = "$native" ]; then
-                echo "❌ skill '$n' shadows the native /$native command — it would run instead of it, silently."
-                FAIL=1
-              fi
-            done
-          done
-          [ "$FAIL" -eq 0 ] && echo "✅ No skill shadows a native slash command."
-          exit $FAIL
+      # Dependencies). It's a local-only, human-run complement — see docs/pt-br/07-ci-validate.md.
+      #
+      # A skill folder named after a native slash command used to be a step here, over a
+      # list that lived only in this YAML and that a generated project never ran. The list
+      # is `types.skill.native_commands` now, and `schema` above fails on it (0084).
 
       - name: decisions/ doesn't grow paths or enter 00-index.md
         run: |
@@ -261,9 +286,13 @@ jobs:
             [ -z "$GLOBS" ] && continue
             for glob in $GLOBS; do
               # Layout-independent globs: valid in any blueprint, don't have to
-              # match any declared package.
+              # match any declared package. `**/src/**/*.java` is the Java-wide glob since
+              # decision 0082; `**/*.java` is not allowed through — it also matched
+              # ArchHook.java, and a rule reintroducing it fails here as an unknown package.
+              # A `.claude/` glob — 00-index.md's — targets this tree, not a package.
               case "$glob" in
-                '**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+                '**/src/**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
+                .claude/*) continue ;;
               esac
               # `**/adapter/in/rest/**` → `adapter.in.rest`, which is how packages.map
               # writes it. A glob shorter than the declared package counts as a match:
@@ -364,6 +393,7 @@ jobs:
           done
           for required in \
             .claude/rules/00-index.md .claude/hooks/ArchHook.java \
+            .claude/hooks/ArchHook.jar \
             .claude/schemas/extensions.json .claude/settings.json \
             .claude/.arch-provenance.json; do
             if [ ! -f "$OUT/$required" ]; then
@@ -371,11 +401,19 @@ jobs:
               FAIL=1
             fi
           done
+          # Every hook in the project launches this jar. A copy that differs from the one
+          # `build --verify` just proved is a hook nobody reviewed (0075).
+          if ! cmp -s .claude/hooks/ArchHook.jar "$OUT/.claude/hooks/ArchHook.jar"; then
+            echo "❌ the exported ArchHook.jar is not the one this repository verified."
+            FAIL=1
+          fi
           # The catalog does not travel; the ONE blueprint the project was written from
           # does — invariant 9, amended by D55. A project whose stamp names a blueprint it
           # does not carry cannot be updated, which is the failure that amendment closes.
           COUNT=$(find "$OUT/.claude/blueprints" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
-          ID=$(python3 -c 'import json;print(json.load(open("'"$OUT"'/.claude/.arch-provenance.json"))["blueprint"])')
+          # sed, not python3: java, git and curl are the only dependencies (CLAUDE.md).
+          # The stamp is written one key per line by the export mode itself.
+          ID=$(sed -n 's/^ *"blueprint": *"\([^"]*\)".*/\1/p' "$OUT/.claude/.arch-provenance.json")
           if [ "$COUNT" != "1" ]; then
             echo "❌ the exported tree carries $COUNT blueprint yaml(s) — it must carry exactly the active one."
             FAIL=1
@@ -390,15 +428,41 @@ jobs:
       # longer validates, enforcement inside the generated project is off from day one —
       # and `schema` switches itself off with a warning rather than failing, so the exit
       # code alone would not say.
+      #
+      # Run with the exported tree's OWN jar — the thing its hooks launch — not this
+      # repository's source, which the project does not have to agree with.
       - name: the exported tree passes its own schema
         run: |
           OUT=/tmp/exp-clean-architecture-single-module-1
           cd "$OUT"
-          CLAUDE_PROJECT_DIR="$OUT" java .claude/hooks/ArchHook.java schema
-          CLAUDE_PROJECT_DIR="$OUT" java .claude/hooks/ArchHook.java doctor 2>&1 | tee /tmp/doc.txt
+          CLAUDE_PROJECT_DIR="$OUT" java -jar .claude/hooks/ArchHook.jar schema
+          CLAUDE_PROJECT_DIR="$OUT" java -jar .claude/hooks/ArchHook.jar doctor 2>&1 | tee /tmp/doc.txt
           grep -q "Schema ............ ✅" /tmp/doc.txt || {
             echo "❌ The exported tree's schema validation is not on."; exit 1; }
           echo "✅ The exported tree validates itself."
+
+      # 0082 renamed a rule and listed the old name in `export.retired`: without the delete,
+      # an updated project keeps both files and loads a norm nobody owns any more. Seed
+      # every retired path, export over the tree again, and require each one gone.
+      - name: re-export deletes what export.retired names
+        run: |
+          OUT=/tmp/exp-clean-architecture-single-module-1
+          RETIRED=$(sed -n 's/^ *"retired": *\[\(.*\)\],*$/\1/p' .claude/schemas/extensions.json \
+                    | tr ',' '\n' | sed 's/^ *"//; s/" *$//; /^$/d')
+          [ -n "$RETIRED" ] || { echo "✅ export.retired is empty — nothing to check."; exit 0; }
+          for p in $RETIRED; do
+            mkdir -p "$(dirname "$OUT/$p")"; printf -- '---\nstatus: active\n---\nseeded\n' > "$OUT/$p"
+          done
+          java .claude/hooks/ArchHook.java export "$OUT" --blueprint clean-architecture-single-module \
+            > /tmp/log-retired.txt 2>&1 || { cat /tmp/log-retired.txt; exit 1; }
+          FAIL=0
+          for p in $RETIRED; do
+            if [ -e "$OUT/$p" ]; then
+              echo "❌ $p survived a re-export — export.retired did not delete it."; FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] && echo "✅ Every export.retired path is deleted on re-export."
+          exit $FAIL
 
   exemplar-imports:
     name: exemplar imports resolve against the real classpath

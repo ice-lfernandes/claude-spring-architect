@@ -247,7 +247,7 @@ None is unique on its own; together, no neighbor gathers them:
 ## What is not a differentiator — said honestly
 
 - **Pure Spring knowledge.** Skills packs like `spring-boot-skills` cover Security,
-  WebFlux, and more versions. There is no `rules/security.md` here yet (planned in
+  WebFlux, and more versions. There is no `rules/authorization.md` here yet (planned in
   `00-index.md`).
 - **Gradle.** The schema accepts `build.tool: gradle`, but only POM templates exist;
   the path exercised end to end is Maven.

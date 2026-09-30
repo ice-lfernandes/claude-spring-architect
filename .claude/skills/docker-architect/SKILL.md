@@ -14,6 +14,7 @@ description: >
   messaging-architect or test-architect recorded and did not write.
 argument-hint: "[path of the UC-NNN-<slug> folder, or empty for a manual service add]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
+model: opus
 ---
 
 ## Current compose state
@@ -79,6 +80,11 @@ counter-test in `claude-code-architect-designer`'s decision matrix on all three 
 the service choice is short, its shape fits in `templates/`, and the diff it produces is
 a few YAML lines. No context to isolate, no tool to restrict, no model change justified.
 Full record: `@.claude/decisions/0029-docker-architect-skill.md`.
+
+Pinned to `opus`, effort inherited: the one procedural skill with an observed design
+failure (a broker published to the host and advertised only on the compose network). The
+pin lasts for the rest of the turn it fires in
+(`@.claude/decisions/0080-procedural-skills-on-sonnet.md`).
 
 ## Boundary with neighboring pieces
 
@@ -300,6 +306,8 @@ one today.
 `ArchHook.java guard` enforces it, and it also makes this skill **unreachable from inside a
 design run** — `/new-feature` and the layer skills record the missing service in the spec,
 and the user invokes `/docker-architect` from a prompt of its own afterwards.
+
+**Unfiltered Bash:** verification drives `docker compose` (`up`, `ps`, `logs`), `docker manifest`, `curl` against health endpoints and `java … compose` — the subcommands depend on the services being added, so a fixed list trails the skill. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, `25-mensageria.md`, and
 `40-testes.md` when a folder is given; the active blueprint's `features:` (`persistence-jpa`,

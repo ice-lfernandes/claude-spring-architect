@@ -7,7 +7,9 @@ description: >
   cost me so far", which no single report answers. Explicit invocation only.
 argument-hint: "[empty for the consolidated view | last | <skill or agent> | <report name fragment>]"
 disable-model-invocation: true
-allowed-tools: Bash, Read
+allowed-tools: Read, Bash(java:*), Bash(ls:*), Bash(grep:*)
+model: sonnet
+effort: low
 ---
 
 ## Consolidated trail
@@ -138,6 +140,9 @@ trail, and every later read would be mostly reads.
 Invoking it still **closes** whatever run is open, and that is the useful half: within a
 single session a report stays stamped `⏳ em andamento` until something ends the run, so
 asking for the report is what finalizes it.
+
+Runs on `sonnet` with `effort: low`: `audit summary` already did the sums, and what is
+left is ranking and rendering (`@.claude/decisions/0080-procedural-skills-on-sonnet.md`).
 
 ## Contract
 

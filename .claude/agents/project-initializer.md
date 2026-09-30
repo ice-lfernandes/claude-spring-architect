@@ -6,7 +6,8 @@ description: >
   the project-bootstrap skill, installs the hooks, and verifies the build. Use on
   /init-project or when the request is to create a Spring project from scratch.
 tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill
-model: opus
+model: sonnet
+effort: high
 ---
 
 # `project-initializer` — driver of a project's first generation
@@ -18,10 +19,10 @@ AI-assisted development.
 
 Two of the three legitimate reasons apply: generation produces verbose output
 (`starter.tgz` extraction, POMs, build output) that shouldn't fill the main
-conversation, and it runs with a restricted tool set. The third also applies —
-`model: opus`, because validating a dependency graph and restructuring modules fails
-expensively. The *procedure* doesn't live here: it lives in the skill. This file just
-drives.
+conversation, and it runs with a restricted tool set. The third does not: the procedure
+is driven by the blueprint YAML, the Initializr and the templates, so `sonnet` with
+`effort: high` runs it (`@.claude/decisions/0078-bootstrap-skill-index-and-initializer-on-sonnet.md`).
+The *procedure* doesn't live here: it lives in the skill. This file just drives.
 
 ## Principles
 
@@ -46,16 +47,21 @@ against the class, so the phase the caller left open is never consulted.
 both directions; without either side, every file of a fresh project would be refused with
 exit 2.
 
+**Pattern catalog:** not injected — writes through `project-bootstrap`'s templates, designs no
+Java of its own (`agent_classes.driver.pattern_catalog: false`; `schema` cross-checks this line).
+
 **Input** — optional, via command arguments: `groupId`, `artifactId`,
 `projectName`, `blueprint`, `buildTool` (`maven|gradle`), `features[]`. Any missing
 field is obtained through the interview.
 
 **Reads** — before any generation:
 
-- `.claude/skills/project-bootstrap/SKILL.md` (the procedure)
+- `.claude/skills/project-bootstrap/SKILL.md` (the procedure — its steps name the
+  `references/` file each one opens)
 - `.claude/blueprints/` (dynamic list, never fixed)
-- `.claude/rules/*.md` — all of them: step 6.6 writes them into the project, and a
-  partial copy isn't the norm
+
+No rule file: step 6.6's `ArchHook.java export` copies them, and what generation needs
+of each is already in the templates (`SKILL.md` § Applicable rules).
 
 **Output** — report block in the format from
 `.claude/skills/project-bootstrap/SKILL.md` § Output contract. No extra prose.

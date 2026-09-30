@@ -39,14 +39,20 @@ Design, exit codes, and commit order:
 | `arguments` | Positional names, for `$name` substitution |
 | `disable-model-invocation` | `true` = only the user invokes, via `/name`. For side effects |
 | `user-invocable` | `false` = only the model invokes; hidden from the `/` menu |
-| `allowed-tools` | Pre-approves tools **during the turn** that invokes the skill |
+| `allowed-tools` | Pre-approves tools **during the turn** that invokes the skill. Bash is scoped per command (`Bash(ls:*)`); bare `Bash` fails `ArchHook.java schema` unless `## Contract` carries the `skill_classes.unfiltered_bash_marker` line with a reason. A `permissions.ask` rule still prompts inside it |
 | `disallowed-tools` | Removes tools from the pool while the skill is active |
-| `model` · `effort` | Model/effort override while the skill is active |
+| `model` · `effort` | Model/effort override from the moment the skill fires until the end of that turn. `model` is **required**: `ArchHook.java schema` fails a skill without it, or with a value outside its class's `allowed_models` in `skill_classes` (decision 0081). `effort` stays optional |
 | `paths` | Globs that limit automatic activation |
 | `context: fork` | Runs the skill in an isolated subagent |
 | `agent` | Which subagent type to use with `context: fork` |
 | `background` | With `fork`, `false` = waits for the result in the same turn |
 | `hooks` | Hooks registered when invoking the skill — Form 7b. Events and entry fields: `hook-events.md` |
+| `shell` | `bash` (default) or `powershell` — the shell that runs `` !`command` `` injections |
+
+Accepted by the runtime but **not acted on**: `license`, `compatibility`, `metadata`.
+They are Agent Skills spec fields, not behavior. `metadata` stays forbidden here
+(`forbidden_everywhere`) because it invites contracts that enforce nothing; the other
+two are not in the JSON either — add them there first if a plugin ever needs them.
 
 The **folder name** becomes the command: `.claude/skills/arch-doctor/` → `/arch-doctor`.
 The frontmatter `name` follows the folder; diverging is guaranteed confusion during
@@ -58,7 +64,9 @@ diagnosis.
 `${CLAUDE_SKILL_DIR}` · `${CLAUDE_PROJECT_DIR}` · `${CLAUDE_SESSION_ID}` ·
 `${CLAUDE_EFFORT}`.
 
-Work in the markdown body and inside `allowed-tools` rules.
+Work in the markdown body. `${CLAUDE_SKILL_DIR}` and `${CLAUDE_PROJECT_DIR}` also
+expand inside `allowed-tools` Bash rules. `${CLAUDE_PLUGIN_ROOT}` and
+`${CLAUDE_PLUGIN_DATA}` exist only in plugin skills.
 
 ### Dynamic context injection
 
@@ -80,10 +88,10 @@ user only wanted to read the skill.
 | `description` | ✅ | When to delegate. Short — the sum of descriptions has a 15k-token ceiling |
 | `tools` | ➖ | Comma-separated list. Without the field, inherits everything |
 | `disallowedTools` | ➖ | Removes from the inherited list. Accepts `mcp__*` |
-| `model` | ➖ | `sonnet`, `opus`, `haiku`, full ID, or `inherit` |
+| `model` | ➖ | `sonnet`, `opus`, `haiku`, `fable`, full ID, or `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Maximum turns before stopping |
-| `skills` | ➖ | Skills preloaded **in full** at startup |
+| `skills` | ➖ | Skills preloaded **in full** at startup — except a skill with `disable-model-invocation: true`, which cannot be preloaded and is dropped without a word (decision 0077) |
 | `mcpServers` | ➖ | MCP servers only for this subagent |
 | `hooks` | ➖ | Hooks only while the subagent runs — Form 7b. Events and entry fields: `hook-events.md` |
 | `memory` | ➖ | `user`, `project`, or `local` |
@@ -91,6 +99,9 @@ user only wanted to read the skill.
 | `effort` | ➖ | `low` … `max` |
 | `isolation` | ➖ | `worktree` = runs in an isolated git worktree |
 | `color` | ➖ | Display color |
+| `omitClaudeMd` | ➖ | `true` = starts without the `CLAUDE.md` hierarchy and git status, like the built-in `Explore`/`Plan` |
+| `initialPrompt` | ➖ | Text sent as the subagent's first user message before the delegation |
+| `experimental` | ➖ | Only sub-key `cacheTtl` (`5m` or `1h`, prompt-cache lifetime). The hook validates the top-level key; the nesting is the runtime's |
 
 Watch the **camelCase** here (`disallowedTools`, `permissionMode`, `maxTurns`) against
 the **kebab-case** of skills (`disallowed-tools`, `disable-model-invocation`). Swapping
@@ -108,17 +119,20 @@ Restricting which agents an agent can invoke: `tools: Agent(worker, researcher),
 | `paths` | Globs that make the rule auto-load when the matching files are touched |
 | `status` | `active` applies now · `draft` is a proposal, don't apply · `deprecated` only for reading old code |
 
-Supported glob patterns: `**/*.java`, `src/**/*`, `src/**/*.{ts,tsx}`,
+Supported glob patterns: `**/src/**/*.java`, `src/**/*`, `src/**/*.{ts,tsx}`,
 `src/components/*.tsx`.
 
-A rule without `paths` only enters context through explicit citation
-(`@.claude/rules/<file>.md`). Declare `paths` whenever there's identifiable territory —
-the automatic path doesn't depend on anyone remembering.
+A rule without `paths` is not "citation only": the runtime loads it at launch, in every
+session, at the priority of `CLAUDE.md`. Every rule declares `paths` — a cross-cutting
+one gets the narrowest glob that holds it (`00-index.md` loads on `.claude/rules/**`).
+Explicit citation (`@.claude/rules/<file>.md`) is on top of that, for design done before
+the matching file exists.
 
-Precedent in this repo: `rules/naming.md` uses `paths: ["**/*.java"]`;
-`rules/architecture-ddd.md` is the only one without its own `paths`, by design — the
-globs come from the active blueprint's `architecture_paths` and are written into the
-copy `project-bootstrap` makes for the generated project.
+Precedent in this repo: `rules/naming.md` uses `paths: ["**/src/**/*.java"]`, never
+`**/*.java` — the second matches `.claude/hooks/ArchHook.java` and pulls every Java norm
+into context on each read of the hook. `rules/architecture-ddd.md` carries example
+`paths` that `export` replaces with the active blueprint's `architecture_paths`.
+Design: `@.claude/decisions/0082-rules-without-paths-load-at-launch.md`.
 
 ---
 

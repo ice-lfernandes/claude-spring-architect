@@ -9,6 +9,7 @@ description: >
   mode requires `10-dominio.md` in the given folder and stops without it.
 argument-hint: "[path to the UC-NNN-<slug> folder, or empty to install ArchUnit]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, Agent
+model: opus
 ---
 
 ## Available specs
@@ -79,6 +80,8 @@ Setup mode has the opposite shape — no interview, purely mechanical, and its o
 output (a Maven Central lookup, up to three `./mvnw` builds) is the kind of thing that's
 cheap to isolate and expensive to keep. It delegates to the `archunit-installer` agent.
 Recorded in `@.claude/decisions/0030-archunit-installer-split.md`.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Boundary with neighboring pieces
 
@@ -229,6 +232,8 @@ reads it and writes the real file, once per project.
 modes: design mode writes inside the use case folder, and setup mode writes nothing itself —
 every file `ArchUnit` needs is written by the `archunit-installer` agent, which the guard
 bypasses as an executor.
+
+**Unfiltered Bash:** setup mode verifies with `./mvnw` goals that depend on the build shape, plus `curl` for the Testcontainers image tag and `java …ArchHook.java` — a fixed list trails the build. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
 (mandatory in design mode — stops without the second), `20-persistencia.md` and

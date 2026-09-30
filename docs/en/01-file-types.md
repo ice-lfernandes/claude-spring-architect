@@ -107,19 +107,21 @@ convention (`naming.md`), exception taxonomy (`error-handling.md`), Clean Code l
 (`CLAUDE.md` § Invariant 2) — whoever needs it cites the path, never copies the
 content.
 
-**When it enters context:** two mechanisms, the first being preferable
+**When it enters context:** two mechanisms, and both apply to every rule
 (`.claude/rules/00-index.md` § How a rule enters context):
 
 1. **Auto-loading via `paths`** — the rule declares globs in the frontmatter, and
    enters context on its own when a matching file is touched. It doesn't depend on
    someone remembering to cite it.
-2. **Explicit citation** — for cross-cutting rules that no glob captures
-   (`00-index.md` itself). Whoever needs it cites the path.
+2. **Explicit citation** — whoever designs something the rule governs, before the file
+   exists, cites the path.
 
 Without `paths`, the rule loads **at the same priority as the project's `CLAUDE.md`**,
-i.e. every session (`claude-help.md` § 4). In this repository, `architecture-ddd.md`
-is the only rule with no `paths` of its own by design: the globs come from the active
-blueprint's `architecture_paths`, and only exist once the project has been generated.
+i.e. every session (`claude-help.md` § 4). That is why every rule declares `paths`, with
+the narrowest glob that holds it — `00-index.md` loads on `.claude/rules/**`, and Java is
+`**/src/**/*.java`, never `**/*.java` (which matches `.claude/hooks/ArchHook.java`).
+`architecture-ddd.md` carries example `paths`: `export` replaces them with the active
+blueprint's `architecture_paths`.
 
 **Who invokes it:** nobody invokes a rule — it **loads**, either automatically (via
 `paths`) or by citation. There's no `/rule-name` command. That's why the
@@ -157,7 +159,7 @@ an agent` (or `## Why this is Form 3`) section, which reason applies:
 
 | Agent | Context | Tools | Model |
 |---|---|---|---|
-| `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restricted. `Skill` is on the list only to invoke `git-publish` after a green build; it doesn't open access to any other skill in the repository | `opus` — validating a dependency graph and restructuring modules fails expensively |
+| `project-initializer` | Verbose output from `starter.tgz` extraction, POMs, build output | `Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill` — restricted. `Skill` is on the list only to invoke `git-publish` after a green build; it doesn't open access to any other skill in the repository | `sonnet` + `effort: high` — the procedure is driven by the blueprint, the Initializr and the templates (decision 0078) |
 | `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: max` — generating ~19 steps of compilable code |
 | `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
 | `commons-logging-installer` | Same shape as `archunit-installer`: translates thirteen logging/masking exemplars into the real package, edits a POM, compiles until green — eleven writes and a build log that don't need to land in the context of the `/new-feature` run that triggered it | `Read, Write, Edit, Bash` — inside `commons.logging` and the matching POM only | `sonnet`, `effort: medium` |

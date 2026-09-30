@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Binary: git must never normalize line endings inside it — .claude/decisions/0075
+*.jar binary

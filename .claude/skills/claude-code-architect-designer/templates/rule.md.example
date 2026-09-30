@@ -41,9 +41,11 @@ ADR, an approval, a test. If there's no exception, delete the section; don't wri
 
 <!--
 EXEMPLARS IN THE REPO:
-  .claude/rules/naming.md            `paths: ["**/*.java"]`, single principle
+  .claude/rules/naming.md            `paths: ["**/src/**/*.java"]`, single principle
   .claude/rules/code-quality.md      numeric limits, verified by Checkstyle
-  .claude/rules/architecture-ddd.md  the only one without its own `paths`, by design
+  .claude/rules/architecture-ddd.md  example `paths`, replaced by `export` per blueprint
+  .claude/rules/00-index.md          cross-cutting, still narrowest glob: `.claude/rules/**`
+  Every rule declares `paths` — without it the rule loads at launch, every session.
 
 INVARIANTS THIS FORM MUST MEET:
 1. `rules/` is a LEAF. This rule NEVER mentions a skill, an agent, or a command.

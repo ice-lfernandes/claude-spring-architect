@@ -7,7 +7,8 @@
 // Writing the logic twice (.sh and .ps1) would violate the "each rule has a single
 // owner" rule this repository enforces everywhere else — and the two copies would drift.
 //
-// Execution (Java 11+, single-file source): java ArchHook.java <mode>
+// Execution: hooks launch the precompiled jar, java -jar .claude/hooks/ArchHook.jar <mode>;
+// a person may run the source directly, java ArchHook.java <mode> (JDK 21+).
 //   check   PostToolUse — forbidden imports + incremental compile     (blocks)
 //   format  PostToolUse — spotless on the touched module              (never blocks)
 //   tests   Stop        — tests of the changed modules                (blocks)
@@ -17,7 +18,11 @@
 //                         frozen, build skills unreachable mid-design       (blocks)
 //   compose manual      — every compose service up, no foreign container on our ports,
 //                         compose image tags equal to the ones src/test pins (never blocks)
+//   context SubagentStart (generated project only) — injects the pattern catalog into
+//                         each agent whose class declares pattern_catalog  (never blocks)
 //   doctor  manual      — diagnoses the setup on this machine         (never blocks)
+//   build   PostToolUse (this repo) + CI — compiles this file into ArchHook.jar
+//                         under the pinned JDK; --verify rejects a jar that differs (blocks)
 //
 // Dependencies: JDK. Nothing else.
 
@@ -50,7 +55,7 @@ public class ArchHook {
         // is here and not in extensions.json on purpose: it is the dispatch itself, the
         // same place the mode names already live.
         String stdin = switch (mode) {
-            case "check", "format", "tests", "schema", "audit", "guard" -> readAll(System.in);
+            case "check", "format", "tests", "schema", "audit", "guard", "context" -> readAll(System.in);
             // `compose gate` is the hook-invoked half of `compose` and needs the payload for
             // `stop_hook_active`. The bare `compose` a person types stays out of the list, which
             // is the hang lessons-learned-011 § 2 found.
@@ -66,8 +71,10 @@ public class ArchHook {
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
                 case "compose" -> compose(args.length > 1 ? args[1] : "report", stdin);
+                case "context" -> context(args.length > 1 ? args[1] : "subagent", stdin);
                 case "export" -> export(args);
                 case "doctor" -> doctor();
+                case "build"  -> build(args);
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
         } catch (Exception e) {
@@ -217,6 +224,12 @@ public class ArchHook {
                 "all extension files pass",
                 badSchema < 0 ? "no " + SCHEMA_FILE + " — validation OFF"
                               : badSchema + " files with invalid frontmatter");
+        Map<String, Object> hb = hookBuild();
+        if (hb != null) {
+            String jarProblem = hookJarProblem(hb);
+            report("Hook jar", jarProblem == null, "built from the current " + asStr(hb.get("source")),
+                    jarProblem);
+        }
         Path auditDir = auditDir();
         if (Files.isDirectory(auditDir)) {
             long runs = 0;
@@ -501,6 +514,206 @@ public class ArchHook {
     static void report(String label, boolean ok, String yes, String no) {
         String pad = "                  ".substring(Math.min(label.length(), 17));
         err("  " + label + " " + pad.replace(' ', '.') + " " + (ok ? "✅ " + yes : "❌ " + no));
+    }
+
+    // ── build ────────────────────────────────────────────────────────────────
+
+    /** DOS epoch plus one month: the earliest timestamp every zip reader agrees on. */
+    static final java.time.LocalDateTime JAR_EPOCH = java.time.LocalDateTime.of(1980, 2, 1, 0, 0);
+
+    /**
+     * Compiles this file into the jar every hook registration launches, byte for byte the
+     * same on every machine running the pinned JDK; with {@code --verify}, refuses a
+     * committed jar that is not exactly what this source compiles to.
+     *
+     * <p>Why a mode: a source launch recompiles 260 KB on every hook call (~3.3 s against
+     * ~0.3 s for the jar, measured), and most calls do nothing useful — a turn paid ~14 s of
+     * hooks at {@code Stop} alone. Invoked by a {@code PostToolUse} entry with
+     * {@code if: Edit(.claude/hooks/ArchHook.java)} in this repository only, and by CI as
+     * {@code build --verify}; rejected: a gitignored jar built on {@code SessionStart},
+     * because a failed build leaves every {@code java -jar} at exit 1, which blocks nothing.
+     *
+     * <p>Design: .claude/decisions/0075-precompiled-hook-jar.md
+     */
+    static void build(String[] args) {
+        boolean verify = args.length > 1 && "--verify".equals(args[1]);
+        try {
+            Map<String, Object> hb = hookBuild();
+            if (hb == null) {
+                err("❌ No `hook_build` block in " + SCHEMA_FILE + " — nothing says what to build.");
+                System.exit(2);
+            }
+            int feature = (int) num(hb.get("javac_feature"));
+            int running = Runtime.version().feature();
+            if (running != feature) {
+                err("❌ build is pinned to JDK " + feature + "; this runtime is JDK " + running
+                        + " (" + System.getProperty("java.home") + ").");
+                err("   Another javac emits different bytes for the same source, and");
+                err("   `build --verify` in CI would reject the jar. Run it with a JDK " + feature + ":");
+                err("   <jdk-" + feature + ">/bin/java " + asStr(hb.get("source")) + " build");
+                System.exit(2);
+            }
+            Path jar = ROOT.resolve(asStr(hb.get("jar")));
+            byte[] fresh = compileJar(hb);
+            byte[] current = Files.isRegularFile(jar) ? Files.readAllBytes(jar) : null;
+            if (verify) {
+                if (Arrays.equals(fresh, current)) {
+                    err("✅ " + relative(jar) + " is exactly what " + asStr(hb.get("source"))
+                            + " compiles to under JDK " + feature + ".");
+                    return;
+                }
+                String stale = hookJarProblem(hb);
+                err("❌ " + relative(jar) + " is not what " + asStr(hb.get("source"))
+                        + " compiles to under JDK " + feature + ".");
+                err(stale != null
+                        ? "   " + stale
+                        : "   It records this source's hash over different classes: built by"
+                          + " another javac, or edited by hand. Rebuild it and commit the jar.");
+                System.exit(2);
+            }
+            if (Arrays.equals(fresh, current)) {
+                err("✅ " + relative(jar) + " already up to date.");
+                return;
+            }
+            replaceFile(jar, fresh);
+            err("✅ " + relative(jar) + " rebuilt (" + fresh.length / 1024 + " KB, JDK " + feature
+                    + "). Commit it with the source.");
+        } catch (Exception e) {
+            // Not the top-level catch: a build that fails quietly leaves the hooks on the old jar.
+            err("❌ ArchHook build failed: " + e);
+            System.exit(2);
+        }
+    }
+
+    static Map<String, Object> hookBuild() {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        return sch == null ? null : asMap(sch.get("hook_build"));
+    }
+
+    /** Compiles in-process and returns the jar's bytes; exits 2 on a compile error. */
+    static byte[] compileJar(Map<String, Object> hb) throws IOException {
+        javax.tools.JavaCompiler javac = javax.tools.ToolProvider.getSystemJavaCompiler();
+        if (javac == null) {
+            err("❌ This runtime has no javac (" + System.getProperty("java.home") + ") — use a JDK, not a JRE.");
+            System.exit(2);
+        }
+        Path src = ROOT.resolve(asStr(hb.get("source")));
+        Path out = Files.createTempDirectory("archhook-build");
+        try {
+            ByteArrayOutputStream diag = new ByteArrayOutputStream();
+            int rc = javac.run(null, diag, diag, "--release", String.valueOf(num(hb.get("release"))),
+                    "-encoding", "UTF-8", "-nowarn", "-d", out.toString(), src.toString());
+            if (rc != 0) {
+                err("❌ " + asStr(hb.get("source")) + " does not compile — the jar was left as it was:");
+                err(diag.toString(StandardCharsets.UTF_8));
+                System.exit(2);
+            }
+            Map<String, byte[]> entries = new LinkedHashMap<>();
+            entries.put("META-INF/MANIFEST.MF", ("Manifest-Version: 1.0\r\n"
+                    + "Main-Class: " + asStr(hb.get("main_class")) + "\r\n"
+                    + "Build-Jdk-Spec: " + num(hb.get("javac_feature")) + "\r\n"
+                    + "Created-By: ArchHook build\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            entries.put(asStr(hb.get("hash_entry")),
+                    (sourceHash(src) + "\n").getBytes(StandardCharsets.UTF_8));
+            List<Path> classes;
+            try (Stream<Path> s = Files.walk(out)) {
+                classes = s.filter(Files::isRegularFile).collect(Collectors.toList());
+            }
+            TreeMap<String, byte[]> sorted = new TreeMap<>();
+            for (Path c : classes) sorted.put(out.relativize(c).toString().replace('\\', '/'), Files.readAllBytes(c));
+            entries.putAll(sorted);
+            return storedZip(entries);
+        } finally {
+            try (Stream<Path> s = Files.walk(out)) {
+                s.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
+
+    /**
+     * STORED, fixed local timestamp, caller's order: no deflater version and no clock can
+     * change a byte. {@code JarOutputStream} is not used — it stamps entries with the time.
+     */
+    static byte[] storedZip(Map<String, byte[]> entries) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(bytes)) {
+            zip.setMethod(java.util.zip.ZipOutputStream.STORED);
+            for (Map.Entry<String, byte[]> e : entries.entrySet()) {
+                java.util.zip.ZipEntry z = new java.util.zip.ZipEntry(e.getKey());
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(e.getValue());
+                z.setMethod(java.util.zip.ZipEntry.STORED);
+                z.setSize(e.getValue().length);
+                z.setCompressedSize(e.getValue().length);
+                z.setCrc(crc.getValue());
+                z.setTimeLocal(JAR_EPOCH);
+                zip.putNextEntry(z);
+                zip.write(e.getValue());
+                zip.closeEntry();
+            }
+        }
+        return bytes.toByteArray();
+    }
+
+    /** SHA-256 of the source with CRLF read as LF — `* text=auto` gives Windows CRLF. */
+    static String sourceHash(Path src) throws IOException {
+        String body = Files.readString(src, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(body.getBytes(StandardCharsets.UTF_8));
+            StringBuilder b = new StringBuilder();
+            for (byte x : d) b.append(String.format(Locale.ROOT, "%02x", x));
+            return b.toString();
+        } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+    }
+
+    /**
+     * Null when the jar was built from the source as it is now (or there is nothing to
+     * compare); otherwise the line that says what is wrong and how to fix it.
+     */
+    static String hookJarProblem(Map<String, Object> hb) {
+        if (hb == null) return null;
+        Path src = ROOT.resolve(asStr(hb.get("source")));
+        if (!Files.isRegularFile(src)) return null;
+        String fix = "run `java " + asStr(hb.get("source")) + " build` under JDK "
+                + num(hb.get("javac_feature")) + " and commit the jar";
+        Path jar = ROOT.resolve(asStr(hb.get("jar")));
+        if (!Files.isRegularFile(jar)) {
+            return asStr(hb.get("jar")) + " is missing — every hook launches it and exits 1 (no block) without it; " + fix;
+        }
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(jar.toFile())) {
+            java.util.zip.ZipEntry e = z.getEntry(asStr(hb.get("hash_entry")));
+            String recorded = e == null ? ""
+                    : new String(z.getInputStream(e).readAllBytes(), StandardCharsets.UTF_8).strip();
+            if (recorded.equals(sourceHash(src))) return null;
+            return asStr(hb.get("jar")) + " is stale — built from another version of "
+                    + asStr(hb.get("source")) + ", so every hook runs the old code; " + fix;
+        } catch (IOException ex) {
+            return asStr(hb.get("jar")) + " is unreadable (" + ex.getMessage() + "); " + fix;
+        }
+    }
+
+    /**
+     * Temp file in the same directory, then an atomic rename. On Windows a jar a running
+     * hook holds open cannot be replaced; the parallel hooks of one event release it in
+     * well under the retry window.
+     */
+    static void replaceFile(Path target, byte[] content) throws IOException, InterruptedException {
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp-" + ProcessHandle.current().pid());
+        Files.write(tmp, content);
+        for (int attempt = 1; ; attempt++) {
+            try {
+                try {
+                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (IOException e) {
+                if (attempt >= 20) { Files.deleteIfExists(tmp); throw e; }
+                Thread.sleep(250);
+            }
+        }
     }
 
     // ── compose ──────────────────────────────────────────────────────────────
@@ -1078,6 +1291,32 @@ public class ArchHook {
         exportTree(exp, "skills", out);
         exportTree(exp, "agents", out);
         exportFiles(exp, bp, out, notes);
+        // Bytes, never text: the jar would not survive a UTF-8 round trip. Kept out of `out`,
+        // so neither the stamp nor the residue scan reads it.
+        Map<String, Path> binaries = new TreeMap<>();
+        for (Object e : asList(exp.get("binary_copy"))) {
+            String from = asStr(get(e, "from")), to = asStr(get(e, "to"));
+            if (from == null || to == null) continue;
+            if (!Files.isRegularFile(ROOT.resolve(from))) {
+                err("❌ export.binary_copy names `" + from + "` — no such file.");
+                System.exit(2);
+            }
+            binaries.put(to, ROOT.resolve(from));
+        }
+        // A file this repo renamed or dropped: export writes, it never deleted, so the old
+        // copy stayed in every adopted project — a norm in two places there, invariant 2.
+        // Only what exists in the target is listed. Design:
+        // .claude/decisions/0082-rules-without-paths-load-at-launch.md
+        List<String> retired = new ArrayList<>();
+        for (String r : asStrList(exp.get("retired"))) {
+            if (out.containsKey(r) || binaries.containsKey(r)) continue;   // shipped again: keep
+            Path t = destRoot.resolve(r).normalize();
+            if (!t.startsWith(destRoot.resolve(".claude"))) {              // never outside .claude/
+                err("❌ export.retired names `" + r + "` — only paths under .claude/ may be deleted.");
+                System.exit(2);
+            }
+            if (Files.isRegularFile(t)) retired.add(r);
+        }
         String stampFile = asStr(get(sch, "source", "stamp_file")) == null
                 ? ".claude/.arch-provenance.json"
                 : asStr(get(sch, "source", "stamp_file"));
@@ -1099,11 +1338,16 @@ public class ArchHook {
         err("  Destination ....... " + destRoot);
         err("  Blueprint ......... " + bp.id() + " (" + bp.packages().size() + " packages, "
                 + bp.archPaths().size() + " architecture paths)");
-        err("  Files ............. " + out.size());
+        err("  Files ............. " + (out.size() + binaries.size()));
         for (String n : notes) err("  " + n);
+        if (!retired.isEmpty()) {
+            err("  Retired ........... " + retired.size() + (dry ? " (would delete)" : " (deleted)"));
+            retired.forEach(r -> err("    - " + r));
+        }
         if (dry) {
             err("");
-            out.keySet().forEach(p -> err("    " + p));
+            new TreeSet<>(Stream.concat(out.keySet().stream(), binaries.keySet().stream())
+                    .collect(Collectors.toSet())).forEach(p -> err("    " + p));
             err("");
             err("⚪ --dry-run: nothing was written.");
         } else {
@@ -1112,6 +1356,12 @@ public class ArchHook {
                 Files.createDirectories(target.getParent());
                 Files.writeString(target, e.getValue(), StandardCharsets.UTF_8);
             }
+            for (Map.Entry<String, Path> e : binaries.entrySet()) {
+                Path target = destRoot.resolve(e.getKey());
+                Files.createDirectories(target.getParent());
+                Files.copy(e.getValue(), target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            for (String r : retired) Files.deleteIfExists(destRoot.resolve(r));
             for (String d : asStrList(exp.get("ensure_dirs"))) Files.createDirectories(destRoot.resolve(d));
             appendGitignore(destRoot, asStrList(exp.get("gitignore_lines")));
             err("");
@@ -1188,7 +1438,9 @@ public class ArchHook {
                     .collect(Collectors.toList())) {
                 String name = f.getFileName().toString();
                 if (exclude.contains(name)) continue;
-                String body = Files.readString(f, StandardCharsets.UTF_8);
+                // LF before any frontmatter match: a CRLF checkout (core.autocrlf on Windows)
+                // made derivePaths find no `---\n` and ship the master globs, in silence.
+                String body = Files.readString(f, StandardCharsets.UTF_8).replace("\r\n", "\n");
                 body = derivePaths(exp, bp, name, body);
                 body = transform(exp, bp, to + "/" + name, body);
                 out.put(to + "/" + name, body);
@@ -1267,7 +1519,8 @@ public class ArchHook {
                     }
                     continue;
                 }
-                out.put(to, transform(exp, bp, from, Files.readString(p, StandardCharsets.UTF_8)));
+                String body = Files.readString(p, StandardCharsets.UTF_8);
+                out.put(to, Boolean.TRUE.equals(get(e, "verbatim")) ? body : transform(exp, bp, from, body));
                 if (group.equals("overwrite")) {
                     notes.add("Overwrites ........ " + to + " (its previous content is in the diff)");
                 }
@@ -1380,7 +1633,10 @@ public class ArchHook {
                 err("   Mark it `optional` in export.derived_paths, or fix packages.map.");
                 System.exit(2);
             }
-            return stripPathsBlock(body);            // optional: travels without `paths`
+            // Optional: keeps the master's example globs, which name packages this
+            // architecture does not have — inert. Stripping them would make the rule load
+            // at launch in every session: a rule without `paths` is not "cited only" (0082).
+            return body;
         }
         StringBuilder b = new StringBuilder("paths:\n");
         for (String g : globs) b.append("  - \"").append(g).append("\"\n");
@@ -1629,8 +1885,11 @@ public class ArchHook {
         if (file == null) {
             checkSkillClasses(sch, errors);
             checkAgentClasses(sch, errors);
+            checkSubagentContext(sch, errors);
             checkExportManifest(sch, errors);
             checkSourceBlock(sch, errors);
+            String jarProblem = hookJarProblem(asMap(sch.get("hook_build")));
+            if (jarProblem != null) errors.add("  " + jarProblem);
         }
 
         if (!errors.isEmpty()) {
@@ -1706,16 +1965,42 @@ public class ArchHook {
     }
 
     /**
+     * A skill folder named after a built-in slash command. The folder name is the command, and
+     * the runtime resolves the collision without a word — one of the two stops being reachable,
+     * which is why this repository's diagnostic is `arch-doctor` and not `doctor`.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, motivated by axis 8: the check used to be
+     * a `NATIVE="…"` string in `.github/workflows/validate.yml`, so a generated project — which
+     * has no copy of the workflow — never ran it, and the list had gone stale beside the
+     * runtime. The list is data now, `types.skill.native_commands` (invariant 10). The closest
+     * rejected form was refreshing the YAML list: same staleness, same blind spot downstream.
+     * Design: .claude/decisions/0084-ci-covers-jar-and-post-0075-guards.md
+     */
+    static void checkNativeShadow(Map<String, Object> sch, String rel, String skill,
+                                  List<String> errors) {
+        if (asStrList(get(sch, "types", "skill", "native_commands")).contains(skill)) {
+            errors.add("  " + rel + " — skill `" + skill + "` shadows the native /" + skill
+                    + " command; one of the two silently stops being reachable. Rename the"
+                    + " folder (and `name:`), e.g. `arch-" + skill + "` — see"
+                    + " docs/pt-br/11-pitfalls.md. List: types.skill.native_commands in "
+                    + SCHEMA_FILE);
+        }
+    }
+
+    /**
      * One skill body against its class: the `**Class:** <c>` line agrees with the data, and
      * every required section is present. A section is matched as a PREFIX of an H2 line, so
-     * `## Procedure — design mode` satisfies `## Procedure`; order is not checked.
+     * `## Procedure — design mode` satisfies `## Procedure`; order is not checked. The
+     * frontmatter carries every `universal_fields` entry, and `model` is one of the class's
+     * `allowed_models` when it lists any.
      */
     static void checkSkillBody(Map<String, Object> sch, String rel, String content,
                                List<String> errors) {
-        Map<String, Object> sc = asMap(sch.get("skill_classes"));
-        if (sc == null) return;
         String skill = skillNameOf(rel);
         if (skill == null) return;
+        checkNativeShadow(sch, rel, skill, errors);
+        Map<String, Object> sc = asMap(sch.get("skill_classes"));
+        if (sc == null) return;
 
         Map<String, Object> classes = asMap(sc.get("classes"));
         if (classes == null) return;
@@ -1750,6 +2035,41 @@ public class ArchHook {
                 errors.add("  " + rel + " — class `" + cls + "` requires the section `"
                         + req + "`");
             }
+        }
+
+        // An absent `model` is a silent default: the skill runs on whatever the session runs.
+        // Every skill states it, and its class says which values it may state — 0081.
+        Map<String, String> fm = frontmatter(content);
+        if (fm != null) {                              // checkFrontmatter already reported it
+            List<String> allowed = asStrList(get(sch, "skill_classes", "classes", cls,
+                    "allowed_models"));
+            String shown = allowed.isEmpty() ? "" : " (allowed: " + String.join(", ", allowed) + ")";
+            for (String f : asStrList(sc.get("universal_fields"))) {
+                if (!fm.containsKey(f) || fm.get(f).isEmpty()) {
+                    errors.add("  " + rel + " — class `" + cls
+                            + "` requires the frontmatter field `" + f + "`" + shown);
+                }
+            }
+            String model = fm.get("model");
+            if (model != null && !model.isEmpty() && !allowed.isEmpty()
+                    && !allowed.contains(model.strip())) {
+                errors.add("  " + rel + " — `model: " + model.strip()
+                        + "` is not allowed for class `" + cls + "`" + shown
+                        + ". The set is `skill_classes.classes." + cls + ".allowed_models` in "
+                        + SCHEMA_FILE);
+            }
+        }
+
+        // A bare `Bash` in allowed-tools pre-approves every shell command for the skill's whole
+        // turn. Scoped `Bash(<cmd> *)` entries, or a written reason in the body — 0076.
+        String bashMarker = asStr(sc.get("unfiltered_bash_marker"));
+        Matcher at = Pattern.compile("(?m)^allowed-tools:(.*)$").matcher(content);
+        if (bashMarker != null && at.find()
+                && Pattern.compile("(^|[\\s,])Bash\\s*(,|$)").matcher(at.group(1).strip()).find()
+                && !content.contains(bashMarker)) {
+            errors.add("  " + rel + " — allowed-tools pre-approves bare `Bash`. Scope it"
+                    + " (`Bash(ls *)`) or state why in ## Contract with a `" + bashMarker
+                    + " <reason>` line");
         }
 
         String why = asStr(sc.get("why_section"));
@@ -2040,6 +2360,143 @@ public class ArchHook {
         }
     }
 
+    // ── context ──────────────────────────────────────────────────────────────
+
+    /**
+     * Hands an agent the design-pattern catalog before its first turn. Registered at
+     * `SubagentStart` with no matcher, and only in the generated project's
+     * `settings.json` template: reads `agent_type` from stdin, resolves that agent's
+     * `pattern_catalog` in `agent_classes`, and when it is true prints the sections
+     * `subagent_context` names as `additionalContext`. Emits nothing otherwise, and never
+     * blocks — `SubagentStart` cannot.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, motivated by axis 7 — the catalog has
+     * to be in context every time a Java-writing agent runs, not when the model remembers to
+     * read it. The closest rejected form was the agent's `skills:` field: a skill with
+     * `disable-model-invocation: true` cannot be preloaded, so the catalog it promised never
+     * arrived. Design: .claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md
+     */
+    static void context(String sub, String stdin) throws Exception {
+        if (!"subagent".equals(sub)) {
+            err("Unknown context sub-mode: " + sub + " (expected: subagent)");
+            return;
+        }
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        if (sch == null) return;
+        String agent = asStr(get(Json.parse(stdin), "agent_type"));
+        if (!Boolean.TRUE.equals(patternCatalogOf(sch, agent))) return;
+        String text = renderSubagentContext(sch, new ArrayList<>());
+        if (text == null || text.isBlank()) return;
+        // System.out follows the platform charset — cp1252 on Windows — and the runtime reads
+        // the hook's stdout as UTF-8: every em dash in the catalog arrived as an invalid byte.
+        PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+        out.println("{\"hookSpecificOutput\":{\"hookEventName\":\"SubagentStart\","
+                + "\"additionalContext\":\"" + jsonEscape(text) + "\"}}");
+    }
+
+    /**
+     * The agent's effective `pattern_catalog`: its `overrides` entry when that declares the
+     * key, else its class's. Null when neither declares it — which `schema` rejects for an
+     * agent that writes `src/`.
+     */
+    static Boolean patternCatalogOf(Map<String, Object> sch, String agent) {
+        String cls = agentClassOf(sch, agent);
+        if (cls == null) return null;
+        Map<String, Object> c = asMap(get(sch, "agent_classes", "classes", cls));
+        Map<String, Object> ov = asMap(get(c, "overrides", agent));
+        Object v = ov != null && ov.containsKey("pattern_catalog") ? ov.get("pattern_catalog")
+                : c == null ? null : c.get("pattern_catalog");
+        return v instanceof Boolean b ? b : null;
+    }
+
+    /**
+     * The text `context subagent` injects: each heading in `subagent_context.sections`,
+     * extracted from `subagent_context.file` up to the next H2, then the `pointer` line.
+     * Shared with `schema` so the size it checks is the size that ships. A heading missing
+     * from the file is added to {@code problems} rather than skipped in silence.
+     */
+    static String renderSubagentContext(Map<String, Object> sch, List<String> problems) {
+        Map<String, Object> sc = asMap(sch.get("subagent_context"));
+        if (sc == null) return null;
+        String file = orEmpty(asStr(sc.get("file")));
+        String content = readOrNull(ROOT.resolve(file));
+        if (content == null) {
+            problems.add("subagent_context.file `" + file + "` does not exist");
+            return null;
+        }
+        List<String> lines = content.lines().collect(Collectors.toList());
+        StringBuilder out = new StringBuilder();
+        String header = asStr(sc.get("header"));
+        if (header != null) out.append(header).append("\n\n");
+        for (String heading : asStrList(sc.get("sections"))) {
+            int start = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).strip().equals(heading)) { start = i; break; }
+            }
+            if (start < 0) {
+                problems.add("subagent_context.sections names `" + heading
+                        + "` — no such heading in " + file);
+                continue;
+            }
+            int end = start + 1;
+            while (end < lines.size() && !lines.get(end).startsWith("## ")) end++;
+            out.append(String.join("\n", lines.subList(start, end)).strip()).append("\n\n");
+        }
+        String pointer = asStr(sc.get("pointer"));
+        if (pointer != null) out.append(pointer).append('\n');
+        return out.toString();
+    }
+
+    /**
+     * `subagent_context` and `pattern_catalog` against the files: every agent whose effective
+     * territory reaches `src/` has answered whether it receives the catalog, its
+     * `pattern_catalog_marker` line says the same as the data, every listed section exists,
+     * and the rendered text stays under `max_chars` — above the runtime's 10 000-character
+     * cap, `additionalContext` is replaced by a file path the agent is not asked to read.
+     */
+    static void checkSubagentContext(Map<String, Object> sch, List<String> errors) {
+        Map<String, Object> classes = asMap(get(sch, "agent_classes", "classes"));
+        String marker = asStr(get(sch, "agent_classes", "pattern_catalog_marker"));
+        Path agentsDir = ROOT.resolve(".claude/agents");
+        if (classes != null) {
+            for (Map.Entry<String, Object> e : classes.entrySet()) {
+                Map<String, Object> c = asMap(e.getValue());
+                if (c == null) continue;
+                for (String a : asStrList(c.get("agents"))) {
+                    Boolean flag = patternCatalogOf(sch, a);
+                    boolean writesSrc = agentWriteAllowOf(sch, a).stream().anyMatch(g ->
+                            g.equals("**") || g.startsWith("src/") || g.startsWith("**/src/"));
+                    if (flag == null && writesSrc) {
+                        errors.add("  agent_classes." + e.getKey() + ": `" + a + "` may write src/"
+                                + " and declares no `pattern_catalog` — set it (true or false)"
+                                + " on the class or in overrides." + a);
+                    }
+                    String body = readOrNull(agentsDir.resolve(a + ".md"));
+                    if (body == null || marker == null) continue;
+                    Matcher m = Pattern.compile("(?m)^[-*]?[ \\t]*" + Pattern.quote(marker)
+                            + "[ \\t]*(not injected|injected)").matcher(body);
+                    Boolean claims = m.find() ? m.group(1).equals("injected") : null;
+                    if (!Objects.equals(flag, claims)) {
+                        errors.add("  .claude/agents/" + a + ".md: `" + marker + "` line says "
+                                + (claims == null ? "nothing" : claims ? "injected" : "not injected")
+                                + ", agent_classes says " + (flag == null ? "nothing"
+                                : flag ? "pattern_catalog: true" : "pattern_catalog: false"));
+                    }
+                }
+            }
+        }
+        Map<String, Object> sc = asMap(sch.get("subagent_context"));
+        if (sc == null) return;
+        List<String> problems = new ArrayList<>();
+        String text = renderSubagentContext(sch, problems);
+        problems.forEach(p -> errors.add("  " + p));
+        Object max = sc.get("max_chars");
+        if (text != null && max instanceof Number n && text.length() > n.intValue()) {
+            errors.add("  subagent_context renders " + text.length() + " characters, over"
+                    + " max_chars " + n.intValue() + " — trim the sections it lists");
+        }
+    }
+
     /**
      * Cross-checks the `export` manifest against what is actually on disk. The mode that
      * reads the manifest writes a project's whole `.claude/`, so an entry naming a file
@@ -2067,7 +2524,7 @@ public class ArchHook {
         String marker = asStr(exp.get("source_marker"));
         if (marker != null && !Files.isDirectory(ROOT.resolve(marker))) return;
 
-        for (String group : List.of("copy", "overwrite")) {
+        for (String group : List.of("copy", "overwrite", "binary_copy")) {
             for (Object e : asList(exp.get(group))) {
                 String from = asStr(get(e, "from"));
                 if (from == null) {
@@ -2099,6 +2556,13 @@ public class ArchHook {
             }
         }
         checkRuleTerritories(exp, rulesDir, derived, errors);
+        // Retired and still on disk here: `export` would ship it and never delete it.
+        for (String r : asStrList(exp.get("retired"))) {
+            if (Files.exists(ROOT.resolve(r))) {
+                errors.add("  export.retired names `" + r + "` — it still exists here, so it"
+                        + " would be shipped and retired at once; delete it or drop the entry");
+            }
+        }
         for (Object e : asList(get(exp, "body_transforms", "rewrite"))) {
             String f = asStr(get(e, "file"));
             if (f != null && !Files.isRegularFile(ROOT.resolve(f))) {
@@ -2168,6 +2632,7 @@ public class ArchHook {
                 if (derived.contains(name)) continue;
                 String body = readOrNull(f);
                 if (body == null) continue;
+                body = body.replace("\r\n", "\n");             // CRLF checkout: see exportRules
                 int at = body.indexOf("\npaths:");
                 if (!body.startsWith("---\npaths:") && at < 0) continue;
                 int from = body.startsWith("---\npaths:") ? 4 : at + 1;
@@ -2406,7 +2871,9 @@ public class ArchHook {
         // the runtime ever interpolating what it wrote.
         String scanned = TICK_SPAN.matcher(FENCE.matcher(content).replaceAll(""))
                 .replaceAll("");
-        for (String l : scanned.split("\n", -1)) {
+        // `\R`, not `\n`: a CRLF checkout (core.autocrlf on Windows) leaves a `\r` on
+        // every line, and the anchored `[ \t]*$` would reject the bare marker line.
+        for (String l : scanned.split("\\R", -1)) {
             if (!l.contains(marker) || alone.matcher(l).matches()) continue;
             if (exempt.stream().anyMatch(p -> p.matcher(l).find())) continue;
             errors.add("  " + rel + ":" + lineOf(content, l.strip()) + " — `" + marker
@@ -2813,7 +3280,9 @@ public class ArchHook {
     //
     // Switched off by the absence of .claude/audit-usage/: every phase returns
     // immediately. That is why this meta-repository, which does not create the
-    // directory, pays nothing for a mode wired only into the generated project.
+    // directory, pays nothing for a mode wired only into the generated project. Its
+    // entries stay out of this repo's settings.json on purpose: here they would audit
+    // the design of the tool instead of its use (decisions/0035).
 
     static final String AUDIT_DIR = ".claude/audit-usage";
 
@@ -4294,6 +4763,13 @@ public class ArchHook {
     static void guardBash(Map<String, Object> sch, Path state, Object in) throws IOException {
         String cmd = asStr(get(in, "tool_input", "command"));
         if (cmd == null || cmd.isBlank()) return;
+        String force = bashForcePush(asMap(get(sch, "guard", "force_push")), cmd, 0);
+        if (force != null) {
+            err("guard: force push blocked — `" + force + "` rewrites published history.");
+            err("  Push without force. A shared branch is rewritten by a human, outside Claude"
+                    + " Code. Rule: guard.force_push in " + SCHEMA_FILE);
+            System.exit(2);
+        }
         for (String rel : bashWriteTargets(asMap(get(sch, "guard", "bash_write_shapes")), cmd)) {
             guardPath(sch, state, in, rel);
         }
@@ -4402,8 +4878,9 @@ public class ArchHook {
      *
      * <p>It is detection, not prevention — the write already happened — which is why it backs
      * the tool-time guards instead of replacing them. And it is <b>git-shaped</b>: a path git
-     * ignores never appears in `git status --porcelain` and is therefore never swept. In this
-     * repository that is `.claude/decisions/` and `.claude/lessons-learned/`, ignored on purpose.
+     * ignores never appears in `git status --porcelain` and is therefore never swept — whatever
+     * `.gitignore` lists. `.claude/decisions/` and `.claude/lessons-learned/` were that case in
+     * this repository until 2026-09-28; both are versioned now and are swept like anything else.
      *
      * <p>Only paths whose porcelain entry is new or changed since the baseline are read, so a
      * tree dirty before the turn stays out of the report. Exit 2 hands the lines back to the
@@ -4493,6 +4970,62 @@ public class ArchHook {
     }
 
     /** `/usr/bin/sed` and `sed` are the same command for the purposes of the shape table. */
+    /**
+     * The argument that makes a `git push` a force push, or null. A `deny` rule on
+     * `Bash(git push --force:*)` is a prefix match, and the permission docs name what walks
+     * past it: `-f`, `--force-with-lease`, a `+ref` refspec, `git -C . push --force` and
+     * `sh -c "git push --force"` (lessons-learned-015 § H). This reads the same segments the
+     * write shapes read: leading `VAR=value` words are skipped, a shell wrapper's `-c` string is
+     * parsed once more (one level), git's global options are skipped — two words when the option
+     * takes a value — and the word after them must be `push`. Every list is data,
+     * `guard.force_push` — invariant 10. Invoked at `PreToolUse`, matcher `Bash`, through the
+     * registration `guard bash` already has; a mode of its own would pay a second JVM per shell
+     * command, and a wider `deny` list stays blind to `-C` and `sh -c`. The bar is the one 0063
+     * set: a flag held in a variable or a git alias passes. Design:
+     * `.claude/decisions/0076-bash-scope-and-force-push-guard.md`.
+     */
+    static String bashForcePush(Map<String, Object> fp, String cmd, int depth) {
+        if (fp == null) return null;
+        List<String> shells = asStrList(fp.get("shell_wrappers"));
+        String shellFlag = orEmpty(asStr(fp.get("shell_command_flag")));
+        List<String> valued = asStrList(fp.get("git_options_with_value"));
+        List<String> longFlags = asStrList(fp.get("long_flags"));
+        String shortFlag = orEmpty(asStr(fp.get("short_flag")));
+        String refspec = orEmpty(asStr(fp.get("refspec_prefix")));
+        for (List<Tok> seg : bashSegments(cmd)) {
+            List<String> w = seg.stream().map(Tok::text).collect(Collectors.toList());
+            int i = 0;
+            while (i < w.size() && w.get(i).matches("[A-Za-z_][A-Za-z0-9_]*=.*")) i++;
+            if (i >= w.size()) continue;
+            String head = bashCommandName(w.get(i));
+            if (shells.contains(head)) {
+                if (depth > 0) continue;
+                int c = w.indexOf(shellFlag);
+                if (c > i && c + 1 < w.size()) {
+                    String inner = bashForcePush(fp, w.get(c + 1), depth + 1);
+                    if (inner != null) return inner;
+                }
+                continue;
+            }
+            if (!head.equals("git")) continue;
+            i++;
+            while (i < w.size() && w.get(i).startsWith("-")) i += valued.contains(w.get(i)) ? 2 : 1;
+            if (i >= w.size() || !w.get(i).equals("push")) continue;
+            for (String a : w.subList(i + 1, w.size())) {
+                if (a.startsWith("--")) {
+                    for (String f : longFlags) {
+                        if (a.equals(f) || a.startsWith(f + "=")) return a;
+                    }
+                } else if (a.startsWith("-")) {
+                    if (!shortFlag.isEmpty() && a.substring(1).contains(shortFlag)) return a;
+                } else if (!refspec.isEmpty() && a.startsWith(refspec)) {
+                    return a;
+                }
+            }
+        }
+        return null;
+    }
+
     static String bashCommandName(String word) {
         int slash = word.lastIndexOf('/');
         return slash < 0 ? word : word.substring(slash + 1);

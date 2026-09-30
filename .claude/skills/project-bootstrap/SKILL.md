@@ -8,6 +8,8 @@ description: >
   project, build a hexagonal architecture, clean architecture, onion, layered, vertical
   slice or modular monolith, or when the /init-project command is run.
 allowed-tools: Read, Write, Edit, Bash, Glob
+model: sonnet
+effort: high
 ---
 
 # Project Bootstrap
@@ -206,759 +208,82 @@ rest of this step — **write only the files of the tool actually chosen.** A `g
 project never gets a `pom.xml`, `mvnw`, or `.mvn/`; a `maven` project never gets a
 `build.gradle`, `settings.gradle`, or `gradlew`.
 
-#### build.tool: maven
+**Read `references/build-<tool>.md` § 4 — only the tool just resolved — then
+`references/scaffold.md` § 4.** The first holds the tool's file layout (POMs or Gradle
+scripts, wrapper); the second what both tools share, including the andaime rule every
+later template copy follows. Done when every module of the blueprint exists with its
+`depends_on` wired in the build files, and nothing of the other tool is on disk.
 
-If `build.layout: single-module`, the result of step 3 already works as the structure:
-just create the packages from `packages.map`, there's no per-layer POM to write. The
-Initializr's `pom.xml` still needs the `<build>` blocks from
-`templates/pom.parent.xml.example` — Spotless, Checkstyle, failsafe, and JaCoCo —
-because none of them come from the Initializr. Copy them into that `pom.xml` and move
-on to step 4.6. Steps 4.6 through 4.8 apply to both layouts.
+The steps from here to 8.6 run **in order, every one of them.** Each heading below names
+the reference that holds its body; open it before executing the step — the spine alone is
+not the procedure.
 
-If `multi-module`:
+### 4.5 · Domain exception family — not here → `references/scaffold.md` § 4.5
 
-1. Convert the root `pom.xml` into a parent (`<packaging>pom</packaging>` +
-   `<modules>`), using `templates/pom.parent.xml.example` as the shape reference. The
-   `<spotless.version>` property is there as a placeholder: resolve it on Maven
-   Central, same rule as step 3, never from memory.
+Nothing is generated: the exception family belongs to `domain-modeling`. Read the section
+for why, so step 4.7 does not reintroduce it.
 
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/com/diffplug/spotless/spotless-maven-plugin/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
+### 4.6 · Generate the Checkstyle config → `references/build-<tool>.md` § 4.6, then `references/scaffold.md` § 4.6
 
-   No network: **ask**, don't invent. A made-up number that doesn't exist in the
-   repository breaks the build on the first `./mvnw`.
+`config/checkstyle/checkstyle.xml` plus the tool's plugin, bound to `validate`. Done when
+the build file carries the plugin and the config exists.
 
-   The version oracle is `maven-metadata.xml` from `repo1.maven.org` — the repository
-   itself. Don't use `search.maven.org`'s `solrsearch`: it's a separate index, returns
-   versions that lag behind the repository (observed: Spotless 2.44.5 in the index,
-   3.10.2 in the repository) and responds intermittently. The same holds for every
-   version resolved in this skill.
-2. Create a `pom.xml` per module from `templates/pom.module.xml.example`,
-   with the dependencies that module's `depends_on` authorizes — **and only those**.
-3. Move the `@SpringBootApplication` class to the module with `contains_main: true`.
-4. Move `application.yml` into that module's `resources`.
+### 4.7 · Materialize the packages and feature configuration → `references/scaffold.md` § 4.7
 
-Mandatory order: parent → modules → main class → configuration → docs → CI.
-A swapped order leaves the build broken halfway through generation.
+One `package-info.java` per role in `packages.map`, plus the `application*.yml` of each
+active feature. No other `.java`.
 
-#### build.tool: gradle
+### 4.8 · Generate the `lombok.config` → `references/scaffold.md` § 4.8
 
-If `build.layout: single-module`, the result of step 3 already works as the structure:
-just create the packages from `packages.map`, there's no per-module `build.gradle` to
-write and no `settings.gradle` beyond its existing `rootProject.name` line. The
-Initializr's `build.gradle` still needs the `checkstyle`/`spotless`/`jacoco` blocks and
-the `test`/`integrationTest` task wiring from `templates/build.gradle.parent.example`
-(applied directly to the one project, not inside a `subprojects {}` block — there are no
-subprojects) because none of them come from the Initializr. Copy them in and move on to
-step 4.6. Steps 4.6 through 4.8 apply to both layouts.
+At the project root.
 
-If `multi-module`:
+### 4.9 · Generate the `logback-spring.xml` → `references/scaffold.md` § 4.9
 
-1. Write `settings.gradle` from `templates/settings.gradle.example`, with one `include`
-   line per module in `modules[]`, colon-separated to match each module's folder path
-   (`adapters/adapter-in-rest` → `include 'adapters:adapter-in-rest'`).
-2. Convert the root `build.gradle` into the parent shape of
-   `templates/build.gradle.parent.example` — the `plugins {}` block declares
-   `org.springframework.boot`, `io.spring.dependency-management`, and
-   `com.diffplug.spotless` with `apply false` (applied per-module instead, step 4.7's
-   note on `contains_main` decides where the Boot plugin actually activates), and the
-   `subprojects {}` block carries everything every module inherits — Lombok,
-   Checkstyle, Spotless, JaCoCo, the `test`/`integrationTest` split. The
-   `com.diffplug.spotless` version is a placeholder: resolve it the same way as step 3,
-   never from memory, but against the **Gradle plugin's own artifact** — a different one
-   from Maven's, don't reuse that URL:
+Under `src/main/resources` of the module with `contains_main: true`.
 
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/com/diffplug/spotless/spotless-plugin-gradle/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
+### 4.10 · Generate the base `Dockerfile` and `docker-compose.yml` → `references/scaffold.md` § 4.10
 
-   No network: **ask**, don't invent. A made-up number that doesn't exist in the
-   repository breaks the build on the first `./gradlew`.
+Base pair, plus one service per active feature that needs a container, merged through
+`docker-architect`'s templates.
 
-   Same version-oracle discipline as Maven: `maven-metadata.xml` from `repo1.maven.org`,
-   never `search.maven.org`'s lagging index.
-3. Create a `build.gradle` per module from `templates/build.gradle.module.example`,
-   with the dependencies that module's `depends_on` authorizes — **and only those**. The
-   module with `contains_main: true` additionally applies `org.springframework.boot`
-   and declares the `spring-boot-starter-*` dependencies its features need — every
-   other module stays a plain `java-library`.
-4. Move the `@SpringBootApplication` class to the module with `contains_main: true`.
-5. Move `application.yml` into that module's `resources`.
+### 5 · Generate the boundary map → `references/project-files.md` § 5
 
-Mandatory order: settings → parent build.gradle → module build.gradles → main class →
-configuration → docs → CI. A swapped order leaves the build broken halfway through
-generation.
+**Read `references/project-files.md` now** — it holds steps 5 to 7.
+`.claude/forbidden-imports.txt`, one line per `forbidden_imports` prefix.
 
-#### Both
+### 6 · Generate the root CLAUDE.md and the module ones → `references/project-files.md` § 6
 
-The files in `templates/` are **real, compilable exemplars**, not molds to be
-mechanically substituted. Read them, understand the shape, and write the equivalent for
-this project. A `domain` module doesn't carry `spring-boot-starter-web` even if the
-exemplar shows it in another module.
+### 6.5 · Generate CI → `references/project-files.md` § 6.5
 
-<a id="andaime"></a>**The exemplar's scaffolding doesn't go into the project.** This
-applies to every step that copies from `templates/` — this one, 4.6, 4.7, 4.8, and 4.10. The
-top comment block mixes two things:
+Exactly one workflow template — the one of the resolved build tool.
 
-| Stays | Goes |
-|---|---|
-| Why the file is shaped this way (e.g. "these two versions are distinct on purpose") | The word `EXEMPLAR` and anything describing the file as a template |
-| Citations to rules (`.claude/rules/...`) | "Compilable as-is", "not pseudo-code" |
-| Business rule or invariant the reader needs | "role `X` from `packages.map`", generation instructions, references to other `.example` files |
+### 6.6 · Write the project's `.claude/` → `references/project-files.md` § 6.6
 
-A comment that describes the template instead of the code is exactly what
-`@.claude/rules/code-quality.md` forbids — in the generated project there's no template
-to refer to.
+`ArchHook.java export` writes rules, skills, agents, hook, schema and settings, and
+rewrites the rules' `paths`. Nothing in the generated project may depend on this
+repository.
 
-### 4.5 · Domain exception family — not here
+### 7 · What the enforcement you just installed does → `references/project-files.md` § 7
 
-The five exemplars (`DomainException` and the four typed ones) live in
-`.claude/skills/domain-modeling/templates/`. `domain-modeling` owns the shape of the
-domain, and the `10-dominio.md` partial names the exceptions for each invariant; the
-code comes from the executor, with the first feature.
+Nothing to run — what the final report has to be able to say.
 
-The bootstrap doesn't write them because it has no invariant to tie them to: five
-exception classes in a project with no domain are dead code the user either deletes or,
-worse, keeps by mistake. `@.claude/rules/error-handling.md` is still copied in step
-6.6, and it's the one that sets the taxonomy — in particular the prohibition on
-throwing generic `RuntimeException`/`Exception`/`IllegalArgumentException` in any
-module.
+### 8 · Verify → `references/build-<tool>.md` § 8, then `references/verify-and-report.md` § 8
 
-`ApiExceptionHandler` isn't from here either — transport-specific, an exemplar of
-`rest-api-architect` (see `@.claude/rules/api-rest.md`).
-
-### 4.6 · Generate the Checkstyle config
-
-The limits from `@.claude/rules/code-quality.md` — method length, parameter count,
-cyclomatic complexity, nesting, magic numbers — stay prose without Checkstyle. It's the
-only automatic check the bootstrap installs. The config file itself
-(`config/checkstyle/checkstyle.xml`) is identical either way — only where the version
-numbers and the wiring go differs by build tool.
-
-**build.tool: maven**
-
-1. Resolve the versions on Maven Central, same rule as step 3:
-
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/org/apache/maven/plugins/maven-checkstyle-plugin/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   curl -sS 'https://repo1.maven.org/maven2/com/puppycrawl/tools/checkstyle/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
-
-   They go into `<checkstyle.plugin.version>` and `<checkstyle.version>` in the root
-   POM. They're two versions distinct on purpose: the plugin's and the tool it runs —
-   without the second, the plugin runs an old Checkstyle that doesn't know half the
-   checks.
-
-   **JaCoCo's version is resolved here too, not skipped.** Unlike failsafe,
-   `spring-boot-starter-parent` does **not** manage `org.jacoco:jacoco-maven-plugin`
-   (confirmed empty against the parent's `dependencyManagement`) — leaving it unpinned
-   resolves whatever's newest at build time, non-reproducibly:
-
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/org/jacoco/jacoco-maven-plugin/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
-
-   Goes into `<jacoco.version>` in the root POM.
-2. Write `<project>/config/checkstyle/checkstyle.xml` with the shape of
-   `templates/checkstyle.xml.example`. Fixed path — it's what the root POM's
-   `configLocation` points to, via `${maven.multiModuleProjectDirectory}`. Don't swap
-   it for a relative path: it resolves at the root and fails in every submodule.
-
-**build.tool: gradle**
-
-1. Resolve the Checkstyle **tool** version the same way — Gradle's `checkstyle` plugin
-   ships built into Gradle itself, so there's no separate "plugin version" to resolve,
-   only the tool's:
-
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/com/puppycrawl/tools/checkstyle/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
-
-   Goes into `checkstyle { toolVersion = '...' }` in the root `build.gradle` (or, in
-   `multi-module`, inside the `subprojects {}` block of `templates/build.gradle.parent.example`).
-
-   **JaCoCo's version, same discipline, against its own artifact** — not the Maven
-   plugin's:
-
-   ```bash
-   curl -sS 'https://repo1.maven.org/maven2/org/jacoco/org.jacoco.core/maven-metadata.xml' \
-     | grep -o '<release>[^<]*</release>'
-   ```
-
-   Goes into `jacoco { toolVersion = '...' }`, same block.
-2. Write `<project>/config/checkstyle/checkstyle.xml` with the shape of
-   `templates/checkstyle.xml.example` — same file, same path, same content as the Maven
-   case. It's what `checkstyle { configFile = rootProject.file('config/checkstyle/checkstyle.xml') }`
-   points to in `templates/build.gradle.parent.example`.
-
-**Both**
-
-3. **Don't change the exemplar's numbers.** Each one mirrors a limit from
-   `code-quality.md`; changing one side just makes the rule and the build disagree. If
-   the limit has to change, change it in both files, in the same pass.
-4. Don't add formatting checks (imports, braces, spacing): Spotless handles that,
-   already configured in the root build file. A duplicate check breaks the build over
-   something the formatter would have fixed on its own.
-
-Runs before compiling in both build tools — Maven's `validate` phase, Gradle's `check`
-task (wired into `build`, so it can't be skipped by running `build` alone) — one
-violation stops the build immediately. If the freshly generated project already fails
-here, the error is in the translated exemplar or in a class coming from the Initializr,
-not in the limit: fix it before continuing.
-
-**Architecture tests (ArchUnit) are not generated here.** The bootstrap delivers a
-project with no business code, and a `classes().that()...should()` rule over zero
-classes fails vacuously — the build would be born red for having nothing to check.
-Writing them is the job of the `test-architect` skill, once classes exist for them to
-apply to. The bootstrap only records this in the output contract. The blueprint's
-`archunit` feature is still valid data: it's the `test-architect` skill that reads it,
-not this step.
-
-**The coverage gate goes out the same door, for the same reason.** The
-`pom.parent.xml.example`/`build.gradle.parent.example` exemplar brings JaCoCo with
-report generation (`prepare-agent`+`report` in Maven, `jacocoTestReport` in Gradle), and
-**without** a coverage gate (Maven's `check` execution, Gradle's
-`jacocoTestCoverageVerification`): report yes, gate no. The limits from
-`@.claude/rules/testing.md` (80% lines / 70% branches) only make sense over code that
-exists, and it's `test-architect`'s setup mode that wires them — in the same pass that
-installs ArchUnit. Don't add the gate yourself: a project with no business classes
-either passes it vacuously, which proves nothing, or breaks it, which is a false
-negative.
-
-### 4.7 · Materialize the packages and feature configuration
-
-The step that replaced example generation. Two parts: the packages come to exist on
-disk, and the features that have configuration receive it.
-
-**a) One `package-info.java` per role in `packages.map`.**
-
-An empty directory doesn't survive git, and a `packages.map` that only exists in the
-YAML isn't a boundary at all: `ArchHook check` matches by path prefix, and a path that
-doesn't exist never matches. For each role declared in `packages.map`, write
-`<module>/src/main/java/<package>/package-info.java` with one sentence — the role, and
-what that layer may import, derived from the module's `depends_on` and
-`forbidden_imports`:
-
-```java
-/**
- * Domain. Aggregates, value objects, and invariants.
- *
- * <p>No framework: no {@code org.springframework}, {@code jakarta.*},
- * {@code com.fasterxml.jackson}, or {@code tools.jackson}. See {@code .claude/rules/architecture-ddd.md}.
- */
-package com.example.demoapp.domain;
-```
-
-One sentence for the role, and the boundary line only when the module declares
-`forbidden_imports`. Don't write more: `package-info.java` isn't the place to reproduce
-a rule — cite it by path, invariant 2.
-
-**`commons` (or the blueprint's equivalent, e.g. `modular-monolith`'s `shared.logging`)
-is the one role that stays empty on purpose.** Its `package-info.java` still gets
-written here, same as every other role — but the logging/masking annotations and AOP
-aspects that belong in it are `.java` beyond `package-info.java`, which this skill never
-writes (see the contract above). They're installed later, once, by the
-`commons-logging-installer` agent, triggered from `/new-feature`'s pre-flight check —
-not from here. Don't write them, and don't skip the empty `package-info.java` either:
-without the package existing on disk, the installer has nowhere to write into.
-
-```java
-/**
- * Cross-cutting logging and masking infrastructure (annotations + AOP aspects). See
- * {@code .claude/rules/logging.md}. Empty until `commons-logging-installer` runs.
- */
-package com.example.demoapp.commons.logging;
-```
-
-**b) Configuration for active features.**
-
-| Feature | What this step does |
-|---|---|
-| `actuator` | Merges `templates/features/actuator/application-actuator.yml.example` into the `application.yml` of the module with `contains_main: true` (the same file from step 6, not a new one) |
-| `observability` | Merges `templates/features/observability/application-observability.yml.example` into the same `application.yml` — the tracing bridge's export destination. Owned exemplar, same mechanism as `actuator`'s; the container it points at is provisioned in step 4.10, not here. Also adds the method in `templates/features/observability/ApplicationTests-tracer.java.example` to the generated `*ApplicationTests`: a context that starts without a `Tracer` bean is a generation gap, and nothing else catches it before the first use case |
-| `flyway` | Creates `src/main/resources/db/migration/` in the module with the `infrastructure.persistence` role, **empty**. No `.gitkeep` and no `V1__`: `spring.flyway.fail-on-missing-locations` defaults to `false` (verified in `spring-boot-flyway`'s metadata), so a missing or empty location doesn't break startup. The first migration comes from `java-spring-boot-developer`, materialized from the SQL `persistence-architect` fixed in the partial |
-| `persistence-jpa`, `rest`, `openapi`, `testcontainers`, `archunit` | Nothing here. They're dependencies (step 3) and POM configuration (step 4). The code that uses them comes from the first feature |
-| `spring-modulith` | Writes `<main-module>/src/test/java/**/ModularityTests.java`, from `templates/features/spring-modulith/ModularityTests.java.example`, adjusting only the package and the `@SpringBootApplication` class reference. Safe to write now, unlike ArchUnit — `ApplicationModules.of(...).verify()` passes meaningfully over zero modules; it isn't gated behind business code existing |
-
-**No business classes.** No entity, no controller, no use case, no migration with a
-table. Each one's shape has an owner — `domain-modeling`, `persistence-architect`,
-`rest-api-architect`, `test-architect` — and writing it here creates a second exemplar
-of the same role, which diverges from the first. That's what happened:
-`@.claude/decisions/0011-bootstrap-without-business-code.md`.
-
-### 4.8 · Generate the `lombok.config`
-
-The root build file declares `org.projectlombok:lombok` as `optional` (Maven) /
-`compileOnly`+`annotationProcessor` (Gradle), inherited by all modules either way.
-Without this file, `@Data` and `@Setter` compile — and `@.claude/rules/lombok.md` stays
-prose, the same way `code-quality.md` stayed without Checkstyle.
-
-1. Write `<project>/lombok.config` with the shape of `templates/lombok.config.example`
-   — same file for both build tools, Lombok itself doesn't distinguish Maven from
-   Gradle. **One only, at the root, next to the root `pom.xml`/`build.gradle`.** Lombok
-   climbs the folder tree until `config.stopBubbling = true`, so the root covers every
-   module. Copying the file into each module adds nothing and creates four places to
-   diverge.
-2. Don't remove lines from it. Each `flagUsage = ERROR` mirrors a rule's prohibition;
-   removing one makes the rule and the build disagree, same as in step 4.6.
-3. Don't add `lombok.fieldDefaults.defaultPrivate = true`. It would make implicit what
-   the rule wants explicit — the `@FieldDefaults(level = AccessLevel.PRIVATE)`
-   annotation at the top of the class is what's read in the file, and a global default
-   hides it.
-
-There's no version to resolve: `spring-boot-starter-parent` pins Lombok's in Maven, and
-the imported `spring-boot-dependencies` BOM pins it the same way in Gradle
-(`dependencyManagement { imports { mavenBom "org.springframework.boot:spring-boot-dependencies:..." } }`,
-already in `templates/build.gradle.parent.example`). If you write a version yourself, in
-either build file, it's the same mistake as step 3 — a number written from memory.
-
-### 4.9 · Generate the `logback-spring.xml`
-
-Without this file the project still logs — Spring Boot's default logback config is
-enough to run — but the default pattern has no `traceId` field, and
-`@.claude/rules/logging.md`'s per-line contract stays prose nobody's config actually
-produces.
-
-1. Write `<module>/src/main/resources/logback-spring.xml` with the shape of
-   `templates/logback-spring.xml.example`, where `<module>` is the module with
-   `contains_main: true`. **Unlike `lombok.config` (step 4.8), this file cannot sit at
-   the project root** — logback only resolves its config from the classpath root, and a
-   root-level file is never on it. It has to be under `src/main/resources`, in the
-   module that actually gets packaged, and named `logback-spring.xml` (not plain
-   `logback.xml`) so Spring Boot's own initialization picks it up.
-2. Don't change the pattern line. It's `logging.md`'s contract in executable form; a
-   project that needs structured JSON output changes the encoder and the rule's pattern
-   line in the same pass, not this file alone.
-
-### 4.10 · Generate the base `Dockerfile` and `docker-compose.yml`
-
-The base pair, plus a container for every feature that's **already active in the
-blueprint** and needs one to run. A container is not business code: provisioning the
-Postgres that `application.yml`'s own datasource URL already points at (or the OTLP
-collector its tracing endpoint already points at) invents nothing — the config from
-step 4.7.b already committed to that dependency existing. What *does* stay deferred to
-`docker-architect`, invoked later by hand — a design skill records the need and never chains
-that skill, `@.claude/decisions/0058-skill-classes-territory-schema.md` — is anything a
-**use case** decides that isn't
-already implied by an active `features:` flag: a non-default engine, a broker, an
-extra datastore. `@.claude/decisions/0011-bootstrap-without-business-code.md` governs
-that second category — a made-up aggregate competing with a real spec — not this one.
-
-1. Write `<project>/Dockerfile` from **either** `templates/Dockerfile.example`
-   (`build.tool: maven`) **or** `templates/Dockerfile-gradle.example` (`build.tool:
-   gradle`) — never both, same exemplar the resolved build tool has used since step 3.
-   Fill `{{JAVA_VERSION}}` with the version resolved in step 3 and
-   `{{MAIN_MODULE_JAR_PATH}}` with the jar path of the module with `contains_main:
-   true`:
-   - Maven: `target/<artifactId>-<version>.jar` in `single-module`,
-     `<module-path>/target/<artifactId>-<version>.jar` in `multi-module`. In
-     `multi-module`, replace `{{MODULE_POM_COPIES}}` with one `COPY <module>/pom.xml
-     <module>/` line per module, so the dependency-resolution layer caches correctly;
-     in `single-module`, delete that placeholder line — there's nothing to copy beyond
-     the root `pom.xml` already copied above.
-   - Gradle: `build/libs/<artifactId>-<version>.jar` in `single-module`,
-     `<module-path>/build/libs/<artifactId>-<version>.jar` in `multi-module`. In
-     `multi-module`, replace `{{MODULE_BUILD_GRADLE_COPIES}}` with one `COPY
-     <module>/build.gradle <module>/` line per module, same caching reason; in
-     `single-module`, delete that placeholder line — there's nothing to copy beyond the
-     root `build.gradle`/`settings.gradle` already copied above.
-2. Write `<project>/docker-compose.yml` with the shape of
-   `templates/docker-compose.yml.example`, verbatim — no substitution needed, it has no
-   `{{...}}` placeholders. This is the base `app` service only.
-3. **For each active feature with a matching service template, apply
-   `docker-architect`'s own merge procedure (its `SKILL.md` steps 3-5) against the
-   `docker-compose.yml` just written** — `docker-architect` stays the single owner of
-   every service block, this step only decides *when* to call it for features the
-   blueprint already turned on:
-   - `persistence-jpa` → `docker-architect/templates/postgres-service.yml.example`.
-     Postgres, not a placeholder: it's the engine `application.yml.example`'s
-     `datasource.url` already assumes, so this doesn't introduce a new decision, it
-     makes the two files agree. If `persistence-architect` later designs a different
-     engine for a real use case, that's a `docker-architect` re-invocation like any
-     other, swapping the service the normal way.
-   - `observability` → `docker-architect/templates/otel-collector-service.yml.example`,
-     plus its init script `templates/otel-collector-config.yml.example` mounted per
-     `docker-architect/SKILL.md` step 6. **Skip its step 2.5**: generation stays
-     non-interactive, so the collector is born exporting to `debug` and no
-     visualization backend is chosen here. Naming that gap is step 8's job, below.
-   - Wire the `app` service's environment for each service added, same as
-     `docker-architect/SKILL.md` step 5 — `SPRING_DATASOURCE_URL` pointing at
-     `postgres`'s compose hostname, and **both** OTLP variables pointing at
-     `otel-collector`'s: `OTLP_ENDPOINT` (`/v1/traces`) and `OTLP_METRICS_ENDPOINT`
-     (`/v1/metrics`). Two, not one: the observability fragment declares a placeholder
-     per signal, and an unwired metrics endpoint falls back to the app container's own
-     `localhost`, silently.
-   - A feature with no service template (`rest`, `openapi`, `testcontainers`, `flyway`
-     — Flyway rides on the same Postgres connection, `archunit`) adds nothing here.
-4. Same rule as § andaime (step 4): the exemplar's top comment explaining *why* stays;
-   anything describing the file as a template goes.
-
-### 5 · Generate the boundary map
-
-For each module with `forbidden_imports`, write one line per prefix in
-`.claude/forbidden-imports.txt`, in the format `<module-path>|<prefix>`:
-
-```
-# Generated by /init-project — blueprint: <id> — do not edit by hand
-domain|org.springframework.
-domain|jakarta.persistence.
-application|jakarta.persistence.
-```
-
-**`layout: single-module` has no `forbidden_imports` field to iterate** — it's declared
-per package there, not per module (see the blueprint's own comment above its `modules:`
-block). In that case derive the lines instead: for each `dependency_rules.forbidden`
-entry, take `from` as the line's prefix — resolved through `packages.map` to its real
-package path — and pair it with the framework roots `architecture-ddd.md` § Domain bans
-(`org.springframework.`, `jakarta.`, `com.fasterxml.jackson.`, `tools.jackson.`) for a
-`from: domain` entry, or with the concrete `to` layers' package paths for any other
-entry. The file format doesn't care whether the left side is a module path or a package
-prefix — `ArchHook.java check` matches with `rel.startsWith(prefix + "/")` either way.
-
-Don't write the literal string `blueprints/` into this header, or into any file this
-step generates — step 8's autonomy test greps for exactly that string across the whole
-project, and a header written that way fails the generator's own verification.
-
-**This file is what gives `ArchHook.java check` its teeth.** Without it the hook warns
-that enforcement is off, but blocks nothing. Generating it is not optional.
-
-### 6 · Generate the root CLAUDE.md and the module ones
-
-**Root** — write `<project>/CLAUDE.md` with the shape of
-`templates/root.CLAUDE.md.example`, replacing the `{{...}}` placeholders with the
-resolved data: name, versions from step 3, real build commands, and the list of
-modules with their `depends_on`. `{{buildCmd}}`/`{{testCmd}}`/`{{runCmd}}`/`{{formatCmd}}`
-resolve from the same build tool every earlier step branched on — never a mix:
-
-| Placeholder | `maven` | `gradle` |
-|---|---|---|
-| `{{buildCmd}}` | `./mvnw clean verify` | `./gradlew build` |
-| `{{testCmd}}` | `./mvnw test` | `./gradlew test` |
-| `{{runCmd}}` | `./mvnw spring-boot:run` | `./gradlew bootRun` |
-| `{{formatCmd}}` | `./mvnw spotless:apply` | `./gradlew spotlessApply` |
-
-Target under 200 lines: it's an index and invariants, not a manual. No `rules/` rule is
-reproduced **inside** this file — only cited by path. The rule files themselves are
-copied into the project in step 6.6.
-
-**Per module** — for each module with non-empty `forbidden_imports`, write
-`<module>/CLAUDE.md` with the shape of `templates/module.CLAUDE.md.example`, filled
-with that module's data. The content **derives from the blueprint** — if you write it
-by hand, it diverges from what the hook enforces.
-
-### 6.5 · Generate CI
-
-The Initializr doesn't generate CI. Write `.github/workflows/build.yml` with the shape
-of **either** `templates/ci.yml.example` (`build.tool: maven`) **or**
-`templates/ci-gradle.yml.example` (`build.tool: gradle`) — never both — adjusted to the
-Java version resolved in step 3. Without this, the `.github/workflows/*` declared in the
-skill's § Contract has no real counterpart. The exemplar's comment "(see
-decisions/0011)" is the same dead reference the `export` mode cuts in § 6.6 — cut it
-here too, the reasoning it points to has no counterpart in the project.
-
-The `.gitignore` is **not** generated here: the Initializr already delivers a correct
-one in step 3. Confirm it exists; if it's missing, write it then. It's not in `owns`
-for that exact reason.
-
-### 6.6 · Write the project's `.claude/`
-
-The generated project lives on its own: nothing inside `<project>/` may depend on
-`claude-spring-architect` existing on the machine of whoever clones it. The root
-`CLAUDE.md` cites `.claude/rules/00-index.md`, rules cite each other by path, and
-`settings.json` points at `.claude/hooks/ArchHook.java` — if those files aren't there,
-each citation is a silent dead end and the hooks fail to start.
-
-One command writes all of it:
-
-```bash
-CLAUDE_PROJECT_DIR=<this repository> \
-  java <this repository>/.claude/hooks/ArchHook.java export <project> --blueprint <id>
-```
-
-`CLAUDE_PROJECT_DIR` is the **source**, the same convention every other mode of the hook
-follows; `<project>` is the destination, and the mode refuses to run when the two are the
-same path. Add `--dry-run` to list what it would write without writing anything.
-
-What it writes, per the `export` block of `@.claude/schemas/extensions.json`:
-
-- **Every rule**, with the `paths` of those that have a territory derived from the
-  blueprint's `packages.map` — the value, `.` becoming `/`, this blueprint's glob and no
-  other. An architecture that names no such package (`vertical-slice` puts REST and
-  persistence inside each slice) falls back to the matching `architecture_paths` entry;
-  one that has no such territory at all (`messaging.md` where nothing is a broker) gets
-  the rule without `paths`, still citable. `naming.md` receives the blueprint's
-  naming-convention block as a list, and `00-index.md`'s two paragraphs about
-  `blueprints/` are rewritten to name the blueprint instead.
-- **The development skills**, each reduced to `SKILL.md`, `templates/` and
-  `references/` — a subdirectory that only serves this repository, like
-  `use-case-design/examples/`, stays behind.
-- **The development agents**, whole.
-- **`ArchHook.java`, `schemas/extensions.json`, `settings.json`**, plus
-  `.claude/audit-usage/` with its `pricing.json` and the one `.gitignore` line the trail
-  needs.
-- **`.claude/.arch-provenance.json`** — where this `.claude/` came from (source, ref,
-  commit, blueprint) and a digest per written file. `arch-doctor` recomputes those
-  digests and names anything edited since, which is what a later update would overwrite.
-- **`.mcp.json` and `MCP-SETUP.md`**, only if `templates/mcp.json.example` exists here.
-  Most bootstraps have nothing to copy and the mode says nothing — correct, not
-  incomplete. That template is written only by `claude-code-architect-designer`, when a
-  real server was designed with its axis 13 answered "the generated project" or "both".
-
-Every citation to `.claude/decisions/` and `.claude/blueprints/` is cut on the way out:
-neither directory travels (invariant 9), and unlike a rule path there is nothing inside
-the project to rewrite them to. What survives the cut is printed at the end of the run,
-by file — **read that report**. A dead path breaks nothing at generation time and
-everything for whoever follows it six months later.
-
-`settings.json` is written whole, not merged: re-serializing it would reorder its keys
-and drop its comments. On a fresh bootstrap there is nothing to preserve; when the mode
-runs again over an existing project, its previous content is one `git diff` away.
-
-**The manifest is the owner of what travels.** Adding a rule, skill or agent to this
-repository is only complete once it is in `export`'s `include` — or in its `exclude`,
-with the creation skills (`project-bootstrap`, `init-project`,
-`claude-code-architect-designer`) and `project-initializer`, which only serve before the
-project exists and, inside one, invite the model to regenerate on top of live code.
-`ArchHook.java schema` fails by name on anything listed in neither, so this is not a step
-to remember: it is a check that runs.
-
-### 7 · What the enforcement you just installed does
-
-Nothing to run here — step 6.6 already wrote it. This section is what the final report
-(§ Output contract) has to be able to say.
-
-**The hooks.** `settings.json` arrives with the `schema` mode's triggers, the `audit`
-triggers, the `guard` triggers, and the permissions: the pipeline skills in `allow`,
-`Bash(git push:*)` in `ask`. Preserving a project's own entries never means widening
-`git push` into an allow. The hooks run in **exec form** (`command: java` + `args`), with
-no shell and no execute bit, which is what makes them identical on Linux, macOS and
-Windows — there is no `chmod` anywhere in this skill.
-
-**The trail.** `.claude/audit-usage/` is the on/off switch: `ArchHook.java audit` returns
-immediately when the directory is absent. Every skill under `.claude/skills/` and every
-agent under `.claude/agents/` is recorded, whoever invoked it; a top-level invocation
-gets one Markdown report, and what it chains becomes sections of that report plus a line
-each in `nodes.jsonl`. Plugin skills and runtime agents (`Explore`, `general-purpose`)
-have no file in the project and are not recorded. It is a hook and not a skill because
-the record has to exist even when the model forgets, the session dies, or the user
-interrupts — `@CLAUDE.md` invariant 6.
-
-**The guard.** Two boundaries of the `/new-feature` pipeline that its skills state in
-prose and a real run broke anyway: while a design skill runs, nothing is written under
-`src/` except from inside the executor agent; and the files of a use case whose
-`UC-NNN-spec.md` is `approved` or `implemented` are frozen, except the executor's single
-`approved → implemented` status edit. The lists are data in the `guard` block of the
-`extensions.json` that step 6.6 copied. No `guard` block, no guard.
-
-**`pricing.json` ages on its own.** It ships pre-filled with the official per-model rates
-as of the date in its own `$comment`, never from memory — same discipline as invariant 8.
-A model missing from it, or a rate that has since changed, prints "não configurado"
-instead of a confident `US$ 0.00` nobody checked. Tell the user, in the final report, to
-compare that date against
-`platform.claude.com/docs/en/about-claude/pricing` and update the file if it has gone
-stale; it does not refresh itself.
-
-### 8 · Verify
 
 Everything in this step branches on the same build tool resolved before step 3 — run
 **only** the column that matches.
 
-**build.tool: maven** — the `starter.tgz` from step 3 **already brings** `mvnw`,
-`mvnw.cmd`, and `.mvn/wrapper/` — don't run `mvn -N wrapper:wrapper`. Confirm the
-wrapper exists and works before anything else:
 
-```bash
-./mvnw -v                       # failure here = starter.tgz didn't extract the wrapper
-./mvnw -q clean test-compile    # boundaries + Checkstyle (validate phase)
-./mvnw -q test                  # Initializr smoke test — only the `*Test`s
-./mvnw -q checkstyle:check      # Checkstyle only, to isolate violations
-./mvnw clean verify             # includes the `*IT`s via failsafe
-```
+**Read `references/verify-and-report.md` now** — it holds steps 8 to 8.6. Done when the
+build passes, or when the report says why it failed.
 
-In `verify`, the freshly generated project **has no `*IT` at all** — it doesn't
-generate business code, so it doesn't generate integration tests. Zero ITs discovered
-is the expected result here, unlike what held when this step used to generate
-examples. What you're confirming is that `maven-failsafe-plugin` made it into the
-POM: without it, the first `*IT` that `test-architect` designs compiles and never runs.
+### 8.5 · Generate the project README → `references/verify-and-report.md` § 8.5
 
-```bash
-grep -c maven-failsafe-plugin pom.xml    # must be ≥ 1
-```
+`README.md` (English) and `README.pt-br.md`, after Verify.
 
-With `features.observability` active, confirm the piece that registers the `Tracer` bean
-made it in — the bridge and the exporter alone don't, and the gap otherwise surfaces only
-at the first use case that injects it:
+### 8.6 · Write the audit genesis record → `references/verify-and-report.md` § 8.6
 
-```bash
-./mvnw -q dependency:tree | grep -E 'micrometer-tracing-bridge|opentelemetry-exporter-otlp|spring-boot-starter-opentelemetry'
-# all three lines present on Spring Boot 4 — see references/dependency-catalog.md
-```
-
-**build.tool: gradle** — the `starter.tgz` from step 3 **already brings** `gradlew`,
-`gradlew.bat`, and `gradle/wrapper/` — don't run `gradle wrapper`. Confirm the wrapper
-exists and works before anything else:
-
-```bash
-./gradlew -v                              # failure here = starter.tgz didn't extract the wrapper
-./gradlew -q --no-daemon compileTestJava  # boundaries + Checkstyle (part of `check`, see below)
-./gradlew -q --no-daemon test             # Initializr smoke test — only the `*Test`s
-./gradlew -q --no-daemon checkstyleMain checkstyleTest  # Checkstyle only, to isolate violations
-./gradlew --no-daemon build               # includes the `*IT`s via the `integrationTest` task
-```
-
-In `build`, the freshly generated project **has no `*IT` at all** — same expected
-zero-ITs result as Maven, for the same reason. What you're confirming is that the
-`integrationTest` task made it into `build.gradle` and is wired into `check`: without
-it, the first `*IT` that `test-architect` designs compiles and never runs.
-
-```bash
-grep -c "tasks.register('integrationTest'" build.gradle    # must be ≥ 1 (root, or the subprojects block)
-```
-
-With `features.observability` active, same confirmation, Gradle's dependency report
-instead of Maven's:
-
-```bash
-./gradlew -q --no-daemon dependencies | grep -E 'micrometer-tracing-bridge|opentelemetry-exporter-otlp|spring-boot-starter-opentelemetry'
-# all three lines present on Spring Boot 4 — see references/dependency-catalog.md
-```
-
-**Both, from here on**
-
-Boundary test, mandatory before reporting success: temporarily write
-`<domain-module>/src/main/java/<domain-package>/ArchHookProbe.java` with an
-`import org.springframework.stereotype.Component;`, confirm the hook blocks the write,
-and delete the file if one was left. If it doesn't block, `forbidden-imports.txt` is
-wrong. The probe is the only business class this procedure ever writes, and it exists
-only for the duration of the test.
-
-`lombok.config` test, for the same reason and the same way: temporarily put a
-`@Setter` with a field on the `@SpringBootApplication` class — the only one that
-exists —, run `./mvnw -q test-compile` (Maven) or `./gradlew -q --no-daemon
-compileTestJava` (Gradle), confirm the compilation stops with `Use of @Setter is
-flagged according to lombok configuration`, and remove it. Compiling green means the
-file isn't at the root, or `flagUsage` didn't make it in — the `lombok.md` rule would
-run with no enforcement at all.
-
-If any test depends on Testcontainers (Spring context with a real DB), guard it with a
-condition that checks the Docker daemon (e.g. `@EnabledIf("dockerAvailable")`). Without
-that, `./mvnw test`/`./gradlew test` goes red on any machine without local Docker — a
-false negative that says nothing about the code. The test actually runs in CI, where
-the runner has a daemon.
-
-If the build fails, **fix it before reporting**. A bootstrap that delivers a red build
-isn't finished.
-
-**Autonomy test**, also mandatory: nothing in `<project>/` can cite a path that only
-exists in `claude-spring-architect`.
-
-```bash
-ls .claude/rules/ .claude/skills/ .claude/agents/ .claude/hooks/ArchHook.java .claude/schemas/extensions.json
-grep -rn "blueprints/" .claude/ CLAUDE.md */CLAUDE.md   # must return nothing
-grep -rn "decisions/" .claude/ CLAUDE.md */CLAUDE.md    # must return nothing — § 6.6 cuts these
-java .claude/hooks/ArchHook.java schema </dev/null      # must exit 0, and without warning
-```
-
-The `schema` check above fails two different ways: exits 2 if some copy ended up with
-invalid frontmatter, and exits 0 **with a warning** if `extensions.json` didn't make it
-into the project. Read the output, not just the exit code.
-
-Every skill the root `CLAUDE.md` routes to must have `SKILL.md` in the project. Every
-agent the root `CLAUDE.md` delegates to must have `<name>.md` in `.claude/agents/`. A
-dead path here is exactly the failure § 6.6 exists to prevent, and the `export` mode
-already reported any citation that survived its cut — this is the second reading of the
-same question, from the project's side.
-
-### 8.5 · Generate the project README
-
-Runs **after** Verify, on purpose: everything this step writes — the build status, the
-boundary and Lombok probe results — only exists once step 8 has finished. A README
-written earlier would either lie about the build or need a second pass to patch it.
-Without this step the generated project ships with no README at all: `HELP.md` is the
-Initializr's own boilerplate, and `CLAUDE.md` targets an AI reader, not a human seeing
-the repository for the first time — `@.claude/lessons-learned/lessons-learned-004.md`
-Gap 2.
-
-Write two files at `<project>/`, from `templates/README.md.example` (English, the
-default) and `templates/README.pt-br.md.example` (Portuguese) — same shape rule as every
-other exemplar in this skill: read it, understand it, write the equivalent, don't
-mechanically substitute. Same andaime rule as step 4/6: the top comment explaining the
-file is an exemplar is cut; a citation to a rule or invariant stays.
-
-Every `{{...}}` placeholder resolves from data this procedure already computed —
-**nothing here is invented**:
-
-- `{{projectName}}`, `{{groupId}}`, `{{artifactId}}`, `{{targetDirectory}}` — step 3's
-  inputs.
-- `{{initCommand}}` — the literal `/init-project` invocation that started this run,
-  arguments included, exactly as the user or the command line gave it. This is the
-  README's only source for "how was this made" — the generated project has no other
-  record of it, since git history starts at `git-publish`'s first commit, after
-  generation.
-- `{{blueprint.id}}`, `{{blueprint.oneLineDescription}}` — step 1/2, the `name` and a
-  one-line cut of the blueprint YAML's own description. Don't paraphrase past what the
-  YAML says.
-- `{{javaVersion}}`, `{{springBootVersion}}`, `{{buildTool}}` — step 3's resolved
-  versions, the same ones already in the Output contract below. Never re-resolve, never
-  restate from memory.
-- `{{featuresList}}` — the active features from step 3/4.7, one bullet each.
-- `{{boundedContext}}` — step 3's input, defaulting to `{{artifactId}}` when the caller
-  gave none. It is the first segment of every topic name
-  (`@.claude/rules/messaging.md` § Topics and serialization) and nothing else in the
-  project declares it, so it is written into the root `CLAUDE.md` even when messaging is
-  not an active feature: the case that adds Kafka later reads the line instead of choosing
-  a prefix inside one use case.
-- `{{skillsList}}`, `{{agentsList}}` — one bullet per entry actually written into the
-  project (`ls .claude/skills/`, `ls .claude/agents/` — read the disk, not the `export`
-  manifest: the manifest lists what *can* travel, not what a given blueprint's feature
-  set produced), each with a one-line "Why" taken from that skill's or agent's own
-  `description`, not invented here.
-- `{{outputContractBlock}}` — the exact block this step's successor (§ Output contract)
-  renders, pasted verbatim. The README and the report given to the user are the same
-  text; this is not a second, independently-written summary that can drift from the
-  first.
-- `{{nextStepsBlock}}` — the same "Next steps" list as the Output contract, verbatim.
-
-Both files are self-contained: reading only `README.md` (or only `README.pt-br.md`)
-answers "what is this, how was it made, what can I do with it" with no need to open
-`CLAUDE.md` or ask the meta-repo. The cross-link at the top of each is the only coupling
-between the two.
-
-### 8.6 · Write the audit genesis record
-
-Runs **after** the README (8.5), for the same reason: the Output contract block it
-embeds only exists once step 8 has finished. Fixes a different gap than 8.5 —
-`@.claude/lessons-learned/lessons-learned-004.md` Gap 1: `.claude/audit-usage/` (§ 6.6,
-`ensure_dirs`) exists in the freshly generated project, but the hook that fills it
-(`ArchHook.java audit`) has never run there, because that hook only fires from a live
-session rooted at the *generated* project, and the run that creates the project happens
-from a session rooted at the *meta-repo* instead. Without this step the trail is
-structurally empty on day one — not a missing report, a run nobody could have recorded.
-
-Write `<project>/.claude/audit-usage/GENESIS.md` from
-`templates/GENESIS.md.example`, same read-it-understand-it-write-the-equivalent rule as
-every other exemplar here. `{{initCommand}}`, `{{blueprint.id}}`,
-`{{blueprint.oneLineDescription}}`, `{{groupId}}`, `{{artifactId}}`, `{{buildTool}}`, and
-`{{outputContractBlock}}` resolve exactly as documented for the same placeholders in
-step 8.5 — same values, second destination. `{{startIso}}` is this run's own start
-timestamp (interview's first question, step 1); `{{endIso}}` is now, at the moment this
-step runs; `{{buildStatus}}` is step 8's own `PASSED`/`FAILED` verdict, restated, never
-re-derived.
-
-**Never overclaim fidelity.** This file names itself a reconstruction, not a hook
-report, and stays that way — no invented per-tool-call timeline, no cost, no ranked
-stages, none of the fields `ArchHook.java audit`'s own reports carry. A later
-`/audit-usage` reader must be able to tell this entry apart from every report that
-follows it in the same directory. Written once; a second `/init-project` run never
-overwrites it (idempotence — § Preconditions already stops before this step if the
-project exists).
+`.claude/audit-usage/GENESIS.md`, once.
 
 ## Output contract
 
@@ -1012,27 +337,24 @@ concluding the generation failed.
 
 ## Applicable rules
 
-All rules in `.claude/rules/` are master content: they guide the generation **and**
-are copied into the project in step 6.6, so it lives without this repository.
+Every rule in `.claude/rules/` reaches the project through step 6.6 — `ArchHook.java
+export` copies them and rewrites their `paths`. **None is read during generation:** the
+part of each rule that a bootstrap step turns into a file is already inside the template
+that step copies. The table says which, so a rule change knows which template to follow.
 
-Architecture: `@.claude/rules/architecture-ddd.md` — copied with `paths` coming from
-the blueprint's `architecture_paths`; the rest go verbatim.
-Naming: `@.claude/rules/naming.md`
-Error handling: `@.claude/rules/error-handling.md` — doesn't guide any step since the
-exception family moved to `domain-modeling` (see 4.5), but is copied.
-Testing: `@.claude/rules/testing.md` — also doesn't guide: the coverage gate it sets is
-wired by `test-architect` (see 4.6), not here.
-Code quality: `@.claude/rules/code-quality.md` — SOLID and Clean Code limits; the
-mechanical half becomes Checkstyle in step 4.6. The other half (ArchUnit) belongs to
-the `test-architect` skill.
-REST API: `@.claude/rules/api-rest.md` — doesn't guide any bootstrap step (no
-`ApiExceptionHandler` is generated here, see 4.5), but is copied so the project is
-complete.
-Lombok: `@.claude/rules/lombok.md` — the mechanical half (forbidding `@Data` and
-`@Setter`) becomes the root `lombok.config` in step 4.8.
+| Rule | Embodied by | Step |
+|---|---|---|
+| `@.claude/rules/architecture-ddd.md` | the blueprint's modules and `depends_on`, `.claude/forbidden-imports.txt`; its `paths` come from `architecture_paths` at export | 4, 5, 6.6 |
+| `@.claude/rules/naming.md` | the package names written into `package-info.java` | 4.7 |
+| `@.claude/rules/code-quality.md` | `templates/checkstyle.xml.example` — the mechanical half; the ArchUnit half is `test-architect`'s | 4.6 |
+| `@.claude/rules/lombok.md` | `templates/lombok.config.example` | 4.8 |
+| `@.claude/rules/logging.md` | `templates/logback-spring.xml.example` | 4.9 |
+| `@.claude/rules/testing.md` | nothing here — the coverage gate is wired by `test-architect` | — |
+| `@.claude/rules/error-handling.md` · `@.claude/rules/api-rest.md` | nothing here — no exception family or handler is generated (4.5) | — |
 
-Don't reproduce these rules here. If you need one that doesn't exist in `rules/`,
-create the rule file first — don't write it inside this skill.
+A rule that changes what a template must say is followed by an edit to that template, not
+by a read here. If a step ever needs a rule that doesn't exist in `rules/`, create the rule
+file first — don't write it inside this skill.
 
 ## Why this is a skill and not an agent
 
@@ -1042,6 +364,8 @@ agent. Form 3 was rejected for this file because the three reasons for an agent 
 context, restrict tools, change model) are satisfied by that caller, not by this procedure —
 two nested agents would only add a second boundary to pass the blueprint across.
 
+Runs on `sonnet` with `effort: high`: generation is template- and YAML-driven, and it runs inside `project-initializer`, also on `sonnet`. A skill's `model` inside a subagent is not documented, so the pin there is a declaration that agrees with the agent's (`@.claude/decisions/0081-skill-model-required-per-class.md`).
+
 ## Contract
 
 **Class:** build — the territory is `skill_classes.build`'s override for this skill in
@@ -1049,26 +373,19 @@ two nested agents would only add a second boundary to pass the blueprint across.
 only skill with that reach, and it has it because the tree does not exist yet when it runs.
 `ArchHook.java guard` enforces it.
 
-**Reads before generating** — none of these auto-load at this point: the directory
-doesn't have any `.java` files touched yet, so `naming.md` and `error-handling.md`'s
-`paths` don't trigger. Read them explicitly before step 4:
+**Unfiltered Bash:** generation runs `curl` against the Initializr, `tar`, `./mvnw`, `java … export`, `grep` and moves over a tree that does not exist yet — a scoped list would run to ~15 prefixes, and one command missing from it aborts the run halfway through. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
+
+**Reads before generating:**
 
 - `.claude/blueprints/<id>/<id>.yaml` — the blueprint chosen in step 1
-- `.claude/rules/00-index.md`
-- `.claude/rules/architecture-ddd.md`
-- `.claude/rules/naming.md`
-- `.claude/rules/error-handling.md`
-- `.claude/rules/code-quality.md`
-- `.claude/rules/api-rest.md`
-- `.claude/rules/lombok.md`
-- `.claude/rules/value-objects.md`
-- `.claude/rules/persistence.md`
-- `.claude/rules/testing.md`
-- `.claude/rules/observability.md`
-- `.claude/rules/messaging.md`
+- `references/blueprint-selection.md` and `references/dependency-catalog.md` — steps 1 to 3
+- `references/build-<tool>.md` — step 4, **only** the resolved tool's
+- `references/scaffold.md` — step 4
+- `references/project-files.md` — step 5
+- `references/verify-and-report.md` — step 8
 
-All of them are read, not just the ones that guide the generation: step 6.6 copies
-them into the project, and a partial copy isn't the rule.
+No rule file is read: § Applicable rules says where each one already lives in a template,
+and step 6.6's copy is `export`'s, not a transcription.
 
 **Writes** (paths relative to the **generated project**, not this repository) — no
 other skill touches these files:

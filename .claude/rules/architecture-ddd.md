@@ -1,6 +1,10 @@
 ---
-# No `paths`: master content, copied to <project>/.claude/rules/ with `paths`
-# derived from the blueprint's `architecture_paths`. Assumes no directory names.
+paths:
+  - "**/domain/**/*.java"
+  - "**/application/**/*.java"
+  - "**/infrastructure/**/*.java"
+# Written by `export` from the active blueprint's `architecture_paths`; the master
+# copy's list is only an example. The body assumes no directory names.
 status: active
 ---
 

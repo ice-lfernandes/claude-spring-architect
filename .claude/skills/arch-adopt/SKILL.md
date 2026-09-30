@@ -9,6 +9,7 @@ description: >
 argument-hint: "[--ref <tag|sha|main>] [--source <local path>] [--blueprint <id>]"
 disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
+model: opus
 ---
 
 # Arch Adopt
@@ -200,11 +201,15 @@ The transformation itself is deliberately **not** here — it is `ArchHook.java 
 Form 7c, because it runs unattended on other people's machines and the same input has to
 produce the same tree.
 
+Pinned to `opus`: it merges into a project it did not write, and may write the only copy of that project's blueprint (`@.claude/decisions/0081-skill-model-required-per-class.md`).
+
 ## Contract
 
 **Class:** build — the territory is `skill_classes.build`'s override for this skill in
 `@.claude/schemas/extensions.json`: the target project's `.claude/` tree and its
 `.gitignore`, nothing else. `ArchHook.java guard` enforces it.
+
+**Unfiltered Bash:** adoption fetches the source (`git ls-remote`, `curl`, `tar`), inspects the worktree (`git status`, `git rev-parse`, `find`), and runs `java … export` — spread over two tools that fetch from the network and a command list that grows with the source's layout. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
 **Reads** `.claude/schemas/extensions.json` (the `source` block — never a URL from
 memory), `.claude/.arch-provenance.json` when it exists, `src/main/java/**` to detect the

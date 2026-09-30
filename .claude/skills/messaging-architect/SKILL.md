@@ -9,7 +9,8 @@ description: >
   listener. Piece of the `/new-feature` pipeline: requires `10-dominio.md` in the given
   folder with an Events block that names external delivery, and stops without it.
 argument-hint: "[path of the UC-NNN-<slug> folder]"
-allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*), Bash(awk:*)
+model: opus
 ---
 
 ## Available specs
@@ -66,6 +67,8 @@ and already writes the Events block of `10-dominio.md`. A subagent was never via
 fails the § 5 counter-test in `claude-code-architect-designer`'s decision matrix on all three
 points — the interview over topic/partitioning/DLQ is the heart of the task, the reference
 content fits in `templates/`, and the partial it produces is short.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Boundary with neighboring skills
 
@@ -138,7 +141,7 @@ still transport.
    | Ordering requirement across different aggregates | Whether one topic is enough or the event needs to fan out differently |
    | Existing `processed_events`-style dedupe table in this project | Reuse vs. ask `persistence-architect` to model one |
    | **Serialization** — do both sides need a contract they can validate at build time, and is there a second team on the other end asking for it? | JSON (the rule's default) or a schema registry. **Ask only with the cost in the question**, see below |
-   | **Personal data in the payload** — does the event carry a field that identifies a natural person, and if so, what is the minimum the receiver needs? | The payload's field list: full value, reduced form (id, hash, last digits), or a reference the receiver resolves. `@.claude/rules/security.md` § In transit. **Always asked when a candidate field exists**, see below |
+   | **Personal data in the payload** — does the event carry a field that identifies a natural person, and if so, what is the minimum the receiver needs? | The payload's field list: full value, reduced form (id, hash, last digits), or a reference the receiver resolves. `@.claude/rules/personal-data.md` § In transit. **Always asked when a candidate field exists**, see below |
    | **Who guarantees dedupe**, when the consumer is not in this project | Whether at-least-once is actually absorbed anywhere. `@.claude/rules/messaging.md` § Delivery semantics |
 
    Every axis but the first is consumer-side. A use case that only **produces** still has the
@@ -167,7 +170,7 @@ still transport.
    picking a name, and that is how the six items above entered a project in one answer.
 
    **The personal-data axis, and why it is asked and not inferred.** Run the candidate test of
-   `@.claude/rules/security.md` § What counts as personal data over the payload's fields —
+   `@.claude/rules/personal-data.md` § What counts as personal data over the payload's fields —
    against the types of `@.claude/rules/value-objects.md` § Catalog, never against field names
    alone: the field that leaked a national identifier in a real run was called
    `securityNumber`, and masking it in the logs (which `@.claude/rules/logging.md` did require,
@@ -293,14 +296,14 @@ still transport.
    included, each written as `none` when there is nothing to ask for.
 
    **§ 8 is `Personal data`, and it is written before the payload is called done.** Run
-   `@.claude/rules/security.md` § How to verify grep 1 against the payload record this partial
+   `@.claude/rules/personal-data.md` § How to verify grep 1 against the payload record this partial
    just designed, and read every hit against the derivation in
    `@.claude/rules/logging.md` § Masking candidates — the type catalog plus the name list, one
    owner, not re-derived here. For each field that matches, § 8 states which of the three
    legitimate answers applies: the **full value** (the receiver's whole purpose needs it), a
    **reduced form** (an id, a hash, the last digits), or a **reference** the receiver resolves
    under its own authorization. A full value carries the receiver's name and the reason, which
-   is the `Recorded decision` `@.claude/rules/security.md` § In transit requires — *the exception
+   is the `Recorded decision` `@.claude/rules/personal-data.md` § In transit requires — *the exception
    is the record, not the absence of one*.
 
    A CPF crossed a team boundary in clear on a Kafka topic because no step ever asked: the
@@ -358,7 +361,7 @@ asked.
 | Configuration | Group id, offset reset, ack mode, with the decided value and why | `application-kafka.yml.example` |
 | Schema requirements | Every table this transport needs that the domain didn't model — the shared `outbox_events` under Form B (step 4a), the shared dedupe table (step 5a) — one row each, stating **which table and which guarantee**, never a column name and never DDL. The outbox's columns and pacing belong to `20-persistencia.md`; a column named here becomes a divergence there. `none` when there are none | `@.claude/rules/messaging.md` § Publication timing · § Retry and DLQ |
 | Declared dependencies | Build dependencies this transport needs and the project does not declare — the only list entitling the executor to touch `pom.xml`. `none` when there are none, and absence is not `none` | — |
-| Personal data | Every payload field matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. That is the `Recorded decision` `@.claude/rules/security.md` § In transit requires. `none` when the payload carries none, and absence is not `none` | `@.claude/rules/security.md` § How to verify, grep 1 |
+| Personal data | Every payload field matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. That is the `Recorded decision` `@.claude/rules/personal-data.md` § In transit requires. `none` when the payload carries none, and absence is not `none` | `@.claude/rules/personal-data.md` § How to verify, grep 1 |
 | Deferred | One row per item this partial decided **not** to do in this run: what was decided, what is missing, the norm that requires it (by path), and the intended owner — `checklist` or `backlog`. `none` when nothing was deferred, absence is not `none`. Consolidation resolves the owner and is what writes the `BACKLOG.md` line | — |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the

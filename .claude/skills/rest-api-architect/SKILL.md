@@ -9,7 +9,8 @@ description: >
   `/new-feature` pipeline: requires `10-dominio.md` in the given folder and stops
   without it.
 argument-hint: "[path to the UC-NNN-<slug> folder]"
-allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*)
+model: opus
 ---
 
 ## Available specs
@@ -65,6 +66,8 @@ Recorded in `@.claude/decisions/0007-pipeline-skills-invocation.md`.
 It's a procedure whose step 3 goes back to asking the user what no prior spec fixes —
 what endpoints the client actually needs, what collection grows without bound, what
 `POST` touches money or an external system. A subagent doesn't see the conversation.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Boundary with neighboring skills
 
@@ -226,7 +229,7 @@ chain, this isn't the right skill.
 
 ## Personal data leaving in a response body
 
-Before the partial is written, run `@.claude/rules/security.md` § How to verify grep 1 against
+Before the partial is written, run `@.claude/rules/personal-data.md` § How to verify grep 1 against
 the response DTOs just designed, and read every hit against the derivation in
 `@.claude/rules/logging.md` § Masking candidates — the value-object catalog plus the name list,
 one owner, not re-derived here.
@@ -253,7 +256,7 @@ question nobody asked.
 | Error map | Exception → status → `errorCode`; `violations` and `traceId` | `ApiExceptionHandler.java.example` · `error-responses.json.example` |
 | Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (every `@Idempotent` endpoint, first one included) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
-| Personal data | Every field of a **response** body matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. `@.claude/rules/security.md` § In transit calls that the `Recorded decision`, and `@MaskSensitiveData` on the DTO is not it: masking covers the log, this covers the body that leaves the process. `none` when there is none, and absence is not `none` | `@.claude/rules/security.md` § How to verify, grep 1 |
+| Personal data | Every field of a **response** body matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. `@.claude/rules/personal-data.md` § In transit calls that the `Recorded decision`, and `@MaskSensitiveData` on the DTO is not it: masking covers the log, this covers the body that leaves the process. `none` when there is none, and absence is not `none` | `@.claude/rules/personal-data.md` § How to verify, grep 1 |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the
 executor agent that reads them when generating code.

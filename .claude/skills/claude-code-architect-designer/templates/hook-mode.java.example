@@ -68,6 +68,8 @@
 //
 // ── before reporting it done ────────────────────────────────────────────────────
 //
+//   java .claude/hooks/ArchHook.java build      ← the hooks launch ArchHook.jar, not this
+//                                                 source; commit the rebuilt jar with it.
 //   java .claude/hooks/ArchHook.java <mode>     ← run it once by hand.
 //   java .claude/hooks/ArchHook.java schema     ← validates the registration.
 //   java .claude/hooks/ArchHook.java doctor     ← confirms the count.

@@ -9,7 +9,8 @@ description: >
   Piece of the `/new-feature` pipeline: requires `10-dominio.md` in the given folder and
   stops without it.
 argument-hint: "[path of the UC-NNN-<slug> folder]"
-allowed-tools: Read, Write, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*), Bash(awk:*)
+model: opus
 ---
 
 ## Available specs
@@ -73,6 +74,8 @@ It's a procedure whose step 3 goes back to the user to ask what no earlier spec 
 which database engine, which queries the use case actually makes, what row volume is
 expected. A subagent doesn't see the conversation. Decision recorded in
 `@.claude/decisions/0005-persistence-rule-and-design.md`.
+
+Pinned to `opus`: the partial is what the executor implements verbatim. A pinned model does not make this a subagent — the interview needs the conversation, and the pin holding for the rest of the turn keeps `/new-feature` on the model that designed it (`@.claude/decisions/0081-skill-model-required-per-class.md`).
 
 ## Boundary with neighboring skills
 
@@ -237,7 +240,7 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 
    **The second branch ends in the `## Deferred` block, never in the decision alone.** A
    retention window recorded and left unowned is the case
-   `@.claude/rules/security.md` § At rest names outright — *a store whose retention window is a
+   `@.claude/rules/personal-data.md` § At rest names outright — *a store whose retention window is a
    property nobody reads has no retention* — and the outbox payload is where personal data sits.
    So deferring the prune writes a `Deferred` row naming that rule and an owner, and
    consolidation turns it into a checklist item or a `BL-NN`. A real run decided 7 days, left a
