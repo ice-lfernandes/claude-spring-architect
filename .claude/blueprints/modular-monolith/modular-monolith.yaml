@@ -78,6 +78,12 @@ packages:
     application: "shared.internal.application"
     adapter.rest: "shared.internal.adapter.rest"
     adapter.persistence: "shared.internal.adapter.persistence"
+    # Scheduling trigger (a driving adapter calling the module's input port, same rank
+    # as `adapter.rest`) — decision 0087. Covered by the existing `**/internal/**/*.java`
+    # glob above, same as the other two `adapter.*` entries; a real bounded-context
+    # module gets its own `<module>.internal.adapter.scheduling` later, same pattern as
+    # `adapter.rest`/`adapter.persistence`.
+    adapter.scheduling: "shared.internal.adapter.scheduling"
     bootstrap.config: "config"
     # Cross-cutting logging/masking annotations + AOP aspects (rules/logging.md) — not
     # a new bounded-context module. Placed under `shared` itself, one level OUT of

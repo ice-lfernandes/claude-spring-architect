@@ -2,8 +2,9 @@
 
 Primary source: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, the design skills (`use-case-design`,
-`domain-modeling`, `rest-api-architect`, `persistence-architect`, `messaging-architect`,
-`test-architect`), and the `guard` mode of `.claude/hooks/ArchHook.java`.
+`domain-modeling`, `rest-api-architect`, `messaging-architect`, `jobs-architect`,
+`persistence-architect`, `test-architect`), and the `guard` mode of
+`.claude/hooks/ArchHook.java`.
 
 ## What it does
 
@@ -76,8 +77,9 @@ sequenceDiagram
     participant UC as skill: use-case-design
     participant DOM as skill: domain-modeling
     participant REST as skill: rest-api-architect
-    participant PER as skill: persistence-architect
     participant MSG as skill: messaging-architect
+    participant JOBS as skill: jobs-architect
+    participant PER as skill: persistence-architect
     participant TST as skill: test-architect
     participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
@@ -93,10 +95,13 @@ sequenceDiagram
     else full path
         NF->>DOM: 10-dominio.md
         NF->>REST: 30-rest.md (+ schema requirements)
-        NF->>PER: 20-persistencia.md (reads schema requirements, SQL inside)
         opt external event delivery
             NF->>MSG: 25-mensageria.md
         end
+        opt scheduled trigger, outbox relay (Form B), or a deferred job
+            NF->>JOBS: 35-jobs.md
+        end
+        NF->>PER: 20-persistencia.md (reads schema requirements, SQL inside)
         NF->>TST: 40-testes.md
         NF->>NF: resolve divergences, consolidate by reference (status: draft)
     end
@@ -127,8 +132,9 @@ sequenceDiagram
 | 1 | `use-case-design` | — | `00-caso-de-uso.md`, `BACKLOG.md` entries — owns number and slug |
 | 2 | `domain-modeling` | 1 | `10-dominio.md` — owns exception names |
 | 3 | `rest-api-architect` | 1, 2 | `30-rest.md` — including the schema requirements transport creates |
-| 4 | `persistence-architect` | 1, 2, 3 | `20-persistencia.md` — migration SQL inside it |
 | optional | `messaging-architect` | 2, if external delivery | `25-mensageria.md` |
+| optional | `jobs-architect` | 1 (schedule trigger), or messaging's Form B, or a deferred job | `35-jobs.md` — tool, trigger/cadence, cluster coordination, overlap/misfire, gate property, job metrics; owns the outbox relay's schedule and the prune job |
+| 4 | `persistence-architect` | 1, 2, 3, and messaging/jobs when they ran | `20-persistencia.md` — migration SQL inside it; reads `35-jobs.md`'s tool tables (`shedlock`, `QRTZ_*`, `BATCH_*`) as schema requirements and its replica count for the outbox claim strategy, when jobs-architect ran |
 | 5 | `test-architect` | 1–4 | `40-testes.md` |
 | — | `new-feature` (consolidation) | all above | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | `approved` spec | code and migrations in `src/**` |
@@ -200,7 +206,8 @@ writes one spec where every row names its source — an approved spec or a rule.
 | HTTP path, verb, status, body shape | `30-rest.md` |
 | Table, column, key, index, migration | `20-persistencia.md` |
 | Topic, serialization, delivery guarantee, consumer retry/DLQ | `25-mensageria.md` |
-| The outbox table, its columns, the claim query and the backoff those columns encode | `20-persistencia.md` — messaging **declares** that the case needs an outbox and which guarantee the relay must honour, and never a column name. A § 6 row naming columns is a divergence, and a column decision that would drop the declared guarantee **stops** the pipeline instead of being settled by precedence |
+| The outbox table, its columns, the claim query, attempt ceiling/backoff, and retention window | `20-persistencia.md` — messaging **declares** that the case needs an outbox and which guarantee the relay must honour, and never a column name. A § 6 row naming columns is a divergence, and a column decision that would drop the declared guarantee **stops** the pipeline instead of being settled by precedence |
+| Scheduling tool, trigger and cadence, cluster coordination, overlap/misfire handling, job metrics, the prune job | `35-jobs.md` — including the outbox relay's own poll interval and coordination, which no longer lives in `20-persistencia.md` |
 | Aggregate name, value object, port, event | `10-dominio.md` |
 | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |

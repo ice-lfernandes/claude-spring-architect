@@ -1,0 +1,59 @@
+# EXEMPLAR — configuration every scheduling technology shares, plus the outbox's two jobs.
+# The per-technology keys (spring.quartz.*, spring.batch.*, db-scheduler.*, jobrunr.*) sit in
+# that technology's own exemplar. Form reference for the executor agent; not a file to copy.
+# Rules: .claude/rules/scheduling.md (§ Triggers — gate, pool, zone; § Retention)
+#
+# Every value below is a DECISION recorded in 35-jobs.md § 8, which also says which partial
+# owns it. Each key is shaped in exactly one exemplar — this one or the messaging one named
+# below — so a run never has two versions of the same line to choose from.
+
+spring:
+  task:
+    scheduling:
+      # A platform-thread scheduler has ONE thread by default: the second job waits for the
+      # first. Size it to the job count — or turn on virtual threads, and then these pool keys
+      # are ignored.
+      pool:
+        size: 2
+      thread-name-prefix: job-
+      shutdown:
+        await-termination: true
+        await-termination-period: PT30S
+  # threads:
+  #   virtual:
+  #     enabled: true
+
+app:
+  jobs:
+    # One zone for every cron in the project, referenced by each `zone = "${app.jobs.zone}"`.
+    zone: America/Sao_Paulo
+    # PREFIX CONVENTION. A job the project designs gets `app.jobs.<job-name>.*` — `enabled`,
+    # `cron` or `interval`, its own knobs. The outbox's two jobs are the one exception: they
+    # live under `app.outbox.*` because the outbox's other keys already do, below.
+    reconcile-payments:
+      enabled: true
+      cron: "0 0 2 * * *"
+  # ONE `app.outbox` MAP, TWO EXEMPLARS. The keys below are the jobs' and the retention window;
+  # `batch-size` and `max-attempts` — what the relay PASS reads — are shaped in
+  # `messaging-architect/templates/application-kafka.yml.example`. In `application.yml` they
+  # are the same map: merge into the `outbox:` already there, never a second `app:` root.
+  outbox:
+    enabled: true                 # gates OutboxRelayJob
+    poll-interval: PT1S           # read ONLY by the @Scheduled placeholder — never also bound
+    prune-after: P7D              # value is 20-persistencia.md's; present because OutboxPruneJob reads it
+    prune:
+      enabled: true
+      cron: "0 30 3 * * *"
+      batch-size: 1000
+
+---
+# src/test/resources/application-test.yml — every job off. A test that needs a pass calls the
+# inbound port; a test that needs the schedule itself is a scheduling test, and says so.
+app:
+  jobs:
+    reconcile-payments:
+      enabled: false
+  outbox:
+    enabled: false
+    prune:
+      enabled: false

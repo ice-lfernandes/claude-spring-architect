@@ -80,7 +80,8 @@ The division is by **moment and artifact**, not technology:
 | `domain-modeling` | After the mother spec | `10-dominio.md` — aggregate, invariants, ports, **and the event itself** |
 | `rest-api-architect` | After the domain partial | `30-rest.md` — transport, no schema, plus the schema requirements it creates |
 | **this skill** | After the domain partial, only when an event needs external delivery — and **before** `persistence-architect` | `25-mensageria.md`, § 6 included |
-| `persistence-architect` | After this skill | `20-persistencia.md` + migration — builds what § 6 asked for |
+| `jobs-architect` | After this skill, when § 2 chose Form B | `35-jobs.md` — the relay's schedule, coordination across instances, the prune job |
+| `persistence-architect` | After this skill and `jobs-architect` | `20-persistencia.md` + migration — builds what § 6 of both partials asked for |
 | `test-architect` | After all of them | `40-testes.md` |
 
 `domain-modeling` decides **whether** an event exists and **who consumes it**. This skill
@@ -213,7 +214,7 @@ still transport.
    | Form | What implements the port | Extra pieces | Exemplar |
    |---|---|---|---|
    | A — publish after commit (default) | The adapter sends to the broker directly | none | `templates/KafkaProducerAdapter.java.example` |
-   | B — transactional outbox + relay | The adapter writes an outbox row inside the caller's transaction | relay component, `OutboxRelayGateway` port, shared `outbox_events` table | `templates/OutboxRelayPublisher.java.example` |
+   | B — transactional outbox + relay | The adapter writes an outbox row inside the caller's transaction | the relay pass (`RelayOutboxEvents` + `OutboxEventSender`, whose Kafka implementation is the only `KafkaTemplate` importer), `OutboxRelayGateway` port, shared `outbox_events` table. The pass's **schedule** and the **prune job** are `jobs-architect`'s | `templates/OutboxRelayPublisher.java.example` |
 
    **4a. Form B's outbox, when step 2 found none. Declare the need, never the columns.**
    The outbox belongs to `persistence-architect` — the table, its columns, its indexes, its
@@ -226,6 +227,13 @@ still transport.
       before giving up, and the DLQ destination once it does;
    3. the addressee — that skill's **step 4b**, which models it from
       `persistence-architect/templates/OutboxEventTable.sql.example`.
+
+   **And the schedule is not this partial's either.** When a pass runs, how often, on how many
+   instances, the switch that keeps it out of the integration tests, and the job that prunes
+   published rows are `jobs-architect`'s — it runs right after this skill whenever § 2 chose
+   Form B, and reads § 2 and § 6 to design them into `35-jobs.md`
+   (`@.claude/decisions/0087-jobs-architect-skill.md`). This partial names the relay's pass and
+   the guarantee it owes; it never names a cron, an interval, or a lock.
 
    **Never list column names here.** Inventing `next_attempt_at`, `failure_reason`,
    `created_at` as "requirements" produced three guaranteed divergences in a real run, and
@@ -344,8 +352,9 @@ still transport.
     contracted, assumed or unknown** — the last two are findings the person who asked for the
     feature has to see, not partial content to be read later,
     and what's missing for the folder to be complete (`20-persistencia.md`,
-    `40-testes.md`). Don't invoke anyone else — `persistence-architect` runs next in the
-    pipeline and reads § 6 in its first pass.
+    `40-testes.md`, and `35-jobs.md` under Form B). Don't invoke anyone else — under Form B
+    `jobs-architect` runs next and reads § 2 and § 6; then `persistence-architect` reads § 6 in
+    its first pass.
 
 ## What the partial contains
 

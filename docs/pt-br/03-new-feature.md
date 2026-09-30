@@ -2,8 +2,9 @@
 
 Fonte primária: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, as skills de design (`use-case-design`,
-`domain-modeling`, `rest-api-architect`, `persistence-architect`, `messaging-architect`,
-`test-architect`) e o modo `guard` de `.claude/hooks/ArchHook.java`.
+`domain-modeling`, `rest-api-architect`, `messaging-architect`, `jobs-architect`,
+`persistence-architect`, `test-architect`) e o modo `guard` de
+`.claude/hooks/ArchHook.java`.
 
 ## O que faz
 
@@ -76,8 +77,9 @@ sequenceDiagram
     participant UC as skill: use-case-design
     participant DOM as skill: domain-modeling
     participant REST as skill: rest-api-architect
-    participant PER as skill: persistence-architect
     participant MSG as skill: messaging-architect
+    participant JOBS as skill: jobs-architect
+    participant PER as skill: persistence-architect
     participant TST as skill: test-architect
     participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
@@ -93,10 +95,13 @@ sequenceDiagram
     else caminho completo
         NF->>DOM: 10-dominio.md
         NF->>REST: 30-rest.md (+ requisitos de schema)
-        NF->>PER: 20-persistencia.md (lê requisitos de schema, SQL dentro)
         opt entrega externa do evento
             NF->>MSG: 25-mensageria.md
         end
+        opt trigger agendado, relay de outbox (Form B), ou job adiado
+            NF->>JOBS: 35-jobs.md
+        end
+        NF->>PER: 20-persistencia.md (lê requisitos de schema, SQL dentro)
         NF->>TST: 40-testes.md
         NF->>NF: resolve divergências, consolida por referência (status: draft)
     end
@@ -127,8 +132,9 @@ sequenceDiagram
 | 1 | `use-case-design` | — | `00-caso-de-uso.md`, entradas em `BACKLOG.md` — dona de número e slug |
 | 2 | `domain-modeling` | 1 | `10-dominio.md` — dona dos nomes de exceção |
 | 3 | `rest-api-architect` | 1, 2 | `30-rest.md` — inclusive os requisitos de schema que o transporte cria |
-| 4 | `persistence-architect` | 1, 2, 3 | `20-persistencia.md` — SQL da migration dentro |
 | opcional | `messaging-architect` | 2, se houver entrega externa | `25-mensageria.md` |
+| opcional | `jobs-architect` | 1 (trigger agendado), ou Form B da mensageria, ou um job adiado | `35-jobs.md` — tecnologia, trigger/cadência, coordenação entre instâncias, overlap/misfire, propriedade de liga-desliga, métricas de job; dona do schedule do relay de outbox e do job de prune |
+| 4 | `persistence-architect` | 1, 2, 3, e mensageria/jobs quando rodaram | `20-persistencia.md` — SQL da migration dentro; lê as tabelas de ferramenta de `35-jobs.md` (`shedlock`, `QRTZ_*`, `BATCH_*`) como requisito de schema e a contagem de réplicas para a estratégia de claim do outbox, quando jobs-architect rodou |
 | 5 | `test-architect` | 1–4 | `40-testes.md` |
 | — | `new-feature` (consolidação) | todas acima | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | spec `approved` | código e migrations em `src/**` |
@@ -198,7 +204,8 @@ escreve um spec único em que cada linha cita a fonte — um spec aprovado ou um
 | Path, verbo, status HTTP, formato do corpo | `30-rest.md` |
 | Tabela, coluna, chave, índice, migration | `20-persistencia.md` |
 | Tópico, serialização, garantia de entrega, retry/DLQ do consumidor | `25-mensageria.md` |
-| Tabela outbox, suas colunas, query de claim e o backoff que essas colunas codificam | `20-persistencia.md` — a mensageria **declara** que o caso precisa de outbox e qual garantia o relay tem de honrar, e nunca um nome de coluna. Uma linha de § 6 nomeando colunas é divergência, e uma decisão de coluna que derrubaria a garantia declarada **para** o pipeline em vez de ser resolvida por precedência |
+| Tabela outbox, suas colunas, query de claim, teto de tentativas/backoff e janela de retenção | `20-persistencia.md` — a mensageria **declara** que o caso precisa de outbox e qual garantia o relay tem de honrar, e nunca um nome de coluna. Uma linha de § 6 nomeando colunas é divergência, e uma decisão de coluna que derrubaria a garantia declarada **para** o pipeline em vez de ser resolvida por precedência |
+| Tecnologia de scheduling, trigger e cadência, coordenação entre instâncias, tratamento de overlap/misfire, métricas de job, job de prune | `35-jobs.md` — inclusive o poll interval e a coordenação do próprio relay de outbox, que não moram mais em `20-persistencia.md` |
 | Nome do agregado, value object, port, evento | `10-dominio.md` |
 | Classe de exceção e `errorCode` | `10-dominio.md` |
 | Fronteira do caso de uso, invariantes, situações de erro | `00-caso-de-uso.md` |

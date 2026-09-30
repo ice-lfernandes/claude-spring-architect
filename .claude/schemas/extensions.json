@@ -172,7 +172,7 @@
         "required_sections": ["## Target", "## How it's invoked", "## Procedure"],
         "skills": [
           "use-case-design", "domain-modeling", "persistence-architect",
-          "rest-api-architect", "messaging-architect", "test-architect"
+          "rest-api-architect", "messaging-architect", "jobs-architect", "test-architect"
         ]
       },
       "orchestrator": {
@@ -434,6 +434,7 @@
         "domain-modeling",
         "git-publish",
         "java-patterns",
+        "jobs-architect",
         "messaging-architect",
         "new-feature",
         "persistence-architect",
@@ -467,8 +468,9 @@
         "extra": ["**/db/migration/**"]
       },
       "value-objects.md": { "key": ["domain.model", "domain"], "glob": "**/{}/**/*.java" },
-      "observability.md": { "suffix": [".rest", ".config", ".messaging"], "glob": "**/{}/**" },
+      "observability.md": { "suffix": [".rest", ".config", ".messaging", ".scheduling"], "glob": "**/{}/**" },
       "messaging.md": { "suffix": [".messaging"], "glob": "**/{}/**", "optional": true },
+      "scheduling.md": { "suffix": [".scheduling"], "glob": "**/{}/**", "optional": true },
       "architecture-ddd.md": { "from_blueprint": "architecture_paths" }
     },
 

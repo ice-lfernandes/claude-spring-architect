@@ -51,6 +51,7 @@ into context on each read of the hook.
 | `observability.md` | Vendor integration for tracing (correlation identifier origin) and metrics (cardinality, health endpoint, vendor annotations) | Contract tests + context startup |
 | `logging.md` | `logback.xml` default pattern, log format and level semantics, sensitive data masked or kept out of logs, per-class-type log content | Review |
 | `messaging.md` | Kafka producer/consumer boundary, delivery semantics (at-least-once, idempotent consumer), topic naming and serialization, retry/DLQ, consumer configuration | `grep` from § How to verify + integration tests |
+| `scheduling.md` | Jobs on their own clock: trigger as a driving adapter, fixed delay vs rate, cron zone, on/off property off in tests, pool size, coordination across instances and lock bounds, missed runs, bounded passes, last-success metric, retention enforced by a job | `grep` from § How to verify + unit tests through the inbound port |
 | `personal-data.md` | Personal data at rest and in transit: what counts as personal data, payload columns and retention, the minimum a receiver needs, the recorded decision when a value must cross in clear | `grep` from § How to verify + the design record it requires |
 
 `personal-data.md` loads on every Java source and every migration, not on one boundary
@@ -63,7 +64,7 @@ blueprint's `architecture_paths` and are written into the file that bootstrap co
 the generated project. See `@.claude/blueprints/_schema.md`.
 
 The rules whose territory is a package — `api-rest.md`, `persistence.md`,
-`value-objects.md`, `observability.md` — have a `paths` here that serves as an example
+`value-objects.md`, `observability.md`, `messaging.md`, `scheduling.md` — have a `paths` here that serves as an example
 and is **rewritten at generation time** from the active blueprint's `packages.map`. The
 name of the entry-layer package changes from architecture to architecture
 (`adapter/in/rest` in one, `infrastructure/rest` in another), and a glob copied verbatim

@@ -73,7 +73,9 @@ CREATE INDEX ix_outbox_events_published_at
 -- (`P7D`); change one and change the other. Whatever is chosen goes into the partial's § 1
 -- with the reason.
 -- Batched, off-peak — a single unbounded DELETE on a hot table locks it.
-
--- DELETE FROM outbox_events
---  WHERE published_at IS NOT NULL
---    AND published_at < now() - interval '7 days';
+--
+-- WHO RUNS IT. The statement is `OutboxEventStore.deletePublishedBefore(cutoff, limit)` in
+-- `OutboxEventStore.java.example` — this skill's. The job that calls it, its cadence, its batch
+-- and its lock are `jobs-architect`'s `OutboxPruneJob.java.example`, designed in the same run
+-- as the relay's schedule — so the retention window never again ships without its reader
+-- (lessons-learned-014 § 9).

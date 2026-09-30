@@ -9,34 +9,36 @@
  *        `.claude/rules/architecture-ddd.md` (Adapters, Application)
  *        `.claude/rules/persistence.md` (the table itself)
  *        `.claude/rules/observability.md` (§ Metrics — the dead-letter counter and the
- *        pending-age gauge below are required, not decoration)
+ *        pending-age gauge are required, not decoration; `OutboxRelayJob` records them)
+ *        `.claude/rules/scheduling.md` (the trigger — `jobs-architect`'s)
  *
  * WHAT THIS EXEMPLAR SHOWS:
  *  - the outbound port's implementation writes a row instead of sending: it runs inside the
  *    caller's transaction, so state and intent-to-publish commit or roll back together;
- *  - the relay is a separate component and the only place that talks to the broker;
- *  - the relay reaches outbox state through `OutboxRelayGateway`, an application-layer
+ *  - a relay PASS — claim, send, mark, dead-letter — is a use case: `RelayOutboxEventsService`
+ *    behind the inbound port `RelayOutboxEvents`. The broker is reached through the outbound
+ *    port `OutboxEventSender`, and `KafkaOutboxEventSender` is the only class in Form B that
+ *    imports `KafkaTemplate`;
+ *  - the pass reaches outbox state through `OutboxRelayGateway`, an application-layer
  *    abstraction — never through the persistence adapter's JPA entity or Spring Data
  *    repository, which live in a sibling adapter it may not import;
  *  - duplicates are expected by design (send succeeds, mark fails) and are absorbed by the
  *    idempotent consumer the rule already requires;
- *  - the whole component switches off with one property, which is what keeps it out of the
- *    integration tests — see SCHEDULING below.
+ *  - the pass returns what it did (`RelayOutcome`), so whoever runs it can count dead letters
+ *    without the application layer registering a meter.
  *
- * SCHEDULING, AND WHY IT IS CONDITIONAL. `@Scheduled` does nothing without
- * `@EnableScheduling` somewhere in the context, so Form B ships `SchedulingConfig` below:
- * without it the relay is inert and the whole form silently does not deliver. Both the config
- * and the relay are gated on `app.outbox.enabled`, defaulted on. That property is not
- * ceremony — it is what the test profile sets to `false`. Every `*IT` is a
- * `@SpringBootTest` and boots this configuration too, so an ungated relay polls the test
- * database every second, blocks on `KafkaTemplate.send(...).join()` against a broker no test
- * starts (Testcontainers provides the database, not a broker), and marks rows the test just
- * created as failed or dead-lettered under it. That happened: an integration test asserting
- * `claimPending` contains the row it produced passed on timing luck, and the relay's only
- * line coverage came from the scheduler running it where nothing asserted anything —
- * lessons-learned-013 § 3. `src/test/resources/application-test.yml` carries
- * `app.outbox.enabled: false`, and a test that wants the relay turns it on and provides a
- * mocked `KafkaTemplate`.
+ * SCHEDULING IS NOT HERE. When a pass runs, how often, on which instances, and the switch that
+ * keeps it out of the integration tests belong to `jobs-architect` and its `35-jobs.md`:
+ * `jobs-architect/templates/OutboxRelayJob.java.example` is the trigger — `@Scheduled`, fixed
+ * delay, gated by `app.outbox.enabled`, `false` in the test profile — and it records the two
+ * delivery metrics this form requires (`outbox.events.dead_lettered`,
+ * `outbox.pending.age.seconds`) from each pass. Their names and the guarantee they watch stay
+ * this skill's; the trigger is only where every pass goes through. Until decision 0087 the
+ * `@Scheduled` method lived inside the messaging adapter, so the schedule, the coordination
+ * across instances and the broker code were one class — and the prune job had nowhere to live
+ * and was handed to nobody (lessons-learned-014 § 9). An ungated relay under `*IT` is still the
+ * failure to remember: it polled the test database, blocked on a broker no test starts, and
+ * marked rows under the tests asserting on them (lessons-learned-013 § 3).
  *
  * SCHEMA REQUIREMENT, NOT DDL. `outbox_events` is shared by the whole project — one table,
  * not one per event, same nature as `idempotency_keys`. `persistence-architect` models it,
@@ -56,9 +58,10 @@
  * a component the other cannot carry, that is the moment the type splits, and the partial says
  * so; until then there is one.
  *
- * WHAT'S NOT HERE: the pruning job for published rows (a scheduled delete, sized by
- * retention, no messaging decision in it), and retry/DLQ of the broker send itself — that
- * stays `application-kafka.yml`'s `DefaultErrorHandler`, same as Form A.
+ * WHAT'S NOT HERE: the relay's trigger and the pruning job for published rows —
+ * `jobs-architect/templates/OutboxRelayJob.java.example` and `OutboxPruneJob.java.example`,
+ * no messaging decision in either — and retry/DLQ of the broker send itself, which stays
+ * `application-kafka.yml`'s `DefaultErrorHandler`, same as Form A.
  *
  * ELIDED, adapter-local and uninteresting: `OutboxAppender` (serializes the payload record
  * and inserts the row through the same outbound abstraction, in `…messaging.outbox` —
@@ -79,6 +82,18 @@
  * (`persistence-architect/templates/OutboxEventStore.java.example`). The event's own payload
  * and its writer stay in the flow's subpackage; only what every event's relay shares lives
  * here. Package-private by default, as everywhere else in this adapter.
+ *
+ * VOCABULARY. Names and packages here follow the hexagonal blueprint — an inbound port
+ * interface plus a `…Service`. The active blueprint's naming convention wins: in the
+ * clean-architecture blueprints the pass is one concrete `RelayOutboxEventsUseCase` in
+ * `application.usecase`, no interface, and the relay job depends on that class. Same shape,
+ * same annotations, one type fewer — and never both vocabularies in one project.
+ *
+ * WIRING. The pass is a use case like any other, so it is wired like one — `@Service` in the
+ * application layer, exactly as `domain-modeling/templates/UseCasePort.java.example` does.
+ * Its two numbers arrive as `OutboxRelaySettings`, an application-owned record, which the
+ * messaging adapter produces from `app.outbox.*`. No `@Configuration` anywhere builds the
+ * service by hand.
  *
  * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
  */
@@ -158,6 +173,164 @@ public class OrderConfirmedOutboxWriter implements PublishOrderConfirmedPort {
     }
 }
 
+// --- RelayOutboxEvents.java (application layer — the inbound port the relay job calls)
+package com.example.demo.application.port.in;
+
+import java.time.Duration;
+import java.util.Optional;
+
+public interface RelayOutboxEvents {
+
+    /** One pass: claim a batch, send each row, mark it. Never throws for a single row's failure. */
+    RelayOutcome relayPending();
+
+    /** How far behind delivery is — empty when nothing is pending. Feeds the pending-age gauge. */
+    Optional<Duration> oldestPendingAge();
+
+    record RelayOutcome(int published, int failed, int deadLettered) {}
+}
+
+// --- OutboxEventSender.java (application layer — the relay's only view of the broker)
+package com.example.demo.application.port.out;
+
+public interface OutboxEventSender {
+
+    /*
+     * Three outcomes, and the relay treats each differently: a sent row is marked published, a
+     * failed one spends an attempt, an unroutable one is dead-lettered now — no retry will map a
+     * type nobody registered. Nothing Kafka-typed crosses this signature.
+     */
+    SendResult send(OutboxEventRecord event);
+
+    enum Status { SENT, FAILED, UNROUTABLE }
+
+    record SendResult(Status status, String reason) {
+
+        public static SendResult sent() {
+            return new SendResult(Status.SENT, null);
+        }
+    }
+}
+
+// --- OutboxRelaySettings.java (application layer — the pass's two numbers, no framework type)
+package com.example.demo.application.service;
+
+/** Values are `20-persistencia.md`'s; the messaging adapter binds them from `app.outbox.*`. */
+public record OutboxRelaySettings(int batchSize, int maxAttempts) {}
+
+// --- RelayOutboxEventsService.java (application layer — one pass; no scheduling, no Kafka)
+package com.example.demo.application.service;
+
+import com.example.demo.application.port.in.RelayOutboxEvents;
+import com.example.demo.application.port.out.OutboxEventRecord;
+import com.example.demo.application.port.out.OutboxEventSender;
+import com.example.demo.application.port.out.OutboxEventSender.SendResult;
+import com.example.demo.application.port.out.OutboxRelayGateway;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.Optional;
+import org.springframework.stereotype.Service;
+
+/*
+ * No `@Transactional`: claim, send and mark are three separate units by design — the gateway
+ * opens one per mark (`OutboxEventStore.java.example`), and holding a transaction across a
+ * broker send is the long transaction Form B exists to avoid.
+ */
+@Service
+public class RelayOutboxEventsService implements RelayOutboxEvents {
+
+    private final OutboxRelayGateway gateway;
+    private final OutboxEventSender sender;
+    private final Clock clock;
+    private final int batchSize;
+    private final int maxAttempts;
+
+    public RelayOutboxEventsService(
+            OutboxRelayGateway gateway, OutboxEventSender sender, Clock clock, OutboxRelaySettings settings) {
+        this.gateway = gateway;
+        this.sender = sender;
+        this.clock = clock;
+        this.batchSize = settings.batchSize();
+        this.maxAttempts = settings.maxAttempts();
+    }
+
+    @Override
+    public RelayOutcome relayPending() {
+        int published = 0;
+        int failed = 0;
+        int deadLettered = 0;
+        for (OutboxEventRecord event : gateway.claimPending(batchSize)) {
+            SendResult result = sender.send(event);
+            switch (result.status()) {
+                case SENT -> {
+                    gateway.markPublished(event.eventId());
+                    published++;
+                }
+                case UNROUTABLE -> {
+                    // Dead-lettered by name, not by an attempts count that happens to arrive at
+                    // the same state (lessons-learned-013 § 8.4).
+                    gateway.markDeadLettered(event.eventId(), result.reason());
+                    deadLettered++;
+                }
+                case FAILED -> {
+                    // The send may well have succeeded; the consumer's dedupe is what makes the
+                    // retry safe. One poisoned row must not stall the batch.
+                    if (gateway.markFailed(event.eventId(), result.reason(), maxAttempts)) {
+                        deadLettered++;
+                    } else {
+                        failed++;
+                    }
+                }
+            }
+        }
+        return new RelayOutcome(published, failed, deadLettered);
+    }
+
+    @Override
+    public Optional<Duration> oldestPendingAge() {
+        return gateway.oldestPendingOccurredAt().map(occurredAt -> Duration.between(occurredAt, clock.instant()));
+    }
+}
+
+// --- outbox/KafkaOutboxEventSender.java (the only class in Form B that imports KafkaTemplate)
+package com.example.demo.adapter.out.messaging.outbox;
+
+import com.example.demo.application.port.out.OutboxEventRecord;
+import com.example.demo.application.port.out.OutboxEventSender;
+import java.util.concurrent.CompletionException;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+class KafkaOutboxEventSender implements OutboxEventSender {
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final TopicResolver topics;
+
+    KafkaOutboxEventSender(KafkaTemplate<String, String> kafkaTemplate, TopicResolver topics) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.topics = topics;
+    }
+
+    @Override
+    public SendResult send(OutboxEventRecord event) {
+        String topic = topics.forEventType(event.eventType());
+        if (topic == null) {
+            return new SendResult(Status.UNROUTABLE, "no topic mapped for " + event.eventType());
+        }
+        try {
+            // Partition key = aggregate id, so per-aggregate order holds (`messaging.md`).
+            kafkaTemplate.send(topic, event.aggregateId(), event.payload()).join();
+            return SendResult.sent();
+        } catch (CompletionException e) {
+            // `join()` wraps every send failure in this one type, which is also why the catch is
+            // not `RuntimeException`: Checkstyle's IllegalCatch rejects that, and the narrower
+            // type is what the call actually throws.
+            return new SendResult(Status.FAILED, e.getMessage());
+        }
+    }
+}
+
 // --- outbox/OutboxProperties.java (adapter-local binding of `app.outbox.*`)
 package com.example.demo.adapter.out.messaging.outbox;
 
@@ -165,130 +338,55 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /*
  * `app.outbox.*` bound once, instead of an `@Value` per constant. WHICH VALUES exist and what
- * they should be is `persistence-architect`'s call — it owns the table and the pacing the
- * columns encode (`.claude/decisions/0057-lessons-learned-012-inferences.md`, item 9); the
- * binding itself is adapter-local, which is why the record lives here next to its only reader
- * and no messaging class imports a persistence type.
+ * they should be is `persistence-architect`'s call for batch size and attempt ceiling — it owns
+ * the table and the pacing the columns encode (`.claude/decisions/0057-lessons-learned-012-inferences.md`,
+ * item 9) — and `jobs-architect`'s for the on/off switch and the poll interval.
  *
- * `pollInterval` is NOT in this record and cannot be: `@Scheduled(fixedDelayString = ...)` is
- * read by the annotation processor before any bean exists, so it resolves the property
- * placeholder directly. A value bound here would be read by nothing while the schedule quietly
- * fell back to its default (lessons-learned-013 § 2). Keep the placeholder and this record in
- * agreement — the property is named once in each, and nowhere else.
+ * `pollInterval` is NOT in this record and cannot be: `@Scheduled(fixedDelayString = ...)` on
+ * `OutboxRelayJob` is read by the annotation processor before any bean exists, so it resolves
+ * the property placeholder directly. A value bound here would be read by nothing while the
+ * schedule quietly fell back to its default (lessons-learned-013 § 2). `enabled` is not here
+ * either: it gates the job with `@ConditionalOnProperty`, which reads the property itself.
  */
 @ConfigurationProperties(prefix = "app.outbox")
-public record OutboxProperties(boolean enabled, int batchSize, int maxAttempts) {
+record OutboxProperties(int batchSize, int maxAttempts) {
 
-    public OutboxProperties {
+    OutboxProperties {
         batchSize = batchSize > 0 ? batchSize : 100;
         maxAttempts = maxAttempts > 0 ? maxAttempts : 5;
     }
 }
 
-// --- outbox/SchedulingConfig.java (adapter-local framework wiring — the relay is the only @Scheduled)
+// --- outbox/OutboxRelayConfig.java (adapter-local wiring — turns the binding into the settings)
 package com.example.demo.adapter.out.messaging.outbox;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.example.demo.application.service.OutboxRelaySettings;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
 /*
- * `@EnableScheduling` lives next to the only component that needs it, not in a project-wide
- * config package: the same reason `KafkaProducerConfig` sits in the messaging adapter — a
- * Kafka-typed or relay-typed `@Configuration` is adapter-local wiring, and
- * `.claude/rules/messaging.md` § How to verify requires every Kafka-typed import to sit under
- * the messaging package.
+ * Produces the settings, never the service: `RelayOutboxEventsService` is a `@Service` and
+ * Spring builds it. Not gated — the pass is harmless until something calls it; what must not
+ * run under the integration tests is the TRIGGER, gated where it lives.
  */
 @Configuration
-@EnableScheduling
-@ConditionalOnProperty(name = "app.outbox.enabled", matchIfMissing = true)
-class SchedulingConfig {}
+@EnableConfigurationProperties(OutboxProperties.class)
+class OutboxRelayConfig {
 
-// --- outbox/OutboxRelay.java (the only class in Form B that imports KafkaTemplate)
-package com.example.demo.adapter.out.messaging.outbox;
-
-import com.example.demo.application.port.out.OutboxEventRecord;
-import com.example.demo.application.port.out.OutboxRelayGateway;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.concurrent.CompletionException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-@Component
-@ConditionalOnProperty(name = "app.outbox.enabled", matchIfMissing = true)
-public class OutboxRelay {
-
-    private final OutboxProperties properties;
-    private final OutboxRelayGateway gateway;
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final TopicResolver topics;
-    private final Clock clock;
-    private final Counter deadLettered;
-
-    public OutboxRelay(
-            OutboxProperties properties,
-            OutboxRelayGateway gateway,
-            KafkaTemplate<String, String> kafkaTemplate,
-            TopicResolver topics,
-            Clock clock,
-            MeterRegistry meters) {
-        this.properties = properties;
-        this.gateway = gateway;
-        this.kafkaTemplate = kafkaTemplate;
-        this.topics = topics;
-        this.clock = clock;
-        // An event the partial declares "must not be lost" and a failure path that only logs
-        // is loss made silent and permanent — the exact property Form B was chosen to avoid
-        // (lessons-learned-013 § 6). The counter says it happened; the gauge says it is about
-        // to, which is the half a log line can never give.
-        this.deadLettered = Counter.builder("outbox.events.dead_lettered")
-                .description("Outbox rows abandoned after exhausting their attempts")
-                .register(meters);
-        Gauge.builder("outbox.pending.age.seconds", this::oldestPendingAgeSeconds)
-                .description("Age of the oldest still-unpublished outbox row")
-                .register(meters);
-    }
-
-    /*
-     * Fixed delay, not fixed rate: a slow pass must not overlap the next one. Interval and
-     * batch size come from configuration — `application-kafka.yml.example`, `app.outbox.*`.
-     */
-    @Scheduled(fixedDelayString = "${app.outbox.poll-interval:PT1S}")
-    public void relay() {
-        for (OutboxEventRecord event : gateway.claimPending(properties.batchSize())) {
-            String topic = topics.forEventType(event.eventType());
-            if (topic == null) {
-                // No retry will map a type nobody registered. Dead-letter it by name, not by
-                // an attempts count that happens to arrive at the same state.
-                gateway.markDeadLettered(event.eventId(), "no topic mapped for " + event.eventType());
-                deadLettered.increment();
-                continue;
-            }
-            try {
-                kafkaTemplate.send(topic, event.aggregateId(), event.payload()).join();
-                gateway.markPublished(event.eventId());
-            } catch (CompletionException e) {
-                // `join()` wraps every send failure in this one type, which is also why the
-                // catch is not `RuntimeException`: Checkstyle's IllegalCatch rejects that, and
-                // the narrower type is what the call actually throws.
-                // The send may well have succeeded; the consumer's dedupe is what makes the
-                // retry safe. Never rethrow: one poisoned row must not stall the batch.
-                if (gateway.markFailed(event.eventId(), e.getMessage(), properties.maxAttempts())) {
-                    deadLettered.increment();
-                }
-            }
-        }
-    }
-
-    private double oldestPendingAgeSeconds() {
-        return gateway.oldestPendingOccurredAt()
-                .map(occurredAt -> (double) Duration.between(occurredAt, clock.instant()).toSeconds())
-                .orElse(0d);
+    @Bean
+    OutboxRelaySettings outboxRelaySettings(OutboxProperties properties) {
+        return new OutboxRelaySettings(properties.batchSize(), properties.maxAttempts());
     }
 }
+
+/*
+ * TESTS (`40-testes.md`), none of them deferrable, all without a broker:
+ *  - `RelayOutboxEventsServiceTest` — unit, fake gateway and sender: the SENT, FAILED and
+ *    UNROUTABLE paths, the FAILED row that exhausts its attempts, and one failing row not
+ *    stopping the rest of the batch;
+ *  - `KafkaOutboxEventSenderTest` — unit, mocked `KafkaTemplate`: the three results.
+ * The broker-level test may be deferred by `40-testes.md`; these may not. Relay coverage that
+ * comes only from a scheduler having run during the integration tests is accidental
+ * (lessons-learned-013 § 8.1).
+ */

@@ -1,0 +1,167 @@
+/*
+ * EXEMPLAR — Spring Batch 6 (Boot 4): a chunk-oriented job, fired by a scheduler.
+ * The answer when a run processes more rows than one pass should hold, and a failure halfway
+ * must restart from the last committed chunk instead of from zero. Batch runs a job; it does
+ * not schedule one — the trigger below is `@Scheduled` + ShedLock, or Quartz when the fire
+ * itself must survive downtime (`references/tool-decision-matrix.md` § 2, "Composition").
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` (§ Execution guarantees — restart from point of failure)
+ *
+ * SPRING BATCH 6 — what changed and what this file therefore does NOT use:
+ *  - `JobBuilderFactory` / `StepBuilderFactory` are REMOVED: `new JobBuilder(name, repository)`,
+ *    `new StepBuilder(name, repository)`;
+ *  - the default `JobRepository` is RESOURCELESS — no run history, so no restart. Restart is the
+ *    whole reason to use Batch, so the JDBC repository is enabled explicitly;
+ *  - `JobOperator` extends `JobLauncher`, and `JobRepository` extends `JobExplorer`.
+ *  Source: https://github.com/spring-projects/spring-batch/wiki/Spring-Batch-6.0-Migration-Guide
+ *  A project on Boot 3 / Batch 5 takes `JobLauncher` and the same builders — read the parent in
+ *  `pom.xml` before generating; never assume the major.
+ *
+ * WHERE THE LAYERS SIT. Reader and writer are adapters: they read through and write through
+ * ports the application layer owns, never a sibling adapter's JPA repository
+ * (`architecture-ddd.md` § Adapters). The processor calls the domain. The job definition is
+ * scheduling wiring and lives in the scheduling package.
+ *
+ * IDENTITY. A `JobInstance` is job name + identifying parameters. The business date is the
+ * identifying parameter: a second launch for the same date is refused once complete, and a
+ * failed one RESTARTS the same instance. Never a timestamp "run id" — that makes every launch a
+ * new instance and turns restart into rerun-from-zero.
+ *
+ * SCHEMA. `BATCH_*` metadata tables are a schema requirement in the partial's § 6, written by
+ * `persistence-architect` as a migration from the vendor script;
+ * `spring.batch.jdbc.initialize-schema: never`. `spring.batch.job.enabled: false` — Batch must
+ * not run every job at startup; the scheduler launches it.
+ *
+ * DEPENDENCY (partial § 7): org.springframework.boot:spring-boot-starter-batch — managed by the
+ * Boot parent. Plus the scheduler's own (ShedLock here).
+ *
+ * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ */
+
+// --- ImportPriceListJobConfig.java
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.ApplyPriceListLine;
+import com.example.demo.application.port.out.PriceListSource;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.Step;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.infrastructure.item.ItemReader;
+import org.springframework.batch.infrastructure.item.ItemWriter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.transaction.PlatformTransactionManager;
+
+@Configuration
+class ImportPriceListJobConfig {
+
+    static final String JOB_NAME = "import-price-list";
+
+    @Bean
+    Job importPriceListJob(JobRepository repository, Step applyPriceListStep) {
+        return new JobBuilder(JOB_NAME, repository).start(applyPriceListStep).build();
+    }
+
+    /*
+     * Chunk of 500: one transaction per 500 lines, one committed chunk per restart point.
+     * Skip a malformed line (counted, reported), retry a transient failure — per item, so one
+     * bad line never fails the other 99 999. Limits from the partial's § 4.
+     */
+    @Bean
+    Step applyPriceListStep(
+            JobRepository repository,
+            PlatformTransactionManager transactions,
+            ItemReader<PriceListLine> priceListReader,
+            ItemWriter<PriceListLine> priceListWriter) {
+        return new StepBuilder("apply-price-list", repository)
+                .<PriceListLine, PriceListLine>chunk(500)
+                .transactionManager(transactions)
+                .reader(priceListReader)
+                .writer(priceListWriter)
+                .faultTolerant()
+                .skip(MalformedPriceListLineException.class)
+                .skipLimit(100)
+                .retry(TransientDataAccessException.class)
+                .retryLimit(3)
+                .build();
+    }
+
+    // Reader: pages through `PriceListSource` (an application-owned outbound port).
+    // Writer: calls `ApplyPriceListLine` (the inbound port) per line — the use case owns the
+    // business rule; Batch owns chunking, restart and skip.
+}
+
+// --- ImportPriceListTrigger.java (the scheduler fires; Batch runs)
+package com.example.demo.adapter.in.scheduling;
+
+import java.time.LocalDate;
+import java.time.ZoneId;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.parameters.JobParametersBuilder;
+import org.springframework.batch.core.launch.JobOperator;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.jobs.import-price-list.enabled", matchIfMissing = true)
+class ImportPriceListTrigger {
+
+    private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
+
+    private final JobOperator jobOperator;
+    private final Job importPriceListJob;
+    private final JobRunRecorder recorder;
+
+    ImportPriceListTrigger(JobOperator jobOperator, Job importPriceListJob, JobRunRecorder recorder) {
+        this.jobOperator = jobOperator;
+        this.importPriceListJob = importPriceListJob;
+        this.recorder = recorder;
+    }
+
+    @Scheduled(cron = "${app.jobs.import-price-list.cron:0 0 4 * * *}", zone = "${app.jobs.zone:America/Sao_Paulo}")
+    @SchedulerLock(name = "importPriceList", lockAtMostFor = "PT2H", lockAtLeastFor = "PT1M")
+    void run() {
+        // Identifying parameter = business date: the same date twice is refused once complete,
+        // and a failed run for it restarts from its last chunk.
+        var parameters = new JobParametersBuilder()
+                .addLocalDate("businessDate", LocalDate.now(ZONE))
+                .toJobParameters();
+        recorder.run(ImportPriceListJobConfig.JOB_NAME,
+                () -> launch(parameters));
+    }
+
+    private void launch(org.springframework.batch.core.job.parameters.JobParameters parameters) {
+        try {
+            jobOperator.start(importPriceListJob, parameters);
+        } catch (org.springframework.batch.core.launch.JobExecutionAlreadyRunningException
+                | org.springframework.batch.core.launch.JobInstanceAlreadyCompleteException
+                | org.springframework.batch.core.launch.JobRestartException
+                | org.springframework.batch.core.job.parameters.InvalidJobParametersException e) {
+            throw new IllegalStateException("could not launch " + ImportPriceListJobConfig.JOB_NAME, e);
+        }
+    }
+}
+
+/*
+ * PACKAGE NAMES ABOVE follow Spring Batch 6's reorganization (`…core.job.Job`,
+ * `…core.step.Step`, `…infrastructure.item.*`). They moved between majors: resolve the imports
+ * against the version the project's parent brings, never from this file.
+ *
+ * application.yml:
+ *
+ * spring:
+ *   batch:
+ *     job:
+ *       enabled: false                # the trigger launches; startup does not
+ *     jdbc:
+ *       initialize-schema: never      # BATCH_* come from a migration
+ *
+ * JDBC job repository: `@EnableJdbcJobRepository` on a configuration class (Batch 6), or the
+ * Boot autoconfiguration when a DataSource is present — verify which one the resolved version
+ * applies; a resourceless repository silently makes the restart above impossible.
+ */

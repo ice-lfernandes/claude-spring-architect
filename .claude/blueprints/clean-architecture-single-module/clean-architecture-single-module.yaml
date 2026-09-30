@@ -62,6 +62,8 @@ packages:
     infrastructure.rest: "infrastructure.rest"
     infrastructure.persistence: "infrastructure.persistence"
     infrastructure.messaging: "infrastructure.messaging"
+    # Scheduling triggers (a driving adapter calling an input port) — decision 0087.
+    infrastructure.scheduling: "infrastructure.scheduling"
     infrastructure.config: "infrastructure.config"
     commons.logging: "commons.logging"
 

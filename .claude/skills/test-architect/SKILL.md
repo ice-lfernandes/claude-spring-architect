@@ -101,9 +101,12 @@ what's left to cover outside of transport.
 ## Procedure — design mode
 
 1. **Read the partials.** `00-caso-de-uso.md` and `10-dominio.md` are mandatory;
-   without the second, stop. Read `20-persistencia.md` and `30-rest.md` when they
-   exist. Extract: each invariant and its matching exception, each port, each query,
-   and the HTTP contract's case table.
+   without the second, stop. Read `20-persistencia.md`, `30-rest.md` and `35-jobs.md` when
+   they exist. Extract: each invariant and its matching exception, each port, each query,
+   the HTTP contract's case table, and each job of `35-jobs.md` § 1 — a job is tested through
+   the inbound port it calls, never by waiting for a scheduler, and the test profile's
+   switches (`@.claude/rules/scheduling.md` § Triggers) get one context test proving no
+   trigger runs under it.
 
 2. **Survey what already exists.**
 
@@ -236,8 +239,9 @@ bypasses as an executor.
 **Unfiltered Bash:** setup mode verifies with `./mvnw` goals that depend on the build shape, plus `curl` for the Testcontainers image tag and `java …ArchHook.java` — a fixed list trails the build. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
-(mandatory in design mode — stops without the second), `20-persistencia.md` and
-`30-rest.md` when they exist, `@.claude/rules/testing.md`,
+(mandatory in design mode — stops without the second), `20-persistencia.md`,
+`30-rest.md` and `35-jobs.md` when they exist, `@.claude/rules/scheduling.md` when the last
+one does, `@.claude/rules/testing.md`,
 `@.claude/rules/error-handling.md`, `@.claude/rules/naming.md`,
 `@.claude/rules/code-quality.md`, `@.claude/rules/architecture-ddd.md`,
 `@.claude/rules/logging.md` (masking test requirement for fields `30-rest.md` marked

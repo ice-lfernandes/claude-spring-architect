@@ -84,6 +84,13 @@ packages:
     domain.gateway: "domain.gateway"
     persistence.persistence: "persistence"
     presentation.rest: "presentation"
+    # Scheduling triggers (a driving adapter calling a domain service, same rank as
+    # `presentation` — Palermo's tenet 3, any outer ring may call an inner one) live in
+    # `app`, the composition root (depends_on: ["*"]), not gated by the `rest` feature
+    # the `presentation` module is — a job can exist with no REST endpoint. Compiled
+    # into `app` until a project needs build isolation for it, same reasoning as
+    # hexagonal's bootstrap-embedded `adapter.in.scheduling` — decision 0087.
+    app.scheduling: "app.scheduling"
     commons.logging: "commons.logging"
 
 # Naming convention for this blueprint (specific to onion, not universal — see

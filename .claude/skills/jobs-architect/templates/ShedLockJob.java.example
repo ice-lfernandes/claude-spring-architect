@@ -1,0 +1,102 @@
+/*
+ * EXEMPLAR — `@Scheduled` + ShedLock: one instance runs the pass, the others skip it.
+ * The answer when more than one instance runs, the pass must not run twice, and its work is
+ * NOT already partitioned by a locking row claim (then the claim coordinates, and a lock on top
+ * idles every instance but one — `references/tool-decision-matrix.md` § 3).
+ * Builds on `ScheduledJob.java.example`: same `SchedulingConfig`, same `JobRunRecorder`, same
+ * gate property. Only the lock is new.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` (§ Execution guarantees — the two lock bounds)
+ *
+ * WHAT SHEDLOCK IS NOT: a scheduler. It persists no schedule, catches up no missed fire, retries
+ * nothing. A fire that lands while another instance holds the lock is skipped, not queued.
+ *
+ * THE TWO BOUNDS, and where each number comes from — the partial's § 3 states both:
+ *  - `lockAtMostFor` > the worst run observed, with margin. Shorter, and the lock expires while
+ *    the first instance still works, so a second one starts. It exists for the instance that
+ *    died holding the lock; it is not a timeout on the job;
+ *  - `lockAtLeastFor` > the clock difference between instances, for a job shorter than that:
+ *    otherwise an instance whose clock runs behind fires "the same" run again right after.
+ *
+ * DATABASE CLOCK. `usingDbTime()` takes `lock_until` from the database, not from each pod —
+ * the only clock every instance shares.
+ *
+ * THE TABLE is a schema requirement in the partial's § 6 — `shedlock`, vendor DDL for the JDBC
+ * provider — and `persistence-architect` writes it as a migration. Nothing here creates it.
+ *
+ * DEPENDENCIES (partial § 7, versions resolved at runtime — not managed by the Boot parent):
+ *   net.javacrumbs.shedlock:shedlock-spring
+ *   net.javacrumbs.shedlock:shedlock-provider-jdbc-template
+ *
+ * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ */
+
+// --- ShedLockConfig.java (the provider — one per project, next to SchedulingConfig)
+package com.example.demo.adapter.in.scheduling;
+
+import javax.sql.DataSource;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
+import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+/*
+ * The default upper bound is a safety net for a job that forgot its own, not a value to rely
+ * on: every `@SchedulerLock` below states both bounds.
+ */
+@Configuration
+@EnableSchedulerLock(defaultLockAtMostFor = "PT10M")
+class ShedLockConfig {
+
+    @Bean
+    LockProvider lockProvider(DataSource dataSource) {
+        return new JdbcTemplateLockProvider(JdbcTemplateLockProvider.Configuration.builder()
+                .withJdbcTemplate(new JdbcTemplate(dataSource))
+                .usingDbTime()
+                .build());
+    }
+}
+
+// --- CloseExpiredQuotesJob.java
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.CloseExpiredQuotes;
+import net.javacrumbs.shedlock.core.LockAssert;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.jobs.close-expired-quotes.enabled", matchIfMissing = true)
+class CloseExpiredQuotesJob {
+
+    private final CloseExpiredQuotes closeExpiredQuotes;
+    private final JobRunRecorder recorder;
+
+    CloseExpiredQuotesJob(CloseExpiredQuotes closeExpiredQuotes, JobRunRecorder recorder) {
+        this.closeExpiredQuotes = closeExpiredQuotes;
+        this.recorder = recorder;
+    }
+
+    /*
+     * The lock name is the job's identity across instances — stable, one per job, never shared
+     * between two jobs. Bounds from the partial's § 3.
+     */
+    @Scheduled(fixedDelayString = "${app.jobs.close-expired-quotes.interval:PT5M}")
+    @SchedulerLock(name = "closeExpiredQuotes", lockAtMostFor = "PT15M", lockAtLeastFor = "PT30S")
+    void run() {
+        // Fails fast if the method is ever called without the lock — a refactor that drops
+        // the annotation, or a direct call from a test that believed it was locked.
+        LockAssert.assertLocked();
+        recorder.run("close-expired-quotes", closeExpiredQuotes::closeExpired);
+    }
+}
+
+/*
+ * TESTING. A test that calls the job's method directly has no lock: call the inbound port
+ * instead, which is what the test proves anyway. When the lock itself is under test,
+ * `LockAssert.TestHelper.makeAllAssertsPass(true)` in the test and nowhere else.
+ */

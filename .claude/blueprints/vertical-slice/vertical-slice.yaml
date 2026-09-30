@@ -81,6 +81,12 @@ packages:
     domain.event: "domain.event"
     domain.exception: "domain.exception"
     bootstrap.config: "config"
+    # Scheduling triggers are the one inbound adapter that does NOT live inline in its
+    # slice: every trigger — a slice's own job and the outbox relay/prune alike — goes here,
+    # next to `config`, so the project keeps one scheduling wiring, one `@EnableScheduling`,
+    # and one place the scheduling norm's `paths` and grep look at (decision 0087). The
+    # trigger calls the slice's handler; the slice keeps the logic.
+    bootstrap.scheduling: "config.scheduling"
 
 # Naming convention for this blueprint (specific to vertical-slice, not universal —
 # see .claude/rules/architecture-ddd.md for what IS universal, DDD, and

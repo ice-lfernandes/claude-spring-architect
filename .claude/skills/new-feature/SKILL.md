@@ -47,6 +47,8 @@ use case number or slug — `use-case-design` does.
   migration SQL included as a code block, never as a file under `src/`
 - `docs/use-cases/UC-NNN-<slug>/25-mensageria.md` — via `messaging-architect`, only if
   `10-dominio.md`'s Events block names external (Kafka) delivery
+- `docs/use-cases/UC-NNN-<slug>/35-jobs.md` — via `jobs-architect`, only if
+  `25-mensageria.md` chose Form B or `00-caso-de-uso.md`'s trigger is a schedule
 - `docs/use-cases/UC-NNN-<slug>/30-rest.md` — via `rest-api-architect`
 - `docs/use-cases/UC-NNN-<slug>/40-testes.md` — via `test-architect`
 
@@ -83,8 +85,10 @@ below. No end of this flow is left without an explicit git instruction.
 4. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
    (Kafka) delivery and `25-mensageria.md` is missing (depends on 2). Skipped entirely
    when the event, if any, stays in-process — not every use case needs it
-5. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3, 4)
-6. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,4,5)
+5. `jobs-architect` — invoked if `25-mensageria.md` chose Form B or the trigger is a
+   schedule, and `35-jobs.md` is missing (depends on 1, 4). Skipped otherwise
+6. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3, 4, 5)
+7. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,4,5,6)
 
 **Why REST and messaging both run before persistence.** The order follows who generates
 requirements for whom. REST generates schema requirements — `Idempotency-Key` on a
@@ -100,13 +104,22 @@ again. Messaging depends only on step 2, so running it before persistence costs 
 and persistence then reads both requirement lists, `30-rest.md` block 4 and
 `25-mensageria.md` § 6, in its first pass.
 
+Jobs sits between them for the same reason. The scheduling technology it picks brings tables
+(`shedlock`, `QRTZ_*`, `BATCH_*`), the relay's claim depends on how many instances run the
+pass, and the prune job needs a bounded delete — three schema facts invisible to persistence
+until `35-jobs.md` § 3 and § 6 exist. Jobs itself needs only the use case and messaging's
+publication form, so it costs nothing to run first
+(`@.claude/decisions/0087-jobs-architect-skill.md`).
+
 **Design order isn't implementation order.** Messaging is designed fourth and implemented
 sixth: `UC-NNN-spec.md` keeps messaging as block 6, and the executor's conditional Block M
-still runs between REST and Tests. The pipeline orders by who needs whose requirements;
+still runs between REST and Tests. Jobs is block 7, implemented by the conditional Block J
+right after Block M — a trigger compiles against the inbound port it calls, so it comes last
+among the production blocks. The pipeline orders by who needs whose requirements;
 the spec orders by what compiles against what.
-7. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
+8. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
    one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
-8. `git-publish` — invoked at the end, per § End of flow
+9. `git-publish` — invoked at the end, per § End of flow
 
 `java-patterns` is not a pipeline step: it carries no spec and this orchestrator never
 invokes it. Its catalog travels preloaded inside `java-spring-boot-developer` and gets
@@ -402,12 +415,29 @@ approved anyway, so consolidation gates the same thing for every path.
 
 **Output:** "✅ Messaging ready", "— skipped (no external delivery)", or gaps.
 
-### Step 5: Persistence (depends on 1,2,3,4)
+### Step 4b: Jobs (depends on 1, 4, conditional)
+
+Invoke `/jobs-architect UC-NNN` if `35-jobs.md` is missing and at least one holds:
+`25-mensageria.md` § 2 chose **Form B**, `00-caso-de-uso.md`'s trigger is a schedule, a
+recurring run, a batch or a background job, or a partial's `Deferred` block names a scheduled
+job. None holds → skip this step. If `35-jobs.md` exists: read, validate (nine blocks: jobs,
+technology, coordination, execution guarantees, observability, schema requirements, declared
+dependencies, configuration, deferred).
+
+A Form B case with no `35-jobs.md` is a gap, not a skip: the relay would have no schedule and
+the outbox no prune — the exact state lessons-learned-014 § 9 found. § 3's replica count and
+§ 6's requirements are what step 5 reads; § 7 is the only list that entitles the executor to
+add a scheduling dependency to `pom.xml`.
+
+**Output:** "✅ Jobs ready", "— skipped (no scheduled work)", or gaps.
+
+### Step 5: Persistence (depends on 1,2,3,4,4b)
 
 If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
-both schema requirement lists in the same pass — `30-rest.md` block 4 (the idempotency
-table among them) and, when step 4 ran, `25-mensageria.md` § 6 (the shared outbox table,
-the dedupe table). If it exists: read, validate (seven blocks: schema, mapping, adapter and
+every schema requirement list in the same pass — `30-rest.md` block 4 (the idempotency
+table among them), when step 4 ran `25-mensageria.md` § 6 (the shared outbox table, the
+dedupe table), and when step 4b ran `35-jobs.md` § 3 and § 6 (the replica count its claim
+strategy must meet, the scheduling tables, the prune's bounded delete). If it exists: read, validate (seven blocks: schema, mapping, adapter and
 ports, migrations, configuration, declared dependencies, deferred). § 6 is the persistence twin
 of `25-mensageria.md` § 7,
 and the same rule holds: it is the only list that entitles the executor to touch `pom.xml` —
@@ -422,9 +452,10 @@ If it exists: read, validate (four blocks: pyramid, fixtures, coverage, cases).
 
 **Output:** "✅ Tests ready" or gaps.
 
-### Consolidation (after 1,2,3,5,6 ✅ — step 4 conditional)
+### Consolidation (after 1,2,3,5,6 ✅ — steps 4 and 4b conditional)
 
-If all specs that apply exist and validate (messaging only when step 4 wasn't skipped):
+If all specs that apply exist and validate (messaging only when step 4 wasn't skipped, jobs
+only when step 4b wasn't):
 
 1. **Resolve divergences before consolidating.** The partials are written by different
    skills, and downstream corrects upstream: `30-rest.md` fixes the path and status
@@ -433,7 +464,7 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    wins pushes the work onto the reader — and the note ends up two hundred lines away
    from where it matters.
 
-   Walk through the five partials and, for each fact that appears in more than one with
+   Walk through every partial in the folder and, for each fact that appears in more than one with
    different values, apply this precedence:
 
    | Fact | Who wins |
@@ -441,7 +472,8 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    | HTTP path, verb, status, body shape | `30-rest.md` |
    | Table, column, key, index, migration | `20-persistencia.md` — including every table or column another partial *asked for*: the requirement is born in `30-rest.md` block 4 or `25-mensageria.md` § 6, the final form (name, type, nullability, index, migration) is always this one's |
    | Topic, serialization, delivery guarantee, consumer retry and DLQ | `25-mensageria.md` |
-   | Outbox table, its columns, the claim query, and the pacing they encode (poll interval, backoff, attempt ceiling, retention) | `20-persistencia.md` — the whole outbox is its territory. `25-mensageria.md` declares the **guarantee** the pacing has to deliver, never the columns; a § 6 row naming columns is reported as a divergence and the guarantee is what carries over |
+   | Outbox table, its columns, the claim query, and the values the columns encode (batch size, backoff, attempt ceiling, retention window, the prune's statement) | `20-persistencia.md` — the whole table is its territory. `25-mensageria.md` declares the **guarantee** those values have to deliver, never the columns; a § 6 row naming columns is reported as a divergence and the guarantee is what carries over |
+   | Scheduling technology, a job's trigger and cadence (the relay's poll interval included), coordination across instances and the replica count, overlap and missed-run policy, on/off property, job metrics, the prune job | `35-jobs.md`. A claim strategy in `20-persistencia.md` that does not meet `35-jobs.md` § 3's replica count is not settled by precedence — it is a guarantee dropped by a shape decision: **stop and ask** |
    | Aggregate name, value object, port, event | `10-dominio.md` |
    | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
@@ -470,7 +502,7 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      partial that details it. Never copy a partial's tables, SQL, or code: a copied
      consolidation doubled the output of a real run and added nothing the partial lacked
    - Structure: 5 blocks (use case, domain, persistence, REST, tests), plus a 6th
-     (messaging) only when step 4 wasn't skipped
+     (messaging) only when step 4 wasn't skipped, and a 7th (jobs) only when step 4b wasn't
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
    - **A row that adds a precondition must name its satisfier, or consolidation stops.** Any
@@ -486,7 +518,8 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
      on every real call is not a detail the reader should have to find in a test fixture
      (lessons-learned-013 § 5)
    - **A partial that applies must carry its declared-dependency section, or consolidation
-     stops.** `20-persistencia.md` § 6 always; `25-mensageria.md` § 7 whenever step 4 ran. The
+     stops.** `20-persistencia.md` § 6 always; `25-mensageria.md` § 7 whenever step 4 ran;
+     `35-jobs.md` § 7 whenever step 4b ran. The
      value `none` is legitimate and common — most cases need no new dependency — but **absence
      is not `none`**: one says the design skill decided nothing was needed, the other says
      nobody looked, and the executor cannot tell them apart. Steps 4 and 5 validate the same
@@ -530,8 +563,9 @@ If all specs that apply exist and validate (messaging only when step 4 wasn't sk
    - Order: implementation order (depends-on)
    - Recipient: `java-spring-boot-developer` agent — a spec with § 6 runs the executor's
      conditional Block M (steps M1-M4, between REST and Tests), which generates the Kafka
-     producer/consumer adapters from `25-mensageria.md`. Doesn't touch the fixed 19-item
-     checklist either way
+     producer/consumer adapters from `25-mensageria.md`; a spec with § 7 runs Block J (steps
+     J1-J3, right after Block M), which generates the scheduling wiring and triggers from
+     `35-jobs.md`. Neither touches the fixed 19-item checklist
 
 3. **Check whether the architecture tests can now be turned on.** The bootstrap doesn't
    install ArchUnit or the coverage gate by design: a `check` over an empty set proves
@@ -669,7 +703,7 @@ measurable per case.
 Lives at `.claude/skills/new-feature/templates/feature-spec.md.example`; the short path
 uses `templates/feature-spec-short.md.example`.
 
-Structure (5 blocks, implementation order — 6 when messaging applies):
+Structure (5 blocks, implementation order — plus messaging and jobs when they apply):
 - Frontmatter: `status:`
 - Block 1: Use case
 - Block 2: Domain model (aggregate, VOs, invariants, ports, events)
@@ -677,6 +711,8 @@ Structure (5 blocks, implementation order — 6 when messaging applies):
 - Block 3.5 (conditional): Messaging (producer/consumer, delivery semantics, retry/DLQ)
   — present only when `10-dominio.md` named external delivery for the event; "none"
   otherwise. See the known gap above — the executor doesn't consume this block yet
+- Block 3.6 (conditional): Jobs (technology, triggers, coordination, replica count) —
+  present only when step 4b ran; "none" otherwise. Implemented by the executor's Block J
 - Block 4: REST API (resources, DTOs, errors, pagination, idempotency)
 - Block 5: Tests (pyramid, critical cases, coverage, checklist)
 - Impact on approved use cases ("none" when empty)
