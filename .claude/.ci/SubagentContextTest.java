@@ -10,7 +10,7 @@
 // opposite drift is silent too: every agent paying ~9 000 characters of context it never
 // uses. `schema` checks the render size; only running the mode checks who receives it.
 //
-// Uses the repository's real extensions.json and java-patterns/SKILL.md.
+// Uses the repository's real extensions.json and gof-design-patterns/SKILL.md.
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;

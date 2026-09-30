@@ -1,5 +1,5 @@
 ---
-name: java-patterns
+name: gof-design-patterns
 description: >
   Chooses and implements a design pattern in Java/Spring from the symptom that
   justifies it. Use when the request involves a design pattern, Strategy, Factory,
@@ -10,7 +10,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep
 model: opus
 ---
 
-# Java Patterns
+# GoF Design Patterns
 
 ## Why this is a skill and not a rule
 
@@ -64,6 +64,43 @@ covered by the language/framework). It's triage, not a second menu: the entry ru
 still gates every row in it the same way it gates the seven here — an exemplar existing
 is not permission to apply it without a real symptom.
 
+## Design-time use
+
+A pattern creates classes and interfaces, so when it is chosen decides whether the approved
+spec shows the code's real shape. Chosen by the executor after approval, it never does. So
+every design skill of the `/new-feature` pipeline runs this check for **its own layer**,
+before writing its partial, and records the answer there — the layer that owns the classes
+owns the pattern that shapes them. This section is read, never invoked: a design run cannot
+reach a `build`-class skill, and it needs no writer here.
+
+1. **Forces in the spec.** Read the lines of `00-caso-de-uso.md` and of the upstream partials
+   that this layer implements, for the forces § Catalog lists: variants or rules the spec
+   enumerates, a cross-cutting concern over several implementations, construction with
+   invariants, a predicate used both to decide and to query.
+2. **Symptoms on disk.** The layer's existing code, already surveyed by the skill's own
+   survey step: a discriminating type another case already switched on, adapters or
+   listeners repeating the same skeleton with one step different. The class this case adds
+   would be the next copy — that is the symptom, cited by `file:line`.
+3. **Match against § Catalog**, then `references/pattern-catalog.md` for what no row covers.
+   The "When **not**" column binds exactly as it does for code. No match, or "When not"
+   applies: the answer is `none`, and that answer is written.
+4. **Write the `## Design patterns` section of the partial** — always present, one row per
+   pattern:
+
+   | Force or symptom | Pattern | Classes and interfaces it creates | "When not" checked |
+   |---|---|---|---|
+   | spec line (`00-caso-de-uso.md` § 5, row 2) or `file:line` | the row's pattern | names per `@.claude/rules/naming.md` | why it does not apply |
+
+   `none — no force in the spec, no symptom on disk` when empty; absence is not `none`. The
+   classes a row creates also go into the partial's own components or adapter table, so the
+   approved spec lists every class the executor will write.
+5. **Existing code the pattern reshapes** — the other listeners, the earlier adapters — is a
+   change to code an approved case produced: a row in the partial's `## Impact on approved
+   use cases`, never an edit of that case's spec.
+
+"Might have more variants later" is not a force. The row needs a spec line or a `file:line`,
+or it is not written.
+
 ## Forbidden in this repository
 
 - **Singleton** — the Spring container already gives singleton scope; the manual version
@@ -100,14 +137,17 @@ inbound REST adapter — the package the blueprint's `packages.map` assigns to t
 whether `adapter.in.rest` or `infrastructure.rest` — which is `rest-api-architect`'s
 territory.
 
-**Two invocation modes, one writer per mode.** Standalone — a human runs
-`/java-patterns` against real code with an observed symptom; this skill is the sole
+**Three uses, one writer each.** Design time — the pipeline's design skills read § Design-time
+use and write the decision into their own partial; this skill writes nothing and is not
+invoked (`@.claude/decisions/0089-design-patterns-decided-at-design-time.md`). Standalone — a human runs
+`/gof-design-patterns` against real code with an observed symptom; this skill is the sole
 writer for that turn, as above. Injected — in a generated project, `ArchHook.java context
 subagent` runs at `SubagentStart` and hands the sections listed in `subagent_context` of
 `@.claude/schemas/extensions.json` (this file's `## Why this is a skill and not a rule`,
 `## Catalog` and `## Forbidden in this repository`) to every agent whose `agent_classes`
-entry declares `pattern_catalog: true`, before its first turn. The agent applies a matching
-row while writing the feature, never as a separate invocation. In that mode this skill
+entry declares `pattern_catalog: true`, before its first turn. The agent implements the
+patterns the spec already decided, and applies a row on its own only for a symptom already
+on disk, never as a separate invocation. In that mode this skill
 writes nothing itself: the agent remains the sole owner of `src/**` (invariant 2), and the
 catalog is reference material, the same role `templates/*.example` plays for the other
 four pipeline skills. Renaming one of those three headings empties the injection —
@@ -116,11 +156,11 @@ four pipeline skills. Renaming one of those three headings empties the injection
 0025: a skill with `disable-model-invocation: true` cannot be preloaded through an agent's
 `skills:` field, so the catalog 0025 described never arrived.
 
-**Doesn't collide with `domain-modeling`**, which also deals with domain and
-application. The split is by moment, not by folder: that one produces the
-`10-dominio.md` spec **before** code exists; this one refactors code that already
-exists and already hurts, from a concrete `file:line`. Without a symptom in the code,
-this isn't the right skill — it's the other one, or none.
+**Doesn't collide with the design skills** (`domain-modeling`, `persistence-architect`,
+`rest-api-architect`, `messaging-architect`, `jobs-architect`). They own the pattern decision
+for a use case being designed, each for its own layer, through § Design-time use; this skill
+owns the catalog and, invoked standalone, refactors code that already exists and already
+hurts, from a concrete `file:line`, outside any feature run.
 
 **Does not** create rules. If a new limit has to always hold, it goes to
 `rules/code-quality.md`, not here.

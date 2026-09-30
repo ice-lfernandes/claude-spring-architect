@@ -299,8 +299,17 @@ still transport.
    names; a requirement missing here is a run that stops at a missing type with nobody
    entitled to add it.
 
+7b. **Decide the design patterns of this layer.** Run
+   `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use over the producers and
+   listeners this case adds, against the specs and what step 2 surveyed. The common symptom
+   is listeners repeating one skeleton — deserialize, dedupe, call the port, acknowledge —
+   with one step different; the catalog prefers an injected handler over a `protected
+   abstract` hook when a single step varies. Reshaping the listeners that already exist is
+   an `## Impact on approved use cases` row. The answer goes into `## Design patterns` —
+   `none` when nothing matches, and absence is not `none`.
+
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/25-mensageria.md`, from
-   `templates/messaging-spec.md.example`. Nine blocks, all mandatory — § 6 through § 9
+   `templates/messaging-spec.md.example`. Nine numbered blocks plus `## Design patterns`, all mandatory — § 6 through § 9
    included, each written as `none` when there is nothing to ask for.
 
    **§ 8 is `Personal data`, and it is written before the payload is called done.** Run
@@ -358,7 +367,7 @@ still transport.
 
 ## What the partial contains
 
-Nine blocks. An empty block is written as "none" — deleting it hides a question nobody
+Ten blocks. An empty block is written as "none" — deleting it hides a question nobody
 asked.
 
 | Block | Fixes | Form exemplar |
@@ -372,6 +381,7 @@ asked.
 | Declared dependencies | Build dependencies this transport needs and the project does not declare — the only list entitling the executor to touch `pom.xml`. `none` when there are none, and absence is not `none` | — |
 | Personal data | Every payload field matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. That is the `Recorded decision` `@.claude/rules/personal-data.md` § In transit requires. `none` when the payload carries none, and absence is not `none` | `@.claude/rules/personal-data.md` § How to verify, grep 1 |
 | Deferred | One row per item this partial decided **not** to do in this run: what was decided, what is missing, the norm that requires it (by path), and the intended owner — `checklist` or `backlog`. `none` when nothing was deferred, absence is not `none`. Consolidation resolves the owner and is what writes the `BACKLOG.md` line | — |
+| Design patterns | Each pattern the producers or listeners adopt, with its force, its classes and the "When not" checked — step 7b. `none` when none | `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
 executor agent that reads them when generating code.

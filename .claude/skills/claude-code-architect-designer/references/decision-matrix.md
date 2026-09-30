@@ -136,7 +136,7 @@ Same file, one line of difference. Mistakes happen in both directions:
 This repo's practical rule, and the exception that bounds it:
 
 - **Writes files in the user's project and is triggered by their decision → Form 2.**
-  `arch-doctor`, `init-project`, `project-bootstrap`, `java-patterns`, and this skill.
+  `arch-doctor`, `init-project`, `project-bootstrap`, `gof-design-patterns`, and this skill.
 - **Part of a pipeline another piece chains → Form 1**, even when writing files.
   `disable-model-invocation` hides the skill from the model, and what the model doesn't
   see the orchestrator doesn't call. The five pieces of `/new-feature` have been this way

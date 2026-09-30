@@ -54,10 +54,9 @@ sequenceDiagram
         BOOT->>INIT: curl start.spring.io/starter.tgz (versões reais, nunca de memória)
         INIT-->>BOOT: starter.tgz (pom.xml, mvnw, Application.java)
         BOOT->>BOOT: restrutura por módulo (multi-module) ou packages (single-module)
-        BOOT->>RULES: lê todas as rules, copia para <projeto>/.claude/rules/
         BOOT->>BOOT: gera Checkstyle, lombok.config, logback, Dockerfile, docker-compose
-        BOOT->>HOOK: copia ArchHook.java + extensions.json, funde settings.json
-        BOOT->>BOOT: copia skills de desenvolvimento + agent executor
+        BOOT->>HOOK: ArchHook.java export — rules (paths a partir de packages.map), skills de dev, agents, hook + jar, extensions.json, settings.json
+        HOOK->>RULES: lê todas as rules, escreve em <projeto>/.claude/rules/
         BOOT->>BOOT: ./mvnw clean verify + teste de boundary + teste de lombok.config
         BOOT-->>AG: build PASSED ou FAILED
         opt build PASSED
@@ -84,11 +83,8 @@ sequenceDiagram
 | 5 | Gera o mapa de boundaries | `.claude/forbidden-imports.txt` |
 | 6 | Gera `CLAUDE.md` raiz + por módulo | `CLAUDE.md`, `*/CLAUDE.md` |
 | 6.5 | Gera CI | `.github/workflows/build.yml` |
-| 6.6 | Copia as rules | `.claude/rules/*.md` |
-| 6.7 | Copia as skills de desenvolvimento | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,jobs-architect,java-patterns,git-publish,audit-usage}/**` |
-| 6.8 | Copia os agents de desenvolvimento | `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md` |
-| 7 | Instala os hooks | `ArchHook.java`, `extensions.json`, funde `settings.json` (com `guard` e `audit` ligados), cria `.claude/audit-usage/` + `pricing.json` |
-| 7.5 | Copia servidores MCP desenhados, se existirem | `.mcp.json`, `MCP-SETUP.md` |
+| 6.6 | Escreve o `.claude/` do projeto num comando só — `ArchHook.java export <projeto> --blueprint <id>`, dirigido pelo manifesto `export` de `extensions.json` | Toda rule (`paths` de pacote reescritos a partir de `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (com `guard`, `audit` e `context` ligados); o blueprint ativo; `.claude/audit-usage/` + `pricing.json`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` só se um servidor foi desenhado para o projeto gerado |
+| 7 | Nada a rodar — o que o enforcement recém-instalado faz, para o relatório final | — |
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
 | 8.5 | Gera o README do projeto | `README.md` (inglês) + `README.pt-br.md` |
 | 8.6 | Grava o registro de gênese da trilha | `.claude/audit-usage/GENESIS.md` |
@@ -135,7 +131,7 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, v
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 14 rules + 14 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Self-contained: 15 rules + 14 skills + 3 agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
 Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus
@@ -167,10 +163,11 @@ commitado ou enviado sem os dois portões de confirmação de `git-publish` — 
 O projeto gerado é **autocontido** (`CLAUDE.md` § Invariant 9): quem clona
 `pedidos-api` não tem `claude-spring-architect` na máquina. Tudo que o `CLAUDE.md` do projeto
 cita já foi copiado para dentro dele — rules, skills de desenvolvimento, os três agents
-executores, `ArchHook.java`, `extensions.json`. As skills de criação
+executores, `ArchHook.java` e o seu `ArchHook.jar`, `extensions.json`. As skills de criação
 (`project-bootstrap`, `init-project`, `claude-code-architect-designer`), o agent
-`project-initializer` e os `blueprints/` ficam de fora de propósito: só fazem sentido
-antes do projeto existir.
+`project-initializer` e o **catálogo** de blueprints ficam de fora de propósito: só fazem
+sentido antes do projeto existir. O blueprint **ativo** viaja — o stamp de proveniência
+registra o id dele, e `/arch-adopt` precisa resolvê-lo na próxima atualização.
 
 A partir da primeira sessão aberta dentro do projeto, o hook `audit` grava um relatório
 por invocação de skill ou agent em `.claude/audit-usage/` — o `GENESIS.md` do passo 8.6

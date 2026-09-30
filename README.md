@@ -162,25 +162,34 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
 - **Three levels of instruction** — global constitution (`CLAUDE.md` under 200 lines),
   per-module context, detailed norms loaded on demand via `paths` rewritten from the
   blueprint's `packages.map`.
-- **Hook-based enforcement, one Java file, nine modes** — forbidden imports and
-  incremental compile on post-edit, tests of changed modules on stop, schema validation
-  (frontmatter, skill bodies, `.mcp.json` with secret scan, hook registrations, the export
-  manifest), the write-territory guard, audit trail, compose health, doctor, and the
-  deterministic `export` of a project's `.claude/`.
-- **Every skill has a class, and the class is data** — each skill sits in exactly one of
-  six classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`) in
-  `schemas/extensions.json`, and the class declares the sections its body must carry **and**
-  the paths it may write. `schema` enforces the structure, `guard` the territory: a write
-  outside it is `exit 2`, deny by default. A skill in no class fails validation by name.
+- **Hook-based enforcement, one Java file, eleven modes** — every hook launches the
+  committed, precompiled `ArchHook.jar` (CI checks it byte for byte against the source).
+  Forbidden imports and incremental compile on post-edit, tests of changed modules on stop,
+  schema validation (frontmatter, skill and agent bodies, `.mcp.json` with secret scan, hook
+  registrations, the export manifest), the write-territory guard — on `Write`/`Edit`, on the
+  shell write shapes it can read, and as an end-of-turn sweep of what git sees changed — force
+  pushes refused in every spelling, a compose gate on stop, the design-pattern catalog handed
+  to the executor at `SubagentStart`, audit trail, doctor, the deterministic `export` of a
+  project's `.claude/`, and the reproducible `build` of the jar itself.
+- **Every skill and agent has a class, and the class is data** — each skill sits in exactly
+  one of six classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`) and each
+  agent in one of three (`driver`, `executor`, `installer`) in `schemas/extensions.json`. The
+  class declares the sections the body must carry, the paths it may write, and — for a skill
+  — the `model` it may pin; for an agent, whether it may write at all. `schema` enforces the
+  structure, `guard` the territory: a write outside it is `exit 2`, deny by default. A piece
+  in no class fails validation by name.
 - **Boundaries derived from the blueprint** — one `forbidden_imports` declaration feeds
   the module's `CLAUDE.md`, `.claude/forbidden-imports.txt`, and the POM graph; ArchUnit
   and a JaCoCo gate (80% lines / 70% branches) are installed by an agent when code
   exists.
 - **Versions resolved at runtime** — no Spring Boot or Java version hardcoded; CI fails
   if one is written as a fact.
-- **Spec-first pipeline** — `/new-feature` designs one use case per run across six
-  owner skills, consolidates a `UC-NNN-spec.md` (`draft → approved → implemented`),
-  asks approval, then hands the spec to a restricted executor agent.
+- **Spec-first pipeline** — `/new-feature` designs one use case per run across seven
+  owner skills (messaging and jobs only when the case needs them), each deciding the design
+  patterns of its own layer so the approved spec already shows the classes a pattern creates.
+  It consolidates a `UC-NNN-spec.md` (`draft → approved → implemented`, or
+  `implemented-blocked` when the case is not yet reachable end to end), asks approval, then
+  hands the spec to a restricted executor agent.
 - **Execution audit trail** — every skill/agent invocation in the generated project
   leaves a Markdown report and two ledgers; `/audit-usage` consolidates spend across
   runs. Prompts are redacted before landing in git.
@@ -189,7 +198,8 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
   Kafka producer/consumer with retry/DLQ, compose port-collision diagnosis.
 - **Git offer, behind two confirmations** — after a green bootstrap build or a
   successful feature implementation, `git-publish` offers to `git init`/commit and
-  `gh repo create`+push. `git push` is always `ask`, `--force` is denied.
+  `gh repo create`+push. `git push` is always `ask`, and the guard refuses a force push in
+  every spelling it can read (`-f`, `--force-with-lease`, `+ref`, `git -C … push`, `sh -c`).
 - **Adoption and update of the AI layer** — `/arch-adopt` installs this `.claude/` into a
   project that was never generated here, or pulls a newer version into one that is behind.
   It refuses a dirty worktree, writes through the deterministic `export` mode (a data
@@ -249,7 +259,9 @@ claude-spring-architect/
     │   ├── persistence-architect/ #   pipeline 4 — copied
     │   ├── test-architect/        #   pipeline 5 — copied; owns the ArchUnit exemplar
     │   ├── new-feature/           #   /new-feature — orchestrates the seven above — copied
-    │   ├── java-patterns/         #   preloaded into the executor agent — copied
+    │   ├── gof-design-patterns/   #   pattern catalog: read at design time by the pipeline skills,
+    │   │                          #   injected into the executor at SubagentStart,
+    │   │                          #   /gof-design-patterns on existing code — copied
     │   ├── docker-architect/      #   services, OTLP collector, Jaeger / Grafana stack — copied
     │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
     │   └── audit-usage/           #   /audit-usage — reads the execution trail — copied
@@ -259,26 +271,36 @@ claude-spring-architect/
     │   ├── archunit-installer.md          #   test-architect's setup mode — copied
     │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
     ├── hooks/
-    │   └── ArchHook.java          # enforcement, one file, nine modes
-    └── .ci/
-        ├── BoundaryTest.java        # CI: injects a forbidden import, requires exit 2
-        ├── InjectionPathTest.java   # CI: injects a cwd-relative `!`…``, requires exit 2
-        ├── ComposeTagTest.java      # CI: compose image tag vs. the one src/test pins
-        └── SkillTerritoryTest.java  # CI: a write outside the active class's territory, requires exit 2
+    │   ├── ArchHook.java          # enforcement, one file, eleven modes
+    │   └── ArchHook.jar           # what every hook runs — committed, rebuilt by `build`
+    ├── decisions/                 # why each piece has the form it has — history, not norms
+    ├── lessons-learned/           # what real runs broke — history, not norms
+    └── .ci/                       # CI tests, each one runs the jar
+        ├── BoundaryTest.java        # a forbidden import, requires exit 2
+        ├── InjectionPathTest.java   # a cwd-relative `!`…``, requires exit 2
+        ├── ComposeTagTest.java      # compose image tag vs. the one src/test pins
+        ├── ComposeGateTest.java     # a published service no host client can reach blocks Stop
+        ├── SkillTerritoryTest.java  # a skill writing outside its class's territory, requires exit 2
+        ├── AgentTerritoryTest.java  # the same for each agent class
+        ├── BashGuardTest.java       # force pushes and shell writes outside the phase
+        ├── SweepTest.java           # the end-of-turn sweep names this turn's writes only
+        ├── SubagentContextTest.java # the pattern catalog reaches pattern_catalog agents only
+        └── AuditRenderTest.java     # the audit report renders, redacts, skips observers
 ```
 
 There is no `commands/`: slash commands live as skills with
 `disable-model-invocation: true`. `forbidden-imports.txt` is not here — it is
-generated inside the project during `/init-project`. The maintainer's decision records
+generated inside the project during `/init-project`. The decision records
 (`.claude/decisions/`) and the lessons learned from real runs
-(`.claude/lessons-learned/`) are kept out of the public repository on purpose: they are
-history, not norms, and `CLAUDE.md` cites them only as the "why" behind a piece.
+(`.claude/lessons-learned/`) are versioned, but they are history, not norms: no `paths`,
+outside `rules/00-index.md`, never copied into a generated project, and `CLAUDE.md` cites
+them only as the "why" behind a piece.
 
 **The generated project is self-contained.** Whoever clones it does not need this
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
 `rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
-`test-architect`, `new-feature`, `java-patterns`, `docker-architect`, `git-publish`,
+`test-architect`, `new-feature`, `gof-design-patterns`, `docker-architect`, `git-publish`,
 `audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
 `commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
@@ -427,13 +449,13 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ▼  agent: project-initializer (isolated context, model: sonnet)
      │
      ├─ 1. INTERVIEW — blueprint · coordinates · build · features
-     ├─ 2. VALIDATES blueprint — 5-rule checklist            [fails fast]
+     ├─ 2. VALIDATES blueprint — 6-rule checklist            [fails fast]
      ├─ 3. BASE via Spring Initializr (curl)                 [GA versions, nothing hardcoded]
      ├─ 4. RESTRUCTURES into modules per the blueprint       [exemplars give the shape]
      ├─ 5. GENERATES forbidden-imports.txt + root and <module>/CLAUDE.md, CI, Checkstyle,
      │      lombok.config, logback, Dockerfile + docker-compose
      ├─ 6. COPIES rules, development skills, executor agents — the project is self-contained
-     ├─ 7. INSTALLS hooks (ArchHook.java + extensions.json + settings.json), opens the audit trail
+     ├─ 7. INSTALLS hooks (ArchHook.java + .jar + extensions.json + settings.json), opens the audit trail
      ├─ 8. VERIFIES build + smoke + tested boundary block; writes README + GENESIS.md
      ├─ 9. REPORT in the fixed output contract
      └─ if the build is green: OFFERS git-publish (Skill tool) — two independent
@@ -453,6 +475,7 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
      │  design skills write only their class's territory — docs/ only, never src/,
      │  never docker-compose.yml, never git; a build-class skill can't even be called
+     │  each one decides the design patterns of its own layer, in its partial
      │
      ▼  consolidates into UC-NNN-spec.md (status: draft)
      │
@@ -461,7 +484,8 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ├─ implement now → pre-flight, once per project: ArchUnit (test-architect setup mode)
      │                   and logging/masking aspects (commons-logging-installer), each
      │                   behind a question, in separate turns
-     │                → agent: java-spring-boot-developer → status: implemented
+     │                → agent: java-spring-boot-developer, pattern catalog injected at start
+     │                  → status: implemented (or implemented-blocked)
      │                → git-publish (feature commit)
      └─ not now       → git-publish (docs of the approved spec only)
                          both behind git-publish's two confirmations
@@ -471,32 +495,46 @@ Each step receives the structured output of the previous one. Free-prose handoff
 degrades by the third hop; that's why one step's `output-contract` is literally the
 next one's `input-contract`.
 
-### Edit cycle (what happens on every `Write`/`Edit` in a generated project)
+### Edit cycle (what happens on every write in a generated project)
 
 ```
-Write/Edit
+prompt (UserPromptSubmit)
+     └─ ArchHook guard prompt  baseline of the working tree for this turn's sweep
+
+Write/Edit/MultiEdit
      │
-     ├─ ArchHook guard    path outside the active skill's class territory → blocked
+     ├─ ArchHook guard    path outside the active skill's or agent's class territory → blocked
      │                    (PreToolUse, exit 2 — allowlist, deny by default)
      │                    spec folder approved/implemented → blocked
-     │                    Skill(build-class) during a design run → blocked
+     │                    Skill(build-class) during a design run → blocked (guard call)
      ├─ ArchHook schema   frontmatter + body of .claude/**/*.md, .mcp.json    (PreToolUse, exit 2)
      ├─ ArchHook format   spotless on the touched module                      (never blocks)
      ├─ ArchHook check    forbidden imports + incremental compilation         (blocks: exit 2)
      │                    └─ reads .claude/forbidden-imports.txt
      └─ ArchHook audit    file touched → appended to the run's log            (never blocks)
 
+Bash
+     └─ ArchHook guard bash    force push → refused; a redirect, `sed -i`, `tee`… writing
+                               outside the territory or into a frozen folder → blocked
+
+subagent start (SubagentStart)
+     └─ ArchHook context subagent   pattern catalog → agents that declare pattern_catalog
+
 end of task (Stop)
+     ├─ ArchHook guard sweep   what git sees changed this turn, re-checked     (blocks: exit 2)
+     ├─ ArchHook compose gate  a service down, or published and unreachable    (blocks: exit 2)
      ├─ ArchHook audit flush   renders the run's report + ledger line         (never blocks)
      ├─ ArchHook schema
      └─ ArchHook tests    tests of the changed modules                        (blocks: exit 2)
                           └─ respects stop_hook_active, doesn't loop
 ```
 
-In this meta-repo `schema`, `format`, `check`, `tests` **and `guard`** are wired — `guard`
-because the `meta` class has a territory here too (`.claude/**`, `CLAUDE.md`, `.mcp.json`,
-`docs/**`, `.github/**`). Only `audit` stays off: there is no `.claude/audit-usage/`, and
-auditing the design of the tool instead of its use is not the trail anyone wants.
+In this meta-repo `schema`, `format`, `check`, `tests`, `guard` (all five sub-modes) and
+`compose gate` are wired, plus `build` on every edit of `ArchHook.java` — `guard` because the
+`meta` class has a territory here too (`.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`,
+`.github/**`). `audit` stays off: there is no `.claude/audit-usage/`, and auditing the design
+of the tool instead of its use is not the trail anyone wants. `context subagent` stays off
+too: the executor never runs here.
 
 ### Audit trail — what every run cost
 
@@ -514,7 +552,6 @@ Excerpt of a real one, from a `/new-feature` run in the demo project:
 ├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
 ├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
 └─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
-     📎 java-patterns (preloaded)
 
 | Piece                         | Own billable      |     | 🧮 billable (run)  | 530,831 |
 | 📘 test-architect             |           242,813 |     | ♻️ cache read      | 6,849,774 |
@@ -684,7 +721,7 @@ skill form gains a support folder, `paths`, and `context: fork`.
 `output-contract` — doesn't exist natively and doesn't change behavior.
 
 That's why it **left the frontmatter of skills and agents**. Ownership, dependencies,
-handoff, and contracts now live in a `## Contrato` section in the body of each
+handoff, and contracts now live in a `## Contract` section in the body of each
 `SKILL.md`/`agents/*.md`. The frontmatter field cost tokens on every invocation
 without enforcing anything; in the body, the same information is de facto
 instruction.
@@ -743,12 +780,12 @@ env -u HOME claude   # /init-project must give a green build
 
 ## Cross-platform
 
-The hooks are **a single Java file** (`.claude/hooks/ArchHook.java`) executed in
-single-file source mode, invoked in **exec form**:
+The hooks are **a single Java file** (`.claude/hooks/ArchHook.java`), compiled into the
+committed `.claude/hooks/ArchHook.jar` and invoked in **exec form**:
 
 ```json
 { "type": "command", "command": "java",
-  "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.java", "check"] }
+  "args": ["-jar", "${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.jar", "check"] }
 ```
 
 Why this, and not a `.sh` with a `.ps1` twin:
@@ -772,23 +809,26 @@ The same file carries every mode, so there is one place to read and one to test:
 
 | Mode | Event | Blocks? | What it does |
 |---|---|---|---|
-| `check` | `PostToolUse` Write\|Edit | yes | forbidden imports + incremental `test-compile` of the touched module |
-| `format` | `PostToolUse` Write\|Edit | no | `spotless:apply` on the module |
+| `check` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit, `if: Edit(**/*.java)` | yes | forbidden imports + incremental `test-compile` of the touched module |
+| `format` | same | no | `spotless:apply` on the module |
 | `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
 | `schema` | `PreToolUse` / `PostToolUse` / `Stop` | yes | frontmatter **and body** of skills, agents, rules; `.mcp.json` with a secret scan; hook registrations; the export manifest — all against `schemas/extensions.json` |
-| `guard` | `UserPromptSubmit`, `PreToolUse` | yes | every skill writes only its class's territory (allowlist, deny by default); a `build`-class skill is unreachable during a design run; approved specs are immutable |
-| `audit` | ten lifecycle events | no | execution trail of every skill and agent (generated project only) |
-| `compose` | manual; folded into `doctor` | no | every compose service `running`, no foreign container on this project's ports, no `image:` tag disagreeing with the one `src/test` pins |
+| `guard` | `UserPromptSubmit` (`prompt`), `PreToolUse` (`write`, `bash`, `call`), `Stop` (`sweep`) | yes | every skill and agent writes only its class's territory (allowlist, deny by default) — through the file tools, through the shell write shapes it can read, and re-checked at the end of the turn against what git sees changed; a `build`-class skill is unreachable during a design run; approved specs are frozen; force pushes refused |
+| `compose` | `Stop` (`gate`); manual; folded into `doctor` | `gate` only | every compose service `running`, no foreign container on this project's ports, every published port advertised at a host-resolvable address, no `image:` tag disagreeing with the one `src/test` pins |
+| `context` | `SubagentStart` (generated project only) | no | hands the design-pattern catalog to each agent whose class declares `pattern_catalog` |
+| `audit` | eleven lifecycle events | no | execution trail of every skill and agent (generated project only) |
 | `doctor` | manual (`/arch-doctor`) | no | diagnoses the setup on this machine |
-| `export` | manual (invoked by `/arch-adopt`) | no | writes a target project's `.claude/` from the `export` manifest, transformed for the active blueprint, plus the provenance stamp |
+| `export` | manual (invoked by `/arch-adopt`) | no | writes a target project's `.claude/` from the `export` manifest, transformed for the active blueprint, plus the provenance stamp; deletes what `export.retired` names |
+| `build` | `PostToolUse` on `ArchHook.java` (this repo only); manual | no | rebuilds `ArchHook.jar` under the JDK major `hook_build.javac_feature` pins; `--verify` compares byte for byte |
 
-Every list the hook reads — recognized fields, skill classes and their write territory,
-audited skills' exclusions, redaction patterns, the export manifest — is data in
+Every list the hook reads — recognized fields, skill and agent classes and their write
+territory, audited skills' exclusions, redaction patterns, the export manifest — is data in
 `schemas/extensions.json`, never a constant in the Java. A new skill is audited, its body
 validated and its territory enforced without touching the hook: it is one entry in a class.
 
-Assumed cost: ~1s of JVM startup per invocation, in single-file source mode. In a hook
-that's already waiting on a `test-compile`, it's not noticeable.
+Cost: ~0.3 s of JVM startup per invocation from the jar, against ~3.3 s when every hook
+recompiled the source (`.claude/decisions/0075-precompiled-hook-jar.md`). Editing
+`ArchHook.java` changes nothing a hook runs until `build` rewrites the jar.
 
 Verification on this machine:
 
@@ -796,14 +836,11 @@ Verification on this machine:
 /arch-doctor
 ```
 
-In CI, `validate.yml` runs `ArchHook doctor`, a `BoundaryTest` that injects a
-forbidden import and requires exit 2, an `InjectionPathTest` that injects a
-cwd-relative `` !`command` `` and requires exit 2, a `ComposeTagTest` that requires a
-compose `image:` tag disagreeing with the one `src/test` pins to be reported, and a
-`SkillTerritoryTest` that drives the `guard` mode across 11 cases and requires exit 2 for
-every write outside the active skill class's territory — on `ubuntu-latest`,
-`macos-latest`, and `windows-latest`. Without the OS matrix, "cross-platform" would be a
-claim; with it, it's a fact verified on every push.
+In CI, `validate.yml` runs `ArchHook doctor`, `build --verify`, and the ten tests under
+`.claude/.ci/` — every one spawning `java -jar .claude/hooks/ArchHook.jar`, the exact
+command the registrations run — on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
+Without the OS matrix, "cross-platform" would be a claim; with it, it's a fact verified on
+every push.
 
 ## CI (`validate.yml`)
 
@@ -816,12 +853,15 @@ holds only as long as whoever writes the next skill remembers it.
 
 | Job / step | Verifies | Guards against |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `BoundaryTest`, `InjectionPathTest`, `ComposeTagTest` and `SkillTerritoryTest` on `ubuntu-latest`, `macos-latest`, `windows-latest` | Decision D8 — "cross-platform" as a fact, not a claim |
-| `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` drives the `guard` mode over the real `extensions.json` across 11 cases: no phase open restricts nothing, inside and outside the `write_allow`, the executor-agent bypass, the refusal of a `build`-class `Skill` call during a design run, the callee's narrower territory, and the phase closing on an executor `Agent` call | "Deny by default" rotting silently — it holds until one `write_allow` entry is widened by accident. The case that motivated it (a design run writing `docker-compose.yml`, a file no denylist named) is one of the 11 |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, and the ten `.claude/.ci/*Test.java` on `ubuntu-latest`, `macos-latest`, `windows-latest`, each running the jar | Decision D8 — "cross-platform" as a fact, not a claim |
+| `committed ArchHook.jar is what the source compiles to` | `build --verify` recompiles under the pinned `javac` and compares byte for byte | Decision 0075 — an edit to the source without a rebuild changes nothing any hook runs |
+| `guard keeps each skill inside its class's territory` · `… each agent …` | `SkillTerritoryTest.java` and `AgentTerritoryTest.java` drive the `guard` mode over the real `extensions.json`: inside and outside each `write_allow`, `agent_type` winning over the caller's phase, the refusal of a `build`-class `Skill` call during a design run | "Deny by default" rotting silently — it holds until one `write_allow` entry is widened by accident. The case that motivated it (a design run writing `docker-compose.yml`, a file no denylist named) is one of the cases |
+| `guard bash …` · `guard sweep …` | `BashGuardTest.java`: every force-push spelling refused, a shell write outside the phase blocked; `SweepTest.java`: the end-of-turn sweep names this turn's writes and never pre-existing dirt | Decisions 0063, 0065, 0076 — enforcement that only matched tool names |
+| `compose gate …` · `context subagent …` · `audit renders …` | `ComposeGateTest.java`, `SubagentContextTest.java`, `AuditRenderTest.java` | Decisions 0064, 0077, 0085 — a gate, an injection and a report that fail in silence |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` builds a throwaway project holding a `docker-compose.yml` and a `DockerImageName.parse(...)` under `src/test`, and requires `ArchHook.java compose` to report the divergence, expand `${VAR:-default}`, and stay quiet when the tags agree | The suite passing against an engine version nobody runs. Runs on all three OSes because that comparison reads two files and needs no Docker |
 | `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariant 10 — `extensions.json` is the single owner of recognized frontmatter; an invented field or `metadata:` fails loud instead of being silently ignored at runtime. Same mode also requires every `` !`command` `` injection to resolve paths from `${CLAUDE_PROJECT_DIR}` — a relative one reports a file as absent whenever the shell's cwd has drifted |
 | `skill body matches its class` | the same `schema` mode: every `SKILL.md` on disk sits in exactly one `skill_classes` class, declares `**Class:** <c>` in its body, and carries the sections that class requires | Structure by review. Nine skills said `## Contract`, one said `## Skill contract`, two had none at all — and `claude plugin validate` printed `✔ Validation passed` over all of it |
-| `skill name doesn't shadow a native slash command` | skill folder names against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
+| `skill name doesn't shadow a native slash command` | inside the `schema` step: skill folder names against a denylist (`doctor`, `init`, `context`, `memory`, …) | A skill silently replacing a native command instead of erroring |
 | `new blueprint doesn't touch prompts` | adding a blueprint leaves `.claude/skills` and `.claude/agents` untouched | Invariant 7 — architectures are data |
 | `rules is a leaf of the graph` | no rule mentions "skill", "agent", "subagent" | Invariant 1 |
 | `norm contains no code boilerplate` | no `class`/`record`/`interface`/`enum` declaration inside `rules/` | Invariant 3 |
@@ -834,6 +874,7 @@ holds only as long as whoever writes the next skill remembers it.
 | `the export manifest matches disk` | every file the `export` block names exists; every skill and agent is in `include` **or** `exclude`; every rule with a package territory has a `derived_paths` entry | Invariant 9 — that manifest **is** the copy list that makes the generated project self-contained. A new norm missing from it breaks nothing at generation time: it breaks for whoever clones the project later and follows a citation to a file that was never copied |
 | `decisions/ doesn't grow paths or enter 00-index.md` | no file in `decisions/` declares `paths:`; none is listed in `rules/00-index.md` | `decisions/` is history, not a rule — see Known pitfalls |
 | `no hardcoded Spring/Java version outside decisions/` | no `Spring Boot X.Y` / `Java NN` written as fact in `rules/`, `skills/`, `blueprints/`, `CLAUDE.md` | Invariant 8 — versions are resolved via Spring Initializr, never written from memory. Excludes the `JDK 21+` minimum-requirement line and dated "Tested to compile" notes in exemplars, which record a past verification, not a version to use |
+| `export-determinism` job | two exports per blueprint produce identical trees; the tree carries nothing only this repo needs; the exported jar runs `schema` and `doctor` against its own tree; a re-export deletes what `export.retired` names | Invariant 9 — a generated project that differs between two runs, or cites a file it never received |
 | `exemplar-imports` job | every `import` in a `.java.example` resolves against JARs from a real `start.spring.io` request, and none uses a name denylisted as deprecated | Gaps 4, 5, 9 of `decisions/0024-lessons-learned-001-remediation.md` — an exemplar that "compiles in the head of whoever wrote it" |
 
 Note on "each norm has a single owner": the check tests a fixed list of literal
@@ -848,12 +889,17 @@ writes), a `concurrency` group with `cancel-in-progress` (`push: [main]` and
 `exemplar-imports` jobs set `defaults.run.shell: bash` for `pipefail`, which the default
 `bash -e {0}` lacks — per job, since the OS matrix has a pwsh leg.
 
+A second workflow, `release.yml`, requires every PR to tick exactly one bump level
+(`major`, `minor`, `patch`) and, once merged into `main`, runs `schema` and `doctor` on the
+merge commit before tagging it. Every step of both workflows, one by one:
+[`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md).
+
 Not yet in `validate.yml`, known gaps:
 
 - Invariant 9 (the generated project is self-contained) is **half** covered: the copy-list
-  step above proves the `export` manifest covers the disk, which is the part whose failure mode was
-  silent. That the generated project actually compiles and holds no dead path is still
-  checked by hand, via the command block at `project-bootstrap/SKILL.md` §8 ("Verify") —
+  step above proves the `export` manifest covers the disk, and `export-determinism` proves
+  the exported `.claude/` validates on its own. That a generated project actually compiles
+  and holds no dead path is still checked by hand, via the command block at `project-bootstrap/SKILL.md` §8 ("Verify") —
   it requires generating a real project against the Initializr and hasn't been automated
   into CI because of that cost.
 - `claude plugin validate .claude/skills` — the CLI isn't installed on the GitHub
@@ -874,6 +920,7 @@ Not yet in `validate.yml`, known gaps:
 | [`docs/en/10-arch-adopt.md`](docs/en/10-arch-adopt.md) | `/arch-adopt`: installing or updating this `.claude/` in an existing project, the `export` manifest, the provenance stamp |
 | [`docs/en/06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The eight forms an extension can take, the decision matrix, and how a new piece propagates |
 | [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
+| [`docs/en/11-pitfalls.md`](docs/en/11-pitfalls.md) | The runtime's silent traps — a skill, hook, injection or MCP server that does nothing without an error |
 | [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
 
 Portuguese versions of every document live under [`docs/pt-br/`](docs/pt-br/README.md).

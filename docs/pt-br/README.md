@@ -36,18 +36,19 @@ os outros.
 
 ```
 .claude/
-├── hooks/ + settings.json   infra de enforcement — determinístico
-├── schemas/                 o que o hook lê: campos válidos, classes de skill,
+├── hooks/ + settings.json   infra de enforcement — determinístico (ArchHook.java → ArchHook.jar)
+├── schemas/                 o que o hook lê: campos válidos, classes de skill e de agent,
 │                            território de escrita, manifesto de export
 ├── skills/                  procedimento + exemplares
 ├── agents/                  execução isolada
 ├── rules/ + blueprints/     normas e dados (folhas — não chamam ninguém)
-└── decisions/               histórico de decisão — fora do grafo em runtime
+├── .ci/                     testes de CI que exercitam o hook (ArchHook.jar) ponta a ponta
+└── decisions/ + lessons-learned/   histórico, versionado — fora do grafo em runtime
 ```
 
 Esse é o mesmo grafo de dependências descrito em `CLAUDE.md` § Architecture of the AI
 files, aplicado à própria pasta `.claude/` como Clean Architecture. Os documentos desta
-pasta detalham como esse grafo se comporta nos três comandos citados acima.
+pasta detalham como esse grafo se comporta nos comandos citados acima.
 
 ## O que esta documentação não é
 

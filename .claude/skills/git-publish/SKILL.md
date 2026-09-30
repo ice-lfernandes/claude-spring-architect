@@ -21,7 +21,7 @@ Two other pieces need to chain into this one by name: `project-initializer` (aft
 success). `disable-model-invocation: true` (Form 2) blocks exactly that — the model
 can't call a Form 2 skill via the `Skill` tool at all, only a human typing `/git-publish`
 can, the same restriction `java-spring-boot-developer.md` documents for why it can't
-re-invoke `java-patterns`. Precedent: `@.claude/decisions/0007-pipeline-skills-invocation.md`
+re-invoke `gof-design-patterns`. Precedent: `@.claude/decisions/0007-pipeline-skills-invocation.md`
 (D17) — the five `/new-feature` pipeline skills stay without `disable-model-invocation`
 for the same reason, and rely on an entry guard in the body instead of the flag. This
 file's guard is the two `AskUserQuestion` gates below: no git side effect ever runs

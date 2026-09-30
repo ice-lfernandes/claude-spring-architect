@@ -49,7 +49,7 @@ it's a sequence. No prose the model already knows.>
 
 <!--
 EXEMPLARS IN THE REPO — read before writing:
-  .claude/skills/java-patterns/SKILL.md     skill with a catalog and templates
+  .claude/skills/gof-design-patterns/SKILL.md      skill with a catalog and templates
   .claude/skills/arch-doctor/SKILL.md       short skill with `!`command`` injection
   .claude/skills/test-architect/SKILL.md           skill with two modes, chosen by argument
 

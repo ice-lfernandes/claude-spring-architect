@@ -68,7 +68,7 @@ Pinned to `opus`: the partial is what the executor implements verbatim. A pinned
 | Doesn't decide | Why | Who decides |
 |---|---|---|
 | REST or GraphQL, SQL or NoSQL, Kafka or SQS | Technology is an architecture choice, fixed earlier: the blueprint's `packages.map` and `features` | The user, in `/init-project` |
-| Which design pattern to apply | A pattern is born from a symptom in the code, not from a spec | `java-patterns` |
+| Which design pattern to apply | A pattern shapes the classes of one layer, and this spec fixes no class | Each layer's partial, through `gof-design-patterns` § Design-time use |
 | Writing classes, tests, or migrations | The spec describes what to create; creating is a different phase | The layer skills and, eventually, the executor agent |
 | Per-layer detail (annotations, columns, exact HTTP status) | Each layer has its own rule and owner | The partial specs — see § Structure |
 | **Path, verb, and HTTP status** | Fixing them here creates divergence: `api-rest.md` has URI and status rules this skill doesn't apply, and `30-rest.md` ends up correcting the parent spec's prose. Write the situation (`created`, `conflict with existing state`), not the number | `rest-api-architect`, in `30-rest.md` |
@@ -216,7 +216,7 @@ incomplete spec, not an invalid one — and the header says so.
 
 ## Handoff — declarative, never executable
 
-This skill ends at the file. It doesn't call `rest-api-architect`, `java-patterns`, or
+This skill ends at the file. It doesn't call `rest-api-architect`, `gof-design-patterns`, or
 `test-architect`, for two reasons: each one exclusively owns its own paths, and
 merging design with execution makes "writes no code" impossible to verify.
 
@@ -254,7 +254,7 @@ impact section.
 
 **Does not** write code, tests, migrations, or OpenAPI, and never writes under `src/`. Doesn't touch the inbound REST
 adapter — the package the blueprint's `packages.map` gives that role
-(`rest-api-architect`) —, the domain or application (`java-patterns`,
+(`rest-api-architect`) —, the domain or application (`gof-design-patterns`,
 `domain-modeling`), nor `.claude/rules/**`. Doesn't decide technology.
 
 **Does not** reproduce rules. Cites by path; what the rule already says isn't repeated

@@ -154,7 +154,7 @@
   },
 
   "skill_classes": {
-    "$comment": "Single owner of what class each skill belongs to, what shape its body has, and what it is allowed to write. Read by ArchHook.java in two modes: `schema` validates the body of every .claude/skills/*/SKILL.md, `guard` enforces `write_allow` at PreToolUse. The class is the standardization unit the bodies never had: nine skills said `## Contract`, project-bootstrap said `## Skill contract`, and arch-doctor and init-project said nothing at all, with `claude plugin validate` printing `✔ Validation passed` over all of it. Coverage is total by design — a skill on disk that no class lists is the bug, and `schema` says so by name, the same discipline `export.skills.include`/`exclude` already uses. `write_allow` is a class DEFAULT and `overrides.<skill>.write_allow` replaces it: `build` holds four skills whose real territories differ by an order of magnitude (project-bootstrap writes the whole tree, java-patterns writes one Java class), so the class groups their STRUCTURE and only defaults their TERRITORY. An empty list is a decision, not an omission — an observer that writes is a bug, and `ops`'s effect is `git` over Bash, which the guard does not cover. `required_sections` is matched as a PREFIX of an H2 line, which is what lets `## Procedure — design mode` satisfy `## Procedure`; order is not checked, because order changes nothing the model obeys and a reorder would become a blocking change. `design_phase` marks the classes whose open phase restricts writes; `blocked_during_design` marks the classes a Skill call cannot reach from inside one — that pair is what makes the pipeline docs-only in the mechanism instead of in prose. Design: .claude/decisions/0058-skill-classes-territory-schema.md",
+    "$comment": "Single owner of what class each skill belongs to, what shape its body has, and what it is allowed to write. Read by ArchHook.java in two modes: `schema` validates the body of every .claude/skills/*/SKILL.md, `guard` enforces `write_allow` at PreToolUse. The class is the standardization unit the bodies never had: nine skills said `## Contract`, project-bootstrap said `## Skill contract`, and arch-doctor and init-project said nothing at all, with `claude plugin validate` printing `✔ Validation passed` over all of it. Coverage is total by design — a skill on disk that no class lists is the bug, and `schema` says so by name, the same discipline `export.skills.include`/`exclude` already uses. `write_allow` is a class DEFAULT and `overrides.<skill>.write_allow` replaces it: `build` holds four skills whose real territories differ by an order of magnitude (project-bootstrap writes the whole tree, gof-design-patterns writes one Java class), so the class groups their STRUCTURE and only defaults their TERRITORY. An empty list is a decision, not an omission — an observer that writes is a bug, and `ops`'s effect is `git` over Bash, which the guard does not cover. `required_sections` is matched as a PREFIX of an H2 line, which is what lets `## Procedure — design mode` satisfy `## Procedure`; order is not checked, because order changes nothing the model obeys and a reorder would become a blocking change. `design_phase` marks the classes whose open phase restricts writes; `blocked_during_design` marks the classes a Skill call cannot reach from inside one — that pair is what makes the pipeline docs-only in the mechanism instead of in prose. Design: .claude/decisions/0058-skill-classes-territory-schema.md",
     "match": ".claude/skills/*/SKILL.md",
     "class_marker": "**Class:**",
     "universal_sections": ["## Contract"],
@@ -187,17 +187,17 @@
         }
       },
       "build": {
-        "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and java-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs.",
+        "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and gof-design-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs.",
         "blocked_during_design": true,
         "allowed_models": ["opus", "sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure"],
-        "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "java-patterns"],
+        "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "gof-design-patterns"],
         "overrides": {
           "project-bootstrap": { "write_allow": ["**"] },
           "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**"] },
           "arch-adopt": { "write_allow": [".claude/**", ".gitignore"] },
-          "java-patterns": { "write_allow": ["src/**", "**/src/**"] }
+          "gof-design-patterns": { "write_allow": ["src/**", "**/src/**"] }
         }
       },
       "observer": {
@@ -292,15 +292,15 @@
   },
 
   "subagent_context": {
-    "$comment": "Read by ArchHook.java `context subagent`, registered at SubagentStart only in project-bootstrap/templates/settings.json.example — so it runs in generated projects and nowhere here. For an agent whose effective `agent_classes` `pattern_catalog` is true, the mode extracts each heading in `sections` from `file` up to the next H2, prefixes `header`, appends `pointer`, and hands the result to the subagent as `additionalContext` before its first turn. Sections, not the whole file: the runtime caps `additionalContext` at 10 000 characters and above it replaces the text with a path and a preview the model is not asked to read, so `max_chars` keeps a margin under that cap and `schema` renders the text and fails when it grows past it. The file stays the single owner of the catalog — nothing here copies it; renaming one of the headings below empties the injection, and `schema` fails on that by name. Why a hook and not the agent's `skills:` field: a skill with `disable-model-invocation: true` cannot be preloaded, so `skills: java-patterns` never delivered anything. Design: .claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md",
-    "header": "Design-pattern catalog, injected at SubagentStart by `ArchHook.java context subagent` from `.claude/skills/java-patterns/SKILL.md`. Apply a row while designing the code, from a force the approved spec names or a symptom already on disk — the \"When not\" column binds. Never invoke `/java-patterns` from here: it is manual-only, and you are the sole writer of what you implement.",
-    "file": ".claude/skills/java-patterns/SKILL.md",
+    "$comment": "Read by ArchHook.java `context subagent`, registered at SubagentStart only in project-bootstrap/templates/settings.json.example — so it runs in generated projects and nowhere here. For an agent whose effective `agent_classes` `pattern_catalog` is true, the mode extracts each heading in `sections` from `file` up to the next H2, prefixes `header`, appends `pointer`, and hands the result to the subagent as `additionalContext` before its first turn. Sections, not the whole file: the runtime caps `additionalContext` at 10 000 characters and above it replaces the text with a path and a preview the model is not asked to read, so `max_chars` keeps a margin under that cap and `schema` renders the text and fails when it grows past it. The file stays the single owner of the catalog — nothing here copies it; renaming one of the headings below empties the injection, and `schema` fails on that by name. Why a hook and not the agent's `skills:` field: a skill with `disable-model-invocation: true` cannot be preloaded, so `skills: gof-design-patterns` never delivered anything. Design: .claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md",
+    "header": "Design-pattern catalog, injected at SubagentStart by `ArchHook.java context subagent` from `.claude/skills/gof-design-patterns/SKILL.md`. Implement the rows of the spec's `## Design patterns` — the design skills already decided them; adopt a row on your own only for a symptom already on disk, naming its `file:line` — the \"When not\" column binds. Never invoke `/gof-design-patterns` from here: it is manual-only, and you are the sole writer of what you implement.",
+    "file": ".claude/skills/gof-design-patterns/SKILL.md",
     "sections": [
       "## Why this is a skill and not a rule",
       "## Catalog",
       "## Forbidden in this repository"
     ],
-    "pointer": "Full GoF triage (every pattern, with this repository's verdict on each): `.claude/skills/java-patterns/references/pattern-catalog.md`. Shape exemplars: `.claude/skills/java-patterns/templates/`. Read them only for a force or symptom the table above does not match.",
+    "pointer": "Full GoF triage (every pattern, with this repository's verdict on each): `.claude/skills/gof-design-patterns/references/pattern-catalog.md`. Shape exemplars: `.claude/skills/gof-design-patterns/templates/`. Read them only for a force or symptom the table above does not match.",
     "max_chars": 9000
   },
 
@@ -407,8 +407,30 @@
     "$comment_blueprint": "The active blueprint travels with the project, the catalog does not. Without this the yaml that defines a project's architecture can live only in the fetched tree, which is a temporary directory: the stamp records the id, the next update reads that id, the source does not have it, and the export fails at a point where nobody was ever told to keep a file (lessons-learned-011 § 4). Copied for every blueprint, official or not, because at this layer the mode cannot tell one from the other — the fetched tree holds both by then. `{id}` is the blueprint's id.",
     "blueprint_copy": ".claude/blueprints/{id}/{id}.yaml",
 
-    "$comment_retired": "Paths this repo renamed or dropped, deleted from the target by `export` when present (`--dry-run` names them). Export only ever wrote, so a renamed rule's old copy stayed in every adopted project — the same norm in two files there, the old one loading at launch. Restricted to .claude/; the target's worktree is clean before an export, so a deletion is one `git checkout` from undone. `schema` fails on an entry that still exists here. Design: .claude/decisions/0082-rules-without-paths-load-at-launch.md",
-    "retired": [".claude/rules/security.md"],
+    "$comment_retired": "Paths this repo renamed or dropped, deleted from the target by `export` when present (`--dry-run` names them). Export only ever wrote, so a renamed rule's old copy stayed in every adopted project — the same norm in two files there, the old one loading at launch. Restricted to .claude/; the target's worktree is clean before an export, so a deletion is one `git checkout` from undone. `schema` fails on an entry that still exists here. Files, not directories: `export` deletes regular files only, so a renamed skill lists every file it had — its now-empty directory is left behind, invisible to git and to the runtime (no SKILL.md). Design: .claude/decisions/0082-rules-without-paths-load-at-launch.md, .claude/decisions/0088-rename-java-patterns-to-gof-design-patterns.md",
+    "retired": [
+      ".claude/rules/security.md",
+      ".claude/skills/java-patterns/SKILL.md",
+      ".claude/skills/java-patterns/references/pattern-catalog.md",
+      ".claude/skills/java-patterns/templates/AbstractFactory.java.example",
+      ".claude/skills/java-patterns/templates/Bridge.java.example",
+      ".claude/skills/java-patterns/templates/Builder.java.example",
+      ".claude/skills/java-patterns/templates/ChainOfResponsibility.java.example",
+      ".claude/skills/java-patterns/templates/Command.java.example",
+      ".claude/skills/java-patterns/templates/Composite.java.example",
+      ".claude/skills/java-patterns/templates/Decorator.java.example",
+      ".claude/skills/java-patterns/templates/Facade.java.example",
+      ".claude/skills/java-patterns/templates/FactoryMethod.java.example",
+      ".claude/skills/java-patterns/templates/Flyweight.java.example",
+      ".claude/skills/java-patterns/templates/Mediator.java.example",
+      ".claude/skills/java-patterns/templates/Memento.java.example",
+      ".claude/skills/java-patterns/templates/Prototype.java.example",
+      ".claude/skills/java-patterns/templates/Specification.java.example",
+      ".claude/skills/java-patterns/templates/State.java.example",
+      ".claude/skills/java-patterns/templates/Strategy.java.example",
+      ".claude/skills/java-patterns/templates/TemplateMethod.java.example",
+      ".claude/skills/java-patterns/templates/Visitor.java.example"
+    ],
 
     "ensure_dirs": [".claude/audit-usage"],
     "$comment_gitignore": "Two lines, opposite decisions, both deliberate. `.claude/audit-usage/` itself is VERSIONED — `history.jsonl`, `nodes.jsonl` and each report belong to the commit of the run that produced them, and `git-publish` stages that directory by default; only the hook's scratch state under `.state/` is ignored. `docs/lessons-learned/` is NOT versioned: those are local notes taken while running the pipeline, not project documentation, and a run that recreates a deleted one writes different text nobody compares. Oscillating between the two is what makes every later diff start dirty — lessons-learned-012 § 15 and § 16.",
@@ -433,7 +455,7 @@
         "docker-architect",
         "domain-modeling",
         "git-publish",
-        "java-patterns",
+        "gof-design-patterns",
         "jobs-architect",
         "messaging-architect",
         "new-feature",

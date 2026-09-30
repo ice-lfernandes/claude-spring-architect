@@ -14,7 +14,7 @@ it is not a norm and is not loaded by any skill or hook.
 | 4 | Feature skills (`use-case-design` → `domain-modeling` → `persistence-architect` → `rest-api-architect` → `test-architect`) | ✅ all 5 partials have an owner |
 | 5 | `new-feature` orchestrator + `java-spring-boot-developer` executor | ✅ end-to-end run against `demo-app`, gaps remediated in D24 |
 | 6 | Publication: README, LICENSE, cross-platform CI | ✅ only missing examples with real output |
-| 7 | Post-bootstrap extension skills (`docker-architect`, `messaging-architect`, `git-publish`) and meta-tooling (`claude-code-architect-designer`, now also deciding MCP server placement) | ✅ done; more triggered by real symptoms as they show up |
+| 7 | Post-bootstrap extension skills (`docker-architect`, `messaging-architect`, `jobs-architect`, `git-publish`, `arch-adopt`, `audit-usage`) and meta-tooling (`claude-code-architect-designer`, now also deciding MCP server placement, hooks and `permissions`) | ✅ done; more triggered by real symptoms as they show up |
 
 Deliberate order: rules come **before** skills. Writing skills first leads to rules
 copied inside them — exactly the duplication this design exists to avoid.
@@ -47,6 +47,7 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] `observability.md`
 - [x] `logging.md`
 - [x] `messaging.md`
+- [x] `scheduling.md` (trigger shape, coordination across instances, bounded passes, job metrics)
 - [x] `personal-data.md` (personal data at rest and in transit)
 - [ ] `secrets.md` (planned — credentials in configuration and versioned files)
 - [ ] `authorization.md` (planned — authn/authz at the entry boundary)
@@ -61,6 +62,10 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] `test-architect`
 - [x] `new-feature` orchestrator + consolidation
 - [x] `messaging-architect` (optional step, fires when an event needs external delivery)
+- [x] `jobs-architect` (optional step — scheduling technology, cadence, coordination, the
+      outbox relay's schedule and its prune job; see 0087)
+- [x] Design patterns decided at design time — each design skill writes a `## Design patterns`
+      section into its own partial, consolidated into the spec before approval (see 0089)
 - [x] `docker-architect` (chained on demand by persistence/test/messaging)
 - [x] `java-spring-boot-developer` (executor agent)
 - [x] `git-publish` (offers git init/commit + `gh` create/push, two confirmation
@@ -71,23 +76,35 @@ copied inside them — exactly the duplication this design exists to avoid.
 
 - [x] `project-bootstrap`
 - [x] `init-project`
-- [x] `claude-code-architect-designer` (6 forms, including shared/per-agent MCP server
-      — Form 6a/6b, decision matrix § 2.1's CLI-first check; see D33)
+- [x] `claude-code-architect-designer` (8 forms, including shared/per-agent MCP server
+      — Form 6a/6b, decision matrix § 2.1's CLI-first check; see D33 — hooks (Form 7) and
+      `permissions` rules (Form 8), always with a decision record)
 - [x] `project-initializer` (agent driving `/init-project`; `Skill` tool added to chain
       into `git-publish` after a green build)
 
 ### Copied into every generated project
 
 - [x] `arch-doctor`
-- [x] `java-patterns` (preloaded catalog, applied by the executor, never invoked as a turn)
+- [x] `gof-design-patterns` (renamed from `java-patterns`, see 0088) — its catalog is read by
+      every design skill at design time (0089), injected into the executor at `SubagentStart`
+      (0077), and `/gof-design-patterns` refactors existing code by hand
+- [x] `arch-adopt` (installs or updates this `.claude/` in a project, through `export`)
+- [x] `audit-usage` (reads the execution trail back)
 - [x] `git-publish` (see Feature-design pipeline above)
 - [x] `archunit-installer` (agent, `test-architect`'s setup mode)
-- [x] `ArchHook.java` + `schemas/extensions.json`
+- [x] `commons-logging-installer` (agent, `/new-feature`'s pre-flight)
+- [x] `ArchHook.java` + `ArchHook.jar` + `schemas/extensions.json`
 
 ### Enforcement
 
 - [x] Hook-based forbidden-import checks derived from the blueprint
 - [x] Frontmatter schema validation (`ArchHook.java schema`)
+- [x] Skill and agent classes as data (`skill_classes`, `agent_classes`): body shape, required
+      `model`, and write territory, enforced by `schema` and `guard`
+- [x] `guard` — write territory, shell writes (`guard bash`), force push refused in every
+      spelling, the `Stop` sweep, frozen approved specs
+- [x] `compose gate` on `Stop` — a published port no host client can reach blocks
+- [x] Precompiled hook jar, committed, verified byte for byte in CI (`build --verify`)
 - [x] Cross-platform hook as a single Java file, exec form (no `.sh`/`.ps1` twins)
 - [x] CI (`validate.yml`) — OS matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`)
 - [x] CI — invariant 1 (rules is a leaf)
@@ -98,13 +115,15 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] CI — invariant 8 (no hardcoded Spring/Java version)
 - [x] CI — invariant 10 (recognized frontmatter fields have a single owner)
 - [x] CI — exemplar imports resolve against a real `start.spring.io` request
-- [ ] CI — invariant 9 (generated project is self-contained) — only checked manually, not automated
+- [ ] CI — invariant 9 (generated project is self-contained) — half automated: `schema` checks the
+      `export` manifest against disk and `export-determinism` exports every blueprint; a real
+      generated project compiling is still checked by hand
 - [ ] `claude plugin validate` in CI — not installed on the GitHub Actions runner, run by hand before a PR
 
 ### Documentation
 
 - [x] README (EN)
-- [x] `docs/` PT-BR (`00-visao-geral`, `01-tipos-de-arquivo`, `02-init-project`, `03-new-feature`, `04-arch-doctor`, `05-blueprints`, `06-claude-code-architect-designer`, `07-ci-validate`, `08-audit-usage`, `09-diferenciais`)
+- [x] `docs/` PT-BR (`00-visao-geral`, `01-tipos-de-arquivo`, `02-init-project`, `03-new-feature`, `04-arch-doctor`, `05-blueprints`, `06-claude-code-architect-designer`, `07-ci-validate`, `08-audit-usage`, `09-diferenciais`, `10-arch-adopt`, `11-pitfalls`)
 - [x] `docs/en/` mirror of every PT-BR doc
 - [x] Comparison with neighboring GitHub projects and the list of differentiators (`docs/pt-br/09-diferenciais.md`, README § What makes it different)
 - [x] `blueprints/README.md` + `blueprints/README.pt-br.md` (architecture overview)

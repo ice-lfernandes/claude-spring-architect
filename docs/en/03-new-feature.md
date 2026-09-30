@@ -14,8 +14,8 @@ only makes sense inside an already-generated project**, created by `/init-projec
 reads `pom.xml`, `.claude/forbidden-imports.txt`, and discovers the domain package in the
 real project.
 
-Four boundaries hold on every run, and none of them is prose — the `guard` hook blocks with
-`exit 2`:
+These boundaries hold on every run, and none of them is prose — the `guard` hook blocks
+with `exit 2`, `permissions.ask` prompts, or consolidation stops:
 
 - **A run writes only under `docs/`.** Territory is an allowlist, deny by default: each
   pipeline skill writes only its class's `write_allow` (`skill_classes` in
@@ -30,15 +30,21 @@ Four boundaries hold on every run, and none of them is prose — the `guard` hoo
   own `## Impact on approved use cases` section, plus one line in the `CHANGELOG.md` of
   every altered case's folder. `guard` freezes the files — and exempts exactly that
   `CHANGELOG.md`, so the log a frozen folder is supposed to receive is the one write it
-  still accepts (`guard.frozen_exempt_basenames`).
+  still accepts (`guard.frozen_exempt_basenames`), besides the spec's own `status:` close
+  and checklist toggles.
 - **An impact row that adds a precondition names its satisfier.** A `Satisfied by` column:
   an approved `UC-NNN`, this case, or a **named** backlog case — and in that last situation the
   spec and the final report both state that the earlier case is unreachable end to end until
   that one ships. With no satisfier, consolidation stops. A fixture that fabricates the state
   is not a satisfier.
-- **The final report carries three findings nobody should have to reconstruct:** an approved
-  case this run left unreachable, a dedupe guarantee delegated to an external consumer with no
-  contract, and personal data crossing a boundary in clear, with its receiver.
+- **The final report carries four findings nobody should have to reconstruct:** an approved
+  case this run left unreachable, every item a partial deferred with the owner it left it to,
+  a dedupe guarantee delegated to an external consumer with no contract, and personal data
+  crossing a boundary in clear, with its receiver.
+- **Design patterns are decided in the design, not by the executor.** Every design partial
+  carries a `## Design patterns` section — `none` when nothing applies, and absence stops
+  consolidation — naming the spec line or `file:line` that forces each pattern and the
+  classes it creates.
 
 ## Why it's a manual skill, not an agent
 
@@ -116,7 +122,7 @@ sequenceDiagram
                 NF->>LOG: Agent commons-logging-installer, in a separate turn
             end
             NF->>DEV: spec path
-            DEV-->>NF: green build, status: implemented
+            DEV-->>NF: green build, status: implemented (or implemented-blocked)
             NF->>GIT: feat(UC-NNN-slug) — two gates
         else not now
             NF->>GIT: docs of the approved spec only — two gates
@@ -150,8 +156,18 @@ twice.
 from `docker-compose.yml`, it records the pending service in the partial and reports the
 `/docker-architect` command, which the user runs afterwards in a prompt of its own.
 `ArchHook.java`'s `guard` mode refuses the call while a design phase is open —
-`.claude/decisions/0058-skill-classes-territory-schema.md`. `java-patterns` travels preloaded
-inside the executor.
+`.claude/decisions/0058-skill-classes-territory-schema.md`.
+
+**Design patterns are decided inside that phase too.** `domain-modeling`,
+`persistence-architect`, `rest-api-architect`, `messaging-architect` and `jobs-architect`
+each read `gof-design-patterns` § Design-time use — read, never invoked: it is a `build`
+skill — and write a `## Design patterns` section into their own partial: the spec line or
+`file:line` that forces the pattern, the pattern, the classes and interfaces it creates, the
+"When not" checked. Consolidation collects every row into the spec's own `## Design
+patterns`, so the classes a pattern creates are in what the user approves. The executor
+implements those rows, and adopts one on its own only for a symptom already on disk; the
+catalog reaches it at `SubagentStart`
+(`.claude/decisions/0089-design-patterns-decided-at-design-time.md`).
 
 ## Pre-flight — infrastructure installed once, on the first "implement now"
 
@@ -180,6 +196,10 @@ judged by its own `agent_type`, so no phase reaches it and nothing closes a phas
 | `draft` | `new-feature` | at consolidation |
 | `approved` | `new-feature` | only after explicit user approval |
 | `implemented` | `java-spring-boot-developer` | with `./mvnw verify` green |
+| `implemented-blocked` | `java-spring-boot-developer` | with a green build, when the run left an approved case unreachable end to end — the `Satisfied by` the spec named isn't there yet |
+
+Either closed state can revert to `approved` — the exit a run that closed by mistake needs
+(`.claude/decisions/0066-spec-state-machine.md`).
 
 A spec defect found by the executor in an approved spec: the user sets `status: draft`
 by hand, then `/new-feature UC-NNN-slug` resumes and re-approves.
@@ -212,10 +232,12 @@ writes one spec where every row names its source — an approved spec or a rule.
 | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
 | Name and level of each test | `40-testes.md` |
+| A design pattern and the classes it creates | The partial of the layer those classes live in — two partials adopting different patterns for the same class **stops** the pipeline |
 
 The spec is consolidated **by reference**: each block holds the final decisions and
 the partial's path, never a copy of its tables. Discarded values go to
-`## Resolved divergences`.
+`## Resolved divergences`. `## Impact on approved use cases` and `## Design patterns` collect
+every row of the same section of each partial.
 
 ## Cost discipline
 
@@ -232,7 +254,8 @@ awake (`caffeinate -i` on macOS) or running on the main thread, which is resumab
 ## Entry into generated projects
 
 `/new-feature` travels into every project generated by `/init-project`
-(`project-bootstrap` step 6.7), with the `guard` hook (step 7). Once `pedidos-api`
+(`project-bootstrap` step 6.6, which writes skills, agents and hooks through
+`ArchHook.java export`), with the `guard` hook wired. Once `pedidos-api`
 exists, `/new-feature <description>` runs **inside** it, without
 `claude-spring-architect` on the machine.
 

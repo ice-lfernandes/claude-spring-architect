@@ -82,12 +82,13 @@ it needs to, it's a procedure and belongs in a skill.
 
 - Own file under `.claude/rules/`, listed in
   [`00-index.md`](.claude/rules/00-index.md), never copied into a skill.
-- Declare `paths` whenever the norm has an identifiable file territory — that is how it
-  auto-loads without anyone remembering to read it.
+- Declare `paths` — the narrowest glob that holds it. A rule without `paths` loads at
+  launch, every session; Java is `**/src/**/*.java`, never `**/*.java`, which also matches
+  `ArchHook.java`.
 - A glob by package must name a package some blueprint's `packages.map` declares, **and**
-  the norm must appear in the derivation table of step 6.6 of
-  `project-bootstrap/SKILL.md`. Both are CI checks, because the failure mode — a norm
-  that never loads — is silent.
+  the norm must have an `export.derived_paths` entry in `schemas/extensions.json`. Both are
+  checked (CI and `ArchHook.java schema`), because the failure mode — a norm that never
+  loads — is silent.
 - No class, record, interface or enum declaration in the body. Boilerplate lives in
   `skills/<name>/templates/*.example`.
 - Every norm carries a § How to verify. Prose nobody checks is decoration.
@@ -101,7 +102,11 @@ it needs to, it's a procedure and belongs in a skill.
   `.claude/commands/`.
 - Everything the model must obey goes in the **body**. No `metadata:` — it costs tokens
   on every invocation and enforces nothing. Ownership, `reads` and `handoff` live in the
-  body's `## Contrato` section.
+  body's `## Contract` section.
+- Every skill sits in exactly one class of `skill_classes` in `schemas/extensions.json`,
+  carries a `**Class:** <c>` line in its `## Contract`, the sections that class requires,
+  and a `model` from the class's `allowed_models`. The class is also its write territory —
+  `guard` blocks the rest. `ArchHook.java schema` fails by name on a skill in no class.
 - Exemplars go in `templates/` with the `.example` suffix **last**
   (`Foo.java.example`), and every `import` in a `.java.example` must resolve against the
   current Initializr classpath.
@@ -112,11 +117,19 @@ it needs to, it's a procedure and belongs in a skill.
 
 - Exists only to preserve context, restrict tools, or change model. Otherwise it's a
   skill.
+- Sits in one class of `agent_classes` (`driver`, `executor`, `installer`), declares
+  `model` and `tools` in its frontmatter, and a `**Class:** <c>` line in its body. The class
+  fixes the sections it carries, whether it may write at all, and where.
 
 ### Hook
 
-- One file: `.claude/hooks/ArchHook.java`, single-file source launch, no build. Must run
-  identically on Linux, macOS and Windows — CI proves it on all three.
+- One source: `.claude/hooks/ArchHook.java`. Every hook launches the committed
+  `.claude/hooks/ArchHook.jar`, so editing the source changes nothing until
+  `java .claude/hooks/ArchHook.java build` rewrites the jar under the JDK
+  `hook_build.javac_feature` pins — commit both; CI's `build --verify` compares them byte for
+  byte. Must run identically on Linux, macOS and Windows — CI proves it on all three.
+- A list the hook reads (names, paths, patterns) lives in `schemas/extensions.json`, never as
+  a constant in the Java (invariant 10).
 - Exit 0 when a precondition is absent (this repo has no `./mvnw`; that's expected, not
   a failure).
 
@@ -124,7 +137,7 @@ it needs to, it's a procedure and belongs in a skill.
 
 - Declared for this meta-repo (`.mcp.json`), for the generated project
   (`project-bootstrap/templates/mcp.json.example` — written by
-  `claude-code-architect-designer`, and absent until some server needs it; step 7.5
+  `claude-code-architect-designer`, and absent until some server needs it; `export.optional_copy`
   copies it when it exists), or both. A server useful to both is written in both files on
   purpose.
 - Secrets only as `${VAR}` / `${VAR:-default}`, `oauth`, or `headersHelper`. Never a
@@ -136,7 +149,7 @@ it needs to, it's a procedure and belongs in a skill.
 
 ### Documentation
 
-- `docs/` is português, `docs/en/` is English, numbered in parallel. Changing a
+- `docs/pt-br/` is português, `docs/en/` is English, numbered in parallel. Changing a
   behaviour means changing both sides.
 - `.claude/decisions/` is not documentation and not a norm: it records what was decided
   on a date, not what holds today. No `paths`, not listed in `00-index.md`, not copied
@@ -145,18 +158,23 @@ it needs to, it's a procedure and belongs in a skill.
 ## Self-containment (invariant 9)
 
 Whoever clones a generated project does not have `claude-spring-architect`. Everything
-cited from inside a generated project must exist inside it. A new norm or skill here is
-only complete once the step that copies it was updated too:
+cited from inside a generated project must exist inside it. What travels is **data**: the
+`export` block of `.claude/schemas/extensions.json`, which `ArchHook.java export` reads for
+both `/init-project` and `/arch-adopt`. A new norm, skill or agent is only complete once that
+block lists it — `ArchHook.java schema` fails by name on the gap:
 
-| What you added | Step in `project-bootstrap/SKILL.md` |
+| What you added | Where in the `export` block |
 |---|---|
-| Norm | 6.6 (plus the derived `paths:` row) |
-| Development skill | 6.7 |
-| `ArchHook.java`, `schemas/extensions.json` | 7 |
-| MCP server | 7.5 (`templates/mcp.json.example`) |
+| Norm | Travels by default; a rule whose `paths` names a package also needs an `export.derived_paths` entry |
+| Skill | `export.skills.include` (travels) or `exclude` (a creation skill that must not) — every skill on disk in one of the two |
+| Agent | `include` or `exclude` of the agents list, same rule |
+| A renamed or dropped file | `export.retired`, so an adopted project stops carrying the old copy — one entry per file |
+| MCP server | `export.optional_copy` already names `templates/mcp.json.example` |
 
-Creation skills (`project-bootstrap`, `init-project`) and `blueprints/` are left out on
-purpose: they only serve before the project exists.
+`ArchHook.java`, `ArchHook.jar` and `schemas/extensions.json` travel whole. Creation skills
+(`project-bootstrap`, `init-project`, `claude-code-architect-designer`) and the blueprint
+catalog are left out on purpose — they only serve before the project exists; the **active**
+blueprint travels (`export.blueprint_copy`).
 
 ## Versions
 

@@ -85,9 +85,10 @@ Doesn't collide with `test-architect`: this skill fixes the HTTP contract's **ca
 (status, `errorCode`, body shape); that one owns the **strategy** for testing the whole
 use case. Different artifacts, different owners.
 
-Doesn't collide with `java-patterns`, which refactors code that already exists from an
-observed symptom. If the controller already exists and the problem is a growing `if`
-chain, this isn't the right skill.
+Doesn't collide with `gof-design-patterns`: that skill owns the catalog, this one decides
+which row shapes the REST layer of the case being designed (step 8b). Outside a feature run,
+a controller that already exists with a growing `if` chain is `/gof-design-patterns`, not this
+skill.
 
 ## Procedure
 
@@ -220,8 +221,15 @@ chain, this isn't the right skill.
    ask. Never from memory (`@CLAUDE.md`, invariant 8). You don't edit `pom.xml`: you
    declare, the executor applies.
 
+8b. **Decide the design patterns of this layer.** Run
+   `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use over the controller,
+   mappers and handlers this case adds, against the specs and what step 2 surveyed. A
+   controller seldom earns one — the usual row is a translation repeated across resources.
+   The answer goes into `## Design patterns` — `none` when nothing matches, and absence is
+   not `none`.
+
 9. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/30-rest.md`, from
-   `templates/rest-spec.md.example`. Five blocks, all mandatory.
+   `templates/rest-spec.md.example`. Six numbered blocks plus `## Design patterns`, all mandatory.
 
 10. **Report and stop.** File path, divergences from `10-dominio.md`, what was handed
     off to another owner (idempotency table), and what's left for the folder to be
@@ -245,7 +253,7 @@ never protected — it was protected in the one place someone happened to look.
 
 ## What the partial contains
 
-Seven blocks. A block with no content is written as "none" — deleting it hides a
+Eight blocks. A block with no content is written as "none" — deleting it hides a
 question nobody asked.
 
 | Block | Fixes | Shape exemplar |
@@ -257,6 +265,7 @@ question nobody asked.
 | Pagination, idempotency and dependencies | Mode and limits, both halves of the key, artifacts to add | `PageResponse.java.example` · `page-response.json.example` · `PageCriteria.java.example` (the port's own pagination type — `Pageable` never crosses it) · `IdempotencyKeyInterceptor.java.example` · `IdempotencyAspect.java.example` (every `@Idempotent` endpoint, first one included) |
 | Contract test cases | Status, `errorCode`, and body shape per scenario | `@.claude/skills/test-architect/templates/ControllerTest.java.example` |
 | Personal data | Every field of a **response** body matching `@.claude/rules/logging.md` § Masking candidates, with the form chosen — full value, reduced, or a reference — and, for a full value, the receiver and the reason. `@.claude/rules/personal-data.md` § In transit calls that the `Recorded decision`, and `@MaskSensitiveData` on the DTO is not it: masking covers the log, this covers the body that leaves the process. `none` when there is none, and absence is not `none` | `@.claude/rules/personal-data.md` § How to verify, grep 1 |
+| Design patterns | Each pattern the controller, mappers or handlers adopt, with its force, its classes and the "When not" checked — step 8b. `none` when none | `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use |
 
 The exemplars in `templates/` are a **shape reference**, not files to copy. It's the
 executor agent that reads them when generating code.

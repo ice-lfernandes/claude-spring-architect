@@ -80,31 +80,39 @@ into ArchUnit rules. Add Checkstyle in the `validate` phase and a `lombok.config
 `flagUsage = ERROR` for `@Data`/`@Setter`. None of these layers depends on the model
 remembering the rule.
 
-### 4 · Enforcement in a single Java file, nine modes, no shell
+### 4 · Enforcement in a single Java file, eleven modes, no shell
 
-`.claude/hooks/ArchHook.java` runs in single-file mode (`java ArchHook.java <mode>`),
-invoked in exec form (`command: java`, `args: [...]`) — no shell, no `chmod`,
-identical on Linux, macOS, and Windows. Zero Python, zero `.sh`/`.ps1` twins. The nine
-modes:
+`.claude/hooks/ArchHook.java` is the one source; every hook launches the precompiled
+`.claude/hooks/ArchHook.jar` built from it (`java -jar ArchHook.jar <mode>`, ~0.3 s against
+~3.3 s for a source launch), invoked in exec form (`command: java`, `args: [...]`) — no
+shell, no `chmod`, identical on Linux, macOS, and Windows. The jar is committed, and CI
+requires it to be byte for byte what the source compiles to under the pinned JDK. Zero
+Python, zero `.sh`/`.ps1` twins. The eleven modes:
 
 | Mode | Event | Blocks? | What it does |
 |---|---|---|---|
-| `check` | `PostToolUse` Write\|Edit | yes | forbidden imports + incremental `test-compile` of the touched module |
-| `format` | `PostToolUse` Write\|Edit | no | `spotless:apply` on the module |
+| `check` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | yes | forbidden imports + incremental `test-compile` of the touched module |
+| `format` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | no | `spotless:apply` on the module |
 | `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
 | `schema` | `PreToolUse`/`PostToolUse`/`Stop` | yes | frontmatter **and body** of skills/agents/rules, `.mcp.json` with a secret scan, hook entries, the export manifest — all against `extensions.json` |
-| `guard` | `UserPromptSubmit`, `PreToolUse` | yes | every skill writes only its class's territory; a `build`-class skill is unreachable in a design run; an approved spec is immutable |
-| `audit` | 10 lifecycle events | no | execution trail of every skill and agent |
-| `compose` | manual, and inside `doctor` | no | every compose service is `running`, no foreign container on its ports, no `image:` tag disagreeing with `src/test` |
+| `guard` | `UserPromptSubmit`, `PreToolUse` (`Write`/`Edit`, `Bash`, `Skill`/`Agent`), `Stop` | yes | every skill writes only its class's territory, every agent its own; shell writes read from the command; a force push in any spelling refused; a `build`-class skill unreachable in a design run; an approved spec immutable; `sweep` on `Stop` re-checks what the turn wrote on disk |
+| `audit` | 11 lifecycle events | no | execution trail of every skill and agent (generated project only) |
+| `compose` | manual, inside `doctor`, and `compose gate` on `Stop` | the gate, yes | every compose service is `running`, no foreign container on its ports, no `image:` tag disagreeing with `src/test`, no published port advertised only in-network |
+| `context` | `SubagentStart` (generated project only) | no | hands the design-pattern catalog to every agent whose class declares `pattern_catalog: true` |
 | `doctor` | manual (`/arch-doctor`) | no | setup diagnosis |
 | `export` | manual (through `/arch-adopt`) | no | writes a target project's `.claude/` from a manifest, with a provenance stamp |
+| `build` | `PostToolUse` on `ArchHook.java` (this repository only), and by hand | no | rebuilds the jar under the pinned JDK; `build --verify` is CI's byte comparison |
 
-CI runs `doctor` plus four tests that inject the violation and require the block, on all
-three operating systems: `BoundaryTest` (forbidden import → `exit 2`),
-`InjectionPathTest` (cwd-relative injection → `exit 2`), `ComposeTagTest` (an `image:` tag
-disagreeing with the one `src/test` pins → reported) and `SkillTerritoryTest` (a write
-outside the active class's `write_allow` → `exit 2`, across 11 cases). "Cross-platform" is
-a verified fact, not a claim.
+CI runs `doctor`, `build --verify`, and ten tests that inject the violation and require the
+block, on all three operating systems — every one against the jar the hooks launch:
+`BoundaryTest` (forbidden import → `exit 2`), `InjectionPathTest` (cwd-relative injection →
+`exit 2`), `ComposeTagTest` (an `image:` tag disagreeing with the one `src/test` pins →
+reported), `SkillTerritoryTest` and `AgentTerritoryTest` (a write outside the class's
+`write_allow` → `exit 2`), `BashGuardTest` (force push, shell write outside the phase),
+`SweepTest`, `ComposeGateTest`, `SubagentContextTest` and `AuditRenderTest`. The full list
+is in [07-ci-validate.md](07-ci-validate.md). "Cross-platform" is a verified fact, not a
+claim.
+
 
 See [01-file-types.md § Hook](01-file-types.md#hook).
 
@@ -133,7 +141,7 @@ owner each (`use-case-design` → `domain-modeling` → `rest-api-architect` →
 `persistence-architect` → `test-architect`, plus a conditional `messaging-architect`
 and a conditional `jobs-architect` — scheduling technology, cadence, cluster
 coordination, and the outbox relay's own schedule), consolidates them into a
-`UC-NNN-spec.md` with a `draft → approved → implemented`
+`UC-NNN-spec.md` with a `draft → approved → implemented` (or `implemented-blocked`)
 lifecycle, asks for approval, and only then offers the `java-spring-boot-developer`
 executor — a separate agent, with restricted tools, that only writes under `src/`.
 
@@ -141,16 +149,19 @@ Four boundaries stopped being prose after being violated in real runs:
 
 - **Design writes only the use case's folder** — territory is an allowlist, deny by
   default: `guard` refuses `Write`/`Edit` on any path outside the active skill's class
-  `write_allow`, except from inside an executor agent. The previous denylist (`src/**`)
+  `write_allow`; a subagent's write is judged by its own `agent_classes` territory instead,
+  whatever phase its caller left open. The previous denylist (`src/**`)
   could not see the file that leaked — a design run wrote a service into
   `docker-compose.yml`, and the file that leaks is never the one somebody listed.
 - **A design run materializes no file at all** — `guard` refuses the *call* itself to a
   `build`-class skill while the run is open. The missing service is recorded in the
   partial, with the command that creates it, and materialized afterwards.
 - **An approved spec is immutable** — `guard` freezes the `docs/use-cases/UC-*/` folder
-  whose spec is `approved` or `implemented`.
+  whose spec is `approved`, `implemented` or `implemented-blocked`, except for the spec's
+  `status:` line, a checklist toggle, and the folder's `CHANGELOG.md`.
 - **Git only through `git-publish`**, behind two `AskUserQuestion` gates; `git push` is
-  always `ask` and `git push --force` is `deny`.
+  always `ask`, and `guard bash` refuses a force push in every spelling it can read (`-f`,
+  `--force-with-lease`, `+ref`, `git -C … push`, `sh -c "…"`).
 
 See [03-new-feature.md](03-new-feature.md).
 
@@ -195,8 +206,8 @@ anything that can't justify one becomes a skill. The two forms that execute — 
 
 Every piece in this repository was born from a symptom observed in a real run,
 recorded under `lessons-learned/` and remediated by a numbered decision under
-`decisions/`. Those two directories stay out of the public repository on purpose
-(`.gitignore`): they are the maintainer's history, not a norm.
+`decisions/`. Both directories are versioned (since 2026-09-28) and stay out of
+the generated project: they are the maintainer's history, not a norm.
 
 See [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md).
 
@@ -210,8 +221,9 @@ See [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md)
   silently.
 - `metadata:` was banned from frontmatter (it costs tokens on every invocation and
   enforces nothing); contracts live in the body, where they are actual instruction.
-- Design knowledge travels preloaded into the executor (`java-patterns` via `skills:`),
-  with no turn of its own.
+- Design patterns are decided at design time, in the partial of the layer they shape, and
+  the catalog reaches the executor at `SubagentStart` for symptoms found on disk — never as a
+  turn of its own.
 
 ### 10 · Cross-cutting concerns that arrive solved
 

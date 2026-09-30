@@ -50,7 +50,7 @@ The trail turns on and off by the **existence of the directory** `.claude/audit-
 | `UserPromptSubmit` | `audit prompt` | Opens a run if the prompt is `/<audited skill>`; keeps the last free-form prompt (redacted) to attribute tokens to the piece the model opens next |
 | `PreToolUse` `Skill\|Task\|Agent` | `audit call` | Chain node; opens an implicit run (`origin: model`) when none is open |
 | `PreToolUse` `AskUserQuestion` / `PostToolUse` `AskUserQuestion` | `audit ask` / `audit answer` | Waiting on the user, discounted from active duration |
-| `PostToolUse` `Write\|Edit` | `audit file` | File touched |
+| `PostToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit` | `audit file` | File touched |
 | `PostToolUseFailure` | `audit fail` | Tool that failed (rework) |
 | `PermissionRequest` / `PermissionDenied` | `audit perm` | Permission requested or denied |
 | `SubagentStop` | `audit agent` | End of an agent; its tokens come from the subagent's own transcript |
@@ -110,7 +110,6 @@ its numbers are unchanged. Reports written before 0085 stay in Portuguese on dis
 ├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
 ├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
 └─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
-     📎 java-patterns (preloaded)
 
 ## 🧩 Tokens per piece
 
@@ -277,14 +276,16 @@ at all. The `guard` block keeps only the rest:
 
 ```json
 "use_cases_dir": "docs/use-cases",
-"frozen_statuses": ["approved", "implemented"]
+"frozen_statuses": ["approved", "implemented", "implemented-blocked"]
 ```
 
 | Phase | Event | Effect |
 |---|---|---|
 | `guard prompt` | `UserPromptSubmit` | Closes the previous phase; opens one if the prompt is `/<skill>` of any class |
 | `guard call` | `PreToolUse` `Skill\|Task\|Agent` | `Skill(<skill>)` opens the phase (never replaced by a skill of the same class); a `Skill` of a `blocked_during_design` class with a `design_phase` open → `exit 2`. An `Agent` call changes nothing |
-| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, with no path filter | Rule 1: the write carries an `agent_type` with a class → the path must be in **that agent's** `write_allow`, phase or no phase; otherwise, phase open + path **outside** the active skill's `write_allow` → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except the executor's single edit of `status: approved` to `status: implemented` |
+| `guard write` | `PreToolUse` `Write\|Edit\|MultiEdit\|NotebookEdit`, with no path filter | Rule 1: the write carries an `agent_type` with a class → the path must be in **that agent's** `write_allow`, phase or no phase; otherwise, phase open + path **outside** the active skill's `write_allow` → `exit 2`. Rule 2: a `UC-*` folder whose spec is in `frozen_statuses` → `exit 2`, except three writes: the spec's `status:` line moved along `status_transitions` (`approved` → `implemented` or `implemented-blocked`, and either back to `approved`), a checklist `[ ]` → `[x]` toggle in any of the three frozen states, and the folder's own `CHANGELOG.md` (`frozen_exempt_basenames`) |
+| `guard bash` | `PreToolUse` `Bash` | Reads the command for the write shapes in `guard.bash_write_shapes` (`>`/`>>` redirects, `tee`, `sed -i`, `cp`, `mv`…) and applies Rules 1 and 2 to every target it can read literally; a target holding `$`, a backtick or a glob is skipped. A force push in any spelling of `guard.force_push` → `exit 2` |
+| `guard sweep` | `Stop` | Diffs the working tree against the baseline `guard prompt` took and runs Rules 1 and 2 over whatever changed, whichever tool wrote it — detection, not prevention; a path git ignores is never swept |
 
 Why it exists: a design skill once wrote migrations under `src/`; a later use case rewrote
 the specs of an earlier one; and a design run wrote a `schema-registry` service into

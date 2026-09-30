@@ -17,7 +17,7 @@ metáfora — é a regra real de quem pode citar quem (`CLAUDE.md` § Invariants
 flowchart TB
     subgraph L0["Enforcement — determinístico"]
         SETTINGS["settings.json"]:::hook
-        HOOK["ArchHook.java\n(check · format · tests · schema\nguard · audit · compose · doctor · export)"]:::hook
+        HOOK["ArchHook.jar — built from ArchHook.java\n(check · format · tests · schema · guard\naudit · compose · context · doctor · export · build)"]:::hook
     end
 
     subgraph L1["Procedimento — skills"]
@@ -26,7 +26,7 @@ flowchart TB
         SK_BOOT["skill: project-bootstrap"]:::skill
         SK_DESIGNER["skill: claude-code-architect-designer\n(desenha este .claude/ — fica aqui)"]:::skill
         SK_AUDIT["skill: audit-usage"]:::skill
-        SK_PAT["skill: java-patterns"]:::skill
+        SK_PAT["skill: gof-design-patterns"]:::skill
         SK_NF["skill: new-feature"]:::skill
         SK_UC["skill: use-case-design"]:::skill
         SK_DOM["skill: domain-modeling"]:::skill
@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph L2["Execução isolada — agents"]
         AG_INITZR["agent: project-initializer\n(model: sonnet)"]:::agent
-        AG_DEV["agent: java-spring-boot-developer\n(model: sonnet, effort: max)"]:::agent
+        AG_DEV["agent: java-spring-boot-developer\n(model: sonnet, effort: high)"]:::agent
         AG_ARCH["agent: archunit-installer\n(model: sonnet, effort: medium)"]:::agent
         AG_LOG["agent: commons-logging-installer\n(model: sonnet, effort: medium)"]:::agent
     end
@@ -70,7 +70,8 @@ flowchart TB
     SK_ADOPT -->|escreve tudo via modo export| HOOK
     SK_BOOT -->|copia| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|propõe e escreve, após aprovação| SK_UC & AG_DEV & RULES
-    AG_DEV -.->|skills: pré-carregada| SK_PAT
+    HOOK -.->|context subagent no SubagentStart: o catálogo, só no projeto gerado| AG_DEV
+    SK_DOM & SK_PERS & SK_REST & SK_MSG & SK_JOBS -.->|leem § Design-time use, decidem os padrões da camada| SK_PAT
     SK_NF -->|Agent tool, pre-flight, se commons vazio| AG_LOG
     AG_LOG -->|escreve| LOGOUT["commons.logging/** + AutoConfiguration.imports"]:::out
     SK_AUDIT -->|Bash, audit summary, sem model| HOOK
@@ -101,7 +102,7 @@ flowchart TB
 
     SK_DOCTOR -->|Bash, sem model| HOOK
 
-    SETTINGS -->|UserPromptSubmit / PreToolUse / PostToolUse / Stop / SubagentStop / SessionEnd …| HOOK
+    SETTINGS -->|UserPromptSubmit / PreToolUse / PostToolUse / Stop / SubagentStart / SubagentStop / SessionEnd …| HOOK
     HOOK -->|bloqueia ou avisa sobre| SRC
     HOOK -->|audit: escreve, no projeto gerado| TRAIL[".claude/audit-usage/*.md + history.jsonl + nodes.jsonl"]:::out
 
@@ -151,13 +152,18 @@ O hook é a única peça fora desse grafo de citações: `settings.json` o dispa
 eventos do ciclo de vida, e o que ele lê (`forbidden-imports.txt`, `extensions.json`)
 é dado, não prosa.
 
-Dois modos dependem de onde estão registrados. `guard` roda **aqui e no projeto
+Três modos dependem de onde estão registrados. `guard` roda **aqui e no projeto
 gerado**: ele mantém cada skill dentro do território que a classe dela declara em
-`skill_classes` (deny por default), congela specs aprovados, e recusa uma chamada a
-skill de classe `build` enquanto um run de design está aberto. `audit` só roda no
-projeto gerado, porque se liga pela presença de `.claude/audit-usage/`, e este
-meta-repo não cria o diretório — auditar o *desenho* da ferramenta em vez do uso dela
-não é a trilha que interessa. Ver [08-audit-usage.md](08-audit-usage.md).
+`skill_classes`, e cada subagent dentro do território de `agent_classes` (deny por
+default), congela specs aprovados, recusa uma chamada a skill de classe `build` enquanto
+um run de design está aberto, lê comandos de shell atrás das formas de escrita que
+consegue resolver (`guard bash`) e recusa force push, e no `Stop` varre o que o turno
+mudou em disco (`guard sweep`). `audit` só roda no projeto gerado, porque se liga pela
+presença de `.claude/audit-usage/`, e este meta-repo não cria o diretório — auditar o
+*desenho* da ferramenta em vez do uso dela não é a trilha que interessa. `context
+subagent` também só é registrado no projeto gerado, no `SubagentStart`: entrega o
+catálogo de `gof-design-patterns` a todo agent cuja classe declara `pattern_catalog: true`.
+Ver [08-audit-usage.md](08-audit-usage.md).
 
 A mesma `skill_classes` é o que padroniza o **corpo** de cada skill: `ArchHook.java
 schema` exige que toda `SKILL.md` no disco esteja em exatamente uma classe, declare
@@ -170,7 +176,7 @@ nenhum — com `claude plugin validate` imprimindo `✔ Validation passed` sobre
 | Comando | O que faz | Detalhes |
 |---|---|---|
 | `/init-project` | Interview → escolhe blueprint → gera estrutura completa do projeto Spring Boot, sem código de negócio | [02-init-project.md](02-init-project.md) |
-| `/new-feature <descrição>` | Desenha um caso de uso por execução (caso de uso → domínio → REST → persistência → testes) num spec único, pede aprovação e oferece o executor | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature <descrição>` | Desenha um caso de uso por execução (caso de uso → domínio → REST → mensageria e jobs quando se aplicam → persistência → testes) num spec único, pede aprovação e oferece o executor | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema, trilha de auditoria, serviços do compose | [04-arch-doctor.md](04-arch-doctor.md) |
 | `/audit-usage` | Lê a trilha de auditoria do projeto gerado: gasto por skill e agent entre execuções, taxa de falha, qual relatório abrir. Aqui reporta que a trilha está desligada | [08-audit-usage.md](08-audit-usage.md) |
 | `/claude-code-architect-designer` | Decide qual das oito formas (skill auto-invocável, skill manual, agent, rule, seção do `CLAUDE.md`, servidor MCP, hook, regra de `permissions` — ou nada) resolve um cenário, e escreve o arquivo após aprovação. Só neste meta-repo | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |

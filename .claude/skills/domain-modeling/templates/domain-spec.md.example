@@ -157,6 +157,18 @@ Refines the `00-caso-de-uso.md` rows marked `Detailed by: domain-modeling`.
 No new exception: the four from the typed family, generated at bootstrap, cover the five
 scenarios. A new `errorCode` isn't a new class.
 
+## Design patterns
+
+none — no force in the spec, no symptom on disk
+
+One row per pattern this layer adopts, decided through
+`@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use:
+`| Force or symptom | Pattern | Classes and interfaces it creates | "When not" checked |`.
+The force is a spec line or a `file:line`, never "might grow". Every class a row creates is
+also listed where this partial lists what the executor writes; reshaping code an approved
+case produced is a row in the section below. Consolidation collects this section into
+`UC-NNN-spec.md`.
+
 ## Impact on approved use cases
 
 none

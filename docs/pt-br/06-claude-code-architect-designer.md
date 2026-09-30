@@ -245,7 +245,7 @@ desde a primeira sessão: só o nome já custa contexto no startup.
 Mesmo arquivo, uma linha de diferença. Regra prática deste repo:
 
 - **Escreve arquivos no projeto do usuário e é disparada por decisão dele → Forma 2.**
-  Ex.: `arch-doctor`, `init-project`, `project-bootstrap`, `java-patterns`, e esta
+  Ex.: `arch-doctor`, `init-project`, `project-bootstrap`, `gof-design-patterns`, e esta
   própria skill.
 - **Parte de um pipeline que outra peça encadeia → Forma 1**, mesmo escrevendo
   arquivos. `disable-model-invocation` esconde a skill do modelo, e o que o modelo não
@@ -481,7 +481,7 @@ O **nome da pasta** vira o comando: `.claude/skills/arch-doctor/` → `/arch-doc
 | `model` | ➖ | `sonnet`, `opus`, `haiku`, ID completo, ou `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Turnos máximos antes de parar |
-| `skills` | ➖ | Skills pré-carregadas **por completo** no início |
+| `skills` | ➖ | Skills pré-carregadas **por completo** no início — nunca uma com `disable-model-invocation: true`, que é pulada sem aviso (decisão 0077) |
 | `mcpServers` | ➖ | MCP servers só pra este subagent |
 | `hooks` | ➖ | Hooks só enquanto o subagent roda |
 | `memory` | ➖ | `user`, `project`, ou `local` |

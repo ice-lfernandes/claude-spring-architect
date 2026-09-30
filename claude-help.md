@@ -697,7 +697,7 @@ The frontmatter defines the metadata; the markdown body becomes the **system pro
 | `model` | ➖ | `sonnet`, `opus`, `haiku`, `fable`, full ID, or `inherit` |
 | `permissionMode` | ➖ | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `maxTurns` | ➖ | Maximum turns before stopping |
-| `skills` | ➖ | Skills preloaded **in full** at startup |
+| `skills` | ➖ | Skills preloaded **in full** at startup — never one with `disable-model-invocation: true`, which is skipped without a word (decision 0077) |
 | `mcpServers` | ➖ | MCP servers only for this subagent |
 | `hooks` | ➖ | Hooks only for this subagent |
 | `memory` | ➖ | Persistent memory: `user`, `project`, or `local` |
@@ -1503,8 +1503,8 @@ claude-help.md                     # this guide; cited from CLAUDE.md, not impor
 .claude/
 ├── rules/                         # modular norms, loaded by paths
 │   ├── 00-index.md                # index: which norm covers what
-│   ├── architecture-ddd.md        # no paths: master content, copied on init
-│   ├── naming.md                  # paths: **/*.java
+│   ├── architecture-ddd.md        # paths come from the blueprint at generation time
+│   ├── naming.md                  # paths: **/src/**/*.java — never **/*.java (decision 0082)
 │   ├── code-quality.md
 │   ├── error-handling.md
 │   ├── api-rest.md                # paths rewritten from the blueprint at generation
@@ -1514,21 +1514,25 @@ claude-help.md                     # this guide; cited from CLAUDE.md, not impor
 │   ├── testing.md
 │   ├── observability.md
 │   ├── logging.md
-│   └── messaging.md
+│   ├── messaging.md
+│   ├── personal-data.md
+│   └── scheduling.md
 ├── skills/
 │   ├── init-project/SKILL.md              # /init-project — disable-model-invocation
 │   ├── arch-doctor/SKILL.md               # /arch-doctor  — disable-model-invocation
+│   ├── arch-adopt/SKILL.md                # /arch-adopt   — installs/updates this .claude/ via export
 │   ├── audit-usage/SKILL.md               # /audit-usage  — reads the execution trail
 │   ├── claude-code-architect-designer/    # designs this .claude/ itself; references/, templates/
 │   ├── project-bootstrap/                 # SKILL.md + templates/ + references/
-│   ├── use-case-design/                   # pipeline 1/5
-│   ├── domain-modeling/                   # pipeline 2/5
-│   ├── persistence-architect/             # pipeline 3/5
-│   ├── rest-api-architect/                # pipeline 4/5
-│   ├── test-architect/                    # pipeline 5/5
-│   ├── new-feature/                       # orchestrates the 5 above
-│   ├── messaging-architect/               # Kafka producer/consumer adapters
-│   ├── java-patterns/                     # preloaded into the executor agent
+│   ├── use-case-design/                   # pipeline 1
+│   ├── domain-modeling/                   # pipeline 2
+│   ├── rest-api-architect/                # pipeline 3
+│   ├── messaging-architect/               # pipeline 3b, conditional — Kafka producer/consumer
+│   ├── jobs-architect/                    # pipeline 3c, conditional — scheduled jobs, outbox relay
+│   ├── persistence-architect/             # pipeline 4
+│   ├── test-architect/                    # pipeline 5
+│   ├── new-feature/                       # orchestrates the pipeline above
+│   ├── gof-design-patterns/               # catalog: read at design time, injected into the executor
 │   ├── docker-architect/                  # extends docker-compose after bootstrap
 │   └── git-publish/                       # chained after /init-project and the executor
 ├── agents/
@@ -1537,9 +1541,12 @@ claude-help.md                     # this guide; cited from CLAUDE.md, not impor
 │   ├── archunit-installer.md          # test-architect's setup mode, isolated context
 │   └── commons-logging-installer.md   # /new-feature's pre-flight, isolated context
 ├── hooks/
-│   └── ArchHook.java              # check · format · tests · schema · audit · guard · compose · doctor
+│   ├── ArchHook.java              # check · format · tests · schema · audit · guard · compose
+│   │                              #   · context · export · doctor · build
+│   └── ArchHook.jar               # what every hook launches — committed, verified in CI
 ├── schemas/
-│   └── extensions.json            # single owner of recognized frontmatter + .mcp.json fields
+│   └── extensions.json            # single owner of recognized frontmatter, .mcp.json fields, hook
+│                                  #   registrations, skill and agent classes, the export manifest
 ├── blueprints/                    # declarative data, not instructions
 │   ├── _schema.md
 │   ├── README.md · README.pt-br.md
@@ -1552,15 +1559,18 @@ claude-help.md                     # this guide; cited from CLAUDE.md, not impor
 │   ├── onion/
 │   ├── vertical-slice/
 │   └── custom-template/custom.template.yaml
-├── .ci/BoundaryTest.java          # CI proof that the hook blocks a forbidden import
+├── decisions/                     # design records — history, versioned, never copied out
+├── lessons-learned/               # symptoms observed in real runs — history, versioned
+├── .ci/*Test.java                 # ten CI tests, each injecting a violation into the jar
 └── settings.json                  # hooks + permissions + enabledPlugins
 ```
+
 
 There's no `.claude/commands/`: slash commands and skills were merged, and keeping
 both would duplicate the concept. `/init-project`, `/arch-doctor`, and `/audit-usage`
 are skills with `disable-model-invocation: true` — same `/name`, plus a support folder.
-`CLAUDE.md` cites `.claude/decisions/` for history; that directory is not versioned
-here and is not read by the runtime.
+`CLAUDE.md` cites `.claude/decisions/` for history; that directory is versioned, is not
+read by the runtime, and is not copied into a generated project.
 
 Decisions in this repository that illustrate the guide's principles well:
 
@@ -1581,12 +1591,15 @@ Decisions in this repository that illustrate the guide's principles well:
   `project-bootstrap` from the blueprint's `depends_on` — and blocks. Here that file
   doesn't exist and the hook exits 0, by design. `.claude/.ci/BoundaryTest.java`
   proves the block on every OS.
-- **Hook in exec form, no shell.** `command: java` + `args`, a Java file in
-  single-file source mode — identical on Linux, macOS, and Windows, no `chmod`.
-- **`if` instead of a matcher regex.** `schema` runs on `PreToolUse` for `Write` and
-  on `PostToolUse` for `Edit`, filtered by `if: "Write(.claude/**/*.md)"` and
-  `if: "Edit(.mcp.json)"` — no process spawned for a Java edit. `format` and `check`
-  run on `PostToolUse` with matcher `Write|Edit`.
+- **Hook in exec form, no shell.** `command: java` + `args: ["-jar", ".claude/hooks/ArchHook.jar", <mode>]`,
+  the jar precompiled from one Java source (a source launch recompiled the file on every
+  call, ~3.3 s against ~0.3 s) — identical on Linux, macOS, and Windows, no `chmod`.
+- **`if` instead of a matcher regex.** `schema` runs on `PreToolUse` and `PostToolUse`,
+  filtered by `if: "Edit(.claude/**/*.md)"`, `if: "Edit(.mcp.json)"` and the two settings
+  files — no process spawned for a Java edit. A path in `if` only matches through
+  `Edit(...)`/`Read(...)`, and `Edit` covers every built-in tool that writes a file, `Write`
+  included. `format` and `check` run on `PostToolUse` with matcher
+  `Write|Edit|MultiEdit|NotebookEdit` and `if: "Edit(**/*.java)"`.
 - **`Stop` hook as a verification gate.** `ArchHook.java tests` (and `schema`) run on
   the `Stop` event: the turn doesn't end without the tests passing. It's level 3 of the
   escalation described in
@@ -1594,7 +1607,8 @@ Decisions in this repository that illustrate the guide's principles well:
 - **Secrets denied by permission, not by convention.** `permissions.deny` blocks
   `Read(./**/*.env)`, `Read(./**/secrets/**)`, `Read(./**/application-prod.yml)`,
   `Read(./**/application-prod.yaml)`, `Read(./**/*.pem)`, `Read(./**/*.p12)`, and
-  `Bash(git push --force:*)` — the CLAUDE.md invariant "no literal secret in a
+  `Bash(git push --force:*)` — and `guard bash` refuses the force-push spellings that
+  prefix misses (`-f`, `--force-with-lease`, `+ref`) — the CLAUDE.md invariant "no literal secret in a
   versioned file" has a real gate behind it, and `schema` scans `.mcp.json`'s
   `headers`/`env` for spelled-out tokens.
 - **Data outside the instructions.** The blueprints are declarative YAML. Adding a new

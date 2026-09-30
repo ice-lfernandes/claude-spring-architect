@@ -281,8 +281,15 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
    (`@.claude/rules/persistence.md` § Configuration); what this skill decides is sizing
    — pool size, timeouts, `batch_size` — based on the volume answered in step 3.
 
+7b. **Decide the design patterns of this layer.** Run
+   `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use over the adapters,
+   mappers and queries this case adds, against the specs and what step 2 surveyed — a
+   Specification `10-dominio.md` already decided reaching its query here, an adapter that
+   would repeat an earlier one's skeleton. The answer goes into `## Design patterns` —
+   `none` when nothing matches, and absence is not `none`.
+
 8. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/20-persistencia.md`, from
-   `templates/persistence-spec.md.example`. Six blocks, all mandatory — § 6 · Declared
+   `templates/persistence-spec.md.example`. Six numbered blocks plus `## Design patterns`, all mandatory — § 6 · Declared
    dependencies written as `none` when this layer needs nothing the project lacks.
 
 9. **Check the engine has a container.** List the keys inside the `services:` block and
@@ -321,6 +328,7 @@ asked.
 | Idempotency (only when `30-rest.md` requires `Idempotency-Key`) | The shared table, entity, repository, adapter, and application component — modeled once, reused by every later use case | `IdempotencyKeyTable.sql.example` · `IdempotencyKeyStore.java.example` · `IdempotentExecution.java.example` |
 | Outbox (only when `25-mensageria.md` fixes publication Form B) | The shared `outbox_events` table, its mapping, the adapter implementing `OutboxRelayGateway` and `OutboxRetentionGateway`, the **claim strategy** that meets `35-jobs.md` § 3, the retention window and the prune's statement — modeled once, reused by every later event | `OutboxEventTable.sql.example` · `OutboxEventStore.java.example` |
 | Declared dependencies | Build dependencies this layer needs and the project does not declare — the only list the executor may act on when it writes `pom.xml` | — |
+| Design patterns | Each pattern the adapters, mappers or queries adopt, with its force, its classes and the "When not" checked — step 7b. `none` when none | `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use |
 | Deferred | One row per item this partial decided **not** to do in this run: what was decided, what is missing, the norm that requires it (by path), and the intended owner — `checklist` (this run does it) or `backlog` (a later one does). `none` when nothing was deferred, and absence is not `none`. Consolidation resolves each row to a real owner and is what writes the `BACKLOG.md` line | — |
 
 The exemplars in `templates/` are **reference for form**, not files to copy. It's the
