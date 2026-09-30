@@ -1,27 +1,39 @@
-# Claude Code runtime pitfalls
+# Pitfalls
 
 Primary source: `@claude-help.md`, `.claude/schemas/extensions.json` (the `settings`,
-`injections`, `arguments` and `types` blocks), and what
-`java .claude/hooks/ArchHook.java schema` checks.
+`injections`, `arguments`, `types`, `guard` and `compose` blocks), what
+`java .claude/hooks/ArchHook.java schema` checks, and the decision records each item cites.
 
 ## Why this page exists
 
-Every item below is a **runtime** trap, not a decision of this repository: it holds for any
-project that uses skills, agents, hooks or MCP, and in all of them the failure is **silent** —
-nothing errors, nothing warns, and the piece simply does not do what its author believes it
-does.
+Every item below is a trap that fails **silently**, or that a hook refuses with a message the
+reader has to already understand. The page has two parts:
 
-They used to live in `@CLAUDE.md` § Known pitfalls, which is read in every session. A runtime
-fact does not need to be permanently in context: it needs to be where whoever writes a skill,
-a hook or a `.mcp.json` will look. `@CLAUDE.md` keeps the pitfalls of **this repository**
-(write territories, spec freezing, who writes `pom.xml`, `audit` being off here) and points
-here with one row of its routing table.
+- **Part 1 — the Claude Code runtime.** Holds for any project that uses skills, agents, hooks
+  or MCP: nothing errors, nothing warns, and the piece simply does not do what its author
+  believes it does.
+- **Part 2 — this repository.** Facts of this `.claude/`: write territories, frozen spec
+  folders, who owns `pom.xml` and the outbox, what `guard sweep` and `compose gate` do and do
+  not cover.
+
+Both used to live in `@CLAUDE.md` § Known pitfalls, which is read in every session. Part 1
+left in decision `0061`, part 2 in decision `0090`. Neither needs to be permanently in
+context: they are needed while someone designs or edits a piece of `.claude/`, or writes
+about one — which is when `claude-code-architect-designer` reads this page. Most of part 2
+also sits behind `guard`, `schema` or `compose gate`, whose block message names the rule and
+the fix. `@CLAUDE.md` keeps only the three facts that bite in any session with no hook behind
+them, and points here with one row of its routing table.
+
+**A new pitfall goes here, in both languages — never back into `@CLAUDE.md`.** That route is
+what refilled the section between `0061` and `0090`.
 
 What is **not** here: the frontmatter fields the runtime recognizes, which are data with a
 single owner in `.claude/schemas/extensions.json` and are described in
 [01-file-types.md](01-file-types.md).
 
-## Skills
+## Part 1 · The Claude Code runtime
+
+### Skills
 
 **A skill cannot have the name of a native slash command.** The folder name becomes the
 command, and `/doctor`, `/init`, `/context`, `/memory` already exist in the runtime. That is
@@ -64,7 +76,7 @@ subagent`, decision 0077), not through `skills:`.
 live in the body's `## Contract` section. Do not put `metadata:` back into a `SKILL.md` — it
 costs tokens on every invocation and enforces nothing.
 
-## Frontmatter and validation
+### Frontmatter and validation
 
 **The runtime silently ignores unknown frontmatter.** An invented field is decoration, not
 behavior. List of native fields in `@claude-help.md`.
@@ -75,7 +87,7 @@ does not look at `.claude/agents/`, `.claude/rules/`, or `.claude/settings.json`
 malformed YAML, nothing else. What validates fields is
 `java .claude/hooks/ArchHook.java schema`.
 
-## Hooks
+### Hooks
 
 **`.claude/settings.json` is only read at session startup.** Editing hooks mid-session has no
 effect — `claude` must be restarted.
@@ -97,7 +109,7 @@ like a filter and filters nothing. Source: `docs/pt-br/claude-code-docs/07-setti
 not failed. `export`, `doctor`, `build` and the bare `compose` are invoked by people and read
 nothing.
 
-## `AskUserQuestion`
+### `AskUserQuestion`
 
 **It rejects a question with fewer than 2 options, and rejects the whole batch with it:**
 `InputValidationError ... "too_small" ... path: ["questions",1,"options"]`. A question with one
@@ -106,7 +118,7 @@ The batch also has an upper bound of 4 questions per call. The generated project
 same pitfall in its own `CLAUDE.md`, from
 `project-bootstrap/templates/root.CLAUDE.md.example`.
 
-## MCP
+### MCP
 
 **`.mcp.json` is only read at session startup**, same as `settings.json`. Adding or editing a
 server mid-session has no effect until `claude` is restarted.
@@ -121,3 +133,142 @@ name as the team's `.mcp.json` one shadows it — no warning either way.
 **An unset `${VAR}` in `.mcp.json` doesn't fail generation.** The server loads with the literal
 `${VAR}` text and fails to connect at runtime instead. `claude mcp list` surfaces the
 missing-variable warning; frontmatter schema validation does not.
+
+## Part 2 · This repository
+
+### Write territory and the guards
+
+**A skill writes only its class's territory, and `guard` blocks the rest with exit 2.** Deny
+by default; the message names the class and its `write_allow`, and the fix is the data
+(`skill_classes` in `.claude/schemas/extensions.json`), never a retry. A design run is
+docs-only and cannot even *call* a `build`-class skill — `docker-architect` included: the
+missing compose service is recorded in the partial and materialized afterwards by
+`/docker-architect`. With no skill phase open, territory is unrestricted, which is why
+editing a file by hand is never blocked.
+
+**A subagent's write is judged by `agent_classes`, not by the caller's phase.** Every write
+carries its `agent_type`, and `guard` checks the path against the agent's own `write_allow`,
+so an open design phase neither widens nor narrows it. An agent no class lists falls back to
+the caller's phase — nothing else describes what it may write.
+
+**Enforcement is no longer tool-shaped, but it is still not filesystem-shaped.** Until
+lessons-learned-014 § 1 every hook matched on a tool name, so a heredoc, a `sed -i` or a
+`tee` passed through `guard`, `check`, `format`, `audit` and `schema` alike — the exact
+spellings a host instruction to prefer `Bash` over `Write`/`Edit` produces. `guard bash`
+(`PreToolUse`, matcher `Bash`) now reads the command for the write shapes in
+`guard.bash_write_shapes` and applies the territory and frozen-folder checks to every target
+it can read literally. **What it deliberately does not do:** a target holding `$`, a backtick
+or a glob, or landing outside the repository, is skipped without a word, and `check` and
+`format` stay off `Bash` entirely — ArchUnit and `spotless:apply` already re-check both,
+while a `PostToolUse` matcher there would pay a JVM on every `ls`. So the true statement is
+narrow: **inside Claude Code, through `Write`/`Edit`/`MultiEdit`/`NotebookEdit`, and through
+the shell spellings the shape list names.** Design:
+`.claude/decisions/0063-bash-write-enforcement.md`.
+
+**`guard sweep` backs both write guards on `Stop`, and it is git-shaped.** It diffs the
+working tree against the baseline `guard prompt` takes at `UserPromptSubmit`, so a tree dirty
+before the turn is not reported, and it runs the same territory and frozen-folder checks over
+whatever changed — no matter which tool wrote it. Two limits worth knowing before reading it
+as total coverage: it is **detection, not prevention** (the write already happened), and a
+path git ignores never appears in `git status --porcelain` and is never swept — which in this
+repository is only what `.gitignore` still lists, `.claude/decisions/` and
+`.claude/lessons-learned/` having been versioned since 2026-09-28. A spec's `status:` close and
+its `[ ]` → `[x]` toggles are admitted by comparing against `git show HEAD:`, since the sweep
+has no `old_string` to read. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+
+**A push always prompts, a force push never runs, and a skill's `Bash` is scoped.**
+`git push` and `gh repo create` sit in `permissions.ask`, which is evaluated before any
+allow — so the prompt appears even inside `git-publish`, after its own gate. `guard bash`
+refuses a force push in every spelling it can read (`-f`, `-uf`, `--force-with-lease`,
+`+ref`, `git -C … push`, `sh -c "…"`), lists in `guard.force_push`; the old `deny` line only
+caught `--force`. A skill whose `allowed-tools` names bare `Bash` fails `schema` unless its
+`## Contract` carries an `**Unfiltered Bash:**` line saying why — four do (the ones that run
+builds, network and docker); the rest list prefixes, and an injection command missing from
+that list aborts the skill. Design: `.claude/decisions/0076-bash-scope-and-force-push-guard.md`.
+
+### Classes and models
+
+**Every skill declares `model`, from its class's set.** `schema` fails a `SKILL.md` without
+it, or with a value outside `skill_classes.classes.<c>.allowed_models` (`design` and `meta`
+only `opus`, `observer` and `ops` only `sonnet`). A skill's `model` holds for the rest of the
+turn, not just the skill — which is why a pinned model alone is not a reason to be an agent,
+and why a lowering pin on a skill fired mid-turn is the case to watch. Design:
+`.claude/decisions/0081-skill-model-required-per-class.md`.
+
+### Use case specs
+
+**An implemented use case's folder is frozen except for three writes:** the spec's `status:`
+line moved along `guard.status_transitions`, a checklist toggle in it, and
+`UC-NNN/CHANGELOG.md` — the write `/new-feature`'s consolidation *requires* for every change
+an impact row makes. Exempt basenames are data (`guard.frozen_exempt_basenames`), matched
+directly under the folder: `notes/CHANGELOG.md` is still frozen.
+
+**The spec has three closed states, and the checklist is ticked before the status closes.**
+`approved` closes to `implemented`, or to `implemented-blocked` when the run left an approved
+use case unreachable end to end — the code is on disk and green, and a `Satisfied by` the spec
+named is not there yet. Either reverts to `approved`, which is the exit a run that closed by
+mistake did not have. A `[ ]` → `[x]` toggle is admitted in **all three**
+(`guard.checklist_toggle_statuses`): it is monotone, and requiring `approved` once froze 23
+unticked boxes forever. The order is still the executor's contract, not the hook's: the status
+line is the last write it makes to the folder. Design:
+`.claude/decisions/0066-spec-state-machine.md`.
+
+### Compose
+
+**`compose gate` runs the compose check unprompted, and it blocks.** `docker-architect` step 7
+already called `ArchHook.java compose` "not optional" and it had never been run against a
+project: a `kafka` block publishing 9092 while advertising only `kafka:9092` shipped on day
+one and was unreachable from every host client until a use case needed it. The gate is the
+same `composeReport()` — one definition of healthy, shared with `doctor` — silent while
+healthy, exit 2 with the failing lines otherwise. A service stopped on purpose blocks the stop
+too; that is a gate, not a bug. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+
+**A healthcheck that passes proves nothing about host reachability** — it runs inside the
+container, where `localhost` is the service. A service that publishes a port to the host
+while advertising only its compose-network name (`KAFKA_ADVERTISED_LISTENERS:
+PLAINTEXT://kafka:9092` next to `ports: "9092:9092"`) is reachable from no host client, and
+neither the healthcheck nor Testcontainers sees it — Testcontainers wires its own listeners.
+`ArchHook.java compose` reads the file for it (`compose.advertised_env_suffixes`); a service
+that advertises nothing claims nothing and is left alone.
+
+**`grep -A2 "^services:" docker-compose.yml` is not the list of services.** It reads two
+lines and stops, dropping services declared further down and reporting the children of
+`volumes:` as services. Every piece that needs that list — `docker-architect`'s injection
+and step 3, `messaging-architect` step 9, `persistence-architect` step 9 — uses the `awk`
+one-liner bounded to the `services:` block. A wrong portrait invites recreating a service
+that already exists.
+
+### Ownership inside a feature run
+
+**`pom.xml` has exactly one writer inside a feature run: the executor, for a dependency the
+spec declares** (the messaging partial's § 7, or the persistence equivalent). The design
+skills are docs-only, `/new-feature` writes the spec, the two installers own only their own
+setup. Anything else in the file — a plugin, a property, a version bump — is reported, never
+written.
+
+**The outbox has three owners, split by question.** `persistence-architect`: the table,
+columns, claim query, batch size, attempt ceiling, retention window and the prune's
+statement. `messaging-architect`: that the case needs one, the delivery guarantee, and the
+relay pass with its broker side. `jobs-architect`: when anything runs — the relay's poll
+interval, the on/off switch, the replica count the claim must meet, and the prune job. A § 6
+row naming columns is a divergence, and a column or claim decision that would drop a
+declared guarantee stops the pipeline instead of being settled by precedence
+(`.claude/decisions/0087-jobs-architect-skill.md`).
+
+**The bounded context is a project fact, not a per-use-case answer.** First segment of every
+topic name, asked with the coordinates in `/init-project` and written into the generated
+project's root `CLAUDE.md`. A prefix chosen inside one use case gives one system two
+namespaces.
+
+### Rules and decisions
+
+**A rule without `paths` loads at launch, every session — it is not "citation only".** So
+every rule declares the narrowest glob that holds it, and Java is `**/src/**/*.java`, never
+`**/*.java`: that one matches `.claude/hooks/ArchHook.java` and pulls every Java norm in on
+each read of the hook. A renamed rule's old name goes in `export.retired`, or the target keeps
+both. Design: `.claude/decisions/0082-rules-without-paths-load-at-launch.md`.
+
+**`.claude/decisions/` is neither a norm nor living documentation.** It records what was
+decided on the date, not what holds today: no `paths`, outside `00-index.md`, and it does not
+travel to the generated project. A new record supersedes the old one; the old one is not
+rewritten.

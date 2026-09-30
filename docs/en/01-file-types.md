@@ -53,7 +53,7 @@ model, effort, paths, context, agent, background, hooks, shell
 
 A field outside this list (e.g. `metadata:`) doesn't raise an error — the runtime
 **silently ignores** unknown fields, and `claude plugin validate` lets it through too
-(`CLAUDE.md` § Known pitfalls). It's `ArchHook.java schema` that blocks it.
+([11-pitfalls.md](11-pitfalls.md)). It's `ArchHook.java schema` that blocks it.
 
 **Dynamic context injection:** the `` !`command` `` syntax runs a command **before**
 the content reaches the model and substitutes its output. That's what lets
@@ -61,7 +61,7 @@ the content reaches the model and substitutes its output. That's what lets
 (`` !`find .claude/blueprints ...` ``) and `arch-doctor` embed the real output of
 `ArchHook.java doctor` inside the skill body (`claude-help.md` § Dynamic context
 injection). A command that fails (exit ≠ 0) **aborts the entire invocation** — which
-is why `CLAUDE.md` § Known pitfalls warns about pipes inside
+is why [11-pitfalls.md](11-pitfalls.md) warns about pipes inside
 `allowed-tools: Bash(command:*)`: each pipe segment needs its own rule, or the whole
 command gets blocked before it runs.
 
