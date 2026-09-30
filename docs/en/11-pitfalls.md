@@ -246,6 +246,13 @@ skills are docs-only, `/new-feature` writes the spec, the two installers own onl
 setup. Anything else in the file — a plugin, a property, a version bump — is reported, never
 written.
 
+**Outside a feature run, the `sonar.*` lines of the root build file belong to
+`sonarqube-setup`.** It writes the scanner plugin and its properties once — chained by
+`project-bootstrap`'s last step or by `arch-adopt` — and stops on a re-run when the scanner
+is already there. The `sonarqube` compose service it needs is still `docker-architect`'s,
+and the token is never in any file: the scanner reads `SONAR_TOKEN` from the environment.
+Design: `.claude/decisions/0091-sonarqube-setup-skill.md`.
+
 **The outbox has three owners, split by question.** `persistence-architect`: the table,
 columns, claim query, batch size, attempt ceiling, retention window and the prune's
 statement. `messaging-architect`: that the case needs one, the delivery guarantee, and the

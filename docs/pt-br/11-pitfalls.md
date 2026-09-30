@@ -253,6 +253,13 @@ persistência). As skills de design só escrevem docs, `/new-feature` escreve a 
 installers são donos só do próprio setup. Qualquer outra coisa no arquivo — um plugin, uma
 property, um bump de versão — é reportada, nunca escrita.
 
+**Fora de uma rodada de feature, as linhas `sonar.*` do build file raiz são do
+`sonarqube-setup`.** Ele escreve o plugin do scanner e as properties uma vez — encadeado pelo
+último step do `project-bootstrap` ou pelo `arch-adopt` — e para numa segunda execução quando
+o scanner já está lá. O serviço `sonarqube` do compose continua sendo do `docker-architect`, e
+o token não fica em arquivo nenhum: o scanner lê `SONAR_TOKEN` do ambiente. Design:
+`.claude/decisions/0091-sonarqube-setup-skill.md`.
+
 **O outbox tem três donos, divididos por pergunta.** `persistence-architect`: a tabela, as
 colunas, a claim query, o batch size, o teto de tentativas, a janela de retenção e o
 statement do prune. `messaging-architect`: se o caso precisa de um, a garantia de entrega, e a

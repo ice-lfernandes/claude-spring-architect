@@ -1,0 +1,40 @@
+# Shape for a SonarQube service block appended under docker-compose.yml's `services:`.
+# Merged only when sonarqube-setup found no existing server — an external SonarQube or
+# SonarCloud needs no container here.
+#
+# Community edition, embedded H2 on purpose: no SONAR_JDBC_URL means the image uses its
+# built-in database, so there is no second service to run. H2 is evaluation-grade — it
+# has no upgrade path, and a new image tag starts from an empty database — which is fine
+# for local analysis and wrong for a shared server. A team server is an external one.
+#
+# Tag verified against the registry (hub.docker.com tags API), never inferred; a floating
+# `community` or `latest` makes today's container different from next week's. `curl` is
+# confirmed present in the image (the upstream Dockerfile installs it and removes only
+# gnupg and unzip), which is what the healthcheck runs.
+#
+# Needs ~2 GB of memory. The UI port is variable with a default, like Jaeger's: a human
+# opens it, so it needs a predictable number, and a sibling project can move it.
+  sonarqube:
+    image: sonarqube:26.9.0.129388-community
+    environment:
+      # Elasticsearch's bootstrap checks fail on hosts with a low vm.max_map_count (most
+      # Linux defaults). Dev-only relief; never on a shared server.
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    ports:
+      - "${SONAR_PORT:-9000}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+# Named volumes — add under docker-compose.yml's top-level `volumes:`.
+volumes:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:

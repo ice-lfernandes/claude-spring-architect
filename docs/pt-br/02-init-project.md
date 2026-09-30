@@ -88,6 +88,7 @@ sequenceDiagram
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
 | 8.5 | Gera o README do projeto | `README.md` (inglês) + `README.pt-br.md` |
 | 8.6 | Grava o registro de gênese da trilha | `.claude/audit-usage/GENESIS.md` |
+| 8.7 | Configura o SonarQube — encadeia `sonarqube-setup`, que pergunta se já existe servidor | scanner + properties `sonar.*` no build file raiz; step de CI para servidor externo; serviço `sonarqube` no compose (via `docker-architect`) caso contrário |
 
 O passo 8 é o único portão de qualidade: se o build falhar, **corrige antes de
 reportar** — um bootstrap que entrega build vermelho não está terminado.

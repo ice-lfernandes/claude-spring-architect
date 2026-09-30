@@ -8,7 +8,7 @@ description: >
   newer version. Explicit invocation only.
 argument-hint: "[--ref <tag|sha|main>] [--source <local path>] [--blueprint <id>]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
+allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion, Skill
 model: opus
 ---
 
@@ -171,6 +171,19 @@ it reads a JSON payload from stdin and waits for one when nothing closes it. `ex
 compares the stamp's per-file digests, so anything it lists right after an export is
 something the export could not write. Do **not** commit: the diff is the user's review.
 
+### 7 · SonarQube, when the project has none
+
+Grep the root build file for the scanner: `sonar-maven-plugin` in `pom.xml`,
+`org.sonarqube` in `build.gradle`. Found → skip this step and say "already configured" in
+the report. Not found → invoke `sonarqube-setup` through the `Skill` tool; it asks its own
+question (an existing server, or a local container) and writes outside `.claude/` under
+its own territory, not this skill's. This skill still writes nothing but `.claude/`.
+
+On an **install** the skill did not exist when the session started — `.claude/skills/`
+was created by step 5 — so the runtime has not listed it yet. Ask the user to run
+`/reload-skills`, then invoke it; on an update it is picked up live. Only schema exit 0
+reaches this step: a broken `.claude/` is reported first.
+
 ## Report
 
 ```
@@ -181,6 +194,7 @@ Files ........ <n> written · <n> unchanged · <n> overwritten
 Warnings ..... <none | the surviving-citation lines, verbatim>
 Schema ....... <exit 0 | the failure>
 Provenance ... <the doctor line>
+SonarQube .... <already configured | configured by sonarqube-setup — <its first line> | pending: run /reload-skills, then /sonarqube-setup>
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
@@ -225,5 +239,9 @@ cannot authenticate. Never prints the value of `source.auth_env`, and never comm
 **Travels into the project** — unlike `project-bootstrap` and `init-project`, which only
 serve before the project exists. This one is how a project updates itself once the plugin
 that delivered it is gone, so it is in `export.skills.include`.
+
+**Chains** `sonarqube-setup` in step 7 when the build file has no scanner — the one
+piece of this procedure that writes outside `.claude/`, and it does so under that skill's
+territory, never this one's.
 
 **Hands off to** `/arch-doctor` for the diagnosis, and to the user for the diff.

@@ -147,6 +147,10 @@ oficiais a cada mudança do manifesto.
 
 - **Não gera projeto.** Sem `pom.xml`/`build.gradle`, é `/init-project` que você quer.
 - **Não escreve código de negócio**, nem toca `src/`.
+- **Não escreve fora do `.claude/` por conta própria.** Quando o build file não tem o
+  scanner do SonarQube, o último step encadeia `sonarqube-setup`, que escreve o build file e
+  o workflow sob o território dela. Numa instalação, rode `/reload-skills` antes — o
+  diretório da skill não existia quando a sessão começou.
 - **Não comita.** Deixa a árvore com o diff pronto para revisão, e diz como desfazer.
 - **Não pergunta blueprint quando o stamp já registra um** — numa atualização, o
   blueprint ativo é um fato do projeto, não uma pergunta nova.

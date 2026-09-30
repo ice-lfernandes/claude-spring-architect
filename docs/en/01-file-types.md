@@ -80,7 +80,7 @@ every skill belongs to exactly one of six classes, and the class declares both.
 |---|---|---|
 | `design` | the 7 that write use-case partials | the UC folder + `BACKLOG.md` |
 | `orchestrator` | `new-feature`; `init-project` | the use case's `docs/**`; `init-project` writes nothing (it delegates) |
-| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only, the root build file and `.github/workflows/` only |
 | `observer` | `arch-doctor`, `audit-usage` | nothing |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish` | nothing — its effect is `git`, over Bash |

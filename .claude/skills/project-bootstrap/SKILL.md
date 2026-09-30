@@ -7,7 +7,7 @@ description: >
   bootstrap, generate a module structure, create a multi-module Maven or Gradle
   project, build a hexagonal architecture, clean architecture, onion, layered, vertical
   slice or modular monolith, or when the /init-project command is run.
-allowed-tools: Read, Write, Edit, Bash, Glob
+allowed-tools: Read, Write, Edit, Bash, Glob, Skill
 model: sonnet
 effort: high
 ---
@@ -285,6 +285,15 @@ build passes, or when the report says why it failed.
 
 `.claude/audit-usage/GENESIS.md`, once.
 
+### 8.7 · Configure SonarQube → skill `sonarqube-setup`
+
+Invoke `sonarqube-setup` via the `Skill` tool, with a one-line context: build tool and
+coordinates. It owns the one question this step asks — an existing server (URL,
+authentication) or a local container — and the scanner in the root build file, the CI
+step for an external server, and, for a local one, the `sonarqube` service it hands to
+`docker-architect`. Last on purpose: the build file, the workflow and `docker-compose.yml`
+already exist, and nothing after it rewrites them. Don't write any `sonar.*` line here.
+
 ## Output contract
 
 ```
@@ -307,6 +316,7 @@ Provenance: .claude/.arch-provenance.json — blueprint <id>, ref <ref>, commit 
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
+SonarQube: <the first line of `sonarqube-setup`'s report — existing server <url> | SonarCloud <org> | local container on http://localhost:9000> — scanner <v>, CI step <added | none>
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
 Docs: README.md (English, default) + README.pt-br.md — origin, blueprint, stack, skills/agents, this report
@@ -424,6 +434,10 @@ other skill touches these files:
   Portuguese the linked option
 
 `.gitignore` is deliberately left out — it comes from the Initializr (step 6.5).
+
+**Chains** `sonarqube-setup` in step 8.7 — the `sonar.*` lines of the root build file,
+the workflow's analysis step and the `sonarqube` compose service are that skill's (and,
+for the service, `docker-architect`'s), even though they land in files this skill wrote.
 
 **Hands off to** `use-case-design`, `domain-modeling`, `persistence-architect`,
 `rest-api-architect`, and `test-architect`, which design the first feature. The
