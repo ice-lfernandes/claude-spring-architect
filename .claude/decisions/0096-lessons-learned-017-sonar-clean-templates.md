@@ -24,8 +24,8 @@ interview:
 
 | § | Deferred item | Mechanism already answered |
 |---|---|---|
-| 9 | Nothing in the build loop runs Sonar's rules | **Option 1 only, offline:** `spotless:check` bound to `verify`; Checkstyle gains `UnusedImports` and `IllegalIdentifierName`; a second, lighter Checkstyle execution over `src/test`. **No** Sonar step in `java-spring-boot-developer` |
-| 8 | `record` as a variable name | Covered by § 9's answer (`IllegalIdentifierName`, plus the `src/test` execution) |
+| 9 | Nothing in the build loop runs Sonar's rules | **Done in `0097`** (imports went to Spotless only, not Checkstyle). Chosen here: **option 1 only, offline:** `spotless:check` bound to `verify`; Checkstyle gains `UnusedImports` and `IllegalIdentifierName`; a second, lighter Checkstyle execution over `src/test`. **No** Sonar step in `java-spring-boot-developer` |
+| 8 | `record` as a variable name | **Done in `0097`** — covered by § 9's answer (`IllegalIdentifierName`, plus the `src/test` execution) |
 | 5a | No `default` on a switch over a sealed type | Not yet answered |
 | 6 | Rule line "one call per `assertThatThrownBy` lambda" in `rules/testing.md` | Not yet answered — only the templates are fixed here |
 | 7 | Kafka "record arrives" tool, `isNotEmpty()` before `allSatisfy`, aspect test templates for `commons` | Not yet answered |

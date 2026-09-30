@@ -48,6 +48,10 @@ project's build:
 - **Checkstyle** (`config/checkstyle/checkstyle.xml`, `validate` phase) — length,
   parameters, complexity, nesting, magic numbers, generic `catch`. The numbers in that
   file and in this rule are the same: changing one side without the other is a bug.
+  Test code has its own light set, `config/checkstyle/checkstyle-test.xml`: these size
+  limits apply to production code only
+- **Spotless** (`spotless:check` at `verify`; part of `check` in Gradle) — formatting and
+  unused imports, main and test alike
 - **ArchUnit** (`ArchitectureTest.java` in the main module) — boundaries, ISP, `private
   final` fields in the domain, generic `throw`, field injection
 - Human review only for OCP, LSP, abstraction level, and the boolean parameter

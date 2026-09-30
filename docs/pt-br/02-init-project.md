@@ -75,7 +75,7 @@ sequenceDiagram
 | 2 | Valida o blueprint | — |
 | 3 | Gera a base via Spring Initializr | `pom.xml`, `mvnw`, `Application.java` |
 | 4 | Reestrutura por módulo/packages | `*/pom.xml`, `package-info.java` |
-| 4.6 | Gera Checkstyle | `config/checkstyle/checkstyle.xml` |
+| 4.6 | Gera Checkstyle | `config/checkstyle/checkstyle.xml` e `checkstyle-test.xml` |
 | 4.7 | Materializa packages + config de features ativas | `package-info.java`, `application-actuator.yml`, `db/migration/` vazio |
 | 4.8 | Gera `lombok.config` | `lombok.config` na raiz |
 | 4.9 | Gera `logback-spring.xml` | `<módulo-main>/src/main/resources/logback-spring.xml` |
@@ -128,7 +128,8 @@ Active features: rest, validation, persistence-jpa, uuid-v7, flyway, openapi,
   testcontainers, actuator, observability
 Business code: none — by design. 9 package-info.java written
 Boundaries: 9 rules in .claude/forbidden-imports.txt — blocking verified ✓
-Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, validate phase
+Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, validate phase · checkstyle-test.xml over src/test
+Spotless: check bound to the build (verify / check) — formatting and unused imports, main and test
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
