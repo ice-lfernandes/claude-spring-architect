@@ -5,7 +5,8 @@ Thanks for considering it. Blueprints and norms are the most useful contribution
 This repository is **not a Java application**: it has no `pom.xml`, nothing compiles,
 there are no Maven tests. What gets edited here are instruction files, data, and one
 hook. Read `CLAUDE.md` before the first PR — its § Invariants is what review checks
-against, and § Known pitfalls covers the traps that fail silently.
+against. The traps that fail silently — the runtime's and this repository's — are in
+`docs/en/11-pitfalls.md`.
 
 ## Setup
 

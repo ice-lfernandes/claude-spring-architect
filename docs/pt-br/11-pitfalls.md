@@ -1,27 +1,40 @@
-# Pitfalls do runtime do Claude Code
+# Pitfalls
 
 Fonte primária: `@claude-help.md`, `.claude/schemas/extensions.json` (blocos `settings`,
-`injections`, `arguments`, `types`), e o que `java .claude/hooks/ArchHook.java schema`
-verifica.
+`injections`, `arguments`, `types`, `guard` e `compose`), o que
+`java .claude/hooks/ArchHook.java schema` verifica, e os registros de decisão que cada item
+cita.
 
 ## Por que esta página existe
 
-Cada item abaixo é uma armadilha do **runtime**, não uma decisão deste repositório: vale
-para qualquer projeto que use skills, agents, hooks ou MCP, e em todos eles o erro é
-**silencioso** — nada falha, nada avisa, e a peça simplesmente não faz o que o autor
-acredita que ela faz.
+Cada item abaixo é uma armadilha que falha **em silêncio**, ou que um hook recusa com uma
+mensagem que o leitor já precisa entender. A página tem duas partes:
 
-Eles moravam em `@CLAUDE.md` § Known pitfalls, que é lido em toda sessão. Fato de runtime
-não precisa estar sempre em contexto: precisa estar onde quem escreve uma skill, um hook ou
-um `.mcp.json` vai olhar. `@CLAUDE.md` mantém os pitfalls **deste repositório** (territórios
-de escrita, congelamento de spec, quem escreve `pom.xml`, `audit` desligado aqui) e aponta
-para cá com uma linha na tabela de routing.
+- **Parte 1 — o runtime do Claude Code.** Vale para qualquer projeto que use skills, agents,
+  hooks ou MCP: nada falha, nada avisa, e a peça simplesmente não faz o que o autor acredita
+  que ela faz.
+- **Parte 2 — este repositório.** Fatos deste `.claude/`: territórios de escrita, pastas de
+  spec congeladas, quem é dono do `pom.xml` e do outbox, o que `guard sweep` e `compose gate`
+  cobrem e o que não cobrem.
+
+As duas moravam em `@CLAUDE.md` § Known pitfalls, que é lido em toda sessão. A parte 1 saiu
+na decisão `0061`, a parte 2 na decisão `0090`. Nenhuma precisa estar sempre em contexto:
+são necessárias enquanto alguém projeta ou edita uma peça do `.claude/`, ou escreve sobre
+uma — que é quando `claude-code-architect-designer` lê esta página. A maior parte da parte 2
+também está atrás de `guard`, `schema` ou `compose gate`, cuja mensagem de bloqueio nomeia a
+regra e a correção. `@CLAUDE.md` mantém só os três fatos que mordem em qualquer sessão sem
+hook nenhum por trás, e aponta para cá com uma linha na tabela de routing.
+
+**Um pitfall novo entra aqui, nas duas línguas — nunca de volta no `@CLAUDE.md`.** Foi esse
+caminho que reencheu a seção entre a `0061` e a `0090`.
 
 O que **não** está aqui: os campos de frontmatter que o runtime reconhece, que são dados com
 dono único em `.claude/schemas/extensions.json` e estão descritos em
 [01-tipos-de-arquivo.md](01-tipos-de-arquivo.md).
 
-## Skills
+## Parte 1 · Runtime do Claude Code
+
+### Skills
 
 **Uma skill não pode ter o nome de um comando nativo.** O nome da pasta vira o comando, e
 `/doctor`, `/init`, `/context`, `/memory` já existem no runtime. É por isso que a skill de
@@ -67,7 +80,7 @@ passa a mandar aplicar algo que o modelo nunca recebeu. Foi o caso de `gof-desig
 na seção `## Contract` do corpo. Não devolva `metadata:` a um `SKILL.md` — custa tokens em
 toda invocação e não impõe nada.
 
-## Frontmatter e validação
+### Frontmatter e validação
 
 **O runtime ignora frontmatter desconhecido, em silêncio.** Um campo inventado é decoração,
 não comportamento. Lista dos campos nativos em `@claude-help.md`.
@@ -77,7 +90,7 @@ skill e aceita um campo inventado, sempre com `✔ Validation passed`. Não olha
 `.claude/agents/`, `.claude/rules/` nem `.claude/settings.json`. Pega YAML malformado, e nada
 mais. Quem valida campos é `java .claude/hooks/ArchHook.java schema`.
 
-## Hooks
+### Hooks
 
 **`.claude/settings.json` só é lido no início da sessão.** Editar hooks no meio da sessão
 não tem efeito — é preciso reiniciar o `claude`.
@@ -98,7 +111,7 @@ filtro e não filtra nada. Fonte: `docs/pt-br/claude-code-docs/07-settings-permi
 `</dev/null` bloqueia até algo fechar o stdin, sem saída: um comando que parece pendurado, não
 falho. `export`, `doctor`, `build` e o `compose` puro são invocados por pessoas e não leem nada.
 
-## `AskUserQuestion`
+### `AskUserQuestion`
 
 **Rejeita uma pergunta com menos de 2 opções, e rejeita o lote inteiro com ela:**
 `InputValidationError ... "too_small" ... path: ["questions",1,"options"]`. Uma pergunta com
@@ -107,7 +120,7 @@ tem limite superior de 4 perguntas por chamada. O projeto gerado carrega este me
 no seu próprio `CLAUDE.md`, vindo de
 `project-bootstrap/templates/root.CLAUDE.md.example`.
 
-## MCP
+### MCP
 
 **`.mcp.json` só é lido no início da sessão**, igual ao `settings.json`. Adicionar ou editar
 um servidor no meio da sessão não tem efeito até reiniciar o `claude`.
@@ -124,3 +137,144 @@ nenhum dos lados.
 **Um `${VAR}` não definido em `.mcp.json` não falha a geração.** O servidor carrega com o
 texto literal `${VAR}` e falha ao conectar em runtime. `claude mcp list` mostra o aviso de
 variável ausente; a validação de schema de frontmatter não.
+
+## Parte 2 · Este repositório
+
+### Território de escrita e os guards
+
+**Uma skill escreve só no território da sua classe, e `guard` bloqueia o resto com exit 2.**
+Negação por padrão; a mensagem nomeia a classe e o seu `write_allow`, e a correção é o dado
+(`skill_classes` em `.claude/schemas/extensions.json`), nunca uma nova tentativa. Uma rodada
+de design só escreve docs e não pode nem *chamar* uma skill de classe `build` —
+`docker-architect` inclusive: o serviço de compose que falta é registrado no parcial e
+materializado depois por `/docker-architect`. Sem fase de skill aberta, o território é livre,
+e é por isso que editar um arquivo à mão nunca é bloqueado.
+
+**A escrita de um subagent é julgada por `agent_classes`, não pela fase de quem o chamou.**
+Toda escrita carrega o seu `agent_type`, e `guard` confere o caminho contra o `write_allow`
+do próprio agent, então uma fase de design aberta nem amplia nem estreita o território dele.
+Um agent que nenhuma classe lista cai de volta na fase de quem chamou — nada mais descreve o
+que ele pode escrever.
+
+**O enforcement deixou de depender da tool, mas ainda não é do tamanho do filesystem.** Até
+o lessons-learned-014 § 1, todo hook casava pelo nome de uma tool, então um heredoc, um
+`sed -i` ou um `tee` passavam por `guard`, `check`, `format`, `audit` e `schema` do mesmo
+jeito — exatamente as formas que uma instrução do host para preferir `Bash` a `Write`/`Edit`
+produz. `guard bash` (`PreToolUse`, matcher `Bash`) agora lê o comando procurando as formas
+de escrita de `guard.bash_write_shapes` e aplica as checagens de território e de pasta
+congelada a todo alvo que consegue ler literalmente. **O que ele deliberadamente não faz:**
+um alvo com `$`, crase ou glob, ou que cai fora do repositório, é pulado sem aviso, e `check`
+e `format` ficam fora do `Bash` — ArchUnit e `spotless:apply` já rechecam os dois, e um
+matcher `PostToolUse` ali pagaria uma JVM a cada `ls`. A afirmação verdadeira é estreita:
+**dentro do Claude Code, via `Write`/`Edit`/`MultiEdit`/`NotebookEdit`, e via as formas de
+shell que a lista nomeia.** Design: `.claude/decisions/0063-bash-write-enforcement.md`.
+
+**`guard sweep` cobre os dois guards de escrita no `Stop`, e ele é do tamanho do git.** Ele
+compara a working tree com a baseline que `guard prompt` tira no `UserPromptSubmit`, então
+uma árvore já suja antes do turno não é reportada, e roda as mesmas checagens de território e
+de pasta congelada sobre o que mudou — não importa qual tool escreveu. Dois limites antes de
+lê-lo como cobertura total: é **detecção, não prevenção** (a escrita já aconteceu), e um
+caminho que o git ignora nunca aparece em `git status --porcelain` e nunca é varrido — o que,
+neste repositório, é só o que o `.gitignore` ainda lista, já que `.claude/decisions/` e
+`.claude/lessons-learned/` são versionados desde 2026-09-28. O fechamento do `status:` de uma
+spec e os toggles `[ ]` → `[x]` são admitidos comparando com `git show HEAD:`, já que o sweep
+não tem `old_string` para ler. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+
+**Um push sempre pede confirmação, um force push nunca roda, e o `Bash` de uma skill é
+restrito.** `git push` e `gh repo create` ficam em `permissions.ask`, que é avaliado antes de
+qualquer allow — então o prompt aparece até dentro de `git-publish`, depois do gate dela.
+`guard bash` recusa force push em toda grafia que consegue ler (`-f`, `-uf`,
+`--force-with-lease`, `+ref`, `git -C … push`, `sh -c "…"`), listadas em `guard.force_push`;
+a antiga linha de `deny` só pegava `--force`. Uma skill cujo `allowed-tools` nomeia `Bash` sem
+filtro falha no `schema`, a menos que o seu `## Contract` traga uma linha
+`**Unfiltered Bash:**` dizendo por quê — quatro trazem (as que rodam build, rede e docker); as
+demais listam prefixos, e um comando de injeção que falta nessa lista aborta a skill. Design:
+`.claude/decisions/0076-bash-scope-and-force-push-guard.md`.
+
+### Classes e modelos
+
+**Toda skill declara `model`, dentro do conjunto da sua classe.** `schema` reprova um
+`SKILL.md` sem ele, ou com um valor fora de `skill_classes.classes.<c>.allowed_models`
+(`design` e `meta` só `opus`, `observer` e `ops` só `sonnet`). O `model` de uma skill vale
+pelo resto do turno, não só pela skill — é por isso que um modelo fixado sozinho não é motivo
+para ser agent, e por isso que uma skill com modelo mais baixo disparada no meio do turno é o
+caso a vigiar. Design: `.claude/decisions/0081-skill-model-required-per-class.md`.
+
+### Specs de caso de uso
+
+**A pasta de um caso de uso implementado fica congelada, exceto por três escritas:** a linha
+`status:` da spec movida ao longo de `guard.status_transitions`, um toggle de checklist nela,
+e `UC-NNN/CHANGELOG.md` — a escrita que a consolidação do `/new-feature` *exige* para toda
+mudança que uma linha de impacto faz. Os basenames isentos são dados
+(`guard.frozen_exempt_basenames`), casados diretamente sob a pasta: `notes/CHANGELOG.md`
+continua congelado.
+
+**A spec tem três estados fechados, e o checklist é marcado antes de o status fechar.**
+`approved` fecha em `implemented`, ou em `implemented-blocked` quando a rodada deixou um caso
+de uso aprovado inalcançável de ponta a ponta — o código está em disco e verde, e um
+`Satisfied by` que a spec nomeou ainda não existe. Os dois voltam para `approved`, que é a
+saída que uma rodada fechada por engano não tinha. Um toggle `[ ]` → `[x]` é admitido **nos
+três** (`guard.checklist_toggle_statuses`): ele é monotônico, e exigir `approved` já congelou
+23 caixas desmarcadas para sempre. A ordem continua sendo contrato do executor, não do hook: a
+linha de status é a última escrita que ele faz na pasta. Design:
+`.claude/decisions/0066-spec-state-machine.md`.
+
+### Compose
+
+**`compose gate` roda a checagem de compose sem ninguém pedir, e bloqueia.** O step 7 do
+`docker-architect` já chamava `ArchHook.java compose` de "não opcional", e ele nunca tinha
+sido rodado contra um projeto: um bloco `kafka` publicando 9092 enquanto anunciava só
+`kafka:9092` saiu no primeiro dia e ficou inalcançável para todo cliente do host até um caso
+de uso precisar dele. O gate é o mesmo `composeReport()` — uma definição só de saudável,
+compartilhada com o `doctor` — silencioso enquanto saudável, exit 2 com as linhas que falharam
+caso contrário. Um serviço parado de propósito também bloqueia o stop; isso é um gate, não um
+bug. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+
+**Um healthcheck que passa não prova nada sobre alcance a partir do host** — ele roda dentro
+do container, onde `localhost` é o próprio serviço. Um serviço que publica uma porta no host
+enquanto anuncia só o seu nome na rede do compose (`KAFKA_ADVERTISED_LISTENERS:
+PLAINTEXT://kafka:9092` ao lado de `ports: "9092:9092"`) não é alcançável por nenhum cliente
+do host, e nem o healthcheck nem o Testcontainers percebem — o Testcontainers monta os
+próprios listeners. `ArchHook.java compose` lê o arquivo procurando isso
+(`compose.advertised_env_suffixes`); um serviço que não anuncia nada não afirma nada e é
+deixado em paz.
+
+**`grep -A2 "^services:" docker-compose.yml` não é a lista de serviços.** Ele lê duas linhas
+e para, perdendo serviços declarados mais abaixo e reportando os filhos de `volumes:` como
+serviços. Toda peça que precisa dessa lista — a injeção e o step 3 do `docker-architect`, o
+step 9 do `messaging-architect`, o step 9 do `persistence-architect` — usa o one-liner `awk`
+limitado ao bloco `services:`. Um retrato errado convida a recriar um serviço que já existe.
+
+### Donos dentro de uma rodada de feature
+
+**O `pom.xml` tem exatamente um escritor numa rodada de feature: o executor, para uma
+dependência que a spec declara** (o § 7 do parcial de mensageria, ou o equivalente de
+persistência). As skills de design só escrevem docs, `/new-feature` escreve a spec, e os dois
+installers são donos só do próprio setup. Qualquer outra coisa no arquivo — um plugin, uma
+property, um bump de versão — é reportada, nunca escrita.
+
+**O outbox tem três donos, divididos por pergunta.** `persistence-architect`: a tabela, as
+colunas, a claim query, o batch size, o teto de tentativas, a janela de retenção e o
+statement do prune. `messaging-architect`: se o caso precisa de um, a garantia de entrega, e a
+passada do relay com o lado do broker. `jobs-architect`: quando qualquer coisa roda — o
+intervalo de poll do relay, o liga/desliga, o número de réplicas que a claim precisa
+suportar, e o job de prune. Uma linha de § 6 nomeando colunas é divergência, e uma decisão de
+coluna ou de claim que derrubaria uma garantia declarada para o pipeline em vez de ser
+resolvida por precedência (`.claude/decisions/0087-jobs-architect-skill.md`).
+
+**O bounded context é um fato do projeto, não uma resposta por caso de uso.** É o primeiro
+segmento de todo nome de tópico, perguntado junto com as coordenadas no `/init-project` e
+escrito no `CLAUDE.md` raiz do projeto gerado. Um prefixo escolhido dentro de um caso de uso
+dá a um sistema dois namespaces.
+
+### Rules e decisions
+
+**Uma rule sem `paths` carrega no launch, em toda sessão — não é "só citação".** Por isso toda
+rule declara o glob mais estreito que a sustenta, e Java é `**/src/**/*.java`, nunca
+`**/*.java`: esse casa com `.claude/hooks/ArchHook.java` e puxa toda norma Java a cada leitura
+do hook. O nome antigo de uma rule renomeada vai em `export.retired`, ou o destino fica com as
+duas. Design: `.claude/decisions/0082-rules-without-paths-load-at-launch.md`.
+
+**`.claude/decisions/` não é norma nem documentação viva.** Registra o que foi decidido na
+data, não o que vale hoje: sem `paths`, fora do `00-index.md`, e não viaja para o projeto
+gerado. Um registro novo substitui o antigo; o antigo não é reescrito.

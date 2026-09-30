@@ -103,7 +103,7 @@ sequenceDiagram
 
     rect rgb(235,235,245)
     Note over CMD,U: Phase 1 · Interview
-    CMD->>DM: reads the matrix before asking
+    CMD->>DM: reads the matrix and pitfalls before asking
     CMD->>U: AskUserQuestion — up to 4 questions per call, 2-3 calls
     U-->>CMD: answers across the applicable axes (16 total; 11-13 MCP only, 14-16 hook only)
     end
@@ -412,10 +412,10 @@ avoiding the same interview again.
    | `CLAUDE.md` section | Nothing else — but confirm the total stays under ~200 lines |
    | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
    | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example` and its own companion setup doc — both already named in `export.optional_copy`, so nothing else to wire |
-   | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, if the hook blocks something a reader would otherwise call a bug |
+   | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` part 2, if the hook blocks something a reader would otherwise call a bug — never `@CLAUDE.md` § Known pitfalls, which holds only what bites with no hook behind it (decision 0090) |
    | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java` and `schemas/extensions.json` whole |
    | Hook mode (Form 7c) | The mode table in `@CLAUDE.md` § Commands, and the `doctor` report if the mode has state worth reporting |
-   | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into `@CLAUDE.md` § Known pitfalls — a tool that silently refuses reads as a broken tool |
+   | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into part 2 of `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` — a tool that silently refuses reads as a broken tool |
 
    A creation skill (only useful before the project exists) goes in
    `export.skills.exclude`, like `project-bootstrap` and `init-project`. This is stated
@@ -593,7 +593,8 @@ save a record — Phase 4 edits `new-feature/SKILL.md` directly and the `## Why 
 
 ## Skill contract
 
-**Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants),
+**Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants), `@docs/pt-br/11-pitfalls.md`
+(every silent trap, runtime and repository),
 `@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision
 touches blueprints, and the inventory injected at the top. Reads this skill's own
 `references/` before classifying — the matrix is deliberately not embedded in the

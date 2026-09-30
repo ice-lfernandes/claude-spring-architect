@@ -84,7 +84,10 @@ Pinned to `opus`: what it designs is enforced in every later session (`@.claude/
 
 ### Phase 1 · Interview
 
-Read `references/decision-matrix.md` before asking. Use `AskUserQuestion` — at most 4
+Read `references/decision-matrix.md` and `@docs/pt-br/11-pitfalls.md` before asking — the
+matrix decides the form, the pitfalls page says which silent traps (the runtime's and this
+repository's: territories, frozen folders, ownership splits) the design must not walk into.
+Use `AskUserQuestion` — at most 4
 questions per call, so 2 to 3 calls. **Don't proceed with a missing answer**: each axis
 below eliminates candidate forms, and an unanswered axis leaves the decision guessing.
 
@@ -266,10 +269,10 @@ the same interview again.
    | `CLAUDE.md` section | Nothing else — but confirm the total stays under ~200 lines |
    | MCP server, this repo only (axis 13 = "meta-repo") | `.mcp.json` at the root; the companion setup doc; `@CLAUDE.md` routing table row, if none already covers it |
    | MCP server, also the generated project (axis 13 = "both") | Everything above, **plus** `project-bootstrap/templates/mcp.json.example` and its own companion setup doc — both already named in `export.optional_copy`, so nothing else to wire |
-   | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, if the hook blocks something a reader would otherwise call a bug |
+   | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` part 2, if the hook blocks something a reader would otherwise call a bug — never `@CLAUDE.md` § Known pitfalls, which holds only what bites with no hook behind it (decision 0090) |
    | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java`, the rebuilt `ArchHook.jar` and `schemas/extensions.json` whole |
    | Hook mode (Form 7c) | The mode table in `@CLAUDE.md` § Commands, and the `doctor` report if the mode has state worth reporting |
-   | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into `@CLAUDE.md` § Known pitfalls — a tool that silently refuses reads as a broken tool |
+   | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into part 2 of `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` — a tool that silently refuses reads as a broken tool |
 
    A creation skill (only useful before the project exists) goes in `export.skills.exclude`,
    like `project-bootstrap` and `init-project`. State this explicitly in the report.
@@ -359,7 +362,7 @@ registered in this meta-repository at all. A new skill is **incomplete** until a
 `skill_classes` lists it — `schema` fails by name otherwise (Phase 4, step 8).
 
 **Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants),
-`@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision touches
+`@docs/pt-br/11-pitfalls.md` (every silent trap, runtime and repository), `@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision touches
 blueprints, and the inventory injected at the top. Reads this skill's `references/`
 before classifying — the matrix is deliberately not in the body.
 

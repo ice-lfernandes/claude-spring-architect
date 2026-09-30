@@ -105,7 +105,7 @@ sequenceDiagram
 
     rect rgb(235,235,245)
     Note over CMD,U: Fase 1 · Interview
-    CMD->>DM: lê matriz antes de perguntar
+    CMD->>DM: lê matriz e pitfalls antes de perguntar
     CMD->>U: AskUserQuestion — até 4 perguntas por chamada, 2-3 chamadas
     U-->>CMD: respostas dos eixos aplicáveis (16 no total; 11-13 só para MCP, 14-16 só para hook)
     end
@@ -403,10 +403,10 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
    | Seção do `CLAUDE.md` | Nada mais — mas confirma que o total continua abaixo de ~200 linhas |
    | Servidor MCP, só este repo (eixo 13 = "meta-repo") | `.mcp.json` na raiz; o doc de setup; linha de routing do `@CLAUDE.md`, se nenhuma já cobre |
    | Servidor MCP, também o projeto gerado (eixo 13 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/mcp.json.example` e seu próprio doc de setup — ambos já nomeados em `export.optional_copy`, então não há mais nada a ligar |
-   | Hook, só este repo (eixo 8 = "meta-repo") | `.claude/settings.json`; `@CLAUDE.md` § Known pitfalls, se o hook bloqueia algo que um leitor chamaria de bug |
+   | Hook, só este repo (eixo 8 = "meta-repo") | `.claude/settings.json`; parte 2 de `docs/pt-br/11-pitfalls.md` e `docs/en/11-pitfalls.md`, se o hook bloqueia algo que um leitor chamaria de bug — nunca `@CLAUDE.md` § Known pitfalls, que guarda só o que morde sem hook por trás (decisão 0090) |
    | Hook, também o projeto gerado (eixo 8 = "ambos") | Tudo acima, **mais** `project-bootstrap/templates/settings.json.example`. Um modo Forma 7c não precisa de nada além: o modo `export` copia `ArchHook.java` e `schemas/extensions.json` inteiros |
    | Modo de hook (Forma 7c) | A tabela de modos do `@CLAUDE.md` § Commands, e o relatório do `doctor` se o modo tem estado que vale reportar |
-   | Regra de `permissions` (Forma 8) | `.claude/settings.json`; o template do projeto gerado quando o eixo 8 = "ambos". Um `deny` também entra em `@CLAUDE.md` § Known pitfalls — uma tool que recusa em silêncio parece tool quebrada |
+   | Regra de `permissions` (Forma 8) | `.claude/settings.json`; o template do projeto gerado quando o eixo 8 = "ambos". Um `deny` também entra na parte 2 de `docs/pt-br/11-pitfalls.md` e `docs/en/11-pitfalls.md` — uma tool que recusa em silêncio parece tool quebrada |
 
    Skill de criação (só útil antes do projeto existir) vai em `export.skills.exclude`,
    como `project-bootstrap` e `init-project`. Isso é declarado explicitamente no
@@ -581,7 +581,8 @@ salva registro — a Fase 4 edita `new-feature/SKILL.md` direto e a seção `## 
 
 ## Contract da skill
 
-**Lê** `@claude-help.md`, `@CLAUDE.md` (os onze invariantes), `@.claude/rules/00-index.md`,
+**Lê** `@claude-help.md`, `@CLAUDE.md` (os onze invariantes), `@docs/pt-br/11-pitfalls.md`
+(toda armadilha silenciosa, do runtime e do repositório), `@.claude/rules/00-index.md`,
 `@.claude/blueprints/_schema.md` quando a decisão toca blueprints, e o inventário
 injetado no topo. Lê o `references/` desta própria skill antes de classificar — a
 matriz é deliberadamente não embutida no corpo.
