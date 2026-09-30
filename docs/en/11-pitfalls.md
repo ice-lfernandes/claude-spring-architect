@@ -146,6 +146,15 @@ missing compose service is recorded in the partial and materialized afterwards b
 `/docker-architect`. With no skill phase open, territory is unrestricted, which is why
 editing a file by hand is never blocked.
 
+**A skill that chains another of its own class adds that skill's territory; another class
+replaces it.** Same class — `arch-adopt` → `sonarqube-setup` → `docker-architect`, all
+`build` — and the phase holds all three, so each writes its own paths and the caller keeps
+writing after the callee returns. Other class — `/new-feature` calling a design skill — and
+the phase narrows to the callee, which is what keeps a design step docs-only. The rule used
+to keep only the caller's territory on a same-class call, on the assumption that one class
+means one territory; `build` gives each skill its own, and `sonarqube-setup` chained from
+`arch-adopt` was refused `pom.xml`. Design: `.claude/decisions/0092-guard-same-class-chain-sums-territories.md`.
+
 **A subagent's write is judged by `agent_classes`, not by the caller's phase.** Every write
 carries its `agent_type`, and `guard` checks the path against the agent's own `write_allow`,
 so an open design phase neither widens nor narrows it. An agent no class lists falls back to
@@ -245,6 +254,13 @@ spec declares** (the messaging partial's § 7, or the persistence equivalent). T
 skills are docs-only, `/new-feature` writes the spec, the two installers own only their own
 setup. Anything else in the file — a plugin, a property, a version bump — is reported, never
 written.
+
+**Outside a feature run, the `sonar.*` lines of the root build file belong to
+`sonarqube-setup`.** It writes the scanner plugin and its properties once — chained by
+`project-bootstrap`'s step 8.4 or by `arch-adopt` — and stops on a re-run when the scanner
+is already there. The `sonarqube` compose service it needs is still `docker-architect`'s,
+and the token is never in any file: the scanner reads `SONAR_TOKEN` from the environment.
+Design: `.claude/decisions/0091-sonarqube-setup-skill.md`.
 
 **The outbox has three owners, split by question.** `persistence-architect`: the table,
 columns, claim query, batch size, attempt ceiling, retention window and the prune's

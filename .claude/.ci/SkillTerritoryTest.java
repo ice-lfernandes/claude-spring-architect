@@ -1,8 +1,8 @@
 ///usr/bin/env java --source 21 "$0" "$@" ; exit $?
 //
 // CI test: proves `ArchHook.java guard` keeps a skill inside the territory its class
-// declares in `skill_classes`, refuses a build-class Skill call mid-design, and restricts
-// nothing while no phase is open.
+// declares in `skill_classes`, refuses a build-class Skill call mid-design, sums territories
+// when a skill chains another of its own class, and restricts nothing while no phase is open.
 //
 // Why this test exists: the failure it guards against was invisible in review. A design run
 // wrote a `schema-registry` service into docker-compose.yml, inside a diff everybody read as
@@ -97,6 +97,49 @@ public class SkillTerritoryTest {
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
                 0, "phase closed — nothing restricted again");
 
+        // A same-class chain sums territories. `build` gives every skill its own override, so
+        // keeping only the caller's — the rule before decision 0092 — refused arch-adopt's
+        // chained sonarqube-setup the very writes it exists for, and sonarqube-setup's chained
+        // docker-architect the compose file.
+        String chain = "ci-territory-chain-" + System.nanoTime();
+        failures += run(hook, "prompt", chain,
+                "{\"session_id\":\"%s\",\"prompt\":\"/arch-adopt\"}",
+                0, "prompt opens arch-adopt's phase");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"pom.xml\"}}",
+                2, "pom.xml is not arch-adopt's — blocked");
+
+        failures += run(hook, "call", chain,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"sonarqube-setup\"}}",
+                0, "same-class Skill call joins the phase");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"pom.xml\"}}",
+                0, "the callee's territory is added — pom.xml allowed");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\".claude/rules/x.md\"}}",
+                0, "the caller's territory survives the join");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"docker-compose.yml\"}}",
+                2, "a path neither skill owns stays blocked");
+
+        failures += run(hook, "call", chain,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"docker-architect\"}}",
+                0, "a third same-class skill joins too");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"docker-compose.yml\"}}",
+                0, "compose allowed once docker-architect joined");
+
+        failures += run(hook, "write", chain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
+                2, "the union is still deny-by-default outside it");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — the territory guard is NOT"
                     + " enforcing what skill_classes declares.");
@@ -104,7 +147,7 @@ public class SkillTerritoryTest {
         }
         System.out.println("✅ Skill territory enforced: deny by default while a phase is open,"
                 + " agent_type judged by its own class, build-class calls refused mid-design,"
-                + " and no restriction with no phase open.");
+                + " same-class chains summing territories, and no restriction with no phase open.");
     }
 
     /** Runs one `guard <phase>` with the given stdin and checks the exit code. */

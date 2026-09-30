@@ -56,7 +56,8 @@ checked, and that is how a pending service recorded by a use case spec gets mate
 chained by `project-bootstrap` itself, right after it writes the base pair in its own
 step 4.10, once per blueprint feature that's already active and needs a container
 (`persistence-jpa` → Postgres, `observability` → the OTLP collector) — see
-`project-bootstrap/SKILL.md` step 4.10. That's why it carries no
+`project-bootstrap/SKILL.md` step 4.10. A third path: chained by `sonarqube-setup` for a
+local `sonarqube` service when the project has no server of its own. That's why it carries no
 `disable-model-invocation` — a skill the model can't see is a skill a sibling skill can't
 call.
 
@@ -125,6 +126,8 @@ this table is where it lives.
      engine question to ask, and **no backend question either**: generation stays
      non-interactive, and `project-bootstrap`'s own final report is what tells the user
      the collector exports to `debug` and how to add a UI later. Go straight to step 3.
+   - If chained from `sonarqube-setup`: the service is `sonarqube`, already decided by its
+     own question (no existing server). No engine question. Go straight to step 3.
    - If invoked manually with no folder: `AskUserQuestion` — engine (Postgres, MySQL,
      Kafka, other), version/tag, port, whether it needs an init script. Don't ask what a
      given spec already answers.
@@ -285,6 +288,7 @@ this table is where it lives.
 | OpenTelemetry Collector | `templates/otel-collector-service.yml.example` + init script `templates/otel-collector-config.yml.example` | `observability` isn't active in the blueprint. No engine choice for the collector itself — one vendor-neutral ingest point, always the same shape. Where it *exports* to is a real choice, and it's the next two rows |
 | Jaeger | `templates/jaeger-service.yml.example` | No `otel-collector` in the file yet, a backend is already there, or the project wants metrics too — Jaeger stores traces only |
 | Grafana + Tempo + Prometheus | `templates/grafana-stack-service.yml.example` + three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`) | No `otel-collector` yet, a backend is already there, or three containers is too much for what the project needs — Jaeger is the one-container answer |
+| SonarQube (community) | `templates/sonarqube-service.yml.example` | The project already has an external SonarQube server or SonarCloud — `sonarqube-setup` asked, and only its *None* answer chains here. Embedded H2, no database service: local analysis, not a shared server |
 | H2 | — no service | In-memory, runs inside the JVM; nothing to containerize |
 
 The collector's default exporter is `debug`, which writes to its own stdout and **is not

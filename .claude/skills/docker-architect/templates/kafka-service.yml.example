@@ -47,3 +47,7 @@ kafka:
     interval: 10s
     timeout: 5s
     retries: 5
+
+# Named volume — add under docker-compose.yml's top-level `volumes:`.
+volumes:
+  kafka_data:

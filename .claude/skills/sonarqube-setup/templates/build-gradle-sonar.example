@@ -1,0 +1,29 @@
+// EXEMPLAR — SonarQube scanner in the ROOT build.gradle (Groovy DSL). Two fragments,
+// merged into what the file already has.
+// DO NOT pin versions based on this file: it's a reference for SHAPE.
+//
+// No token here, ever. The scanner reads SONAR_TOKEN from the environment on its own —
+// the developer's shell locally, the repository secret in CI.
+
+// 1 · Into the root `plugins {}` block.
+// Resolved at runtime from the Gradle Plugin Portal's maven-metadata.xml — the plugin is
+// not published on Maven Central under this id — never from memory.
+plugins {
+    id 'org.sonarqube' version '<!-- resolved in step 3 -->'
+}
+
+// 2 · At the root level, outside `subprojects {}`: one analysis for the whole build.
+// Run with:  ./gradlew build sonar
+sonar {
+    properties {
+        // <group>:<rootProject.name>
+        property 'sonar.projectKey', 'com.exemplo:minha-api'
+        // The server URL from step 2, or http://localhost:9000 for the local container.
+        property 'sonar.host.url', 'http://localhost:9000'
+        // SonarCloud only — delete the line otherwise.
+        property 'sonar.organization', 'my-org'
+        // No sonar.coverage.jacoco.xmlReportPaths: the scanner's default,
+        // build/reports/jacoco/test/jacocoTestReport.xml, is where `jacocoTestReport`
+        // writes once `xml.required = true` — already set by project-bootstrap.
+    }
+}

@@ -1,0 +1,28 @@
+# EXEMPLAR — SonarQube analysis merged into .github/workflows/build.yml, job `build`.
+# Only for an EXTERNAL server (an existing SonarQube, or SonarCloud): a container on a
+# developer's machine is unreachable from the runner, so a local setup gets no CI step.
+#
+# Three edits to the existing job, nothing else in the file changes.
+
+jobs:
+  build:
+    # 1 · Job-level env. A secret cannot be read in a step's `if:` directly, and a
+    #     step-level env is not visible to that same step's `if:`; job-level is.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      # 2 · Full history on the existing checkout step: the analysis computes new code
+      #     and blame from it, and a shallow clone makes every line look new.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ... setup-java and `verify` unchanged ...
+
+      # 3 · After `verify`, so the classes and the JaCoCo reports already exist.
+      #     Skipped while the secret is absent — a fork's pull request has none, and a
+      #     red build there would say nothing about the code.
+      - name: sonar analysis
+        if: ${{ env.SONAR_TOKEN != '' }}
+        run: ./mvnw -B sonar:sonar
+        # gradle:  run: ./gradlew --no-daemon sonar

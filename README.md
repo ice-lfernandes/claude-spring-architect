@@ -264,6 +264,7 @@ claude-spring-architect/
     │   │                          #   /gof-design-patterns on existing code — copied
     │   ├── docker-architect/      #   services, OTLP collector, Jaeger / Grafana stack — copied
     │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
+    │   ├── sonarqube-setup/       #   scanner + server URL, CI step for an external server, local container otherwise — copied
     │   └── audit-usage/           #   /audit-usage — reads the execution trail — copied
     ├── agents/                    # isolated context
     │   ├── project-initializer.md         #   drives /init-project — stays in this repo
@@ -301,7 +302,7 @@ repository: `/init-project` copies over the norms (`rules/*.md`), the developmen
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
 `rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
 `test-architect`, `new-feature`, `gof-design-patterns`, `docker-architect`, `git-publish`,
-`audit-usage`), the
+`sonarqube-setup`, `audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
 `commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
 travels is **data**, the `export` block of `schemas/extensions.json`, checked against disk

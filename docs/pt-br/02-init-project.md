@@ -86,6 +86,7 @@ sequenceDiagram
 | 6.6 | Escreve o `.claude/` do projeto num comando só — `ArchHook.java export <projeto> --blueprint <id>`, dirigido pelo manifesto `export` de `extensions.json` | Toda rule (`paths` de pacote reescritos a partir de `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (com `guard`, `audit` e `context` ligados); o blueprint ativo; `.claude/audit-usage/` + `pricing.json`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` só se um servidor foi desenhado para o projeto gerado |
 | 7 | Nada a rodar — o que o enforcement recém-instalado faz, para o relatório final | — |
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
+| 8.4 | Configura o SonarQube — encadeia `sonarqube-setup`, que pergunta se já existe servidor | scanner + properties `sonar.*` no build file raiz; step de CI para servidor externo; serviço `sonarqube` no compose (via `docker-architect`) caso contrário |
 | 8.5 | Gera o README do projeto | `README.md` (inglês) + `README.pt-br.md` |
 | 8.6 | Grava o registro de gênese da trilha | `.claude/audit-usage/GENESIS.md` |
 

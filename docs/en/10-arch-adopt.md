@@ -147,6 +147,10 @@ the 7 official blueprints on every change to the manifest.
 - **Doesn't generate a project.** With no `pom.xml`/`build.gradle`, `/init-project` is what
   you want.
 - **Doesn't write business code**, and never touches `src/`.
+- **Doesn't write outside `.claude/` itself.** When the build file has no SonarQube scanner,
+  its last step chains `sonarqube-setup`, which writes the build file and the workflow under
+  its own territory. On an install, run `/reload-skills` first — the skill's directory did
+  not exist when the session started.
 - **Doesn't commit.** It leaves the tree with the diff ready for review, and says how to
   undo it.
 - **Doesn't ask for a blueprint when the stamp already records one** — on an update, the

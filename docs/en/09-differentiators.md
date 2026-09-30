@@ -234,6 +234,7 @@ None is unique on its own; together, no neighbor gathers them:
 | `Idempotency-Key` from the first endpoint, via AOP and a shared table | `rest-api-architect` + `persistence-architect` (D40, D44) |
 | Structured logging with sensitive-data masking (`@LogExecution`, `@MaskSensitiveData`) | `commons-logging-installer`, triggered by `/new-feature`'s pre-flight |
 | Observability: OTLP collector with traces **and** metrics pipelines, Jaeger or Grafana + Tempo + Prometheus backend | `docker-architect` |
+| Static analysis: SonarQube or SonarCloud wired into the build, a CI step for an external server, or a local SonarQube container — the token never in a file | `sonarqube-setup` (+ `docker-architect` for the container) |
 | A container that "started" but isn't answering, a port held by a sibling project | `ArchHook.java compose` |
 | Kafka producer/consumer with at-least-once, retry, and DLQ | `messaging-architect` + `rules/messaging.md` |
 | Pagination without `Pageable` crossing the application port | `rules/architecture-ddd.md` (D42) |

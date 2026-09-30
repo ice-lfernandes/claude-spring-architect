@@ -38,6 +38,7 @@ flowchart TB
         SK_JOBS["skill: jobs-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
         SK_GIT["skill: git-publish"]:::skill
+        SK_SONAR["skill: sonarqube-setup"]:::skill
         SK_ADOPT["skill: arch-adopt\n(installs/updates this .claude/ in a project)"]:::skill
     end
 
@@ -66,7 +67,10 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs, with guard + audit wired| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR
+    SK_BOOT -.->|Skill tool, step 8.4| SK_SONAR
+    SK_ADOPT -.->|Skill tool, when the build file has no scanner| SK_SONAR
+    SK_SONAR -.->|Skill tool, no existing server| SK_DOCKER
     SK_ADOPT -->|writes everything through the export mode| HOOK
     SK_BOOT -->|copies| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|proposes and writes, after approval| SK_UC & AG_DEV & RULES

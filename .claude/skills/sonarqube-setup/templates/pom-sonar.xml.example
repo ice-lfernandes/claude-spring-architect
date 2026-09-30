@@ -1,0 +1,32 @@
+<!--
+  EXEMPLAR — SonarQube scanner in the ROOT pom.xml. Two fragments, merged into what the
+  file already has; never a second <properties> or <pluginManagement> block.
+  DO NOT pin versions based on this file: it's a reference for SHAPE.
+
+  No token here, ever. The scanner reads SONAR_TOKEN from the environment on its own —
+  the developer's shell locally, the repository secret in CI.
+-->
+
+<!-- 1 · Into <properties> -->
+<!-- Resolved at runtime from repo1.maven.org maven-metadata.xml, never from memory. -->
+<sonar.plugin.version><!-- resolved in step 3 --></sonar.plugin.version>
+<!-- <groupId>:<artifactId> of this POM. -->
+<sonar.projectKey>com.exemplo:minha-api</sonar.projectKey>
+<!-- The server URL from step 2, or http://localhost:9000 for the local container.
+     A URL is not a secret; the token is, and it is not here. -->
+<sonar.host.url>http://localhost:9000</sonar.host.url>
+<!-- SonarCloud only — delete the line otherwise. -->
+<sonar.organization>my-org</sonar.organization>
+<!-- No sonar.coverage.jacoco.xmlReportPaths: the scanner's default,
+     target/site/jacoco/jacoco.xml, is exactly where the jacoco-maven-plugin `report`
+     execution writes, module by module. -->
+
+<!-- 2 · Into <build><pluginManagement><plugins> -->
+<!-- In pluginManagement, not <plugins>: it binds to no phase, so `verify` never
+     reaches a server. The version declared here is what makes the short `sonar:sonar`
+     resolve to this plugin at this version:  ./mvnw -B verify sonar:sonar -->
+<plugin>
+  <groupId>org.sonarsource.scanner.maven</groupId>
+  <artifactId>sonar-maven-plugin</artifactId>
+  <version>${sonar.plugin.version}</version>
+</plugin>
