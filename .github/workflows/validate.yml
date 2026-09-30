@@ -119,6 +119,13 @@ jobs:
       - name: context subagent hands the catalog to pattern_catalog agents only
         run: java .claude/.ci/SubagentContextTest.java
 
+      # Everything `audit` reports about where a run spent is parsed from an undocumented
+      # transcript layout, and a render that throws exits 0 — the report just freezes (0041).
+      # The error text it quotes lands in a versioned file, so the redaction is checked too (0085).
+      # Which pieces it skips is a class flag, `audited: false` — removing it must fail here (0086).
+      - name: audit renders where the run spent, redacts tool errors, skips observer-class pieces
+        run: java .claude/.ci/AuditRenderTest.java
+
   design:
     name: design invariants
     runs-on: ubuntu-latest

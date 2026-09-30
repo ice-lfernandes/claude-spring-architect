@@ -69,32 +69,33 @@ Any name that resolves to `.claude/skills/<n>/SKILL.md` or `.claude/agents/<n>.m
 **of the project**, invoked by `/command` or by the model's `Skill`/`Agent` call.
 Plugin skills (`caveman:*`) and runtime agents (`Explore`, `general-purpose`) fall out
 by construction — they have no file. Skills preloaded via `skills:` in an agent's
-frontmatter appear under that agent as `pré-carregada`, with no tokens of their own.
+frontmatter appear under that agent as `preloaded`, with no tokens of their own.
 
-Two exceptions, listed in `extensions.json` → `audit.exclude_skills`: `audit-usage` and
-`arch-doctor`. They are observers — invoking one **closes** the run in progress (which
-is the only way, inside a live session, to get a report that isn't `⏳ em andamento`)
+Two exceptions, `audit-usage` and `arch-doctor`, both in the `observer` class of `extensions.json` → `skill_classes`, which declares `audited: false` — the class, not a list, decides:
+they are observers — invoking one **closes** the run in progress (which
+is the only way, inside a live session, to get a report that isn't `⏳ in progress`)
 and opens no run of its own. Without that, reading the trail would produce a report
 about reading the trail.
 
 ## Anatomy of a report
 
 One `.md` per top-level invocation, at `.claude/audit-usage/<timestamp>--<piece>.md`.
-An excerpt of a real report, generated in the demo project (the reports are written
-in Portuguese):
+An excerpt of a real report, generated in the demo project. The reports are written in
+English since decision 0085; this run predates it, so its labels are shown translated and
+its numbers are unchanged. Reports written before 0085 stay in Portuguese on disk:
 
 ```text
-# 🧾 Auditoria de execução — `/new-feature crie um novo endpoint rest para criacao da entidade account …`
+# 🧾 Execution audit — `/new-feature crie um novo endpoint rest para criacao da entidade account …`
 
-| 🎯 Peça | `/new-feature` · skill |
-| 🙋 Origem | usuário — `/comando` |
-| ⏱️ Duração | 2h55m35s |
-| ⏸️ Espera pelo usuário | 2h44m33s |
-| ⚙️ Duração ativa | 11m01s |
-| ✅ Status | sucesso |
+| 🎯 Piece | `/new-feature` · skill |
+| 🙋 Origin | user — `/command` |
+| ⏱️ Duration | 2h55m35s |
+| ⏸️ Waiting for the user | 2h44m33s |
+| ⚙️ Active duration | 11m01s |
+| ✅ Status | success |
 | 🌿 HEAD | 871d25c → 871d25c |
 
-## 🔗 Encadeamento
+## 🔗 Chain
 
 /new-feature                                  ████████████████████ 11m01s   100%
 ├─ 📘 use-case-design (crie um novo endpoint  ████░░░░░░░░░░░░░░░░ 2m17s    21%
@@ -103,23 +104,46 @@ in Portuguese):
 ├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
 ├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
 └─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
-     📎 java-patterns (pré-carregada)
+     📎 java-patterns (preloaded)
 
-## 🧩 Tokens por peça
+## 🧩 Tokens per piece
 
-| Peça | Origem | 🧮 Faturável próprio | ⏱️ Duração |
-| `📘 test-architect` | aninhada | 242.813 | 2m25s |
-| `🤖 java-spring-boot-developer` | aninhada | 88.517 | 1m12s |
+| Piece | Origin | 🧮 Own billable | ⏱️ Duration |
+| `📘 test-architect` | nested | 242,813 | 2m25s |
+| `🤖 java-spring-boot-developer` | nested | 88,517 | 1m12s |
 …
 ```
 
 Sections, in order: header · initial command (redacted, with the original's `sha256`)
-· most expensive steps · chain · tokens per piece · aggregate tokens (input, output,
-cache read, cache write, billable, estimated cost, cache hit) · permissions added (a
-diff of `settings.local.json` between start and end) · rules loaded · files touched ·
-rework.
+· longest steps · chain · tokens per piece · aggregate tokens (input, output,
+cache read, cache write, billable, estimated cost, cache hit) · where the run spent ·
+permissions added (a diff of `settings.local.json` between start and end) · rules
+loaded · files touched · rework.
 
-Three design decisions the report states about itself:
+**Where the run spent** is read from the same transcripts the tokens come from — the
+main one and each subagent's own — so it costs no hook event of its own. It answers what
+the token totals cannot: which tools a piece leaned on, which turns were the expensive
+ones, and how much context a single request carried. An excerpt, replayed over a real
+session transcript:
+
+```text
+### 🛠️ Tool calls per piece
+| Piece | Calls | By tool | 📏 Peak context |
+| `/demo` | 53 | Bash 30 · Read 9 · Edit 8 · Write 4 · AskUserQuestion 2 | 217,617 |
+
+### 💸 Most expensive turns
+| # | 🕐 When | Piece | 🧮 Billable | Tools called |
+| 1 | 2026-09-30T08:27:45.193Z | `/demo` | 45,752 | Bash |
+
+### 📏 Peak context
+Largest single request: **217,617** tokens (input + cache read + cache write) — `/demo` at 2026-09-30T08:41:01.327Z.
+
+## 🔁 Rework
+| Piece | Tool | × | First line of the error (redacted) |
+| `/demo` | `Bash` | 3 | `exit 1 · …` |
+```
+
+Four design decisions the report states about itself:
 
 - **Rules are inferred, not observed.** No hook event exposes which `rule` entered
   context. The report crosses the files touched against each norm's `paths` and labels
@@ -128,7 +152,10 @@ Three design decisions the report states about itself:
   at the same depth or shallower, with `AskUserQuestion` waits discounted.
 - **Agent tokens come from the subagent's own transcript**; a main-thread skill's
   tokens are the messages from its call to the next piece. Summed, they match the
-  aggregate — no double counting.
+  aggregate — no double counting. Tool calls, peak context and tool errors follow the
+  same attribution.
+- **Peak context is an absolute number.** The model's context window is not written
+  from memory, so the report never turns the peak into a percentage.
 
 ## Redaction and pricing
 
@@ -136,9 +163,12 @@ Three design decisions the report states about itself:
   into it would be irreversible in git history (invariant 11). The patterns live in
   `extensions.json` → `audit.redact`: `authorization|token|api_key|secret|password` as
   keys, the prefixes `Bearer `, `ghp_`, `github_pat_`, `sk-`, `xoxb-`, `AKIA`, and
-  `PRIVATE KEY` blocks.
+  `PRIVATE KEY` blocks. The first line of each tool error goes through the same
+  patterns, truncated to 160 characters — an error can echo the command that held the
+  token. A failed `Bash` result opens with `Exit code N`; the report joins it with the
+  line after it, which is what actually failed.
 - **Prices are data with null defaults.** `pricing.json` ships empty and the report
-  prints "custo: não configurado" instead of a confident `US$ 0.00` — the same reason
+  prints "cost: not configured" instead of a confident `USD 0.00` — the same reason
   invariant 8 forbids versions from memory. Fill the file and cost appears per model
   (a subagent on another model is priced at its own rate).
 
@@ -146,45 +176,55 @@ Three design decisions the report states about itself:
 
 | File | One line per | Versioned? |
 |---|---|---|
-| `history.jsonl` | top-level run (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, …) | yes |
-| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `tokens_self`, `duration_ms`) | yes |
+| `history.jsonl` | top-level run (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, …) | yes |
+| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `tokens_self`, `tool_calls`, `peak_context`, `duration_ms`) | yes |
 | `.state/*.ndjson`, `.state/*.prompt.json` | raw event of the run in progress | no |
+
+`tool_calls` is a string, `Bash:5,Read:12`, because the ledgers carry strings only. Rows
+written before a field existed simply lack it, and every reader treats absent as
+unknown, never as zero. Rows written before decision 0085 also carry a Portuguese status
+(`✅ sucesso`) and a pt-BR formatted `cost` (`USD 1.234,56`); `audit summary` classifies
+the status by its emoji and parses both cost formats, so the old rows need no migration.
 
 `java .claude/hooks/ArchHook.java audit summary` aggregates the two ledgers **in the
 JVM** and prints a compact block. That block is what `/audit-usage` injects into its
 own body — not the raw JSON, which grows without bound and would leave the arithmetic
-to the model. Real output from the demo project:
+to the model. Output from the demo project (labels translated, numbers unchanged; the
+`Calls` and `Peak` columns read `—` for runs recorded before they existed):
 
 ```text
-execuções fechadas: 4 · período: 2026-09-17T11:06:26Z → 2026-09-17T17:31:14Z · peças distintas: 10
+closed runs: 4 · period: 2026-09-17T11:06:26Z → 2026-09-17T17:31:14Z · distinct pieces: 10
 
-### Últimas execuções
-| # | 🎯 Peça | 🙋 Origem | Status | ⏱️ Duração | 🧮 Faturável | 📁 Arq. | 🔁 Falhas |
-| 1 | `Skill(git-publish)` | modelo | ✅ | 41s | 229.493 | 0 | 0 |
-| 2 | `/new-feature` | usuário | ✅ | 11m01s | 530.831 | 11 | 0 |
-| 3 | `Skill(domain-modeling)` | modelo | ⚠️ | 47m55s | 1.223.409 | 85 | 1 |
-| 4 | `/new-feature` | usuário | ⚠️ | 1m39s | 68.633 | 1 | 1 |
+### Latest runs
+| # | 🎯 Piece | 🙋 Origin | Status | ⏱️ Duration | 🧮 Billable | 🛠️ Calls | 📏 Peak | 📁 Files | 🔁 Failures |
+| 1 | `Skill(git-publish)` | model | ✅ | 41s | 229,493 | — | — | 0 | 0 |
+| 2 | `/new-feature` | user | ✅ | 11m01s | 530,831 | — | — | 11 | 0 |
+| 3 | `Skill(domain-modeling)` | model | ⚠️ | 47m55s | 1,223,409 | — | — | 85 | 1 |
+| 4 | `/new-feature` | user | ⚠️ | 1m39s | 68,633 | — | — | 1 | 1 |
 
-### Gasto por peça (tokens próprios — raiz + aninhada, sem dupla contagem)
-📘 test-architect                 ███████░░░░░░░░░░░░░░░░░░ 27%  282.316 tok   3× (0 raiz · 3 aninhada)
-📘 git-publish                    ██████░░░░░░░░░░░░░░░░░░░ 23%  243.169 tok   2× (1 raiz · 1 aninhada)
-📘 domain-modeling                ███░░░░░░░░░░░░░░░░░░░░░░ 11%  109.946 tok   2× (1 raiz · 1 aninhada)
-🤖 java-spring-boot-developer     ██░░░░░░░░░░░░░░░░░░░░░░░ 9%   88.517 tok    1× (0 raiz · 1 aninhada)
+### Spend per piece (own tokens — root + nested, never counted twice)
+📘 test-architect                 ███████░░░░░░░░░░░░░░░░░░ 27%  282,316 tok   3× (0 root · 3 nested)
+📘 git-publish                    ██████░░░░░░░░░░░░░░░░░░░ 23%  243,169 tok   2× (1 root · 1 nested)
+📘 domain-modeling                ███░░░░░░░░░░░░░░░░░░░░░░ 11%  109,946 tok   2× (1 root · 1 nested)
+🤖 java-spring-boot-developer     ██░░░░░░░░░░░░░░░░░░░░░░░ 9%   88,517 tok    1× (0 root · 1 nested)
 …
 
-### Saúde
-taxa de falha: 2/4 (50%) · pior: 📘 domain-modeling (1/1)
+### Where the pieces spent (tool calls, top 5 tools · largest single request)
+(appears once a run recorded by a hook from decision 0085 on has closed)
 
-### Abrir
-mais recente: `.claude/audit-usage/2026-09-17T17-31-14--git-publish.md`
-mais recente com falha: `.claude/audit-usage/2026-09-17T11-11-27--domain-modeling.md`
+### Health
+failure rate: 2/4 (50%) · worst: 📘 domain-modeling (1/1)
+
+### Open
+most recent: `.claude/audit-usage/2026-09-17T17-31-14--git-publish.md`
+most recent with failures: `.claude/audit-usage/2026-09-17T11-11-27--domain-modeling.md`
 ```
 
 ## `/audit-usage` — the reader
 
 | Argument | Does |
 |---|---|
-| empty | Consolidated view: the block above, plus one line of reading, the piece with the worst failure ratio, and the report to open |
+| empty | Consolidated view: the block above, plus one line of reading, where the pieces spent, the piece with the worst failure ratio, and the report to open |
 | `last` / `último` | Summarizes the most recent report in up to six lines |
 | a skill or agent name | That piece's line + its newest report (a nested piece's report is its parent's) |
 | a filename fragment | The single matching report; two or more, list and ask |

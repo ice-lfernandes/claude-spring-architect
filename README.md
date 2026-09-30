@@ -502,7 +502,7 @@ In a generated project, every invocation of a project skill or agent — typed a
 Excerpt of a real one, from a `/new-feature` run in the demo project:
 
 ```text
-| ⏱️ Duração         | 2h55m35s  |   ⏸️ Espera pelo usuário | 2h44m33s |   ⚙️ Duração ativa | 11m01s |
+| ⏱️ Duration        | 2h55m35s  |   ⏸️ Waiting for the user | 2h44m33s |   ⚙️ Active duration | 11m01s |
 
 /new-feature                                  ████████████████████ 11m01s   100%
 ├─ 📘 use-case-design                         ████░░░░░░░░░░░░░░░░ 2m17s    21%
@@ -511,15 +511,16 @@ Excerpt of a real one, from a `/new-feature` run in the demo project:
 ├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
 ├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
 └─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
-     📎 java-patterns (pré-carregada)
+     📎 java-patterns (preloaded)
 
-| Peça                          | Faturável próprio |     | 🧮 faturável (run) | 530.831 |
-| 📘 test-architect             |           242.813 |     | ♻️ cache read      | 6.849.774 |
-| 🤖 java-spring-boot-developer |            88.517 |     | cache hit          | 100% |
+| Piece                         | Own billable      |     | 🧮 billable (run)  | 530,831 |
+| 📘 test-architect             |           242,813 |     | ♻️ cache read      | 6,849,774 |
+| 🤖 java-spring-boot-developer |            88,517 |     | cache hit          | 100% |
 ```
 
-Plus files touched, permissions requested, tools that failed, and the rules that should
-have loaded. `/audit-usage` aggregates the ledgers across runs (spend per piece without
+Plus where the run spent (tool calls per piece, the costliest turns, the peak context,
+the first line of each tool error, redacted), files touched, permissions requested, and
+the rules that should have loaded. `/audit-usage` aggregates the ledgers across runs (spend per piece without
 double counting, failure rate, which report to open). The trail is a hook, not a skill:
 it survives the model forgetting and the session dying, and costs zero tokens to
 produce. Prompts are redacted before landing in git; prices are `null` until you fill

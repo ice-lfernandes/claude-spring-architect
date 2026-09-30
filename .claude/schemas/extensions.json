@@ -142,8 +142,7 @@
   },
 
   "audit": {
-    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt is written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. `exclude_skills` names the skills that carry `disable-model-invocation: true`, and so would be audited, but that OBSERVE instead of producing work — `audit-usage` reads the trail, `arch-doctor` reads the setup. Invoking one closes the run in progress and opens none of its own. Closing was already what happened (any second `/command` closes), so this only drops the empty report an observer would otherwise leave behind; the gain is that a report read mid-session is finished rather than stuck at `⏳ em andamento`. For `audit-usage` it also breaks a feedback loop: reading the trail would append a report about reading, and the next read would be mostly reads. Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0036-skill-audit-usage.md and .claude/decisions/0038-audit-trail-every-skill-and-agent.md",
-    "exclude_skills": ["audit-usage", "arch-doctor"],
+    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup). Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md and .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
@@ -202,7 +201,8 @@
         }
       },
       "observer": {
-        "$comment": "Reads the setup or the trail and writes nothing. The reports under .claude/audit-usage/ are written by the `audit` hook, not by the skill that reads them.",
+        "$comment": "Reads the setup or the trail and writes nothing. The reports under .claude/audit-usage/ are written by the `audit` hook, not by the skill that reads them. `audited: false` is what keeps an observer out of that trail: invoking one closes the run in progress and opens none of its own — so a report read mid-session is finished rather than stuck at `⏳ in progress`, and reading the trail never appends a report about reading it. The flag is read per class by ArchHook.java `isAuditExcluded`, for `agent_classes` too; absent means audited. A skill added to this class inherits it, which is the point: this list used to be repeated in `audit.exclude_skills`, and two lists of the same two names drift apart in silence. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+        "audited": false,
         "allowed_models": ["sonnet"],
         "write_allow": [],
         "required_sections": [],
