@@ -121,10 +121,14 @@ the spec orders by what compiles against what.
    one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
 9. `git-publish` — invoked at the end, per § End of flow
 
-`java-patterns` is not a pipeline step: it carries no spec and this orchestrator never
-invokes it. Its catalog travels preloaded inside `java-spring-boot-developer` and gets
-applied there, directly, when a symptom already in the generated code matches a row —
-`@.claude/decisions/0025-java-patterns-preloaded-in-executor.md`.
+`gof-design-patterns` is not a pipeline step, and this orchestrator never invokes it — a
+design run cannot reach a `build`-class skill. **Its catalog is still applied at design
+time:** each design skill above runs its § Design-time use for its own layer and writes a
+`## Design patterns` section into its partial, so the classes a pattern creates are in the
+spec the user approves, not chosen by the executor afterwards. The executor implements
+those rows, and applies the catalog on its own only for a symptom already on disk
+(`@.claude/decisions/0089-design-patterns-decided-at-design-time.md`, superseding the
+executor-side trigger of 0077).
 
 ---
 
@@ -478,6 +482,8 @@ only when step 4b wasn't):
    | Exception class and `errorCode` | `10-dominio.md` |
 | Use case boundary, invariants, error situations | `00-caso-de-uso.md` |
    | Name and level of each test | `40-testes.md` |
+   | A design pattern and the classes it creates | The partial of the layer those classes live in. Two partials adopting different patterns for the same class is not settled by precedence: **stop and ask** |
+   | A design pattern and the classes it creates | The partial of the layer those classes live in. Two partials adopting different patterns for the same class is not settled by precedence: **stop and ask** |
 
    `UC-NNN-spec.md` carries **a single value per fact** — the winner — across all
    blocks, including those that had inherited the old value. The discarded versions go
@@ -505,6 +511,11 @@ only when step 4b wasn't):
      (messaging) only when step 4 wasn't skipped, and a 7th (jobs) only when step 4b wasn't
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
+   - `## Design patterns`: every row from the same section of each partial, with the partial
+     that decided it — "none" when all are empty. **A partial that applies must carry the
+     section, or consolidation stops**: absence is not `none`, the same test as the
+     declared-dependency lists below. A row whose force is neither a spec line nor a
+     `file:line` is not consolidated — the pipeline stops and asks
    - **A row that adds a precondition must name its satisfier, or consolidation stops.** Any
      row making an earlier case require a state it did not require before — a status, a flag, a
      related record — carries the `Satisfied by` column `00-caso-de-uso.md` already asks for:

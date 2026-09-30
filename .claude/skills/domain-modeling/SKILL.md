@@ -67,10 +67,13 @@ division is by **moment**, not by folder:
 |---|---|---|
 | `use-case-design` | Before the domain exists | Canonical names and boundary — `00-caso-de-uso.md` |
 | **this skill** | After the mother spec, before code exists | Signatures and invariants — `10-dominio.md` |
-| `java-patterns` | After code exists, and only with a symptom | Refactor of real code (`file:line` that hurts) |
+| `gof-design-patterns` | Standalone, outside a feature run, on code that already hurts | Refactor of real code (`file:line` that hurts) |
 
-If the code already exists and the problem is a growing chain of `if`s, it isn't this
-skill — it's `java-patterns`. If there's no mother spec, it also isn't this skill.
+The pattern decision for the case being designed is this skill's, for the domain and
+application — step 5b, through that skill's § Design-time use, which this one reads and
+never invokes. If the code already exists outside any feature run and the problem is a
+growing chain of `if`s, it isn't this skill — it's `/gof-design-patterns`. If there's no
+mother spec, it also isn't this skill.
 
 ## Procedure
 
@@ -173,12 +176,19 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
    state) only when the entry bar in `@.claude/rules/error-handling.md` § Shape of the
    base classes is met: the `errorCode` already repeats across ≥ 2 call sites, or a
    caller needs to `catch` it specifically rather than branch on `errorCode()`. A first
-   occurrence never gets its own class — the same discipline `java-patterns` applies to
+   occurrence never gets its own class — the same discipline `gof-design-patterns` applies to
    when a symptom earns a design pattern.
 
    **A second call site found in a later use case** promotes the exception here, in this
    case's `10-dominio.md`, under `## Impact on approved use cases` — never by editing the
    earlier case's partial or spec, which are approved and immutable.
+5b. **Decide the design patterns of the domain and application.** Run
+   `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use over what this case adds —
+   aggregate, value objects, ports, application services — against the mother spec's forces
+   (a rule enumerated per type, construction with invariants, a predicate the query also
+   needs) and the code step 2 surveyed. The answer goes into `## Design patterns`, and every
+   class it creates into § 5 Components to create — `none` when nothing matches, and absence
+   is not `none`.
 6. **Generate** from `templates/domain-spec.md.example` to
    `docs/use-cases/UC-NNN-<slug>/10-dominio.md`.
 7. **Report and stop.** File path, divergences found against the mother spec, and what's
@@ -187,7 +197,7 @@ skill — it's `java-patterns`. If there's no mother spec, it also isn't this sk
 
 ## What the partial contains
 
-Four blocks, all mandatory. An empty block is written as "none" — deleting it hides a
+Five blocks, all mandatory. An empty block is written as "none" — deleting it hides a
 question nobody asked.
 
 | Block | Details | Form exemplar |
@@ -196,6 +206,7 @@ question nobody asked.
 | Invariants | Each rule, where it's enforced, which exception it raises; and the state of the exception family (NEW or REUSE) | `DomainGuards.java.example` · `DomainException.java.example` and the four typed ones · `@.claude/rules/error-handling.md` |
 | Ports | Input (`<Verb><Noun>UseCase`), command, output — complete signatures | `UseCasePort.java.example` · `Command.java.example` |
 | Events | Which event, which payload, which UC consumes it | `DomainEvent.java.example` |
+| Design patterns | Each pattern the domain or application adopts: the spec line or `file:line` that forces it, the classes it creates, the "When not" checked — step 5b | `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use |
 
 The exemplars in `templates/` are **reference for form**, not files to copy: they show a
 record with a compact constructor, a static `of` factory, and total absence of
@@ -228,9 +239,10 @@ the executor agent — the exception family included: this skill owns the **shap
 writing. Does not touch `00-caso-de-uso.md` (`use-case-design`), the other partials, or
 `.claude/rules/**`.
 
-**Does not collide with `java-patterns`**, which writes domain code from a symptom in
-existing code. This skill produces a spec before code exists; that one refactors code
-that already hurts. Different moments, different artifacts.
+**Does not collide with `gof-design-patterns`.** That skill owns the catalog and, invoked
+standalone, refactors code that already hurts; this one decides which catalog row shapes the
+domain of the case being designed, and writes the decision into the partial — step 5b.
+Different artifacts, one owner of each.
 
 **Does not** decide persistence, mapping, or transport technology —
 `20-persistencia.md` and `30-rest.md` have their own owners.

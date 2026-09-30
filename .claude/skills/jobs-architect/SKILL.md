@@ -242,8 +242,14 @@ Two facts cross that line, one in each direction, and each has one owner:
    `pom.xml` and name the matching artifact. `@Scheduled` alone needs none. The executor may
    write `pom.xml` for exactly these rows.
 
+8b. **Decide the design patterns of this layer.** Run
+   `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use over the jobs this case
+   adds, against the specs and what step 2 surveyed — several jobs sharing one
+   claim-process-mark skeleton is the usual symptom. The answer goes into `## Design
+   patterns` — `none` when nothing matches, and absence is not `none`.
+
 9. **Write the partial.** `docs/use-cases/UC-NNN-<slug>/35-jobs.md`, from
-   `templates/jobs-spec.md.example`. Nine blocks, all mandatory, each written as `none` when
+   `templates/jobs-spec.md.example`. Nine numbered blocks plus `## Design patterns`, all mandatory, each written as `none` when
    there is nothing — absence is not `none`. § 9 `Deferred` follows the same shape as every other
    partial's: what was decided, what is missing, the norm requiring it by path, and the owner.
 
@@ -267,6 +273,7 @@ Two facts cross that line, one in each direction, and each has one owner:
 | 7 · Declared dependencies | Coordinates, version empty when managed. `none` when none |
 | 8 · Configuration | Every property a job reads, its value, and which partial owns the value |
 | 9 · Deferred | Same shape as every partial. `none` when nothing was deferred |
+| Design patterns | Each pattern the jobs adopt, with its force, its classes and the "When not" checked — step 8b. `none` when none |
 
 Plus `## Impact on approved use cases` and `## Implementation order`, as in every partial.
 

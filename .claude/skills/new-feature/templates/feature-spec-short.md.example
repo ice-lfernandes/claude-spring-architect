@@ -59,6 +59,19 @@ none
 
 ---
 
+## Design patterns
+
+none
+
+Collected from the same section of every partial — the classes each row creates are already
+in the block of the layer that decided it. The executor implements these rows; it adopts no
+other pattern except for a symptom already on disk.
+
+| Force or symptom | Pattern | Classes and interfaces | Decided in |
+|---|---|---|---|
+
+---
+
 ## Impact on approved use cases
 
 | Approved case | Change | Decided in |
