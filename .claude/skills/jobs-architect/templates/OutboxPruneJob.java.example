@@ -1,0 +1,187 @@
+/*
+ * EXEMPLAR — the transactional outbox's prune job: deletes published rows past the retention.
+ * Designed in the same run as the relay, the first time a project chooses Form B, so the
+ * retention property ships together with the only thing that reads it. Before this piece the
+ * prune had no owner: a real run decided 7 days, left a commented `DELETE` in the migration,
+ * kept `app.outbox.prune-after` out of `application.yml` on purpose, and handed the job to
+ * nobody — over a table whose payload carries personal data (lessons-learned-014 § 9).
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` (§ Retention, § Execution guarantees — bounded passes)
+ *        `.claude/rules/personal-data.md` (§ At rest) · `.claude/rules/persistence.md`
+ *
+ * WHO OWNS WHAT:
+ *  - the retention WINDOW (`app.outbox.prune-after`) and the DELETE statement — including that a
+ *    dead-lettered row is never pruned — are `persistence-architect`'s, in `20-persistencia.md`;
+ *    this file only names the property and calls the port;
+ *  - the cadence, the batch per statement, the lock and the gate are this job's (`35-jobs.md`).
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - calendar-anchored, off-peak, explicit zone;
+ *  - deletes in bounded batches until one deletes fewer than the batch: a single unbounded
+ *    DELETE on the table every write path appends to locks it;
+ *  - idempotent by construction — a second run deletes nothing new — and still locked when the
+ *    project already has a lock provider: two instances pruning the same batches at the same
+ *    minute double the load for no gain. Without a lock provider in the project, the partial may
+ *    accept the double run instead of adding one for this job alone; § 3 says which;
+ *  - the loop lives in the use case, not in the trigger: "until a batch comes back short" is a
+ *    rule about the data, and the trigger has no business logic.
+ *
+ * THE LOCK IS CONDITIONAL. `@SchedulerLock` below is there because the example partial's § 3
+ * says 2 replicas and ShedLock already in the project. One replica, or no lock provider and § 3
+ * accepting the double run → no annotation, no `LockAssert`, and no ShedLock dependency added
+ * for this job alone. The partial decides; the exemplar never adds a dependency by being copied.
+ *
+ * TECHNOLOGY. `@Scheduled` here, like `OutboxRelayJob.java.example` — read that file's
+ * TECHNOLOGY note: under Quartz or db-scheduler the prune is a job of THAT scheduler (it is a
+ * calendar job, exactly what they are for), the relay usually is not.
+ *
+ * WIRING and VOCABULARY follow `messaging-architect/templates/OutboxRelayPublisher.java.example`:
+ * the service is a `@Service` like every use case, its values arrive as an application-owned
+ * settings record, and the blueprint's naming convention replaces the port + `…Service` pair
+ * where it says so (clean architecture: one concrete `PruneOutboxEventsUseCase`).
+ *
+ * Each `// --- <File>.java` block is its own file, at the layer its package says.
+ */
+
+// --- PruneOutboxEvents.java (application layer — inbound port)
+package com.example.demo.application.port.in;
+
+public interface PruneOutboxEvents {
+
+    /** Deletes published rows older than the retention window, in bounded batches. Returns the total. */
+    int prunePublished();
+}
+
+// --- OutboxRetentionGateway.java (application layer — outbound port; persistence implements it)
+package com.example.demo.application.port.out;
+
+import java.time.Instant;
+
+public interface OutboxRetentionGateway {
+
+    /**
+     * Deletes at most {@code limit} PUBLISHED rows published before {@code cutoff}. Never a pending
+     * row, never a dead-lettered one — the statement is `20-persistencia.md`'s and says so.
+     * Returns how many it deleted.
+     */
+    int deletePublishedBefore(Instant cutoff, int limit);
+}
+
+// --- OutboxPruneSettings.java (application layer — no framework type)
+package com.example.demo.application.service;
+
+import java.time.Duration;
+
+/** `retention` is `20-persistencia.md`'s window; `batchSize` is `35-jobs.md`'s. */
+public record OutboxPruneSettings(Duration retention, int batchSize) {}
+
+// --- PruneOutboxEventsService.java (application layer)
+package com.example.demo.application.service;
+
+import com.example.demo.application.port.in.PruneOutboxEvents;
+import com.example.demo.application.port.out.OutboxRetentionGateway;
+import java.time.Clock;
+import java.time.Duration;
+import org.springframework.stereotype.Service;
+
+@Service
+public class PruneOutboxEventsService implements PruneOutboxEvents {
+
+    private final OutboxRetentionGateway gateway;
+    private final Clock clock;
+    private final Duration retention;
+    private final int batchSize;
+
+    public PruneOutboxEventsService(OutboxRetentionGateway gateway, Clock clock, OutboxPruneSettings settings) {
+        this.gateway = gateway;
+        this.clock = clock;
+        this.retention = settings.retention();
+        this.batchSize = settings.batchSize();
+    }
+
+    /*
+     * The cutoff is computed once per run, so rows published while the run works are not chased.
+     * Each batch is its own transaction (the gateway's), so a failure halfway keeps what was
+     * already deleted and the next run picks up the rest.
+     */
+    @Override
+    public int prunePublished() {
+        var cutoff = clock.instant().minus(retention);
+        int total = 0;
+        int deleted;
+        do {
+            deleted = gateway.deletePublishedBefore(cutoff, batchSize);
+            total += deleted;
+        } while (deleted == batchSize);
+        return total;
+    }
+}
+
+// --- OutboxPruneJob.java (scheduling package — the trigger)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.PruneOutboxEvents;
+import net.javacrumbs.shedlock.core.LockAssert;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.outbox.prune.enabled", matchIfMissing = true)
+class OutboxPruneJob {
+
+    private final PruneOutboxEvents pruneOutboxEvents;
+    private final JobRunRecorder recorder;
+
+    OutboxPruneJob(PruneOutboxEvents pruneOutboxEvents, JobRunRecorder recorder) {
+        this.pruneOutboxEvents = pruneOutboxEvents;
+        this.recorder = recorder;
+    }
+
+    @Scheduled(cron = "${app.outbox.prune.cron:0 30 3 * * *}", zone = "${app.jobs.zone:America/Sao_Paulo}")
+    @SchedulerLock(name = "outboxPrune", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M") // only when § 3 names a lock
+    void run() {
+        LockAssert.assertLocked();
+        recorder.run("outbox-prune", pruneOutboxEvents::prunePublished);
+    }
+}
+
+// --- OutboxPruneConfig.java (scheduling package — turns configuration into the settings)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.service.OutboxPruneSettings;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/*
+ * Produces the settings, never the service. `@Value` and not `OutboxProperties`: that record
+ * lives in the messaging adapter, and this package may not import a sibling adapter's class
+ * (`architecture-ddd.md` § Adapters) — nor may the prune's keys be added to it.
+ *
+ * `prune-after` has no default in the placeholder on purpose: the window is a decision
+ * `20-persistencia.md` § 1 records, and a missing property must fail the boot rather than
+ * prune on a number nobody chose.
+ */
+@Configuration
+class OutboxPruneConfig {
+
+    @Bean
+    OutboxPruneSettings outboxPruneSettings(
+            @Value("${app.outbox.prune-after}") Duration retention,
+            @Value("${app.outbox.prune.batch-size:1000}") int batchSize) {
+        return new OutboxPruneSettings(retention, batchSize);
+    }
+}
+
+/*
+ * The persistence side — `OutboxEventStore` implementing `OutboxRetentionGateway` with a native,
+ * bounded delete over the published-at index — is in
+ * `persistence-architect/templates/OutboxEventStore.java.example`.
+ *
+ * TESTS (`40-testes.md`): the service, unit, with a gateway fake that returns full batches then a
+ * short one — proves the loop stops; the gateway, integration, proves a pending and a
+ * dead-lettered row survive a delete whose cutoff is in the future.
+ */

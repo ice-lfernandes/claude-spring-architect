@@ -1,0 +1,111 @@
+# UC-003 · Jobs
+
+> Partial of `docs/use-cases/UC-003-initiate-kyc-verification/`. Owner: `jobs-architect`.
+> Inherits the relay's form and guarantee from `25-mensageria.md` — doesn't redecide them.
+> Contains no code. Form references in `.claude/skills/jobs-architect/templates/`.
+> Rules applied, never reproduced: `@.claude/rules/scheduling.md`.
+
+| Field | Value |
+|---|---|
+| Mother spec | `00-caso-de-uso.md` |
+| Why this partial exists | `25-mensageria.md` § 2 chose **Form B** — the relay and the prune need a schedule |
+| Scheduling package | `infrastructure.scheduling` (blueprint `packages.map`) |
+| Divergences from other partials | none |
+
+## 1 · Jobs
+
+| Job | Kind | Calls | Trigger | Cadence property | On/off property | Coordination | Missed run | Per pass |
+|---|---|---|---|---|---|---|---|---|
+| `OutboxRelayJob` | polling pass | `RelayOutboxEvents.relayPending()` | `fixedDelay` | `app.outbox.poll-interval: PT1S` | `app.outbox.enabled` | row claim (§ 3) | next pass is the catch-up | `app.outbox.batch-size` rows; a failing row is marked and the pass continues |
+| `OutboxPruneJob` | calendar-anchored | `PruneOutboxEvents.prunePublished()` | `cron = "0 30 3 * * *"`, `zone = "America/Sao_Paulo"` | `app.outbox.prune.cron` | `app.outbox.prune.enabled` | lock (§ 3) | skipped — the next night deletes the backlog too | batches of `app.outbox.prune.batch-size` until a batch deletes fewer |
+
+## 2 · Technology
+
+| Decision | Value | Why |
+|---|---|---|
+| Scheduler | `@Scheduled` | Two polling/cron jobs, no runtime-created schedules, no catch-up need, no operator UI — every must-row of `references/tool-decision-matrix.md` § 2 is met by the tool with zero infrastructure |
+| Coordination tool | ShedLock (prune only) | Replicas = 2 (§ 3). The relay needs no lock — its claim partitions the work. The prune is idempotent, but two instances deleting the same batches at 03:30 double the load on the hottest table for nothing |
+| Inherited? | no — first job of this project | `pom.xml` carries no scheduler; no earlier `35-jobs.md` |
+
+Rejected, one line each: **Quartz** — eleven tables for two static jobs, and no catch-up need to
+justify them. **db-scheduler** — would coordinate both jobs, but adds a scheduler where
+`@Scheduled` already runs, and the relay does not need its lock. **Spring Batch** — one batch per
+pass, nothing to restart from. **JobRunr** — no operator-UI requirement; LGPL not asked.
+
+## 3 · Coordination
+
+| Fact | Value | Source |
+|---|---|---|
+| Replicas in production | 2 | asked in this run — no earlier `35-jobs.md`, no `Claim strategy` in any `20-persistencia.md` |
+
+| Job | Mechanism | Bounds |
+|---|---|---|
+| `OutboxRelayJob` | **Row claim**, locked or leased — required from persistence in § 6. Every instance runs the pass; each claims different rows | — |
+| `OutboxPruneJob` | ShedLock `outboxPrune` | `lockAtMostFor = PT30M` (worst run observed in staging: 4 min), `lockAtLeastFor = PT1M` (clock skew between pods), database clock (`usingDbTime()`) |
+
+## 4 · Execution guarantees
+
+| Guarantee | Value |
+|---|---|
+| Body idempotent | Relay: a row sent and not marked is re-sent; the consumer's dedupe absorbs it (`25-mensageria.md` § 3). Prune: deleting already-deleted rows deletes nothing |
+| Per-pass bound | Relay: batch size from persistence. Prune: 1 000 rows per statement, loop until a statement deletes fewer |
+| One failing item | Relay: marked failed, counted, the pass continues. Prune: a failing statement ends the pass; the next night retries |
+| Missed run | Neither needs catch-up: the relay's next pass reads every pending row, the prune's next run reads every expired row |
+
+## 5 · Observability
+
+| Metric | Job | Alarm it exists for |
+|---|---|---|
+| `jobs.execution` (timer, tags `job`, `outcome`) | both | failure rate above zero for 15 min |
+| `jobs.last_success.seconds` (gauge, tag `job`) | both | relay: older than 5 min · prune: older than 26 h |
+| `outbox.events.dead_lettered`, `outbox.pending.age.seconds` | relay | names and alarms are `25-mensageria.md`'s; `OutboxRelayJob` records them from each pass's outcome |
+
+## 6 · Schema requirements
+
+Read by `persistence-architect` in its first pass, which runs after this skill. Requirements,
+never DDL.
+
+| Requirement | Why | Addressee |
+|---|---|---|
+| Outbox claim that **locks or leases** rows | § 3: 2 replicas run the relay pass; an unlocked read publishes every batch twice | `persistence-architect` step 4b — records it as `Claim strategy` |
+| `OutboxRetentionGateway.deletePublishedBefore(cutoff, limit)` — bounded delete of published rows older than a cutoff; never a pending or dead-lettered row | `OutboxPruneJob` → `PruneOutboxEvents` | `persistence-architect` step 4b — the statement and the retention window are its own |
+| `shedlock` table — vendor DDL for the JDBC provider | § 2 | `persistence-architect` — as a migration; the library's own initialization stays off |
+
+## 7 · Declared dependencies
+
+| Dependency | Version | Why |
+|---|---|---|
+| `net.javacrumbs.shedlock:shedlock-spring` | (resolve at runtime — not managed by the Boot parent) | `@SchedulerLock` on the prune |
+| `net.javacrumbs.shedlock:shedlock-provider-jdbc-template` | (same version as above) | Lock provider over the application's datasource |
+
+## 8 · Configuration
+
+| Property | Value | Owner of the value |
+|---|---|---|
+| `app.outbox.enabled` | `true`; `false` in `application-test.yml` | this partial |
+| `app.outbox.poll-interval` | `PT1S` | this partial |
+| `app.outbox.batch-size`, `app.outbox.max-attempts` | — | `20-persistencia.md` |
+| `app.outbox.prune.enabled` | `true`; `false` in `application-test.yml` | this partial |
+| `app.outbox.prune.cron` | `0 30 3 * * *` | this partial |
+| `app.outbox.prune.batch-size` | `1000` | this partial |
+| `app.outbox.prune-after` | — | `20-persistencia.md` § 1 (retention) — ships in this change, because its reader does |
+| `spring.task.scheduling.pool.size` | `2` | this partial — two jobs; a pool of one would make the prune wait for the relay |
+
+Full shape in `templates/application-jobs.yml.example`.
+
+## 9 · Deferred
+
+none
+
+## Impact on approved use cases
+
+none
+
+## Implementation order
+
+1. The dependencies of § 7
+2. `SchedulingConfig`, `JobRunRecorder` and `ShedLockConfig` in the scheduling package — once per project
+3. `OutboxRelayJob` — after `RelayOutboxEvents` exists (messaging block)
+4. `OutboxPruneJob` — after `PruneOutboxEvents` and the gateway's bounded delete exist
+5. Properties in `application.yml`, and the two `enabled: false` lines in `application-test.yml`
+6. Tests — `40-testes.md`

@@ -220,7 +220,7 @@ claude-spring-architect/
     │   ├── architecture-ddd.md    #   paths come from the blueprint at generation time
     │   ├── naming.md · code-quality.md · error-handling.md · api-rest.md
     │   ├── lombok.md · value-objects.md · persistence.md · testing.md
-    │   └── observability.md · logging.md · messaging.md
+    │   └── observability.md · logging.md · messaging.md · scheduling.md
     ├── blueprints/                # architectures as data
     │   ├── _schema.md             #   contract every blueprint fulfills
     │   ├── README.md              #   pros, cons, when to choose each
@@ -244,10 +244,11 @@ claude-spring-architect/
     │   ├── use-case-design/       #   pipeline 1 — copied
     │   ├── domain-modeling/       #   pipeline 2 — copied
     │   ├── rest-api-architect/    #   pipeline 3 — copied
+    │   ├── messaging-architect/   #   pipeline 3b, conditional — Kafka producer/consumer — copied
+    │   ├── jobs-architect/        #   pipeline 3c, conditional — scheduling tech, cadence, outbox relay's own schedule — copied
     │   ├── persistence-architect/ #   pipeline 4 — copied
-    │   ├── messaging-architect/   #   pipeline 4b, conditional — Kafka producer/consumer — copied
     │   ├── test-architect/        #   pipeline 5 — copied; owns the ArchUnit exemplar
-    │   ├── new-feature/           #   /new-feature — orchestrates the six above — copied
+    │   ├── new-feature/           #   /new-feature — orchestrates the seven above — copied
     │   ├── java-patterns/         #   preloaded into the executor agent — copied
     │   ├── docker-architect/      #   services, OTLP collector, Jaeger / Grafana stack — copied
     │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
@@ -276,8 +277,9 @@ history, not norms, and `CLAUDE.md` cites them only as the "why" behind a piece.
 **The generated project is self-contained.** Whoever clones it does not need this
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
-`rest-api-architect`, `persistence-architect`, `messaging-architect`, `test-architect`,
-`new-feature`, `java-patterns`, `docker-architect`, `git-publish`, `audit-usage`), the
+`rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
+`test-architect`, `new-feature`, `java-patterns`, `docker-architect`, `git-publish`,
+`audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
 `commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
 travels is **data**, the `export` block of `schemas/extensions.json`, checked against disk
@@ -445,8 +447,9 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      │
      ▼  skill: new-feature — closed input table; anything else is an error
      │
-     use-case-design → domain-modeling → rest-api-architect → persistence-architect
-        → messaging-architect (conditional) → test-architect
+     use-case-design → domain-modeling → rest-api-architect
+        → messaging-architect (conditional) → jobs-architect (conditional)
+        → persistence-architect → test-architect
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
      │  design skills write only their class's territory — docs/ only, never src/,
      │  never docker-compose.yml, never git; a build-class skill can't even be called

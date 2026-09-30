@@ -5,6 +5,8 @@ paths:
   - "**/infrastructure/config/**"
   - "**/adapter/out/messaging/**"
   - "**/infrastructure/messaging/**"
+  - "**/adapter/in/scheduling/**"
+  - "**/infrastructure/scheduling/**"
 status: active
 ---
 

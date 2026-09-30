@@ -39,6 +39,10 @@ packages:
   map:
     core: "core"
     app: "app"
+    # Example: a scheduling trigger is a driving adapter, same rank as REST — calls
+    # `core` directly, never the reverse. Adjust the value to your own inbound-adapter
+    # layout if this template grows a real REST/adapter split — decision 0087.
+    app.scheduling: "app.scheduling"
 
 dependency_rules:
   direction: inward             # inward | explicit

@@ -35,6 +35,7 @@ flowchart TB
         SK_TEST["skill: test-architect"]:::skill
         SK_DOCKER["skill: docker-architect"]:::skill
         SK_MSG["skill: messaging-architect"]:::skill
+        SK_JOBS["skill: jobs-architect"]:::skill
         SK_DOCTOR["skill: arch-doctor"]:::skill
         SK_GIT["skill: git-publish"]:::skill
         SK_ADOPT["skill: arch-adopt\n(instala/atualiza este .claude/ num projeto)"]:::skill
@@ -48,7 +49,7 @@ flowchart TB
     end
 
     subgraph L3["Normas e dados — folhas"]
-        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging)"]:::rule
+        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging, scheduling)"]:::rule
         BLUEPRINTS["blueprints/*/*.yaml\n(_schema.md define o contrato)"]:::blueprint
     end
 
@@ -65,7 +66,7 @@ flowchart TB
     SK_BOOT -->|lê e copia para o projeto gerado| RULES
     SK_BOOT -->|instala, com guard + audit ligados| SETTINGS
     SK_BOOT -->|copia verbatim| HOOK
-    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT
+    SK_BOOT -->|copia| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT
     SK_ADOPT -->|escreve tudo via modo export| HOOK
     SK_BOOT -->|copia| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|propõe e escreve, após aprovação| SK_UC & AG_DEV & RULES
@@ -79,11 +80,15 @@ flowchart TB
     SK_DOM --> SK_PERS
     SK_DOM --> SK_REST
     SK_DOM -.->|se evento pede entrega externa| SK_MSG
+    SK_UC -.->|se o caso nomeia trigger agendado/job| SK_JOBS
+    SK_MSG -.->|se Form B (outbox + relay), ou partial adia um job| SK_JOBS
     SK_PERS -.->|registra pendência; nunca encadeia| SK_DOCKER
     SK_MSG -.->|registra pendência; nunca encadeia| SK_DOCKER
     SK_TEST -.->|registra pendência; nunca encadeia| SK_DOCKER
+    SK_JOBS --> SK_PERS
     SK_PERS --> SK_TEST
     SK_MSG --> SK_TEST
+    SK_JOBS --> SK_TEST
     SK_REST --> SK_TEST
     SK_NF -->|Agent tool, opcional, após consolidar| AG_DEV
     AG_DEV -->|escreve| SRC["src/** do projeto gerado"]:::out
@@ -100,7 +105,7 @@ flowchart TB
     HOOK -->|bloqueia ou avisa sobre| SRC
     HOOK -->|audit: escreve, no projeto gerado| TRAIL[".claude/audit-usage/*.md + history.jsonl + nodes.jsonl"]:::out
 
-    RULES -.->|citadas por path, nunca copiadas| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_MSG
+    RULES -.->|citadas por path, nunca copiadas| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_MSG & SK_JOBS
     BLUEPRINTS -.->|citado por path| SK_BOOT
 
     classDef hook fill:#5c1a1a,stroke:#ff6b6b,color:#fff,stroke-width:2px

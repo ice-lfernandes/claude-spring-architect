@@ -86,6 +86,10 @@ packages:
     adapter.in.messaging: "adapter.in.messaging"
     adapter.out.messaging: "adapter.out.messaging"
     commons.logging: "commons.logging"
+    # Scheduling triggers compile into `bootstrap` (already depends on every module and
+    # is the composition root) until a project needs build isolation for them, at which
+    # point an `adapters/adapter-in-scheduling` module is added — decision 0087.
+    adapter.in.scheduling: "adapter.in.scheduling"
 
 # Naming convention for this blueprint (specific to hexagonal, not universal —
 # see .claude/rules/architecture-ddd.md for what IS universal, DDD, and

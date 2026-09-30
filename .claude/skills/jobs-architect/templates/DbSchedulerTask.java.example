@@ -1,0 +1,128 @@
+/*
+ * EXEMPLAR — db-scheduler: a persistent, cluster-safe scheduler on ONE table.
+ * The answer when several instances run, tasks must not run twice, and some tasks are created
+ * at runtime with their own data (a one-time task per entity) — without Quartz's table set or
+ * JobRunr's license. Recurring tasks are coordinated too, so no lock library is needed.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` · `.claude/rules/architecture-ddd.md` (§ Adapters)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - a recurring task and a one-time task, both as beans the starter registers;
+ *  - each task body calls ONE inbound port — the task is the trigger;
+ *  - scheduling a one-time task from a use case goes through an outbound port implemented here,
+ *    so the application layer never sees `SchedulerClient`;
+ *  - the task instance id is the business key: scheduling the same one twice is a no-op, not a
+ *    duplicate — the idempotency the partial's § 4 asks for.
+ *
+ * POLLING STRATEGY. Default `fetch-and-lock-on-execute` works on every database.
+ * `lock-and-fetch` uses `SELECT … FOR UPDATE SKIP LOCKED` (PostgreSQL, SQL Server, MySQL 8+) and
+ * is for high throughput — a decision in the partial's § 2, not a default to flip.
+ *
+ * SCHEMA. The `scheduled_tasks` table is a schema requirement in the partial's § 6 — vendor DDL
+ * for the database in use — written by `persistence-architect` as a migration.
+ *
+ * DEPENDENCY (partial § 7, version resolved at runtime — not managed by the Boot parent). The
+ * artifact depends on the Boot major; read the parent in `pom.xml`:
+ *   Boot 3: com.github.kagkarlsson:db-scheduler-spring-boot-starter
+ *   Boot 4: com.github.kagkarlsson:db-scheduler-spring-boot-4-starter
+ *
+ * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ */
+
+// --- DbSchedulerTasks.java
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.ExpireTrialSubscription;
+import com.example.demo.application.port.in.RecomputeLoyaltyTiers;
+import com.github.kagkarlsson.scheduler.task.helper.OneTimeTask;
+import com.github.kagkarlsson.scheduler.task.helper.RecurringTask;
+import com.github.kagkarlsson.scheduler.task.helper.Tasks;
+import com.github.kagkarlsson.scheduler.task.schedule.Schedules;
+import java.time.ZoneId;
+import java.util.UUID;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+class DbSchedulerTasks {
+
+    static final String EXPIRE_TRIAL = "expire-trial-subscription";
+
+    /*
+     * Recurring, cron in an explicit zone. One instance picks each execution; an execution
+     * overdue after downtime runs on the next poll.
+     */
+    @Bean
+    RecurringTask<Void> recomputeLoyaltyTiers(RecomputeLoyaltyTiers useCase, JobRunRecorder recorder) {
+        return Tasks.recurring(
+                        "recompute-loyalty-tiers",
+                        Schedules.cron("0 0 3 * * *", ZoneId.of("America/Sao_Paulo")))
+                .execute((instance, context) -> recorder.run("recompute-loyalty-tiers", useCase::recompute));
+    }
+
+    /*
+     * One-time, with data: the subscription id travels in the task instance. The failure
+     * handler is part of the design (partial § 4): retry with backoff a bounded number of
+     * times, then give up and leave the failure visible.
+     */
+    @Bean
+    OneTimeTask<UUID> expireTrialSubscription(ExpireTrialSubscription useCase, JobRunRecorder recorder) {
+        return Tasks.oneTime(EXPIRE_TRIAL, UUID.class)
+                .onFailure(new com.github.kagkarlsson.scheduler.task.FailureHandler.MaxRetriesFailureHandler<>(
+                        3,
+                        new com.github.kagkarlsson.scheduler.task.FailureHandler.ExponentialBackoffFailureHandler<>(
+                                java.time.Duration.ofMinutes(1))))
+                .execute((instance, context) ->
+                        recorder.run(EXPIRE_TRIAL, () -> useCase.expire(instance.getData())));
+    }
+}
+
+// --- DbSchedulerTrialExpiry.java (outbound port implementation — the use case schedules through it)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.out.ScheduleTrialExpiryPort;
+import com.github.kagkarlsson.scheduler.SchedulerClient;
+import com.github.kagkarlsson.scheduler.task.TaskInstance;
+import java.time.Instant;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
+
+@Component
+class DbSchedulerTrialExpiry implements ScheduleTrialExpiryPort {
+
+    private final SchedulerClient scheduler;
+
+    DbSchedulerTrialExpiry(SchedulerClient scheduler) {
+        this.scheduler = scheduler;
+    }
+
+    /*
+     * Instance id = subscription id: a retried use case schedules the same instance, which the
+     * table's primary key turns into a no-op instead of a second expiry.
+     */
+    @Override
+    public void scheduleExpiry(UUID subscriptionId, Instant at) {
+        scheduler.scheduleIfNotExists(
+                new TaskInstance<>(DbSchedulerTasks.EXPIRE_TRIAL, subscriptionId.toString(), subscriptionId),
+                at);
+    }
+}
+
+/*
+ * application.yml:
+ *
+ * db-scheduler:
+ *   enabled: true
+ *   threads: 4
+ *   polling-interval: PT10S
+ *   polling-strategy: fetch              # `lock-and-fetch` only when § 2 chose it
+ *   table-name: scheduled_tasks
+ *
+ * application-test.yml:
+ *
+ * db-scheduler:
+ *   enabled: false
+ *
+ * Verify the property names against the starter version resolved — they are the library's, not
+ * Spring's, and this file does not pin a version.
+ */

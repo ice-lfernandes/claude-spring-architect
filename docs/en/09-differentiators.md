@@ -130,8 +130,10 @@ See [08-audit-usage.md](08-audit-usage.md).
 
 `/new-feature` designs **one use case per run** across five partials with a single
 owner each (`use-case-design` → `domain-modeling` → `rest-api-architect` →
-`persistence-architect` → `test-architect`, plus a conditional `messaging-architect`),
-consolidates them into a `UC-NNN-spec.md` with a `draft → approved → implemented`
+`persistence-architect` → `test-architect`, plus a conditional `messaging-architect`
+and a conditional `jobs-architect` — scheduling technology, cadence, cluster
+coordination, and the outbox relay's own schedule), consolidates them into a
+`UC-NNN-spec.md` with a `draft → approved → implemented`
 lifecycle, asks for approval, and only then offers the `java-spring-boot-developer`
 executor — a separate agent, with restricted tools, that only writes under `src/`.
 
@@ -165,7 +167,7 @@ fails the build when one is violated. The ones no neighbor has:
 - **Frontmatter has a schema** — `extensions.json` owns the fields the runtime
   recognizes. The runtime ignores an invented field silently, and `claude plugin
   validate` lets it through; `ArchHook.java schema` does not.
-- **A skill has a class, and the class is data** — each of the 16 skills sits in exactly
+- **A skill has a class, and the class is data** — each of the 17 skills sits in exactly
   one of six classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), and
   the class declares both the sections its body must carry **and** the paths it may write.
   `schema` enforces the structure, `guard` the territory. Not standardization by review:
@@ -202,9 +204,10 @@ See [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md)
 
 - The root `CLAUDE.md` stays under 200 lines: invariants and routing, nothing else.
 - Norms enter through `paths` when a file in their territory is touched. The globs of
-  `api-rest.md`, `persistence.md`, `value-objects.md`, `observability.md`, and
-  `messaging.md` are **rewritten at generation time** from the blueprint's
-  `packages.map` — a glob copied verbatim would leave the norm unloaded, silently.
+  `api-rest.md`, `persistence.md`, `value-objects.md`, `observability.md`,
+  `messaging.md`, and `scheduling.md` are **rewritten at generation time** from the
+  blueprint's `packages.map` — a glob copied verbatim would leave the norm unloaded,
+  silently.
 - `metadata:` was banned from frontmatter (it costs tokens on every invocation and
   enforces nothing); contracts live in the body, where they are actual instruction.
 - Design knowledge travels preloaded into the executor (`java-patterns` via `skills:`),
@@ -241,7 +244,7 @@ None is unique on its own; together, no neighbor gathers them:
 | Project installs/updates its `.claude/` from a manifest, with provenance | ✅ | ❌ (clone and merge by hand) | partial (reinstall the pack) | ❌ |
 | Exemplars compiled against a real classpath in CI | ✅ | ❌ | ❌ | ❌ |
 | Generated project self-contained, independent of the generator | ✅ | ✅ (it is the clone) | — | ✅ |
-| Spring/JPA knowledge skills | ✅ (12 norms + 9 design skills) | ✅ | ✅ (sometimes broader) | ✅ |
+| Spring/JPA knowledge skills | ✅ (14 norms + 10 design skills) | ✅ | ✅ (sometimes broader) | ✅ |
 | Codex/Cursor support beyond Claude Code | ❌ | partial | ✅ | partial |
 
 ## What is not a differentiator — said honestly

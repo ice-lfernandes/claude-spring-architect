@@ -85,7 +85,7 @@ sequenceDiagram
 | 6 | Gera `CLAUDE.md` raiz + por módulo | `CLAUDE.md`, `*/CLAUDE.md` |
 | 6.5 | Gera CI | `.github/workflows/build.yml` |
 | 6.6 | Copia as rules | `.claude/rules/*.md` |
-| 6.7 | Copia as skills de desenvolvimento | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,java-patterns,git-publish,audit-usage}/**` |
+| 6.7 | Copia as skills de desenvolvimento | `.claude/skills/{arch-doctor,use-case-design,domain-modeling,persistence-architect,rest-api-architect,test-architect,new-feature,docker-architect,messaging-architect,jobs-architect,java-patterns,git-publish,audit-usage}/**` |
 | 6.8 | Copia os agents de desenvolvimento | `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md` |
 | 7 | Instala os hooks | `ArchHook.java`, `extensions.json`, funde `settings.json` (com `guard` e `audit` ligados), cria `.claude/audit-usage/` + `pricing.json` |
 | 7.5 | Copia servidores MCP desenhados, se existirem | `.mcp.json`, `MCP-SETUP.md` |
@@ -135,7 +135,7 @@ Checkstyle: config/checkstyle/checkstyle.xml — plugin 3.5.0 · tool 10.20.2, v
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 12 rules + 13 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
+Self-contained: 14 rules + 14 skills + 3 agents + ArchHook.java + extensions.json copied — no dead paths ✓
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
 Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus

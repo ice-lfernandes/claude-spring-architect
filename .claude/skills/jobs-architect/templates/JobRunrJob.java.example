@@ -1,0 +1,137 @@
+/*
+ * EXEMPLAR — JobRunr: background and recurring jobs with retries and a dashboard.
+ * The answer when a use case must hand work off to run later (fire-and-forget, with retries and
+ * backoff), and operators need to see, retry or delete jobs without a deploy. Chosen ONLY after
+ * the license question was asked (`SKILL.md` step 3): OSS is LGPL-3.0, limits recurring jobs,
+ * and priority queues, batches and workflows are JobRunr Pro — commercial.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` · `.claude/rules/architecture-ddd.md` (§ Adapters)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - enqueueing from a use case goes through an outbound port implemented here — the
+ *    application layer never sees `JobScheduler` or a lambda JobRunr serializes;
+ *  - the enqueued work is a call on a Spring bean in this package whose method calls ONE inbound
+ *    port, with ONLY serializable, stable arguments (ids, never an entity): JobRunr stores the
+ *    call and replays it, possibly on another instance, possibly after a deploy that renamed
+ *    things — keep the job class and method names stable;
+ *  - the job id is derived from the business key, so enqueueing twice does not run twice;
+ *  - retries: JobRunr retries with exponential backoff by default (10 attempts); the partial's
+ *    § 4 sets the number, and a business rejection must not be retried — it is caught in the
+ *    use case, not thrown out of the job.
+ *
+ * DASHBOARD. On its own port. It shows job arguments: never expose it without authentication,
+ * and never enqueue personal data as an argument — an id the job resolves instead
+ * (`.claude/rules/personal-data.md`).
+ *
+ * SCHEMA. JobRunr creates its own tables by default. In a project that versions its schema,
+ * that is a schema requirement in the partial's § 6 and automatic creation is turned off — verify
+ * the property for the resolved version; this file does not pin one.
+ *
+ * DEPENDENCY (partial § 7, version resolved at runtime — not managed by the Boot parent). The
+ * starter artifact follows the Boot major: `org.jobrunr:jobrunr-spring-boot-3-starter` for Boot 3;
+ * resolve the Boot 4 artifact from the JobRunr documentation at runtime.
+ *
+ * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ */
+
+// --- JobRunrWelcomeEmail.java (outbound port implementation — the use case enqueues through it)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.out.SendWelcomeEmailLaterPort;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import org.jobrunr.jobs.JobId;
+import org.jobrunr.scheduling.JobScheduler;
+import org.springframework.stereotype.Component;
+
+@Component
+class JobRunrWelcomeEmail implements SendWelcomeEmailLaterPort {
+
+    private final JobScheduler jobScheduler;
+
+    JobRunrWelcomeEmail(JobScheduler jobScheduler) {
+        this.jobScheduler = jobScheduler;
+    }
+
+    /*
+     * Deterministic job id from the customer id: a retried registration enqueues the SAME job,
+     * which JobRunr refuses to duplicate.
+     */
+    @Override
+    public void sendLater(UUID customerId) {
+        UUID jobId = UUID.nameUUIDFromBytes(("welcome-email:" + customerId).getBytes(StandardCharsets.UTF_8));
+        jobScheduler.<WelcomeEmailJob>enqueue(jobId, job -> job.send(customerId));
+    }
+}
+
+// --- WelcomeEmailJob.java (the stored call — stable name, serializable arguments)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.SendWelcomeEmail;
+import java.util.UUID;
+import org.jobrunr.jobs.annotations.Job;
+import org.springframework.stereotype.Component;
+
+@Component
+public class WelcomeEmailJob {
+
+    private final SendWelcomeEmail sendWelcomeEmail;
+
+    WelcomeEmailJob(SendWelcomeEmail sendWelcomeEmail) {
+        this.sendWelcomeEmail = sendWelcomeEmail;
+    }
+
+    // `public`: JobRunr invokes it by reflection from storage. Retries from the partial's § 4.
+    @Job(name = "Send welcome email", retries = 5)
+    public void send(UUID customerId) {
+        sendWelcomeEmail.send(customerId);
+    }
+}
+
+// --- NightlyDigestJob.java (recurring — declared, not enqueued)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.SendNightlyDigest;
+import org.jobrunr.jobs.annotations.Job;
+import org.jobrunr.jobs.annotations.Recurring;
+import org.springframework.stereotype.Component;
+
+@Component
+public class NightlyDigestJob {
+
+    private final SendNightlyDigest sendNightlyDigest;
+
+    NightlyDigestJob(SendNightlyDigest sendNightlyDigest) {
+        this.sendNightlyDigest = sendNightlyDigest;
+    }
+
+    @Recurring(id = "nightly-digest", cron = "${app.jobs.nightly-digest.cron:0 0 7 * * *}", zoneId = "America/Sao_Paulo")
+    @Job(name = "Nightly digest")
+    public void send() {
+        sendNightlyDigest.send();
+    }
+}
+
+/*
+ * application.yml:
+ *
+ * jobrunr:
+ *   background-job-server:
+ *     enabled: true
+ *     worker-count: 4
+ *   dashboard:
+ *     enabled: true
+ *     port: 8000                        # behind authentication, never public
+ *
+ * application-test.yml:
+ *
+ * jobrunr:
+ *   background-job-server:
+ *     enabled: false
+ *   dashboard:
+ *     enabled: false
+ *
+ * METRICS. JobRunr publishes its own Micrometer metrics when the integration is on; the
+ * last-success gauge of `scheduling.md` § Observability is still this project's — JobRunr
+ * reports job states, not the staleness of a recurring job that stopped being scheduled.
+ */

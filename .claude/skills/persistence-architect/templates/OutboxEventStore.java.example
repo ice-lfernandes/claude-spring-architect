@@ -53,6 +53,13 @@
  * (SELECT … FOR UPDATE SKIP LOCKED) RETURNING …` statement, the same lease shape
  * `IdempotencyKeyStore` uses for its IN_PROGRESS rows. That is a schema change: it belongs in
  * the partial, not in a comment.
+ * Which of the two shapes applies is not guessed here: `35-jobs.md` § 3 records how many
+ * instances run the relay pass, and its § 6 names the claim that count requires — step 4b of
+ * `SKILL.md` picks the shape that meets it and writes it as `Claim strategy`.
+ *
+ * RETENTION. `OutboxRetentionGateway` — declared by `jobs-architect`'s
+ * `OutboxPruneJob.java.example`, called by its prune job — is implemented here too: the
+ * statement is this skill's, the schedule is not.
  *
  * Each `// --- <File>.java` block is its own file.
  */
@@ -249,10 +256,20 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
              where e.publishedAt is null and e.deadLettered = false""")
     Instant oldestPendingOccurredAt();
 
-    // Read by the pruning job (the commented DELETE in
-    // `templates/OutboxEventTable.sql.example`, or a scheduled equivalent). Never on the
-    // relay path. A dead-lettered row is not pruned — it has no `published_at`.
-    List<OutboxEventEntity> findByPublishedAtBefore(Instant cutoff);
+    /*
+     * The prune's statement — bounded, published rows only. Native, because JPQL has no
+     * `LIMIT` on a `DELETE`; the subquery is served by `ix_outbox_events_published_at`. Never
+     * on the relay path. A dead-lettered row is never pruned — it has no `published_at`, and it
+     * is the record of an event that was produced and never delivered.
+     */
+    @Modifying
+    @Query(nativeQuery = true, value = """
+            delete from outbox_events
+             where event_id in (select event_id from outbox_events
+                                 where published_at < :cutoff
+                                 order by published_at
+                                 limit :limit)""")
+    int deletePublishedBefore(Instant cutoff, int limit);
 }
 
 // --- outbox/OutboxEventStore.java
@@ -260,6 +277,7 @@ package com.example.demo.adapter.out.persistence.outbox;
 
 import com.example.demo.application.port.out.OutboxEventRecord;
 import com.example.demo.application.port.out.OutboxRelayGateway;
+import com.example.demo.application.port.out.OutboxRetentionGateway;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -270,7 +288,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-class OutboxEventStore implements OutboxRelayGateway {
+class OutboxEventStore implements OutboxRelayGateway, OutboxRetentionGateway {
 
     // `last_error` is `text`, so nothing truncates for us. A stack trace in every row turns
     // the outbox into a log table.
@@ -336,6 +354,16 @@ class OutboxEventStore implements OutboxRelayGateway {
     // (`.claude/rules/persistence.md` § Boundary). One carrier serves both directions — the
     // appender writes it, the relay reads it; a second record with the same components is the
     // same type written twice (lessons-learned-013 § 8.3).
+    /*
+     * One bounded batch per call, in its own transaction: the prune's service loops, and a
+     * failure halfway keeps every batch already deleted.
+     */
+    @Override
+    @Transactional
+    public int deletePublishedBefore(Instant cutoff, int limit) {
+        return repository.deletePublishedBefore(cutoff, limit);
+    }
+
     private static OutboxEventRecord toRecord(OutboxEventEntity event) {
         return new OutboxEventRecord(
                 event.getEventId(),

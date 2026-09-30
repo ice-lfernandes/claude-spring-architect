@@ -83,7 +83,7 @@ Tudo isto é o bloco `export` de `@.claude/schemas/extensions.json` — dado, n�
 | `overwrite` | o `settings.json` do projeto, do template de `project-bootstrap` |
 | `optional_copy` | `.mcp.json` e o doc de setup de MCP, quando existem |
 | `rules` | todas as normas de `rules/`, com os globs de `paths` reescritos para os pacotes do blueprint ativo (`derived_paths`) |
-| `skills` | as 13 skills de desenvolvimento (`include`); as 3 de criação ficam fora (`exclude`) |
+| `skills` | as 14 skills de desenvolvimento (`include`); as 3 de criação ficam fora (`exclude`) |
 | `agents` | `java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`; `project-initializer` fica fora |
 | `blueprint_copy` | **só o blueprint ativo**, nunca o catálogo |
 | `ensure_dirs` | `.claude/audit-usage/` — criar o diretório é o que liga a trilha |

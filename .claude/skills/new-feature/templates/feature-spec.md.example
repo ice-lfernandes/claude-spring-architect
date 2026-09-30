@@ -18,6 +18,7 @@ file wins** and the losing value is listed in § Resolved divergences.
 | `30-rest.md` | `rest-api-architect` | ✅ |
 | `20-persistencia.md` | `persistence-architect` | ✅ |
 | `25-mensageria.md` | `messaging-architect` | — not applicable (no external delivery) |
+| `35-jobs.md` | `jobs-architect` | — not applicable (no Form B, no scheduled trigger) |
 | `40-testes.md` | `test-architect` | ✅ |
 
 ---
@@ -68,6 +69,15 @@ materializes it verbatim.
 ## 3.5 Messaging — conditional
 
 none — `10-dominio.md` names no external delivery.
+
+---
+
+## 3.6 Jobs — conditional
+
+none — no Form B outbox, no scheduled trigger. When present: technology, one line per job
+(trigger, cadence property, inbound port called, coordination), the replica count, and the
+dependencies of `35-jobs.md` § 7 — detail in `35-jobs.md`. Implemented by the executor's
+Block J, after Block M.
 
 ---
 

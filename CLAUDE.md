@@ -135,6 +135,7 @@ a design-time edge, like `project-bootstrap` writing `src/`; the runtime directi
 | A spec citing a backlog row — `BL-NN` — that `docs/use-cases/BACKLOG.md` does not have, in either its active or its retired table | `ArchHook.java doctor` — the `BL references` line, same shape and same data block (`doctor.bl_references`). `BL-NN` is the backlog's own identifier, assigned by `use-case-design` on append and never a `UC` number: it exists so an impact row can name the case that satisfies a precondition while that case is still backlog |
 | A container that "started" but isn't answering, a port already allocated, OTLP traffic reaching the wrong collector, a compose `image:` tag that disagrees with the one `src/test` pins in `DockerImageName.parse`, a broker published to the host that no host client can reach | `ArchHook.java compose` — hook, not skill. Also folded into `doctor`, so `/arch-doctor` reports it. The tag comparison and the advertised-address check need no Docker: they read files |
 | Kafka producer/consumer, publishing or consuming a domain event over a broker, topic/partition/DLQ | skill `messaging-architect` |
+| Scheduled or background job, cron, choosing between `@Scheduled`/ShedLock/Quartz/Spring Batch/db-scheduler/JobRunr, a job running twice across replicas, the outbox relay's schedule and its prune job | skill `jobs-architect` — `35-jobs.md`, runs after messaging and before persistence in `/new-feature` |
 | Design pattern, growing `if`/`switch` chain | skill `java-patterns` — manual only (`/java-patterns`). In a generated project, an agent whose `agent_classes` entry declares `pattern_catalog: true` receives its catalog at `SubagentStart` through `ArchHook.java context subagent`, and applies it without invoking the skill (`@.claude/decisions/0077-pattern-catalog-injected-at-subagent-start.md`) |
 | Connecting to an external system (Jira, database, GitHub, Figma), a server exposing `mcp__*` tools, `.mcp.json` | skill `claude-code-architect-designer` |
 | Auditing what a skill or agent run in a **generated project** cost and chained | `ArchHook.java audit` — hook, wired only into `project-bootstrap/templates/settings.json.example`; off here on purpose (no `.claude/audit-usage/`) |
@@ -241,12 +242,14 @@ source.
   skills are docs-only, `/new-feature` writes the spec, the two installers own only their own
   setup. Anything else in the file — a plugin, a property, a version bump — is reported, never
   written.
-- **The outbox belongs to `persistence-architect`, all of it** — table, columns, claim query,
-  and the `app.outbox.*` values that pace the claim. `messaging-architect` declares that the
-  case needs one and which delivery guarantee the relay must honour, never a column name, and
-  keeps the relay's broker side. A § 6 row naming columns is a divergence, and a column
-  decision that would drop a declared guarantee stops the pipeline instead of being settled by
-  precedence.
+- **The outbox has three owners, split by question.** `persistence-architect`: the table,
+  columns, claim query, batch size, attempt ceiling, retention window and the prune's
+  statement. `messaging-architect`: that the case needs one, the delivery guarantee, and the
+  relay pass with its broker side. `jobs-architect`: when anything runs — the relay's poll
+  interval, the on/off switch, the replica count the claim must meet, and the prune job. A § 6
+  row naming columns is a divergence, and a column or claim decision that would drop a
+  declared guarantee stops the pipeline instead of being settled by precedence
+  (`@.claude/decisions/0087-jobs-architect-skill.md`).
 - **The bounded context is a project fact, not a per-use-case answer.** First segment of every
   topic name, asked with the coordinates in `/init-project` and written into the generated
   project's root `CLAUDE.md`. A prefix chosen inside one use case gives one system two

@@ -50,28 +50,19 @@ spring:
 
 # FORM B ONLY — transactional outbox + relay (`.claude/rules/messaging.md` § Publication
 # timing). Omit this whole block under Form A, where there is no relay to configure.
-# Shape of the component these values drive: `OutboxRelayPublisher.java.example`.
+# Shape of the pass these values drive: `OutboxRelayPublisher.java.example`.
+#
+# ONE `app.outbox` MAP, TWO EXEMPLARS. This block shows only the two keys the relay PASS reads.
+# The switch, the poll interval, the retention window and the prune's keys belong to the same
+# map and are shaped in `jobs-architect/templates/application-jobs.yml.example`. In the
+# project's `application.yml` they are ONE `app:` root with ONE `outbox:` child — merged, never
+# a second `app:` block: YAML takes the last duplicate key silently, or Spring refuses the file.
 app:
   outbox:
-    # The relay's on switch, and the one property the test profile cares about. Both
-    # `OutboxRelay` and `SchedulingConfig` are `@ConditionalOnProperty` on it, defaulted on,
-    # so `src/test/resources/application-test.yml` setting it to `false` is what keeps the
-    # relay out of every `@SpringBootTest` — where it would otherwise poll the test database
-    # and block on a broker no test starts (lessons-learned-013 § 3).
-    enabled: true
-    # Fixed delay between passes, never fixed rate: a slow pass must not overlap the next.
-    # Read by `@Scheduled(fixedDelayString = ...)` as a placeholder, not through
-    # `OutboxProperties` — the annotation is resolved before any bean exists.
-    poll-interval: PT1S
-    # Rows claimed per pass. Sized so a pass finishes well inside poll-interval.
+    # Rows claimed per pass (persistence). Sized so a pass finishes well inside the poll
+    # interval `35-jobs.md` sets.
     batch-size: 100
-    # Send attempts before the row is flagged dead-lettered and stops being re-read.
-    # Not the broker-side retry above: that one retries a single send, this one retries a row.
+    # Send attempts before the row is flagged dead-lettered and stops being re-read
+    # (persistence). Not the broker-side retry above: that one retries a single send, this one
+    # retries a row.
     max-attempts: 5
-    # Retention for rows already published, swept by the pruning job. An outbox that only
-    # grows becomes the slowest table in the schema.
-    # SHIP THIS LINE ONLY WITH THE JOB THAT READS IT. Without the pruning job, it is a
-    # property nothing reads, drifting from the retention the index and the table comment
-    # assume, and read by a person as a guarantee the project does not make
-    # (lessons-learned-013 § 8.6).
-    prune-after: P7D

@@ -33,8 +33,9 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
   `…messaging.stockreserved`. The unit here is the **flow**, not the aggregate, because one
   event routinely crosses aggregates and two events of one aggregate have nothing in common
   but their source. **Shared transport infrastructure gets its own subpackage on the same
-  rule** — `…messaging.outbox` first among them, holding the relay, its properties binding,
-  its scheduling wiring and the outbox writer. A flat adapter package holding every flow's
+  rule** — `…messaging.outbox` first among them, holding the relay's broker sender, its
+  properties binding and the outbox writer. The trigger that runs the relay on a clock is not
+  transport: it lives in the scheduling package, `@.claude/rules/scheduling.md` § Boundary. A flat adapter package holding every flow's
   classes breaks SRP at the package level and grows without bound: one feature already put six
   classes in it, four of them the outbox's. The `test/` tree mirrors the same subpackages
 - **Visibility is package-private by default**, payload record, producer, consumer, relay and
@@ -43,8 +44,8 @@ a new section here, not a new file — single owner, `@CLAUDE.md` invariant 2.
   never a `public` added to reach sideways. Only the specific class another flow genuinely
   consumes becomes `public` — one class at a time, never preemptively
 - **Framework wiring for the broker lives in this package too, `@Configuration` included.**
-  A class that builds a `ProducerFactory`, a `KafkaTemplate`, a `DefaultErrorHandler`, or
-  enables the scheduling a relay depends on is adapter-local wiring: it carries broker types,
+  A class that builds a `ProducerFactory`, a `KafkaTemplate`, or a `DefaultErrorHandler` is
+  adapter-local wiring: it carries broker types,
   so it sits with the adapter and not in a project-wide configuration package. This is the
   explicit exception to a module layout that assigns Spring wiring to a configuration package
   — stated here because the two readings contradict each other otherwise, and a real run
@@ -126,7 +127,8 @@ Form B's own boundaries:
 - Attempts are counted and bounded. An exhausted row is flagged dead-lettered and stops being
   re-read; it is not retried forever and not deleted
 - Published rows are pruned on a schedule. An outbox that only grows becomes the slowest
-  table in the schema
+  table in the schema, and a retention window with no job enforcing it is no retention —
+  `@.claude/rules/scheduling.md` § Retention
 - The table, its columns, and its migration belong to `@.claude/rules/persistence.md`. One
   outbox for the whole project, not one per aggregate — same as any other shared
   infrastructure table

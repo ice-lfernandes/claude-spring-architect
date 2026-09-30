@@ -55,7 +55,7 @@ exactly one deployment shape:
 | Decision | Value |
 |---|---|
 | Strategy | Documented single instance — the exemplar's unlocked `SELECT`, no lease column |
-| Why | One relay instance by deployment constraint: the application runs as a single replica, stated here so the next deployment change has something to contradict |
+| Why | `35-jobs.md` § 3 records **1 replica** by deployment constraint, and its § 6 requires a documented single instance — read from there, not asked here. Stated so the next deployment change has something to contradict |
 | What it costs if the constraint breaks | Two instances publish the whole batch twice per pass. The consumer's dedupe absorbs it, and this is the paragraph to revisit before scaling out |
 | Who absorbs the duplicate | `processed_events` in this project — or, where the consumer is external, `25-mensageria.md` § 3 names it and says whether the guarantee is contracted, assumed or unknown |
 

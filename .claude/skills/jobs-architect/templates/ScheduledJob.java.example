@@ -1,0 +1,154 @@
+/*
+ * EXEMPLAR — a job on plain `@Scheduled`, and the wiring every other exemplar here reuses.
+ * The technology is chosen in `SKILL.md` step 4, against `references/tool-decision-matrix.md`
+ * § 2. This one is the answer when the job runs on ONE instance by written deployment
+ * constraint, or when its work is partitioned by a row claim that locks — then every instance
+ * may run the pass. Anything else needs a lock (`ShedLockJob.java.example`) or a scheduler that
+ * coordinates on its own.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` (all of it)
+ *        `.claude/rules/architecture-ddd.md` (§ Adapters — the trigger is a driving adapter)
+ *        `.claude/rules/observability.md` (§ Metrics)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the trigger calls ONE inbound port and nothing else: no repository, no broker type, no
+ *    business branch. The use case owns the transaction;
+ *  - `@EnableScheduling` exists exactly once, in the scheduling package, and the observation
+ *    registry is set on the registrar — without that, `tasks.scheduled.execution` is never
+ *    emitted, whatever the docs suggest;
+ *  - every job is gated by its own `enabled` property, defaulted on, and the test profile turns
+ *    it off: every `*IT` boots this context, and an ungated trigger runs under tests that assert
+ *    something else (lessons-learned-013 § 3);
+ *  - `JobRunRecorder` gives every job the two metrics `scheduling.md` § Observability requires —
+ *    a timer by outcome and the time of the last success. A job that stopped raises no error;
+ *    staleness is the only signal, and only if something measures it;
+ *  - the cadence is a placeholder read by the annotation, never ALSO a field of a properties
+ *    record: the annotation resolves before any bean exists (lessons-learned-013 § 2).
+ *
+ * POOL SIZE. Without virtual threads the scheduler has ONE thread: a second job waits for the
+ * first. Set `spring.task.scheduling.pool.size` to the job count, or enable virtual threads —
+ * `application-jobs.yml.example`.
+ *
+ * PACKAGE: the blueprint's `packages.map` entry ending in `.scheduling` — `adapter.in.scheduling`
+ * in hexagonal, `infrastructure.scheduling` in the clean-architecture blueprints. Never next to
+ * the adapter the job happens to touch.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- SchedulingConfig.java (the project's only @EnableScheduling)
+package com.example.demo.adapter.in.scheduling;
+
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.SchedulingConfigurer;
+
+@Configuration
+@EnableScheduling
+class SchedulingConfig {
+
+    /*
+     * Without this, scheduled runs produce no observation and therefore no trace: the registrar
+     * does not pick the registry up on its own.
+     */
+    @Bean
+    SchedulingConfigurer observedScheduling(ObservationRegistry observations) {
+        return registrar -> registrar.setObservationRegistry(observations);
+    }
+}
+
+// --- JobRunRecorder.java (shared by every job — timer by outcome + last success)
+package com.example.demo.adapter.in.scheduling;
+
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import java.time.Clock;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.stereotype.Component;
+
+@Component
+class JobRunRecorder {
+
+    private final MeterRegistry meters;
+    private final Clock clock;
+    private final Map<String, AtomicLong> lastSuccess = new ConcurrentHashMap<>();
+
+    JobRunRecorder(MeterRegistry meters, Clock clock) {
+        this.meters = meters;
+        this.clock = clock;
+    }
+
+    /*
+     * Runs one pass and records it. A failure still escapes to the scheduler's error handler,
+     * which logs it — no `catch (RuntimeException)` here, Checkstyle's IllegalCatch refuses it
+     * and the log line already exists. What this adds is what the log line never gives: a rate
+     * to alarm on, and the time of the last success. The tag set is closed — job name and
+     * outcome — so the cardinality is the job count times two (`observability.md` § Metrics).
+     */
+    void run(String job, Runnable pass) {
+        AtomicLong last = lastSuccessOf(job);
+        Timer.Sample sample = Timer.start(meters);
+        boolean succeeded = false;
+        try {
+            pass.run();
+            succeeded = true;
+            last.set(clock.millis());
+        } finally {
+            String outcome = succeeded ? "success" : "failure";
+            sample.stop(meters.timer("jobs.execution", "job", job, "outcome", outcome));
+        }
+    }
+
+    /*
+     * Registered on the first pass and seeded with the start time, so a job that has never
+     * succeeded ages from boot instead of reading as "succeeded in 1970".
+     */
+    private AtomicLong lastSuccessOf(String job) {
+        return lastSuccess.computeIfAbsent(job, name -> {
+            AtomicLong at = new AtomicLong(clock.millis());
+            Gauge.builder("jobs.last_success.seconds", at, value -> value.get() / 1000d)
+                    .tag("job", name)
+                    .description("Epoch second of the job's last successful pass")
+                    .register(meters);
+            return at;
+        });
+    }
+}
+
+// --- ReconcilePaymentsJob.java (one job — the trigger and nothing else)
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.ReconcilePayments;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.jobs.reconcile-payments.enabled", matchIfMissing = true)
+class ReconcilePaymentsJob {
+
+    private final ReconcilePayments reconcilePayments;
+    private final JobRunRecorder recorder;
+
+    ReconcilePaymentsJob(ReconcilePayments reconcilePayments, JobRunRecorder recorder) {
+        this.reconcilePayments = reconcilePayments;
+        this.recorder = recorder;
+    }
+
+    /*
+     * Calendar-anchored → cron, and cron always names its zone: without it the job runs in the
+     * container image's default zone. The expression comes from configuration with a default
+     * in the placeholder, never a literal.
+     */
+    @Scheduled(
+            cron = "${app.jobs.reconcile-payments.cron:0 0 2 * * *}",
+            zone = "${app.jobs.zone:America/Sao_Paulo}")
+    void run() {
+        recorder.run("reconcile-payments", reconcilePayments::reconcileYesterday);
+    }
+}

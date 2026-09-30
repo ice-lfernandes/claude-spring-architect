@@ -1,0 +1,106 @@
+/*
+ * EXEMPLAR — the transactional outbox's relay job: the schedule, and nothing else.
+ * Form B's relay is split in three owners, and this file is only the first:
+ *  - WHEN it runs, how often, on which instances → this file (`jobs-architect`, `35-jobs.md`);
+ *  - WHAT a pass does — claim, send, mark, dead-letter → `RelayOutboxEventsService`, behind the
+ *    inbound port `RelayOutboxEvents`, in `messaging-architect/templates/OutboxRelayPublisher.java.example`;
+ *  - WHICH rows a pass claims, and how the claim locks → `OutboxEventStore`, in
+ *    `persistence-architect/templates/OutboxEventStore.java.example`.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/scheduling.md` · `.claude/rules/messaging.md` (§ Publication timing)
+ *        `.claude/rules/observability.md` (§ Metrics — the two delivery metrics are required)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the trigger calls the inbound port and imports no Kafka and no JPA type: before this split
+ *    the relay was a `@Scheduled` method inside the messaging adapter, so its schedule, its
+ *    coordination and its broker code were one class and the prune job had no place to live;
+ *  - fixed delay, never fixed rate: a slow pass must not overlap the next one;
+ *  - NO lock around the trigger. Coordination comes from the claim: with more than one instance,
+ *    `35-jobs.md` § 6 requires a locked or leased claim, and every instance runs the pass on
+ *    different rows. A lock here would make every instance but one idle and add nothing. With
+ *    one instance by written constraint, the claim may stay unlocked — and § 3 says so;
+ *  - the two delivery metrics `messaging-architect` requires are recorded HERE, from the pass's
+ *    outcome — their names and the guarantee they watch are that skill's; the trigger is simply
+ *    the one place every pass goes through.
+ *
+ * GATE. `app.outbox.enabled`, defaulted on, `false` in `application-test.yml`: every `*IT` boots
+ * this context, and an ungated relay polls the test database, blocks on a broker no test starts,
+ * and marks rows under tests that assert on them (lessons-learned-013 § 3). A test that wants a
+ * pass calls `RelayOutboxEvents.relayPending()` directly.
+ *
+ * CADENCE. `app.outbox.poll-interval` is read by the placeholder and by nothing else — it is not
+ * a field of `OutboxProperties` (lessons-learned-013 § 2). Batch size and attempt ceiling are
+ * `20-persistencia.md`'s values: the messaging adapter binds them and hands them to the pass as
+ * `OutboxRelaySettings` — this job never sees them.
+ *
+ * PACKAGE: the scheduling package (`packages.map` entry ending in `.scheduling`), next to the
+ * project's single `SchedulingConfig` — `ScheduledJob.java.example`, which also defines
+ * `JobRunRecorder`. Both exist once per project: the first job creates them, every later job
+ * reuses them.
+ *
+ * TECHNOLOGY. The relay stays on `@Scheduled` whatever `35-jobs.md` § 2 chose for the project's
+ * other jobs: it polls every second, its coordination is the row claim, and a persistent
+ * scheduler would write its own store on every fire for nothing — `.claude/rules/scheduling.md`
+ * § Boundary does not count the framework's scheduler as a second technology for this case.
+ * The prune is the opposite: a calendar job, so under Quartz or db-scheduler it becomes a job of
+ * that scheduler, shaped by that technology's exemplar.
+ *
+ * A PROJECT GENERATED BEFORE THIS SPLIT (decision 0087) has the old shape: an `OutboxRelay` with
+ * `@Scheduled` and a `SchedulingConfig` gated on `app.outbox.enabled`, both in the messaging
+ * adapter, registering the two delivery metrics themselves. Never add this job next to it — two
+ * triggers relay the same rows, two `@EnableScheduling` exist, and the meters register twice
+ * (Micrometer keeps the first gauge and drops the second in silence). `35-jobs.md` records the
+ * old shape in `## Impact on approved use cases`, and the run migrates it in one step: the pass
+ * moves behind `RelayOutboxEvents`, the `@Scheduled` method and the old `SchedulingConfig` are
+ * deleted, and this job takes the trigger and the meters — or the partial defers the migration
+ * with an owner and keeps the old relay untouched. Nothing in between.
+ *
+ * VOCABULARY follows `messaging-architect/templates/OutboxRelayPublisher.java.example`: in the
+ * clean-architecture blueprints the trigger depends on the concrete `RelayOutboxEventsUseCase`,
+ * not on an interface.
+ */
+
+// --- OutboxRelayJob.java
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.RelayOutboxEvents;
+import com.example.demo.application.port.in.RelayOutboxEvents.RelayOutcome;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.outbox.enabled", matchIfMissing = true)
+class OutboxRelayJob {
+
+    private final RelayOutboxEvents relay;
+    private final JobRunRecorder recorder;
+    private final Counter deadLettered;
+
+    OutboxRelayJob(RelayOutboxEvents relay, JobRunRecorder recorder, MeterRegistry meters) {
+        this.relay = relay;
+        this.recorder = recorder;
+        // An event declared "must not be lost" whose failure path only logs is loss made silent
+        // and permanent (lessons-learned-013 § 6). The counter says it happened; the gauge says
+        // it is about to.
+        this.deadLettered = Counter.builder("outbox.events.dead_lettered")
+                .description("Outbox rows abandoned after exhausting their attempts")
+                .register(meters);
+        Gauge.builder("outbox.pending.age.seconds", relay,
+                        port -> port.oldestPendingAge().map(Duration::toSeconds).orElse(0L))
+                .description("Age of the oldest still-unpublished outbox row")
+                .register(meters);
+    }
+
+    @Scheduled(fixedDelayString = "${app.outbox.poll-interval:PT1S}")
+    void run() {
+        recorder.run("outbox-relay", () -> {
+            RelayOutcome outcome = relay.relayPending();
+            deadLettered.increment(outcome.deadLettered());
+        });
+    }
+}

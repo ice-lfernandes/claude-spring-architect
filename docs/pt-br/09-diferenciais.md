@@ -129,7 +129,9 @@ Ver [08-audit-usage.md](08-audit-usage.md).
 
 `/new-feature` desenha **um caso de uso por execução** em cinco parciais com dono único
 (`use-case-design` → `domain-modeling` → `rest-api-architect` → `persistence-architect`
-→ `test-architect`, mais `messaging-architect` condicional), consolida num
+→ `test-architect`, mais `messaging-architect` condicional e `jobs-architect`
+condicional — tecnologia de scheduling, cadência, coordenação entre instâncias, e o
+próprio schedule do relay de outbox), consolida num
 `UC-NNN-spec.md` com ciclo `draft → approved → implemented`, pede aprovação e só então
 oferece o executor `java-spring-boot-developer` — um agent separado, com tools
 restritas, que só escreve em `src/`.
@@ -164,7 +166,7 @@ que não citam ninguém. Onze invariantes (`CLAUDE.md`), e o job `design` de
 - **Frontmatter tem schema** — `extensions.json` é o dono dos campos que o runtime
   reconhece. O runtime ignora um campo inventado em silêncio, e `claude plugin validate`
   deixa passar; `ArchHook.java schema` não.
-- **Skill tem classe, e a classe é dado** — cada uma das 16 skills está em exatamente uma
+- **Skill tem classe, e a classe é dado** — cada uma das 17 skills está em exatamente uma
   de seis classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), e a
   classe declara as seções que o corpo precisa ter **e** o território que ela pode
   escrever. O `schema` cobra a estrutura, o `guard` cobra o território. Não é padronização
@@ -200,9 +202,10 @@ Ver [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md)
 
 - `CLAUDE.md` da raiz sob 200 linhas: invariantes e roteamento, nada mais.
 - Normas entram por `paths` quando um arquivo do território é tocado. Os globs de
-  `api-rest.md`, `persistence.md`, `value-objects.md`, `observability.md` e
-  `messaging.md` são **reescritos na geração** a partir do `packages.map` do blueprint —
-  um glob copiado literalmente deixaria a norma sem carregar, em silêncio.
+  `api-rest.md`, `persistence.md`, `value-objects.md`, `observability.md`,
+  `messaging.md` e `scheduling.md` são **reescritos na geração** a partir do
+  `packages.map` do blueprint — um glob copiado literalmente deixaria a norma sem
+  carregar, em silêncio.
 - `metadata:` foi banido do frontmatter (custa tokens a cada invocação e não impõe
   nada); contratos vivem no corpo, onde são instrução de fato.
 - Skills de design viajam preloaded no executor (`java-patterns` via `skills:`), sem
@@ -239,7 +242,7 @@ Nenhum é exclusivo por si só; juntos, nenhum vizinho os reúne:
 | Projeto instala/atualiza o `.claude/` por manifesto, com proveniência | ✅ | ❌ (clone e merge à mão) | parcial (reinstalar o pacote) | ❌ |
 | Exemplares compilados contra classpath real no CI | ✅ | ❌ | ❌ | ❌ |
 | Projeto gerado autocontido, sem depender do gerador | ✅ | ✅ (é o próprio clone) | — | ✅ |
-| Skills de conhecimento Spring/JPA | ✅ (12 normas + 9 skills de design) | ✅ | ✅ (às vezes mais amplas) | ✅ |
+| Skills de conhecimento Spring/JPA | ✅ (14 normas + 10 skills de design) | ✅ | ✅ (às vezes mais amplas) | ✅ |
 | Suporte a Codex/Cursor além de Claude Code | ❌ | parcial | ✅ | parcial |
 
 ## O que não é diferencial — dito com honestidade

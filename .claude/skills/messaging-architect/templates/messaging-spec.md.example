@@ -50,8 +50,9 @@ receiver's name — not left to a Javadoc sentence. Masking it for the logs is a
 (`@.claude/rules/logging.md`) and does not cover the serialized copy.
 
 Under **Form B** this block carries one more thing, and the partial is incomplete without it:
-the relay (`OutboxRelay` + the application-layer `OutboxRelayGateway`, shape in
-`templates/OutboxRelayPublisher.java.example`). The `outbox_events` table it needs is not
+the relay pass (`RelayOutboxEvents` + `OutboxEventSender` + the application-layer
+`OutboxRelayGateway`, shape in `templates/OutboxRelayPublisher.java.example`). Its schedule and
+the prune job are not described here either — `jobs-architect` designs both into `35-jobs.md`. The `outbox_events` table it needs is not
 described here — it goes as a row of § 6, which is the list `persistence-architect` reads.
 One outbox for the whole project, reused by every later event.
 
@@ -171,7 +172,7 @@ becomes a checklist item, a `backlog` row becomes a line in `docs/use-cases/BACK
 
 | Decided | What is missing | Norm requiring it | Owner |
 |---|---|---|---|
-| `outbox_events` keeps 7 days | The prune pass that reads `app.outbox.prune-after`; the property stays out of `application.yml` until its reader exists | `@.claude/rules/personal-data.md` § At rest | `backlog` |
+| Consumer-side contract test against the external KYC provider | A provider-owned contract to test against — none published yet | `@.claude/rules/messaging.md` § Delivery semantics | `backlog` |
 
 ## Impact on approved use cases
 
