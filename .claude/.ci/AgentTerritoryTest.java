@@ -66,9 +66,15 @@ public class AgentTerritoryTest {
                         + "org.springframework.boot.autoconfigure.AutoConfiguration.imports",
                 0, "commons-logging-installer writes the imports file");
 
+        // The installer ships the unit tests of what it installs (decision 0098): its test
+        // territory is the mirror of its main one — the `logging` package, nothing else.
         failures += write(hook, session, "commons-logging-installer",
-                "src/test/java/com/acme/commons/logging/LogExecutionTest.java",
-                2, "commons-logging-installer is refused src/test");
+                "src/test/java/com/acme/commons/logging/aspect/LogExecutionAspectTest.java",
+                0, "commons-logging-installer writes the tests of its own package");
+
+        failures += write(hook, session, "commons-logging-installer",
+                "src/test/java/com/acme/order/OrderTest.java",
+                2, "commons-logging-installer is refused src/test outside its package");
 
         // ── executor ─────────────────────────────────────────────────────────
         failures += write(hook, session, "java-spring-boot-developer",
