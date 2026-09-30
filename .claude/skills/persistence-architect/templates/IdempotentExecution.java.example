@@ -31,6 +31,9 @@ import com.example.demo.application.port.out.StoredResponse;
 
 // Executed: the effect ran now, the adapter builds a fresh response from the result.
 // Replayed: a prior request already finished, the adapter returns its response verbatim.
+// `R` is never named in the interface body — it exists so both records share one sealed
+// type. Sonar's java:S2326 on it is suppressed for this file by
+// `sonar.issue.ignore.multicriteria` (`sonarqube-setup/templates/pom-sonar.xml.example`).
 public sealed interface IdempotentOutcome<R> {
     record Executed<R>(R result) implements IdempotentOutcome<R> {}
     record Replayed<R>(StoredResponse response) implements IdempotentOutcome<R> {}
@@ -63,8 +66,8 @@ public class IdempotentExecution {
             IdempotencyRequest request, Supplier<R> effect, Function<R, StoredResponse> recorder) {
         // Transaction 1 — commits on its own. A concurrent request with the same key
         // collides here, before any effect.
-        if (idempotencyKeys.claim(request) instanceof IdempotencyClaim.Replay replay) {
-            return new IdempotentOutcome.Replayed<>(replay.response());
+        if (idempotencyKeys.claim(request) instanceof IdempotencyClaim.Replay(StoredResponse response)) {
+            return new IdempotentOutcome.Replayed<>(response);
         }
         boolean committed = false;
         try {
@@ -79,7 +82,8 @@ public class IdempotentExecution {
         } finally {
             // Rolled back (business rule, conflict, anything): free the key so the retry
             // runs again instead of waiting out the IN_PROGRESS lease. `finally` with a
-            // flag, not `catch (RuntimeException)` — the exception propagates untouched.
+            // flag, not a catch of the base runtime exception: whatever was thrown
+            // propagates untouched.
             if (!committed) {
                 idempotencyKeys.release(request.key());
             }

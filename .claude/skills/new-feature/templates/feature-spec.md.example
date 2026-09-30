@@ -97,7 +97,7 @@ Detail: `30-rest.md` § 1-5.
 
 ## 5. Tests — validates 1-4
 
-Detail: `40-testes.md` § 1-4.
+Detail: `40-testes.md` § 1-5.
 
 | Decision | Value |
 |---|---|
@@ -105,6 +105,7 @@ Detail: `40-testes.md` § 1-4.
 | Slice | `UserController` — `@WebMvcTest`, one case per status in § 4 |
 | Integration | `UserRepositoryAdapter` against a real database (Testcontainers) |
 | Coverage gate | 80% lines / 70% branches |
+| Test dependencies | none — `40-testes.md` § 5. When present, one row each, applied by the executor |
 
 ---
 

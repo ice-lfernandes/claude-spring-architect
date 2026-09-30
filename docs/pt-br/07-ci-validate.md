@@ -78,7 +78,7 @@ flowchart TD
 | `context subagent hands the catalog to pattern_catalog agents only` | `SubagentContextTest.java`: `java-spring-boot-developer` recebe um `## Catalog` dentro de `subagent_context.max_chars`; installers e `general-purpose` não recebem nada | Decisão 0077. `SubagentStart` não bloqueia, então catálogo que para de chegar — ou chega em todo lugar — é silencioso |
 | `audit renders where the run spent, redacts tool errors, skips observer-class pieces` | `AuditRenderTest.java` num projeto descartável com cópia do `extensions.json` real: chamadas de tool por peça (incluindo o transcript próprio de um subagent), os turnos mais caros, o pico de contexto, a primeira linha de cada erro de tool redigida, os campos de ledger que `audit summary` agrega, e nenhum relatório para peça cuja classe declara `audited: false` | Decisões 0041, 0085, 0086. Todo número é extraído de um layout de transcript não documentado e um render que lança exceção sai com 0 — o relatório só para de atualizar; a linha de erro cai num arquivo versionado, então um token ecoado vazaria (invariante 11) |
 | `guard keeps each skill inside its class's territory` | `SkillTerritoryTest.java` roda o modo `guard` sobre o `extensions.json` real em 22 casos: sem fase aberta nada restringe, dentro e fora do `write_allow`, o `agent_type` prevalecendo sobre a fase aberta, a recusa de `Skill(<build>)` com fase de design aberta, o território mais estreito do callee numa chamada entre classes, a fase sobrevivendo a uma chamada `Agent` até o próximo prompt, e um encadeamento da mesma classe (`arch-adopt` → `sonarqube-setup` → `docker-architect`) somando territórios — ainda negação por padrão fora da união | O território ser allowlist é o tipo de alegação que apodrece em silêncio: vale até alguém alargar uma entrada de `write_allow` sem perceber. O caso que motivou tudo — um run de design escrevendo `docker-compose.yml`, arquivo que nenhuma denylist nomeava — é um dos 22, e também o `sonarqube-setup` encadeado que tinha o `pom.xml` recusado antes da decisão 0092 |
-| `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` roda o mesmo modo sobre `agent_classes` em 18 casos: cada installer dentro e fora da sua lista estreita, as grafias single- e multi-module do mesmo caminho, o executor alcançando a única linha de spec que ele fecha, o driver escrevendo qualquer coisa, e um agent sem classe caindo na fase do chamador | Cada agent prometia o próprio território em prosa (`**Does not write:** docker-compose.yml`) enquanto o guard dava bypass irrestrito aos quatro. A promessa agora é dado, e os dois bloqueios que mais importam — `archunit-installer` recusado no `docker-compose.yml`, e recusado no source principal — são casos deste arquivo |
+| `guard keeps each agent inside its class's territory` | `AgentTerritoryTest.java` roda o mesmo modo sobre `agent_classes` em 19 casos: cada installer dentro e fora da sua lista estreita, as grafias single- e multi-module do mesmo caminho, o executor alcançando a única linha de spec que ele fecha, o driver escrevendo qualquer coisa, e um agent sem classe caindo na fase do chamador | Cada agent prometia o próprio território em prosa (`**Does not write:** docker-compose.yml`) enquanto o guard dava bypass irrestrito aos quatro. A promessa agora é dado, e os dois bloqueios que mais importam — `archunit-installer` recusado no `docker-compose.yml`, e recusado no source principal — são casos deste arquivo |
 | `hook reports a compose image tag that disagrees with src/test` | `ComposeTagTest.java` monta um projeto descartável com `docker-compose.yml` e um `DockerImageName.parse(...)` em `src/test`, e exige que `ArchHook.java compose` reporte a divergência, expanda `${VAR:-default}` e fique calado quando as tags batem | A suíte passar contra uma versão de engine que ninguém roda. Roda nas três OSes porque a pergunta 3 do modo `compose` compara dois arquivos e não precisa de Docker — o que também prova que o casamento de `src/test/` sobrevive ao separador do Windows |
 | `frontmatter schema` | `java .claude/hooks/ArchHook.java schema` | Invariante 10 — `extensions.json` é o dono único do frontmatter reconhecido; campo inventado ou `metadata:` falha alto em vez de ser ignorado em silêncio pelo runtime. O mesmo modo exige que toda injection `` !`command` `` resolva caminho a partir de `${CLAUDE_PROJECT_DIR}` — uma relativa reporta arquivo ausente sempre que o cwd do shell derivou —, reprova pasta de skill com nome de slash command nativo (`types.skill.native_commands`; até a 0084 um passo só no YAML que projeto gerado nunca rodava) e reprova rule sem `paths` (`types.rule.required`; decisão 0082 — rule sem ele carrega no launch, toda sessão) |
 | `new blueprint doesn't touch prompts` | adicionar um blueprint deixa `.claude/skills` e `.claude/agents` intactos | Invariante 7 — arquiteturas são dados |
@@ -166,6 +166,18 @@ consequência de um merge.
 status check* na branch protection de `main`. Sem isso, o job falha e o merge acontece
 de todo jeito.
 
+## O workflow vizinho: `templates.yml`
+
+Filtrado por paths: roda só quando um PR mexe nos arquivos que ele testa, porque os dois jobs
+baixam do Maven Central, do GitHub ou do `start.spring.io`. Não é required check — um required
+check num workflow filtrado por paths fica pendente em todo PR que ele pula. Design:
+`.claude/decisions/0099-ci-tests-for-verbatim-templates.md`.
+
+| Job | Verifica | Contra o quê |
+|---|---|---|
+| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` e `checkstyle-test.xml.example` rodando no Checkstyle **mais recente** (resolvido no Maven Central, jar `-all` da release no GitHub) sobre três fixtures — arquivo limpo passa nos dois, `record` e `permits` como nome falham nos dois com `IllegalIdentifierName` | Decisão 0097 — o `format` default do Checkstyle 14 só rejeita `var`; uma config que dependia dele passou quatro variáveis `record` com 0 violações, e a config nunca roda neste repositório |
+| `java-templates` | `JavaTemplatesTest.java`: todo arquivo de `new-feature/templates/commons/` mais os blocos `// --- ` de `JpaEntity.java.example` (`AssignedIdEntity` incluído) num projeto novo do `start.spring.io`, depois `./mvnw test` sobre os três templates `*Test` | Decisões 0096 e 0098 — esses templates são copiados como arquivo, não lidos como forma: um que para de compilar quebra o `commons-logging-installer` em todo projeto. `exemplar-imports` prova que cada import existe; este prova que os arquivos compilam juntos e que os testes enviados passam |
+
 ## O que ainda não está aqui
 
 - Invariante 9 (o projeto gerado é self-contained) está coberto **pela metade**: o passo
@@ -174,7 +186,9 @@ de todo jeito.
   modo de falha era silencioso.
   Que o projeto gerado *de fato* compile e não tenha caminho morto continua verificado à
   mão, pelo bloco de comandos em `project-bootstrap/SKILL.md` § 8 ("Verify"): exige gerar
-  um projeto de verdade contra o Initializr, e esse custo não foi automatizado.
+  um projeto de verdade contra o Initializr, e esse custo não foi automatizado. Uma fatia
+  foi: o workflow vizinho `templates.yml` (abaixo) compila, num projeto novo do Initializr,
+  os templates que o projeto recebe **como arquivo**, e roda os testes que vêm com eles.
 - `claude plugin validate .claude/skills` — o CLI não está instalado no runner do
   GitHub Actions, e instalá-lo puxaria uma dependência fora de `java`/`git`/`curl`
   (ver `CLAUDE.md` § Dependencies). Rode à mão antes de abrir um PR; é uma checagem
@@ -192,6 +206,9 @@ java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/ComposeTagTest.java
 java .claude/.ci/SkillTerritoryTest.java
 java .claude/.ci/AgentTerritoryTest.java
+# templates.yml — rede, ~1 min com cache Maven quente:
+java .claude/.ci/CheckstyleConfigTest.java
+java .claude/.ci/JavaTemplatesTest.java
 ```
 
 Um `git push` sem rodar isso antes ainda passa pelo hook local (`settings.json`), mas

@@ -76,6 +76,14 @@ Without it, immutability protects the text and loses the history: whoever reads
 - Value object or aggregate with invariants: static factory `of`, `from`, or `create`,
   never a public constructor.
 
+## Restricted identifiers
+
+`record`, `yield`, `var`, `permits`, `sealed` and `when` are never the name of a variable,
+parameter, field, method, or type — in `src/main` and in `src/test` alike. They compile, and
+they read as the keyword they shadow. A variable holding a `ProducerRecord`,
+`ConsumerRecord` or any other "record of something" is named for what it holds —
+`sent`, `received`, `pending` — never `record`.
+
 ## Tests
 
 Class, method, and test data factory names are the rule of

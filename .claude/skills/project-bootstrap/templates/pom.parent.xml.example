@@ -100,6 +100,20 @@
               <removeUnusedImports/>
             </java>
           </configuration>
+          <executions>
+            <!-- `check` at `verify`, over src/main and src/test: the format hook's
+                 `spotless:apply` misses any file written outside Write/Edit, and an unused
+                 import (Sonar java:S1128) is a formatting failure here. Never `validate`:
+                 the edit-time compile check runs `test-compile` in parallel with the format
+                 hook, and would fail on a file the formatter has not reached yet. -->
+            <execution>
+              <id>spotless-check</id>
+              <phase>verify</phase>
+              <goals>
+                <goal>check</goal>
+              </goals>
+            </execution>
+          </executions>
         </plugin>
 
         <!-- Mechanical half of rules/code-quality.md: length, parameters,
@@ -135,6 +149,27 @@
               <goals>
                 <goal>check</goal>
               </goals>
+            </execution>
+            <!-- src/test, with its own light rule set (checkstyle-test.xml): the size limits
+                 above don't fit test code, and the execution above never reads it.
+                 `verify`, not `validate`: at `validate` the edit-time compile check would
+                 pay this second run on every Java edit (~0.25 s measured). Its own
+                 `cacheFile`: sharing the default one with a different config invalidates
+                 both on every run. -->
+            <execution>
+              <id>checkstyle-test</id>
+              <phase>verify</phase>
+              <goals>
+                <goal>check</goal>
+              </goals>
+              <configuration>
+                <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle/checkstyle-test.xml</configLocation>
+                <sourceDirectories>
+                  <sourceDirectory>${project.build.testSourceDirectory}</sourceDirectory>
+                </sourceDirectories>
+                <includeResources>false</includeResources>
+                <cacheFile>${project.build.directory}/checkstyle-test-cachefile</cacheFile>
+              </configuration>
             </execution>
           </executions>
         </plugin>

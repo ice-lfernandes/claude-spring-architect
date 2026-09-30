@@ -80,6 +80,22 @@ protects nothing.
 One open gap: the table's last invariant has no named test. Close it before
 implementing — an invariant with no test is an invariant nobody guarantees.
 
+## 5 · Test dependencies
+
+none
+
+Test-scoped build dependencies these tests need and the project does not declare yet, one
+row each. The executor writes `pom.xml` only for a dependency a partial names — this block is
+the tests partial's. Version column stays empty whenever the Boot parent manages it.
+
+A test that waits for an asynchronous effect needs Awaitility
+(`@.claude/rules/testing.md` § Asynchronous effects); a Testcontainers module the tests start
+(Kafka, a second engine) needs its own row too. Example row, when it applies:
+
+| Dependency | Version | Why |
+|---|---|---|
+| `org.awaitility:awaitility` (test) | (managed by the Boot parent) | `OutboxRelayIT` waits for the record the relay publishes |
+
 ## Impact on approved use cases
 
 none

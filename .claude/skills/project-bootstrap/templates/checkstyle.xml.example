@@ -140,6 +140,13 @@
     <module name="TypeName"/>
     <module name="MethodName"/>
 
+    <!-- naming.md § Restricted identifiers. The `format` is explicit on purpose: Checkstyle
+         14's default, `^(?!var$|\S*\$)\S+$`, rejects `var` only and lets `record` through.
+         Keep this value identical to the one in checkstyle-test.xml. -->
+    <module name="IllegalIdentifierName">
+      <property name="format" value="^(?!(record|yield|var|permits|sealed|when)$|\S*\$)\S+$"/>
+    </module>
+
     <!-- lowercase `log` is allowed alongside SCREAMING_SNAKE_CASE. It's the name SLF4J uses
          throughout its documentation and in practically all Java code anyone writes by
          hand; requiring `LOG` here would break the build over a convention nobody follows.

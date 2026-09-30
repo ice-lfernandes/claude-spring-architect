@@ -74,6 +74,9 @@ A swapped order leaves the build broken halfway through generation.
    `templates/checkstyle.xml.example`. Fixed path — it's what the root POM's
    `configLocation` points to, via `${maven.multiModuleProjectDirectory}`. Don't swap
    it for a relative path: it resolves at the root and fails in every submodule.
+3. Write `<project>/config/checkstyle/checkstyle-test.xml` with the shape of
+   `templates/checkstyle-test.xml.example` — the `checkstyle-test` execution's
+   `configLocation`, same fixed path discipline.
 
 ## 8 · Verify — maven
 
@@ -83,6 +86,8 @@ wrapper exists and works before anything else:
 
 ```bash
 ./mvnw -v                       # failure here = starter.tgz didn't extract the wrapper
+./mvnw -q spotless:apply        # before any build: Initializr's files are tab-indented, and
+                                # `spotless:check` at `verify` would fail on them
 ./mvnw -q clean test-compile    # boundaries + Checkstyle (validate phase)
 ./mvnw -q test                  # Initializr smoke test — only the `*Test`s
 ./mvnw -q checkstyle:check      # Checkstyle only, to isolate violations

@@ -283,6 +283,8 @@
               "pom.xml", "**/pom.xml",
               "src/main/java/**/logging/**",
               "**/src/main/java/**/logging/**",
+              "src/test/java/**/logging/**",
+              "**/src/test/java/**/logging/**",
               "src/main/resources/META-INF/spring/*.imports",
               "**/src/main/resources/META-INF/spring/*.imports"
             ]

@@ -33,6 +33,12 @@ Covers only what no other rule already covers. Layer SRP and DIP live in
   parameter, or collection. Empty collection, never `null`.
 - Mutability is an explicit decision: `record` or immutable class by default.
 - A hidden side effect is a bug — a function whose name says it queries doesn't write.
+- A `switch` over a sealed type lists every permitted subtype and has **no `default`**:
+  exhaustiveness is the compiler's job, and a `default` switches it off — the next subtype
+  added to `permits` compiles and falls into the `default` in silence. Checkstyle's
+  `MissingSwitchDefault` does not apply to a switch with pattern labels; it never requires
+  that `default`. A switch over an open type (`String`, an enum you don't own, a non-sealed
+  interface) keeps its `default`.
 
 ## Comments
 
@@ -48,6 +54,10 @@ project's build:
 - **Checkstyle** (`config/checkstyle/checkstyle.xml`, `validate` phase) — length,
   parameters, complexity, nesting, magic numbers, generic `catch`. The numbers in that
   file and in this rule are the same: changing one side without the other is a bug.
+  Test code has its own light set, `config/checkstyle/checkstyle-test.xml`: these size
+  limits apply to production code only
+- **Spotless** (`spotless:check` at `verify`; part of `check` in Gradle) — formatting and
+  unused imports, main and test alike
 - **ArchUnit** (`ArchitectureTest.java` in the main module) — boundaries, ISP, `private
   final` fields in the domain, generic `throw`, field injection
 - Human review only for OCP, LSP, abstraction level, and the boolean parameter

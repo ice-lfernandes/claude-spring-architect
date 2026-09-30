@@ -16,6 +16,12 @@
  * `INSERT`, and no primary-key collision ever raised
  * (`.claude/rules/persistence.md` § Identity and keys).
  *
+ * WHY A BASE CLASS: the `isNew` flag and its two callbacks are the same 14 lines in every
+ * entity with an assigned id — Sonar reported them as the project's duplicated block. They
+ * live once, in `AssignedIdEntity` (last block below); the entity extends it and implements
+ * only `getId()`. Create it the first time an assigned-id entity is written, and reuse it
+ * afterwards: the outbox and idempotency entities extend the same class.
+ *
  * WHY `equals` AND `hashCode` ARE NOT HERE: the rule forbids basing them on a
  * database-generated id — while the entity is transient the id is null and the contract
  * breaks inside a `Set`. If they're really needed, base them on the business key
@@ -36,11 +42,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import com.example.demo.adapter.out.persistence.shared.AssignedIdEntity;
 import jakarta.persistence.Id;
-import jakarta.persistence.PostLoad;
-import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
@@ -48,7 +52,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
-import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "users")
@@ -58,12 +61,7 @@ import org.springframework.data.domain.Persistable;
 // (`.claude/rules/lombok.md` § @FieldDefaults). No `makeFinal`: Hibernate writes the
 // fields by reflection and needs them mutable — the exception the rule allows for.
 @FieldDefaults(level = AccessLevel.PRIVATE)
-class UserEntity implements Persistable<UUID> {
-
-    // Not a column. True only for an instance built by the constructor; loaded or
-    // already-persisted instances flip it, so an update still goes through `merge()`.
-    @Transient
-    boolean isNew = true;
+class UserEntity extends AssignedIdEntity<UUID> {
 
     // Id assigned by the application: the aggregate is already born with a `UserId`, so
     // there's no "half-created" state waiting for a database id. Where the id comes
@@ -123,6 +121,42 @@ class UserEntity implements Persistable<UUID> {
     public UUID getId() {
         return id;
     }
+}
+
+// --- user/UserStatus.java
+package com.example.demo.adapter.out.persistence.user;
+
+// Persistence-side enum. Mirrors the domain's; not the same type.
+enum UserStatus { ACTIVE, SUSPENDED, CLOSED }
+
+// --- shared/AssignedIdEntity.java
+package com.example.demo.adapter.out.persistence.shared;
+
+import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.Transient;
+import org.springframework.data.domain.Persistable;
+
+/*
+ * The `Persistable` mechanics every assigned-id entity needs, once per project. Not an
+ * aggregate's class, so it lives in `…persistence.shared`, and it is `public` because every
+ * aggregate subpackage extends it — the one consumer the visibility default allows for
+ * (`.claude/rules/persistence.md` § Boundary). No Lombok and no fields beyond the flag: an
+ * id, a version or an audit column here would couple every table to one shape.
+ *
+ * JPA applies callbacks declared on a `@MappedSuperclass` to every subclass, so `@PostLoad`
+ * and `@PostPersist` below flip the flag for each entity that extends it. The ArchUnit
+ * guard for assigned ids checks `implement(Persistable)`, which is transitive: extending
+ * this class satisfies it.
+ */
+@MappedSuperclass
+public abstract class AssignedIdEntity<T> implements Persistable<T> {
+
+    // Not a column. True only for an instance built by a constructor; loaded or
+    // already-persisted instances flip it, so an update still goes through `merge()`.
+    @Transient
+    private boolean isNew = true;
 
     @Override
     public boolean isNew() {
@@ -135,9 +169,3 @@ class UserEntity implements Persistable<UUID> {
         isNew = false;
     }
 }
-
-// --- user/UserStatus.java
-package com.example.demo.adapter.out.persistence.user;
-
-// Persistence-side enum. Mirrors the domain's; not the same type.
-enum UserStatus { ACTIVE, SUSPENDED, CLOSED }

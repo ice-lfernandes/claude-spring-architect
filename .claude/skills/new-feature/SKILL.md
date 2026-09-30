@@ -458,7 +458,7 @@ and consolidation checks it again, for the paths that never take this step.
 ### Step 6: Tests (depends on 1,2,3,4,5)
 
 If `40-testes.md` is missing: **invoke** `/test-architect UC-NNN` (design mode).
-If it exists: read, validate (four blocks: pyramid, fixtures, coverage, cases).
+If it exists: read, validate (five blocks: pyramid, cases, fixtures, coverage, test dependencies).
 
 **Output:** "✅ Tests ready" or gaps.
 
@@ -543,7 +543,7 @@ only when step 4b wasn't):
      (lessons-learned-013 § 5)
    - **A partial that applies must carry its declared-dependency section, or consolidation
      stops.** `20-persistencia.md` § 6 always; `25-mensageria.md` § 7 whenever step 4 ran;
-     `35-jobs.md` § 7 whenever step 4b ran. The
+     `35-jobs.md` § 7 whenever step 4b ran; `40-testes.md` § 5 always. The
      value `none` is legitimate and common — most cases need no new dependency — but **absence
      is not `none`**: one says the design skill decided nothing was needed, the other says
      nobody looked, and the executor cannot tell them apart. Steps 4 and 5 validate the same

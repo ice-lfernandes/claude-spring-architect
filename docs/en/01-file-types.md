@@ -176,7 +176,7 @@ and **which paths**:
 |---|---|---|
 | `driver` | `project-initializer` | `**` — it writes the tree of a project that does not exist yet |
 | `executor` | `java-spring-boot-developer` | `src/**`, the POMs (only for a dependency the spec declares), and its `UC-*-spec.md` — where the frozen-folder rule admits only the `status:` close and checklist toggles |
-| `installer` | `archunit-installer`, `commons-logging-installer` | Per-agent `overrides`: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` for the first; POMs + `**/logging/**` + `META-INF/spring/*.imports` for the second |
+| `installer` | `archunit-installer`, `commons-logging-installer` | Per-agent `overrides`: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` for the first; POMs + `**/logging/**` (main and test) + `META-INF/spring/*.imports` for the second |
 
 Territory is keyed on `agent_type`, which the `PreToolUse` payload of every subagent write
 already carries — so no open skill phase widens or narrows it. Before this, all four had an

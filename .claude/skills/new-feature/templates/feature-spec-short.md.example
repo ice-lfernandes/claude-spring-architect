@@ -56,6 +56,7 @@ none
 | Unit: use case returns and propagates not found | `testing.md` § Levels |
 | Slice: `200` and `404` | `testing.md` § Slices |
 | Integration: adapter `byId` against a real database | `testing.md` § Database engine |
+| Test dependencies: none | `40-testes.md` § 5 |
 
 ---
 

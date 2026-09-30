@@ -60,9 +60,6 @@ jobs:
           fi
           echo "✅ Integration tests ran against a real container."
 
-      - name: formatting
-        run: ./mvnw -B spotless:check
-
   boundaries:
     name: architectural boundaries
     runs-on: ubuntu-latest

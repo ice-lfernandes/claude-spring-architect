@@ -29,7 +29,8 @@ step 2; auto-loading it too paid for the same file twice
 
 **Class:** installer — the territory is
 `agent_classes.installer.overrides.commons-logging-installer` in
-`@.claude/schemas/extensions.json`: the POMs, `**/src/main/java/**/logging/**`, and the
+`@.claude/schemas/extensions.json`: the POMs, `**/src/main/java/**/logging/**`, its mirror
+`**/src/test/java/**/logging/**` for the three unit tests, and the
 `META-INF/spring/*.imports` file. The glob matches the leaf segment on purpose — the package
 is `commons.logging` under most blueprints and `shared.logging` under modular-monolith, and no
 blueprint guarantees either name. `ArchHook.java guard` reads this agent's `agent_type` on
@@ -51,12 +52,13 @@ re-derive it, only fails loudly if it isn't there.
 **Reads:** root POM, module POMs (multi-module only), the active blueprint's
 `packages.map` (for the real `commons.logging` package — modular-monolith
 names it `shared.logging` instead, see its own blueprint comment), `.claude/rules/logging.md`,
-`.claude/skills/new-feature/templates/commons/*.example` (the thirteen exemplars: twelve
-`.java.example` plus `AutoConfiguration.imports.example`).
+`.claude/skills/new-feature/templates/commons/*.example` (the sixteen exemplars: twelve
+production `.java.example`, three `*Test.java.example`, plus `AutoConfiguration.imports.example`).
 
 **Writes:** one `.java` file per exemplar in `templates/commons/`, translated into the
 real `commons.logging` package, under the module/package `project-bootstrap` already
-created; `src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+created; the three `*Test` exemplars under the same package in `src/test/java` — installed
+code arrives tested, so no later run improvises its tests (lessons-learned-017 § 7); `src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 (new file, or a merge if `test-architect`/another feature already wrote one — append,
 never overwrite existing lines) in the module with `contains_main: true`; the
 `spring-boot-starter-aspectj` (`spring-boot-starter-aop` pre-Boot-4 — see
@@ -65,7 +67,8 @@ scope Lombok already uses) dependency declarations — no `<version>`, `spring-b
 manages both, same rule `project-bootstrap` step 4.8 applies to Lombok — in whichever
 module's POM `commons` corresponds to (multi-module) or the root POM (single-module).
 
-**Does not write:** `docker-compose.yml`, anything outside `commons`'s own package,
+**Does not write:** `docker-compose.yml`, anything outside `commons`'s own package (main or
+test),
 `application.yml` (the `app.logging.*` properties ship with sensible defaults in the
 exemplars themselves — `matchIfMissing = true` — nothing to configure to get a working
 install).
@@ -111,6 +114,13 @@ or fix the blueprint by hand.
    "compilable as-is" comment block, keep the paragraph explaining *why* the file is
    shaped the way it is.
 
+3b. **Translate and write the three tests**, same prefix substitution, into the test tree
+   of the same module, each under the package of the class it tests:
+   `LoggingCommonsMethodsTest` at `commons.logging`, `LogExecutionAspectTest` and
+   `HttpMethodLogExecutionAspectTest` at `commons.logging.aspect`. Same andaime rule: strip
+   the `EXEMPLAR` block, keep the comments inside the class — the empty fixture methods say
+   why they are empty on purpose.
+
 4. **Write `AutoConfiguration.imports`** from `AutoConfiguration.imports.example`, same
    package rewrite, at
    `<main-module>/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
@@ -139,9 +149,10 @@ or fix the blueprint by hand.
    compiles `@Aspect`/`@ConfigurationProperties` code, nothing upstream needs them
    declared again. Single-module: the root POM, same place Lombok already sits.
 
-6. Run the compile command step 1 determined. Red here is a translation bug (wrong
-   package, a stale FQCN in a pointcut string), not a project bug — fix and rerun before
-   reporting.
+6. Run the compile command step 1 determined, then the three tests:
+   `./mvnw -q [-pl <commons-module>] test -Dtest='LoggingCommonsMethodsTest,LogExecutionAspectTest,HttpMethodLogExecutionAspectTest' -Dsurefire.failIfNoSpecifiedTests=false`.
+   Red here is a translation bug (wrong package, a stale FQCN in a pointcut string), not a
+   project bug — fix and rerun before reporting.
 
 Don't turn a real compile failure into a silent skip. If step 1 finds no `commons` shell
 at all, that's the only case that ends the run early — everything else either succeeds
@@ -173,6 +184,7 @@ No rollback. The caller decides whether to retry after a fix.
 ```
 ✅ commons-logging-installer complete
 - Package: com.example.demoapp.commons.logging (12 classes translated across its annotations/aspect/enums/interfaces/properties sub-packages)
+- Tests: 3 classes in src/test/java under the same package — green
 - AutoConfiguration.imports: 3 aspects registered
 - Dependencies: spring-boot-starter-aspectj (or -aop, pre-Boot-4), spring-boot-configuration-processor (no <version> — parent-managed)
 - <module> test-compile: green

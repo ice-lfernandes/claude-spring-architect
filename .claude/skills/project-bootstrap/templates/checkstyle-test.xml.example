@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  EXEMPLAR — goes to <project>/config/checkstyle/checkstyle-test.xml (step 4.6).
+
+  The Checkstyle rule set for src/test. Deliberately light: the size, parameter and
+  magic-number limits of checkstyle.xml fit production code, not a test that builds a
+  fixture or asserts a literal. Only what holds in every Java file goes here.
+
+  Imports and formatting are not here either: `spotless:check` covers src/test at `verify`.
+
+  Maven runs this file in a second checkstyle execution bound to `verify`, never
+  `validate` — the edit-time compile check would pay a second plugin run on every Java
+  edit. Gradle points `checkstyleTest` at it.
+-->
+<module name="Checker">
+  <property name="severity" value="error"/>
+  <property name="charset" value="UTF-8"/>
+
+  <module name="TreeWalker">
+    <!-- naming.md § Restricted identifiers. Same value as in checkstyle.xml: Checkstyle
+         14's default `format` rejects `var` only. -->
+    <module name="IllegalIdentifierName">
+      <property name="format" value="^(?!(record|yield|var|permits|sealed|when)$|\S*\$)\S+$"/>
+    </module>
+  </module>
+</module>

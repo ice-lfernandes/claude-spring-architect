@@ -47,6 +47,11 @@
  *   - `IllegalCatch` on `proceedUnchecked` — catches `Throwable` for exactly as long as
  *     it takes to cross the `Supplier<R>` boundary, then rethrows the original.
  *
+ * ONE SONAR EXEMPTION, same reason as `IllegalThrows`: `java:S112` on `aroundIdempotent`'s
+ * `throws Throwable`, suppressed for this file only by `sonar.issue.ignore.multicriteria` in
+ * `@.claude/skills/sonarqube-setup/templates/pom-sonar.xml.example`. Don't "fix" it by
+ * wrapping: the aspect must rethrow exactly what the endpoint threw.
+ *
  * Dependency: `spring-boot-starter-aspectj` — Boot-version rename, owner:
  * `.claude/skills/project-bootstrap/references/dependency-catalog.md` § Warning —
  * Spring Boot 4 renamed starters.

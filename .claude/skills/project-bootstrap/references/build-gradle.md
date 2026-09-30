@@ -82,6 +82,9 @@ generation.
    `templates/checkstyle.xml.example` — same file, same path, same content as the Maven
    case. It's what `checkstyle { configFile = rootProject.file('config/checkstyle/checkstyle.xml') }`
    points to in `templates/build.gradle.parent.example`.
+3. Write `<project>/config/checkstyle/checkstyle-test.xml` with the shape of
+   `templates/checkstyle-test.xml.example` — same file as the Maven case. It's what
+   `checkstyleTest`'s `configFile` points to in `templates/build.gradle.parent.example`.
 
 ## 8 · Verify — gradle
 
@@ -91,6 +94,8 @@ exists and works before anything else:
 
 ```bash
 ./gradlew -v                              # failure here = starter.tgz didn't extract the wrapper
+./gradlew -q --no-daemon spotlessApply    # before any build: Initializr's files are tab-indented,
+                                          # and `check` runs `spotlessCheck`
 ./gradlew -q --no-daemon compileTestJava  # boundaries + Checkstyle (part of `check`, see below)
 ./gradlew -q --no-daemon test             # Initializr smoke test — only the `*Test`s
 ./gradlew -q --no-daemon checkstyleMain checkstyleTest  # Checkstyle only, to isolate violations

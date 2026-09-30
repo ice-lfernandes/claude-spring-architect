@@ -75,6 +75,13 @@ subprojects {
     // lifecycle already gives this the same "runs before the rest, one violation stops
     // the build" behavior the Maven exemplar wires by hand onto the `validate` phase.
 
+    // src/test gets its own light rule set, the same file the Maven exemplar's
+    // `checkstyle-test` execution reads: the size and magic-number limits above fit
+    // production code, not a test. Without this, `checkstyleTest` applies the full config.
+    tasks.named('checkstyleTest') {
+        configFile = rootProject.file('config/checkstyle/checkstyle-test.xml')
+    }
+
     spotless {
         java {
             // DO NOT use googleJavaFormat: it requires add-exports to jdk.compiler on
@@ -83,6 +90,8 @@ subprojects {
             removeUnusedImports()
         }
     }
+    // No wiring needed: the plugin already makes `check` depend on `spotlessCheck`, so
+    // `./gradlew build` fails on an unformatted file or an unused import, src/test included.
 
     // Coverage: instrumentation and report, no gate. Same reasoning as the Maven
     // exemplar's missing `check` execution — the limits in rules/testing.md (80%

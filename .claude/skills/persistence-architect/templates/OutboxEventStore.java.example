@@ -67,13 +67,11 @@
 // --- outbox/OutboxEventEntity.java
 package com.example.demo.adapter.out.persistence.outbox;
 
+import com.example.demo.adapter.out.persistence.shared.AssignedIdEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.PostLoad;
-import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -82,7 +80,6 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import org.springframework.data.domain.Persistable;
 
 /*
  * Package-private, like every class in this subpackage. The one exception the write side
@@ -98,15 +95,13 @@ import org.springframework.data.domain.Persistable;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)   // required by Hibernate, closed to everyone else
 @FieldDefaults(level = AccessLevel.PRIVATE)
-class OutboxEventEntity implements Persistable<UUID> {
+class OutboxEventEntity extends AssignedIdEntity<UUID> {
 
     // Assigned id, never `@GeneratedValue`: `event_id` is the event's own identity and the
-    // consumer's dedupe key. Without `isNew`, Spring Data calls `merge()` on the insert —
-    // a SELECT before every append, on the request path
+    // consumer's dedupe key. Without the `isNew` flag `AssignedIdEntity` carries — shared
+    // with every assigned-id entity, `JpaEntity.java.example`'s last block — Spring Data
+    // calls `merge()` on the insert: a SELECT before every append, on the request path
     // (`.claude/rules/persistence.md` § Identity and keys).
-    @Transient
-    boolean isNew = true;
-
     @Id
     @Column(name = "event_id", nullable = false, updatable = false)
     UUID eventId;
@@ -162,17 +157,6 @@ class OutboxEventEntity implements Persistable<UUID> {
     @Override
     public UUID getId() {
         return eventId;
-    }
-
-    @Override
-    public boolean isNew() {
-        return isNew;
-    }
-
-    @PostLoad
-    @PostPersist
-    void markNotNew() {
-        isNew = false;
     }
 }
 

@@ -60,7 +60,8 @@ the table below:
 | `maven` | `pom.parent.xml.example` and `pom.module.xml.example` |
 | `gradle` | `settings.gradle.example`, `build.gradle.parent.example`, and `build.gradle.module.example` |
 
-The rest are shared regardless of `build.tool`: `checkstyle.xml.example` (4.6),
+The rest are shared regardless of `build.tool`: `checkstyle.xml.example` and
+`checkstyle-test.xml.example` (4.6),
 `lombok.config.example` (4.8), `Application.java.example`
 and `application.yml.example` (step 3), `features/actuator/application-actuator.yml.example`
 and `features/observability/application-observability.yml.example` and
@@ -225,8 +226,9 @@ for why, so step 4.7 does not reintroduce it.
 
 ### 4.6 · Generate the Checkstyle config → `references/build-<tool>.md` § 4.6, then `references/scaffold.md` § 4.6
 
-`config/checkstyle/checkstyle.xml` plus the tool's plugin, bound to `validate`. Done when
-the build file carries the plugin and the config exists.
+`config/checkstyle/checkstyle.xml` plus the tool's plugin, bound to `validate`, and
+`config/checkstyle/checkstyle-test.xml`, the light rule set for `src/test`. Done when the
+build file carries the plugin and both configs exist.
 
 ### 4.7 · Materialize the packages and feature configuration → `references/scaffold.md` § 4.7
 
@@ -310,7 +312,8 @@ Versions (resolved by the Initializr): Java <x> · Spring Boot <y> · <build too
 Active features: <list>
 Business code: none — by design. <n> package-info.java written
 Boundaries: <n> rules in .claude/forbidden-imports.txt — blocking verified ✓
-Checkstyle: config/checkstyle/checkstyle.xml — plugin <v> · tool <v>, validate phase
+Checkstyle: config/checkstyle/checkstyle.xml — plugin <v> · tool <v>, validate phase · checkstyle-test.xml over src/test
+Spotless: check bound to the build (verify / check) — formatting and unused imports, main and test
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
@@ -431,7 +434,7 @@ other skill touches these files:
   `ArchHook.java audit`'s alone
 - `.mcp.json` and `MCP-SETUP.md` — **only if** `templates/mcp.json.example` exists, step
   6.6 as an optional copy. Absent in most bootstraps, on purpose
-- `config/checkstyle/checkstyle.xml`
+- `config/checkstyle/checkstyle.xml` and `config/checkstyle/checkstyle-test.xml`
 - `lombok.config`
 - `src/main/resources/application*.yml`
 - `src/main/java/**/package-info.java` — one per role in `packages.map`, step 4.7. **No

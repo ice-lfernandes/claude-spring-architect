@@ -85,8 +85,10 @@ class UserRepositoryJpaAdapterIT {
     @DisplayName("the UNIQUE constraint rejects the second identical email")
     void rejectsDuplicateEmail() {
         adapter.save(TestFixtures.userWithEmail("ana@exemplo.com"));
+        // One call inside the lambda — the one under test (Sonar java:S5778).
+        User duplicate = TestFixtures.userWithEmail("ana@exemplo.com");
 
-        assertThatThrownBy(() -> adapter.save(TestFixtures.userWithEmail("ana@exemplo.com")))
+        assertThatThrownBy(() -> adapter.save(duplicate))
                 .isInstanceOf(ConflictException.class)
                 .extracting("errorCode")
                 .isEqualTo("USER_EMAIL_ALREADY_EXISTS");
