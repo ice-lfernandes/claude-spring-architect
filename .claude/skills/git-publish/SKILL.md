@@ -131,7 +131,9 @@ On "Yes":
    it: the trail of the run belongs to the commit of the run that produced it. Only
    `.state/` is ignored, and `.gitignore` already handles that. Staging it in one run and
    leaving it out of the next is what makes every later diff start dirty
-   (lessons-learned-012 § 15).
+   (lessons-learned-012 § 15). This skill leaves no report of its own — its class, `ops`,
+   declares `audited: false` in `skill_classes` of `.claude/schemas/extensions.json` — because
+   that report could only be written after this commit, and every publish would end dirty.
 4. `git commit -m "<message>"` — build the message from the input context following
    Conventional Commits: `chore: initial project scaffold — <blueprint/build/features>`
    for a project-initializer call, `feat(UC-NNN-slug): <summary>` for a `/new-feature`

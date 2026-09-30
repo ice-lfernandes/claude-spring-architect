@@ -22,8 +22,10 @@ Everything below reads. This skill never writes into `.claude/audit-usage/` and 
 edits project code — the trail is written by `ArchHook.java audit`, at `Stop`, and by
 nothing else.
 
-Answer in the language of the reports themselves (Portuguese), so the consolidated view
-and the per-run report read as one document.
+Answer in English, the language of the reports themselves, so the consolidated view and
+the per-run report read as one document. Reports and ledger rows written by an older
+hook are in Portuguese (`✅ sucesso`, `USD 1,23`); quote them as they are, never translate
+a number or a status out of them.
 
 ## When the block came back empty
 
@@ -40,8 +42,8 @@ printf '.claude/audit-usage/.state/\n' >> .gitignore
 Then stop. Do not create the directory yourself: switching a versioned audit trail on is
 the user's decision, not a side effect of asking what it holds.
 
-If the block says `execuções fechadas: 0`, no run has **finished** yet. Any report listed
-under `⏳ Sem linha no ledger` is from a run in progress — report it as such and say the
+If the block says `closed runs: 0`, no run has **finished** yet. Any report listed
+under `⏳ No ledger line` is from a run in progress — report it as such and say the
 ledger line is written only when the run closes.
 
 ## What the block already did
@@ -57,22 +59,27 @@ re-derive one.** Your job is rendering and judgment, not arithmetic.
 
 What the block's vocabulary means:
 
-- **Peça** — a skill (`📘`) or an agent (`🤖`) of this project. Plugin skills and runtime
+- **Piece** — a skill (`📘`) or an agent (`🤖`) of this project. Plugin skills and runtime
   agents are not recorded.
-- **Origem** — `usuário` typed `/<skill>`; `modelo` invoked the piece on its own, with no
+- **Origin** — `user` typed `/<skill>`; `model` invoked the piece on its own, with no
   run open.
-- **Modelo** — the model the run billed on, or a comma-separated list when a subagent ran
+- **Model** — the model the run billed on, or a comma-separated list when a subagent ran
   on another one. `—` means the run was recorded before the column existed, not that the
   model is unknown. It is the first thing to read before comparing two runs of the same
   pipeline: the same skills over the same use case cost tenfold more on a larger model,
   and that difference is not a regression of the pipeline.
-- **raiz · aninhada · pré-carregada** — the piece opened its own run; it was chained
+- **root · nested · preloaded** — the piece opened its own run; it was chained
   inside another run; or it was loaded through an agent's `skills:` frontmatter (no
   tokens of its own — they are its agent's).
-- **tokens próprios** — a piece's own spend. A run's total minus its chained pieces is
+- **own tokens** — a piece's own spend. A run's total minus its chained pieces is
   the root's own; that is why the per-piece bars add up to the totals instead of
   exceeding them.
 - **`*` after a cost** — partial sum: some invocations had no price configured.
+- **Calls** — tool calls counted from the transcripts' `tool_use` blocks, attributed to
+  pieces like the tokens. `—` means the run was recorded before the column existed.
+- **Peak** — the largest single request a piece sent (input + cache read + cache write):
+  how much context one turn carried. An absolute number: never turn it into a percentage
+  of a context window you would have to state from memory.
 
 ## Procedure
 
@@ -81,7 +88,7 @@ What the block's vocabulary means:
 | Argument | Do this |
 |---|---|
 | empty | § 2 — consolidated view |
-| `last` / `último` | § 3 for the `mais recente` report the block names |
+| `last` / `último` | § 3 for the `most recent` report the block names |
 | a skill or agent name (`new-feature`, `java-spring-boot-developer`, …) | § 2 reduced to that piece's line, then § 3 for its newest report: `ls -1t .claude/audit-usage/*--<name>.md` when it ran as a root; otherwise the newest `run` of its line in `grep '"skill":"<name>"' .claude/audit-usage/nodes.jsonl` — a chained piece's report is its parent's |
 | any other text | treat it as a fragment of a report filename (`ls -1t .claude/audit-usage`); § 3 for the single match. Two or more matches: list them and ask which |
 
@@ -92,23 +99,28 @@ bars are proportional to billable tokens, not to duration, which is wall-clock a
 includes time the user spent thinking. Then add what the block can't:
 
 1. **One line of reading** above the tables — where the money went, in words.
-2. **Health** — name the piece with the worst failure ratio. A piece that fails
+2. **Where it went** — from the `Where the pieces spent` block, the piece whose calls
+   are dominated by one tool, or whose peak stands out from the rest. Name the tool and
+   the number; that is what points at the step to trim.
+3. **Health** — name the piece with the worst failure ratio. A piece that fails
    repeatedly is a bad spec, not bad luck.
-3. **What to read next** — the single most relevant report, and the exact
+4. **What to read next** — the single most relevant report, and the exact
    `/audit-usage <fragment>` that opens it.
 
-If the block says `custo: não configurado`, say so and point at
+If the block says `cost: not configured`, say so and point at
 `.claude/audit-usage/pricing.json` — never fill the gap with a price.
 
 ### 3 · Single run
 
 `Read` the `.md` file. It is already a finished, icon-rich report — **do not re-render
 it and do not paste it back in full.** Summarize in at most six lines: what was run, the
-outcome, what it cost, the longest step, and anything that deserves attention
-(`⏳ em andamento`, compaction incidents, permissions added, repeated tool failures).
+outcome, what it cost, the longest step, where it spent (from `🔎 Where the run spent`:
+the dominant tool, the costliest turn, the peak context), and anything that deserves
+attention (`⏳ in progress`, compaction incidents, permissions added, repeated tool
+failures — quote the error's first line the report already redacted, never more).
 Then give the path so the user can open the whole thing.
 
-Point out `⏳ em andamento` when you see it: it means the run never closed — the session
+Point out `⏳ in progress` when you see it: it means the run never closed — the session
 was killed, or it is still open right now.
 
 ## What this skill will not do
@@ -116,7 +128,7 @@ was killed, or it is still open right now.
 - **Never edits or deletes anything under `.claude/audit-usage/`.** Pruning old reports
   is the user's call; if they ask, show the command and let them run it.
 - **Never recomputes a cost from memory.** The numbers come from `audit summary`, which
-  prices from `pricing.json`. If prices are `null`, the honest answer is "custo não configurado" plus
+  prices from `pricing.json`. If prices are `null`, the honest answer is "cost not configured" plus
   the path to fill in — never an invented rate. A price written from memory is wrong the
   day after it changes, and it looks exactly as authoritative as a correct one.
 - **Never reads `.state/`.** Those are the hook's open append-only logs; the rendered
@@ -132,13 +144,13 @@ sums across runs. Nothing turns that into "which piece is eating the budget, and
 report should I open" — judgment over data, routed by an argument, which is a procedure,
 not a norm and not enforcement.
 
-`audit-usage` is one of the skills the trail does **not** record — the observers, listed
-in `.claude/schemas/extensions.json` under `audit.exclude_skills` alongside
-`arch-doctor`. Without that, reading the trail would append a report about reading the
+`audit-usage` is one of the skills the trail does **not** record — the observers: its
+class, `observer` in `skill_classes` of `.claude/schemas/extensions.json`, declares
+`audited: false`, and `arch-doctor` sits in the same class. Without that, reading the trail would append a report about reading the
 trail, and every later read would be mostly reads.
 
 Invoking it still **closes** whatever run is open, and that is the useful half: within a
-single session a report stays stamped `⏳ em andamento` until something ends the run, so
+single session a report stays stamped `⏳ in progress` until something ends the run, so
 asking for the report is what finalizes it.
 
 Runs on `sonnet` with `effort: low`: `audit summary` already did the sums, and what is

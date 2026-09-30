@@ -56,6 +56,6 @@ reports, and the fix is the user's call. `ArchHook.java guard` enforces it.
 `.claude/`, both injected above. Nothing else: an injection that lied about the setup would
 be worse than no report.
 
-**Writes** nothing, ever. Leaves no audit report either — it is listed in
-`audit.exclude_skills` of `@.claude/schemas/extensions.json`, because an observer that
-records its own observation makes the trail mostly about reading it.
+**Writes** nothing, ever. Leaves no audit report either — its class, `observer` in
+`skill_classes` of `@.claude/schemas/extensions.json`, declares `audited: false`, because an
+observer that records its own observation makes the trail mostly about reading it.
