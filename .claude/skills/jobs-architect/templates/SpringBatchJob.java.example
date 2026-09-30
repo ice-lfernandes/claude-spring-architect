@@ -149,8 +149,9 @@ class ImportPriceListTrigger {
 
 /*
  * PACKAGE NAMES ABOVE follow Spring Batch 6's reorganization (`…core.job.Job`,
- * `…core.step.Step`, `…infrastructure.item.*`). They moved between majors: resolve the imports
- * against the version the project's parent brings, never from this file.
+ * `…core.step.Step`, `…infrastructure.item.*`); `validate.yml` resolves every import against the
+ * classpath the Initializr gives today. They moved between majors: a project on an older parent
+ * resolves them against its own version, never from this file.
  *
  * application.yml:
  *
