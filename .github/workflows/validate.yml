@@ -253,10 +253,11 @@ jobs:
           exit $FAIL
 
       # A skill that files issues here fetches its issue form from this repository's HEAD
-      # at run time (sonar-lessons, decision 0100) — from inside projects exported long ago,
-      # which carry their own copy of the skill and not of the form. Renaming or deleting the
-      # form breaks every one of them at once, and nothing in this repository shows it: the
-      # skill updated alongside the rename works, the copies already out there 404.
+      # at run time (report-issue, decision 0103; sonar-lessons before it, 0100) — from inside
+      # projects exported long ago, which carry their own copy of the skill and not of the
+      # form. Renaming or deleting the form breaks every one of them at once, and nothing in
+      # this repository shows it: the skill updated alongside the rename works, the copies
+      # already out there 404.
       - name: issue forms cited by skills exist
         run: |
           FAIL=0

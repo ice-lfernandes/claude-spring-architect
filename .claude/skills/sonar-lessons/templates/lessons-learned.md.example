@@ -4,7 +4,8 @@ Every {{…}} is filled from steps 2-4; this comment is cut from the real file. 
 from the hand-written Sonar lessons-learned this skill replaces: a snapshot, the issues by
 origin, one section per finding group, the structural lesson, and the change list for the
 meta-repository. This file is the complete record — project paths, lines and excerpts
-belong here. What leaves the project is the issue body, written separately at step 6.
+belong here. What leaves the project is the issue body, written by /report-issue from this
+file, never by sonar-lessons.
 -->
 
 # Sonar lessons {{NNN}} — {{one line: what this analysis was, e.g. "after UC-001..UC-003"}}
@@ -116,5 +117,6 @@ answer is "nothing is missing".}}
 
 ## Issue
 
-{{Written by step 6, on every path out of it: the issue URL | declined | left for a manual
-edit — `gh issue create …` | not created — <reason>.}}
+{{Step 6 writes `not filed yet — /report-issue docs/lessons-learned/sonar-NNN.md`; /report-issue
+overwrites it with the outcome: the issue URL | declined | left for a manual edit —
+`gh issue create …` | not created — <reason>.}}

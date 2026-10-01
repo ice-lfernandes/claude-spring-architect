@@ -266,9 +266,12 @@ claude-spring-architect/
     │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
     │   ├── sonarqube-setup/       #   scanner + server URL, CI step for an external server, local container otherwise — copied
     │   ├── sonar-lessons/         #   /sonar-lessons — Sonar findings traced to .claude/, issue filed here — copied
+    │   ├── report-issue/          #   /report-issue — the one door from a project to this repo's issues — copied
+    │   ├── triage-issue/          #   /triage-issue <N> — every claim checked at HEAD by issue-verifier — stays in this repo
     │   └── audit-usage/           #   /audit-usage — reads the execution trail — copied
     ├── agents/                    # isolated context
     │   ├── project-initializer.md         #   drives /init-project — stays in this repo
+    │   ├── issue-verifier.md              #   /triage-issue's read-only checker, opus — stays in this repo
     │   ├── java-spring-boot-developer.md  #   /new-feature's executor — copied
     │   ├── archunit-installer.md          #   test-architect's setup mode — copied
     │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
@@ -303,14 +306,14 @@ repository: `/init-project` copies over the norms (`rules/*.md`), the developmen
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
 `rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
 `test-architect`, `new-feature`, `gof-design-patterns`, `docker-architect`, `git-publish`,
-`sonarqube-setup`, `sonar-lessons`, `audit-usage`), the
+`sonarqube-setup`, `sonar-lessons`, `report-issue`, `audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
 `commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
 travels is **data**, the `export` block of `schemas/extensions.json`, checked against disk
 by `ArchHook.java schema`. Only `project-bootstrap`, `init-project`,
-`claude-code-architect-designer`, `project-initializer`, and the blueprint **catalog** are
-left out — they serve before the project exists; the **active** blueprint does travel,
-because the next update has to resolve the id the provenance stamp records. `arch-adopt` is
+`claude-code-architect-designer`, `triage-issue`, `project-initializer`, `issue-verifier`, and
+the blueprint **catalog** are left out — they serve before the project exists, or only here; the
+**active** blueprint does travel, because the next update has to resolve the id the provenance stamp records. `arch-adopt` is
 the one creation skill that travels: it is how the project pulls a newer `.claude/`
 afterwards. The project also
 gets its own `README.md`, `README.pt-br.md`, and `.claude/audit-usage/GENESIS.md`

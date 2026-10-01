@@ -195,6 +195,13 @@ caught `--force`. A skill whose `allowed-tools` names bare `Bash` fails `schema`
 builds, network and docker); the rest list prefixes, and an injection command missing from
 that list aborts the skill. Design: `.claude/decisions/0076-bash-scope-and-force-push-guard.md`.
 
+**Commenting on, editing or closing an issue, and `gh api`, always prompt in this repo.** All
+four sit in `permissions.ask` of `.claude/settings.json` — the prompt shows up even after
+`/triage-issue`'s own yes, and it is the same prompt you see if an issue body talks
+`issue-verifier` into trying to publish something. Not a broken tool: the text of a public
+issue is third-party text. This repo only; a generated project has none of these lines.
+Design: `.claude/decisions/0103-issue-filing-and-skeptical-triage.md`.
+
 ### Classes and models
 
 **Every skill declares `model`, from its class's set.** `schema` fails a `SKILL.md` without

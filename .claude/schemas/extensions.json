@@ -220,20 +220,20 @@
         "skills": ["claude-code-architect-designer"]
       },
       "ops": {
-        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive. `audited: false`: a run of its own would render its report at the `Stop` AFTER the commit it made, so every publish left the tree dirty with a report about publishing (lessons-learned-012 § 15). Typed as `/git-publish` it now closes the run in progress first — that run's report and ledger lines land on disk before the commit, and go into it. Chained inside another run it stays part of that run, with its own tokens, like any nested piece. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+        "$comment": "Effect outside the working tree. Writes no file, so an empty write_allow is exact rather than restrictive. `audited: false`: a run of its own would render its report at the `Stop` AFTER the commit it made, so every publish left the tree dirty with a report about publishing (lessons-learned-012 § 15). Typed as `/git-publish` it now closes the run in progress first — that run's report and ledger lines land on disk before the commit, and go into it. Chained inside another run it stays part of that run, with its own tokens, like any nested piece. Design: .claude/decisions/0086-audit-exclusion-owned-by-the-class.md. `triage-issue` has the same shape — its effect is a comment on an issue, outside the tree, and it writes no file; the judgment that would otherwise argue for `opus` lives in the `issue-verifier` agent it delegates to. Design: .claude/decisions/0103-issue-filing-and-skeptical-triage.md",
         "audited": false,
         "allowed_models": ["sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure", "## Failure modes"],
-        "skills": ["git-publish"]
+        "skills": ["git-publish", "triage-issue"]
       },
       "report": {
-        "$comment": "Runs an analyzer over the project, writes one findings file under docs/lessons-learned/, and — behind a confirmation — publishes a sanitized copy outside the working tree. Not `build`, whose reason to exist is materializing files outside docs/, and not `ops`, which writes no file and allows sonnet only while this class's tracing step is judgment. `## Failure modes` is required because every run depends on two external systems — the analyzer's server and the forge the issue goes to — and each one fails in a way the reader must be told how to leave. Blocked during design: a run is a full build. The territory is the class default on purpose, so a second report skill joins by name, with no override. Design: .claude/decisions/0100-sonar-lessons-skill.md",
+        "$comment": "Runs an analyzer over the project, writes one findings file under docs/lessons-learned/, and — behind a confirmation — publishes a sanitized copy outside the working tree. Not `build`, whose reason to exist is materializing files outside docs/, and not `ops`, which writes no file and allows sonnet only while this class's tracing step is judgment. `## Failure modes` is required because every run depends on two external systems — the analyzer's server and the forge the issue goes to — and each one fails in a way the reader must be told how to leave. Blocked during design: a run is a full build. The territory is the class default on purpose, so a second report skill joins by name, with no override. Design: .claude/decisions/0100-sonar-lessons-skill.md. `report-issue` is that second skill: the one door from a generated project to the meta-repository, so sonar-lessons now writes its findings file and prints the command instead of publishing — one owner of the privacy rule and the duplicate search. Design: .claude/decisions/0103-issue-filing-and-skeptical-triage.md",
         "blocked_during_design": true,
         "allowed_models": ["opus"],
         "write_allow": ["docs/lessons-learned/**"],
         "required_sections": ["## Procedure", "## Failure modes"],
-        "skills": ["sonar-lessons"]
+        "skills": ["sonar-lessons", "report-issue"]
       }
     }
   },
@@ -298,6 +298,15 @@
             ]
           }
         }
+      },
+      "verifier": {
+        "$comment": "Reads text nobody here wrote — a public issue — and checks it against the repository. The class exists for invariant 5's second reason, restricting tools: an empty `write_allow` makes `guard` refuse every in-repo write by `agent_type`, through `Bash` too, so an instruction hidden in the text cannot reach a hook or a norm. `executor: false` is the first agent class that never writes; its scratch work for a generated-project reproduction lands outside the repository, which the guard does not judge. `## Verdict format` is required because the caller relays the return verbatim and asks the user to publish it — its shape is the contract. Meta-repository only: export.agents.exclude. Design: .claude/decisions/0103-issue-filing-and-skeptical-triage.md",
+        "executor": false,
+        "pattern_catalog": false,
+        "required_fields": ["effort"],
+        "write_allow": [],
+        "required_sections": ["## Verdict format", "## Failure mode", "## References"],
+        "agents": ["issue-verifier"]
       }
     }
   },
@@ -471,20 +480,21 @@
         "messaging-architect",
         "new-feature",
         "persistence-architect",
+        "report-issue",
         "rest-api-architect",
         "sonar-lessons",
         "sonarqube-setup",
         "test-architect",
         "use-case-design"
       ],
-      "exclude": ["claude-code-architect-designer", "init-project", "project-bootstrap"]
+      "exclude": ["claude-code-architect-designer", "init-project", "project-bootstrap", "triage-issue"]
     },
 
     "agents": {
       "from": ".claude/agents",
       "to": ".claude/agents",
       "include": ["archunit-installer", "commons-logging-installer", "java-spring-boot-developer"],
-      "exclude": ["project-initializer"]
+      "exclude": ["issue-verifier", "project-initializer"]
     },
 
     "derived_paths": {

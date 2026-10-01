@@ -5,11 +5,11 @@ description: >
   vulnerabilities, code smells, duplication and coverage through the SonarQube Web API,
   traces every group of findings to the norm, template or Checkstyle setting in `.claude/`
   that produced it, and writes `docs/lessons-learned/sonar-NNN.md` focused on fixing the
-  cause so the next analysis has fewer issues or none. After an explicit confirmation it
-  opens a sanitized issue on the claude-spring-architect repository, where the fix belongs.
+  cause so the next analysis has fewer issues or none. Ends with the `/report-issue` command
+  that files it on the claude-spring-architect repository, where the fix belongs.
   Explicit invocation only.
 disable-model-invocation: true
-allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(./mvnw:*), Bash(./gradlew:*), Bash(curl:*), Bash(java:*), Bash(gh auth status:*), Bash(gh issue list:*), Bash(gh issue create:*)
+allowed-tools: Read, Write, Glob, Grep, Bash(./mvnw:*), Bash(./gradlew:*), Bash(curl:*), Bash(java:*)
 model: opus
 effort: high
 ---
@@ -20,7 +20,7 @@ Turns one SonarQube analysis into a lesson the **meta-repository** can act on. A
 issue in a generated project is almost never a one-off: the code came from a template, a
 norm allowed it, or nothing in `.claude/` said anything and the model decided alone. Fixing
 it here fixes one project; fixing the owner fixes every project generated afterwards. This
-skill finds the owner, writes it down, and — only when told to — hands it to the
+skill finds the owner and writes it down; `/report-issue`, typed by the user, hands it to the
 repository that owns it.
 
 **Entry rule: this skill runs the analysis, it never sets it up.** No scanner in the root
@@ -28,17 +28,17 @@ build file, no server answering, no token — stop and say which one, and what f
 writes nothing outside `docs/lessons-learned/`: not the build file, not the compose file,
 not the token.
 
-**Privacy rule: the issue carries the trace, never the project.** The claude-spring-architect
-repository is public and this project may not be. The local lessons-learned file is complete;
-the issue body carries Sonar rule keys, counts, and paths **inside `.claude/`** only — never a
-path under `src/`, a package, a class name of this project, a code excerpt, the project key,
-or the server URL. The issue form's field descriptions state the same rule per field.
+**The local file is complete; the issue is not this skill's.** Project paths, lines and
+excerpts all belong in `sonar-NNN.md`. What may leave the project — and the privacy rule that
+decides it — is owned by `/report-issue`
+(`@.claude/decisions/0103-issue-filing-and-skeptical-triage.md`).
 
 ## Why this is a skill (Form 2) and not an agent
 
-Form 2 because it has two side effects the model must not trigger on its own — a full
-`verify` plus analysis, and a public issue — which is axis 2 of the design interview: the
-user types `/sonar-lessons`, nothing chains it. The symptom behind it (axis 1) was the same
+Form 2 because a full `verify` plus analysis is a side effect the model must not trigger on
+its own — axis 2 of the design interview: the user types `/sonar-lessons`, nothing chains
+it. Publishing the issue was the second such effect until `0103` moved it to `/report-issue`,
+the one door from a generated project to the meta-repository. The symptom behind it (axis 1) was the same
 long prompt pasted into every feature round to produce a Sonar lessons-learned by hand. The
 closest rejected form was the same skill plus a `sonnet` collector agent holding the build
 log and raw JSON; it failed the counter-test of invariant 5, since `facets` and small pages
@@ -143,40 +143,14 @@ proposed and has not reached this project (not merged upstream, or not pulled wi
 
 Report the path and the snapshot line, then go on to step 6.
 
-### 6 · Offer the issue — one `AskUserQuestion`, nothing sent before it
+### 6 · Hand it to `/report-issue` — print the command, invoke nothing
 
-1. **Target** — the slug from `source.git_url` in `.claude/schemas/extensions.json`
-   (`https://github.com/<owner>/<repo>.git` → `<owner>/<repo>`). The stamp
-   `.claude/.arch-provenance.json` gives `ref`, `commit` and `blueprint`: the version of
-   the meta-repository this project came from, which the issue must name.
-2. **Form** — fetch the issue form the repository owns:
-   `curl -sS https://raw.githubusercontent.com/<owner>/<repo>/HEAD/.github/ISSUE_TEMPLATE/sonar-lessons.yml`.
-   It is the single owner of the issue's title prefix (`title:`), labels (`labels:`),
-   sections and what each may carry — read all four from it, never from this file: a label
-   renamed there must not leave this skill filing under the old name. No answer → stop
-   step 6: the file of step 5 is the deliverable, and no issue is written from memory of a
-   form.
-3. **Body** — write `docs/lessons-learned/sonar-NNN.issue.md` with one `### <label>` heading
-   per form field, in the form's order, filled from the lessons-learned under that field's
-   description — the same shape the web form produces. A `markdown` element has no label
-   and is skipped; a `checkboxes` field is rendered as `- [X] <option>`, and only once the
-   statement is true. Apply the privacy rule to every line; re-read the file for `src/`,
-   the project's base package, and the project key before showing it.
-4. **Duplicates** — `gh auth status`, then
-   `gh issue list -R <slug> --state open --label <form label> --search "<rule key>"` for
-   the three rules with the most issues. Hits are listed in the question.
-5. **Ask** — show the body file's path and its sections, the duplicates found, and three
-   options: *create the issue*; *I'll edit the body first* — stop, and the report carries
-   the `gh issue create` command to run after the edit; *don't publish*.
-6. **Create**, on the first option only:
-   `gh issue create -R <slug> --title "<form title prefix><summary>" --label <form label> --body-file docs/lessons-learned/sonar-NNN.issue.md`.
-   A failure naming the label (no triage permission on that repository) → the same command
-   once without `--label`. Report the issue URL.
-7. **Record the outcome** in the `## Issue` line at the end of `sonar-NNN.md`: the URL,
-   *declined*, *left for a manual edit* (with the command), or *not created — <reason>*.
-   Every path out of step 6 writes it, including the stops of item 2 and item 4: the file is
-   what a later reader — or the next run's step 5 — checks to know whether the lesson
-   reached the meta-repository.
+Write `not filed yet — /report-issue docs/lessons-learned/sonar-NNN.md` in the `## Issue`
+line at the end of `sonar-NNN.md`, and end the report with that command. `/report-issue` is
+manual-only: it picks the `sonar-lessons` form, strips the project from the body, searches
+duplicates, asks, and overwrites the `## Issue` line with the outcome. The user types it, or
+the lesson stays local — the line says which, for a later reader and for the next run's
+step 5.
 
 ## Failure modes
 
@@ -210,19 +184,6 @@ Run `docker compose up -d sonarqube`, wait for /api/system/status to answer UP, 
 server; nothing was read from it.
 ```
 
-**Form not reachable, or `gh` not authenticated:**
-```
-⚠️ docs/lessons-learned/sonar-NNN.md written. Issue not created: <the form could not be
-fetched | gh not authenticated — run `gh auth login`>. Create it later with:
-gh issue create -R <slug> --title "<title>" --label <form label> --body-file docs/lessons-learned/sonar-NNN.issue.md
-```
-
-**Privacy check hit:**
-```
-⚠️ sonar-NNN.issue.md line <n> names <src/… | the base package | the project key>.
-Rewritten to the .claude/ owner before asking. Review the file before confirming.
-```
-
 ## Report
 
 ```
@@ -230,8 +191,8 @@ Rewritten to the .claude/ owner before asking. Review the file before confirming
 
 Lessons ..... docs/lessons-learned/sonar-NNN.md — <G> groups: <t> template, <r> norm, <c> checkstyle, <b> bootstrap, <m> model alone
 Top owners .. <.claude path> (<n> issues) · <.claude path> (<n>) · …
-Issue ....... <URL | not created — <reason> | declined>
 Dashboard ... <host>/dashboard?id=<projectKey>
+File it ..... /report-issue docs/lessons-learned/sonar-NNN.md
 ```
 
 ## Contract
@@ -243,23 +204,16 @@ and outside what `guard sweep` sees.
 
 **Reads** the root build file, `target/sonar/report-task.txt` (or `build/sonar/`),
 `.claude/rules/**`, `.claude/skills/*/templates/**`, `config/checkstyle/**`,
-`.claude/schemas/extensions.json` (`source.git_url`), `.claude/.arch-provenance.json`, and
-the SonarQube Web API.
+`.claude/.arch-provenance.json` (the version line of the file), and the SonarQube Web API.
 
-**Writes** `docs/lessons-learned/sonar-NNN.md` and, when step 6 runs,
-`docs/lessons-learned/sonar-NNN.issue.md` — the exact body that was, or would have been,
-published.
+**Writes** `docs/lessons-learned/sonar-NNN.md`.
 
-**Publishes** one issue on the repository named by `source.git_url`, only after the
-confirmation of step 6, with the body file as it stands on disk.
+**Publishes** nothing. The issue is `/report-issue`'s, typed by the user with the path step 6
+prints; the body file `sonar-NNN.issue.md` is written there.
 
 **Never writes** the build file, `docker-compose.yml`, a token, or anything under `src/`. A
 finding is fixed at its owner in the meta-repository, or by `/new-feature` in this
 project — not by this skill.
-
-**Does not own** the issue's shape: `.github/ISSUE_TEMPLATE/sonar-lessons.yml` in the
-meta-repository does, fetched at step 6 — the web form and this skill produce the same
-issue because they read the same file.
 
 **Not chained** by any skill. Travels into the generated project
 (`export.skills.include`); in the claude-spring-architect repository itself it stops at

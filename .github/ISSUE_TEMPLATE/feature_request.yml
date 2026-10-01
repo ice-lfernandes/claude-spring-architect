@@ -14,6 +14,10 @@ body:
         Proposing a new **architecture** instead? Use the *New blueprint* template: a
         blueprint is data and needs no change to any skill, agent or command.
 
+        The problem is checked against the code at `HEAD` before any design starts; the
+        proposal is read, never adopted as given. From inside a generated project,
+        `/report-issue` fills this form for you.
+
   - type: checkboxes
     id: preflight
     attributes:

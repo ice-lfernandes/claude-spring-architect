@@ -13,6 +13,11 @@ body:
         Before filing, run `/arch-doctor` (or `java .claude/hooks/ArchHook.java doctor`)
         and paste its output below — most setup problems are diagnosed by it.
 
+        Every claim here is checked against the code at `HEAD` before anything changes —
+        the diagnosis and the proposed fix included. Quote files and paste literal output:
+        a claim nobody can check is closed as *needs evidence*. From inside a generated
+        project, `/report-issue` fills this form for you.
+
   - type: checkboxes
     id: preflight
     attributes:
