@@ -3,7 +3,8 @@
 Fonte primária: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 `.claude/skills/claude-code-architect-designer/references/decision-matrix.md`,
 `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`,
-`.claude/skills/claude-code-architect-designer/references/mcp-fields.md`.
+`.claude/skills/claude-code-architect-designer/references/mcp-fields.md`,
+`.claude/skills/claude-code-architect-designer/references/ci-coverage.md`.
 
 ## O que faz
 
@@ -107,7 +108,7 @@ sequenceDiagram
     Note over CMD,U: Fase 1 · Interview
     CMD->>DM: lê matriz e pitfalls antes de perguntar
     CMD->>U: AskUserQuestion — até 4 perguntas por chamada, 2-3 chamadas
-    U-->>CMD: respostas dos eixos aplicáveis (16 no total; 11-13 só para MCP, 14-16 só para hook)
+    U-->>CMD: respostas dos eixos aplicáveis (17 no total; 11-13 só para MCP, 14-16 só para hook, 17 respondido pela própria skill)
     end
 
     rect rgb(235,245,235)
@@ -134,9 +135,10 @@ sequenceDiagram
     CMD->>FS: gera a partir de templates/*.example
     CMD->>FS: seção "## Why this is <form>" no corpo
     CMD->>FS: propaga — CLAUDE.md, 00-index.md, extensions.json (skill_classes/agent_classes/export), settings.json, conforme a forma
+    CMD->>FS: CI — teste em .claude/.ci/ + step no workflow, ou nomeia o check que já cobre
     CMD->>FS: java claude plugin validate .claude/skills
     end
-    CMD-->>U: Fase 5 · relatório — arquivos criados/alterados, decisão, validate, aviso de restart
+    CMD-->>U: Fase 5 · relatório — arquivos criados/alterados, decisão, validate, linha de CI, aviso de restart
 ```
 
 ## Fase 1 · Interview
@@ -145,7 +147,7 @@ sequenceDiagram
 produz a peça errada, e peça errada custa mais que nenhuma peça — fica em contexto toda
 sessão, ou nunca dispara.
 
-Dezesseis eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão
+Dezessete eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão
 está adivinhando:
 
 | # | Eixo | O que decide |
@@ -166,6 +168,7 @@ está adivinhando:
 | 14 | Evento do ciclo de vida — o que exatamente acabou de acontecer: uma tool call, um prompt, o fim de um turno, o início da sessão | A chave de evento da Forma 7, e se aquele evento sequer **lê** um `matcher` — `references/hook-events.md` |
 | 15 | Reação — observar e reportar, injetar contexto, ou bloquear | O exit code, e Forma 7 vs Forma 8: uma chamada que **nunca** pode acontecer é `permissions.deny`, mais barato que um hook que sobe um processo pra recusar |
 | 16 | Modo existente — o `ArchHook.java` já roda essa checagem? | Forma 7a sozinha vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lista os modos em uso |
+| 17 | Cobertura de CI — qual job já prova que a peça faz o que afirma, o que fica sem prova, e em qual pipeline roda o check que falta | O item CI de toda opção da Fase 3 e o passo de CI da Fase 4 — `references/ci-coverage.md` |
 
 O eixo 9 é checado contra o inventário injetado no topo da skill (`ls .claude/skills`,
 `.claude/agents`, `.claude/rules`, `.claude/decisions`), nunca de memória. Duas peças
@@ -175,6 +178,11 @@ Os eixos 11-13 só se aplicam quando o eixo 2 (gatilho) nomeia um sistema extern
 banco de dados, GitHub, Figma, qualquer coisa alcançável só pela própria API. Pula-los
 nos demais casos: perguntar sobre credencial pra um cenário que não é forma de MCP só
 queima uma pergunta.
+
+O eixo 17 vale pra **toda** forma e é respondido pela skill, não perguntado: ela lê
+`references/ci-coverage.md` e os workflows em `.github/workflows/` e nomeia o job que já
+cobre a peça candidata. Só pergunta quando a resposta é do usuário — um check que precisa
+de rede ou de minutos, filtrado por paths ou em todo PR.
 
 ## Fase 2 · Classifica
 
@@ -299,6 +307,10 @@ quando defensável. Cada opção nesta forma, nesta ordem:
 4. **Contras** — inclui o invariante que tensiona, se houver
 5. **Score 0-10** — rubrica abaixo
 6. **Visual** — árvore de arquivo ou grafo ASCII de quem chama quem
+7. **CI** — a resposta do eixo 17 pra esta opção, uma de três: o job e o step existentes
+   que já a provam (o caso comum — só o `schema` cobre frontmatter, classe, seções e
+   entrada de `export` de uma skill); o teste ou step novo que ela precisa, com arquivo,
+   workflow e job; ou "nada testável, porque …". "Depois" não é resposta
 
 E no final, uma **tabela de referências**: para cada decisão, a fonte concreta
 (`@claude-help.md` § N, `@CLAUDE.md` invariante N, ou arquivo do repo que serve de
@@ -317,7 +329,7 @@ mostra o que custou pontos:
 | 4 | Enforcement | Depende de persuasão onde garantia estava disponível |
 | 5 | Custo de manutenção | Adiciona peça ou indireção sem ganho proporcional |
 | 6 | Precedente no repo | Nenhuma forma similar já em uso; design novo |
-| 7 | Propagação completa | Não fecha routing, `00-index`, o manifesto `export`, `skill_classes`/`agent_classes`, ou registro de decisão da § 9 |
+| 7 | Propagação completa | Não fecha routing, `00-index`, o manifesto `export`, `skill_classes`/`agent_classes`, a resposta de CI de `ci-coverage.md`, ou registro de decisão da § 9 |
 | 8 | Superfície de confiança | Concede capacidade maior do que a tarefa precisa — servidor MCP que lê arquivos e chama API arbitrária, agent com `permissionMode: bypassPermissions`, skill com `allowed-tools` sem escopo onde uma regra mais estreita bastaria |
 | 9 | Custo de rodar sempre | Frequência do evento × custo por disparo, e se `if`/`matcher` estreita antes de subir processo. Um `PostToolUse` sem filtro paga uma JVM em toda edição do repo; um `SessionStart` paga uma vez. Perde ponto também quando o hook bloqueia (exit 2) num julgamento que às vezes vai estar errado — aí o custo não é milissegundo, é uma pessoa travada |
 
@@ -328,7 +340,7 @@ por que foi rejeitado.
 ## Fase 3.5 · Salva o rascunho da decisão
 
 O que a Fase 3 produziu — opções, scores, alternativas rejeitadas, tabela de
-referências — evapora no fim da sessão. Sem registro, a mesma interview de dezesseis eixos
+referências — evapora no fim da sessão. Sem registro, a mesma interview de dezessete eixos
 recomeça do zero daqui a seis meses.
 
 **Quando salvar arquivo.** Só se pelo menos um for verdade:
@@ -423,23 +435,56 @@ e para. Não apaga: o valor está em evitar repetir a mesma interview.
    `matcher` errado copiado pro template do projeto gerado embarca em todo projeto criado
    depois.
 
-   Passos 1 a 6 **nunca** são delegados. Escrever a `description` decide se a skill
-   dispara, e o `## Contract` decide ownership — isso é design, não transcrição. Pra MCP
-   a mesma divisão vale: qual servidor adicionar, o formato da credencial, e o destino
-   são design; copiar uma entrada de `.mcp.json` já aprovada pra um segundo arquivo é a
-   única parte mecânica.
+   Passos 1 a 6, e o passo 8, **nunca** são delegados. Escrever a `description` decide se
+   a skill dispara, e o `## Contract` decide ownership — isso é design, não transcrição.
+   Pra MCP a mesma divisão vale: qual servidor adicionar, o formato da credencial, e o
+   destino são design; copiar uma entrada de `.mcp.json` já aprovada pra um segundo
+   arquivo é a única parte mecânica.
 
-8. Se salvou rascunho na Fase 3.5, promove: preenche `Decision`, `State` (aprovado por
-   quem, em que data), e a tabela `Propagation` com os arquivos que o passo 7 tocou.
-9. Roda `claude plugin validate .claude/skills` e reporta a saída sem reescrevê-la.
-   **Não cobre `.mcp.json`** — roda `java .claude/hooks/ArchHook.java schema` também,
-   sempre que o passo 1 tocou um `.mcp.json`.
+8. **Cobertura de CI — escreve o check que o item CI da opção aprovada nomeou.** O mapa
+   de o que já cobre cada forma, e de onde entra um check novo, é
+   `references/ci-coverage.md`:
+
+   - **Um check existente já cobre** — não escreve nada; nomeia o job e o step no registro.
+   - **Um teste existente precisa de um caso** — o caso entra naquele
+     `.claude/.ci/<Name>Test.java` (classe nova no `SkillTerritoryTest`, agent novo no
+     `AgentTerritoryTest`, grafia nova no `BashGuardTest`).
+   - **Teste novo** — `.claude/.ci/<Name>Test.java`, Java single-file como os vizinhos,
+     disparando `java -jar .claude/hooks/ArchHook.jar` quando exercita um modo (decisão
+     0084). Registrado como step do job que o mapa indica em `validate.yml`; um check que
+     precisa de rede ou de minutos vai no `templates.yml` filtrado por paths, com os paths
+     nas **duas** listas de gatilho (decisão 0099).
+   - **Uma afirmação sobre arquivos que o `extensions.json` consegue carregar como dado** —
+     estende o `schema`, não um `grep` em YAML: step de YAML nunca roda dentro de um
+     projeto gerado.
+   - **Eixo 8 = "ambos"** — também `project-bootstrap/templates/ci.yml.example` e
+     `ci-gradle.yml.example`, e **só** com o que existe dentro do projeto gerado: nada de
+     `.claude/.ci/` viaja.
+   - **Nada testável** — o motivo vai em `## CI coverage` do registro.
+
+   Prova o check antes de reportar: verde na árvore atual, depois vermelho uma vez com o
+   defeito injetado, falhando pelo nome. Teste que nunca falhou não prova nada. **Nunca é
+   delegado**, nem com eixo 8 "ambos": quais casos o teste tem é design.
+
+   Motivo: os guard modes das decisões 0063–0077 rodaram em toda sessão sem CI até a 0084,
+   e dois defeitos de template só foram pegos à mão até a 0099 — nos dois casos o CI chegou
+   numa revisão depois da peça. Design: `.claude/decisions/0102-ci-coverage-in-architect-designer.md`.
+9. Se salvou rascunho na Fase 3.5, promove: preenche `Decision`, `State` (aprovado por
+   quem, em que data), a tabela `Propagation` com os arquivos que os passos 7 e 8 tocaram,
+   e `## CI coverage` com o resultado do passo 8 — job e step que rodam o check, e as
+   execuções verde e vermelha.
+10. Roda `claude plugin validate .claude/skills` e reporta a saída sem reescrevê-la.
+    **Não cobre `.mcp.json`** — roda `java .claude/hooks/ArchHook.java schema` também,
+    sempre que o passo 1 tocou um `.mcp.json`. Se o passo 8 escreveu ou mudou um teste,
+    roda ele de novo aqui — `java .claude/.ci/<Name>Test.java`.
 
 ## Fase 5 · Relatório
 
 Arquivos criados, arquivos alterados, caminho do registro de decisão (ou a frase
-explicando por que não houve), a saída de `validate`, e o aviso de restart se tocou
-`settings.json` — só é lido no início da sessão.
+explicando por que não houve), a saída de `validate`, a **linha de CI** — o job e o step
+que cobrem a peça, o teste que o passo 8 escreveu com as execuções verde e vermelha, ou o
+motivo de nada ser testável —, e o aviso de restart se tocou `settings.json` — só é lido
+no início da sessão.
 
 ## Campos de frontmatter — resumo por forma
 
@@ -589,7 +634,10 @@ matriz é deliberadamente não embutida no corpo.
 
 **Escreve** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, o
 `CLAUDE.md` raiz **deste repositório**, e o `.mcp.json` na raiz deste repo (Forma 6a).
-Só depois de aprovação explícita.
+Pro item CI da forma aprovada (passo 8 da Fase 4), também os testes em `.claude/.ci/**`,
+os jobs de `.github/workflows/**`, as linhas correspondentes de `docs/*/07-ci-validate.md`
+e, com eixo 8 "ambos", `project-bootstrap/templates/ci.yml.example` e
+`ci-gradle.yml.example`. Só depois de aprovação explícita.
 
 **Também escreve** `.claude/decisions/NNNN-<slug>.md` — e este é o único caminho que
 toca *antes* da aprovação, como rascunho da Fase 3.5. É dona exclusiva do diretório:
@@ -601,8 +649,8 @@ escreve um segredo literal** no `.mcp.json` — invariante 11; uma credencial es
 eixo 12 vira placeholder `${VAR}` mais uma linha no doc de setup, nunca um valor.
 
 **Delega** no máximo o passo 7 da Fase 4 (propagação), e só quando o eixo 8 ou o eixo 13
-é "ambos" e um registro de decisão foi salvo. Classificar, propor e escrever o corpo
-ficam sempre nesta thread — o subagent não recebe a conversa, e a interview é o coração
+é "ambos" e um registro de decisão foi salvo. Classificar, propor, escrever o corpo e
+escrever o check de CI (passo 8) ficam sempre nesta thread — o subagent não recebe a conversa, e a interview é o coração
 da tarefa.
 
 **Fica fora do projeto gerado.** É skill de criação, como `project-bootstrap` e
@@ -617,6 +665,8 @@ vale pra `.claude/decisions/` — registra decisões sobre este meta-repositóri
 | `.claude/skills/claude-code-architect-designer/references/decision-matrix.md` | Tabela de decisão completa (§ 2 e § 2.1), rubrica de score, anti-padrões |
 | `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md` | Lista completa de campos nativos por tipo de arquivo |
 | `.claude/skills/claude-code-architect-designer/references/mcp-fields.md` | Campos reconhecidos de um servidor em `.mcp.json` (Forma 6a/6b) |
+| `.claude/skills/claude-code-architect-designer/references/ci-coverage.md` | Eixo 17 — o que já prova cada forma no CI, e onde entra um check novo |
+| `@.claude/decisions/0102-ci-coverage-in-architect-designer.md` | Decisão que trouxe a cobertura de CI pra dentro do procedimento |
 | `.claude/skills/claude-code-architect-designer/templates/` | Exemplares usados na Fase 4 — `SKILL.md.example`, `SKILL.command.md.example`, `agent.md.example`, `rule.md.example`, `claude-md-section.md.example`, `decision.md.example`, `mcp.json.example`, `mcp-setup.md.example` |
 | `.claude/decisions/README.md` | Regras do diretório de registros de decisão |
 | `@CLAUDE.md` | Os onze invariantes usados como veto na Fase 2 |
