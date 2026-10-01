@@ -83,8 +83,8 @@ every skill belongs to exactly one of seven classes, and the class declares both
 | `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only, the root build file and `.github/workflows/` only |
 | `observer` | `arch-doctor`, `audit-usage` | nothing |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
-| `ops` | `git-publish` | nothing — its effect is `git`, over Bash |
-| `report` | `sonar-lessons` | `docs/lessons-learned/**` — and, after a confirmation, an issue outside the tree, over `gh` |
+| `ops` | `git-publish`, `triage-issue` | nothing — its effect is `git`, or a comment on an issue of this repo, over Bash |
+| `report` | `sonar-lessons`, `report-issue` | `docs/lessons-learned/**` — and, for `report-issue` only and after a confirmation, an issue outside the tree, over `gh` |
 
 `ArchHook.java schema` enforces the structure (the class declared in the body as
 `**Class:** <c>`, every required section present) and `guard` enforces the territory,
@@ -159,7 +159,7 @@ criterion: an agent is only justified for one of three reasons — preserving co
 (verbose output that shouldn't pollute the main conversation), restricting tools, or
 switching model. If none applies, the piece is a skill.
 
-This repository's four agents each document explicitly, in their own `## Why this is
+This repository's five agents each document explicitly, in their own `## Why this is
 an agent` (or `## Why this is Form 3`) section, which reason applies:
 
 | Agent | Context | Tools | Model |
@@ -168,6 +168,7 @@ an agent` (or `## Why this is Form 3`) section, which reason applies:
 | `java-spring-boot-developer` | The full spec replaces the interview — the agent only executes | `Read, Write, Edit, Bash` — only reads spec/templates, only writes to `src/` | `sonnet`, `effort: high` — generating ~19 steps of compilable code |
 | `archunit-installer` | `test-architect`'s setup mode has no interview — a Maven Central `curl` and up to three `./mvnw` builds would become permanent in the main conversation if run inline | `Read, Write, Edit, Bash` — inside the project only | `sonnet`, `effort: medium` — translating exemplar packages onto the real blueprint layout and diagnosing an ArchUnit rule failure takes judgment, not just mechanical execution |
 | `commons-logging-installer` | Same shape as `archunit-installer`: translates thirteen logging/masking exemplars into the real package, edits a POM, compiles until green — eleven writes and a build log that don't need to land in the context of the `/new-feature` run that triggered it | `Read, Write, Edit, Bash` — inside `commons.logging` and the matching POM only | `sonnet`, `effort: medium` |
+| `issue-verifier` | Reads the body of a public issue — third-party text — away from the thread that holds write territory over `.claude/` | `Read, Grep, Glob, Bash` — no `Write`/`Edit`; class `verifier` has an empty territory, so `guard` refuses every in-repo write, Bash included | `opus`, `effort: high` — refuting the reporter's narrative is the whole job (decision 0103) |
 
 Each belongs to a **class**, in `extensions.json` → `agent_classes`, and the class is what
 fixes its body shape, the frontmatter fields it owes, whether it writes at all (`executor`),
@@ -178,6 +179,7 @@ and **which paths**:
 | `driver` | `project-initializer` | `**` — it writes the tree of a project that does not exist yet |
 | `executor` | `java-spring-boot-developer` | `src/**`, the POMs (only for a dependency the spec declares), and its `UC-*-spec.md` — where the frozen-folder rule admits only the `status:` close and checklist toggles |
 | `installer` | `archunit-installer`, `commons-logging-installer` | Per-agent `overrides`: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` for the first; POMs + `**/logging/**` (main and test) + `META-INF/spring/*.imports` for the second |
+| `verifier` | `issue-verifier` | nothing — `executor: false`; the scratch of a generated-project reproduction lands outside the repo |
 
 Territory is keyed on `agent_type`, which the `PreToolUse` payload of every subagent write
 already carries — so no open skill phase widens or narrows it. Before this, all four had an

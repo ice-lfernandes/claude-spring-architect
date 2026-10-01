@@ -235,6 +235,7 @@ Nenhum é exclusivo por si só; juntos, nenhum vizinho os reúne:
 | Observabilidade: OTLP collector com pipelines de traces **e** metrics, backend Jaeger ou Grafana + Tempo + Prometheus | `docker-architect` |
 | Análise estática: SonarQube ou SonarCloud ligado ao build, step de CI para servidor externo, ou um container SonarQube local — o token nunca em arquivo | `sonarqube-setup` (+ `docker-architect` para o container) |
 | Issues do Sonar reduzidas na origem: a análise roda, cada grupo de issues é rastreado até o template ou a norma de `.claude/` que o produziu, e o achado volta para o meta-repo como issue sanitizada — sem path, pacote ou código do projeto | `sonar-lessons` |
+| Issue aberta a partir do projeto gerado já nasce verificável — sem evidência, não abre — e sem dados do projeto; do lado de cá, cada afirmação (diagnóstico e fix proposto incluídos) é checada no `HEAD` por um agent sem escrita antes de virar comentário ou design | `report-issue`, `triage-issue` + `issue-verifier` |
 | Container "subiu" mas não responde, porta ocupada por projeto irmão | `ArchHook.java compose` |
 | Kafka producer/consumer com at-least-once, retry e DLQ | `messaging-architect` + `rules/messaging.md` |
 | Paginação sem `Pageable` cruzando o port da aplicação | `rules/architecture-ddd.md` (D42) |

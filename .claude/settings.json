@@ -201,7 +201,11 @@
     ],
     "ask": [
       "Bash(git push:*)",
-      "Bash(gh repo create:*)"
+      "Bash(gh repo create:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh api:*)"
     ],
     "deny": [
       "Read(./**/*.env)",

@@ -4,7 +4,7 @@ English version: [`docs/en/`](en/README.md).
 
 Esta pasta documenta como as peças do `.claude/` deste repositório colaboram para
 executar os comandos principais — `/init-project`, `/new-feature`, `/arch-doctor`,
-`/audit-usage` e `/arch-adopt` — e o que este projeto faz que os repositórios
+`/audit-usage`, `/arch-adopt`, `/report-issue` e `/triage-issue` — e o que este projeto faz que os repositórios
 semelhantes não fazem.
 Quem chega pela primeira vez deve começar por
 [09-diferenciais.md](09-diferenciais.md).
@@ -31,6 +31,7 @@ os outros.
 | [09-diferenciais.md](09-diferenciais.md) | O que este repositório faz que templates, pacotes de skills e bundles de agents no GitHub não fazem — tabela comparativa, fontes, e o que não é diferencial |
 | [10-arch-adopt.md](10-arch-adopt.md) | Workflow de `/arch-adopt`: instalar este `.claude/` num projeto que nunca foi gerado aqui, ou atualizar um que está atrasado — modo `export`, manifesto de cópia, stamp de proveniência |
 | [11-pitfalls.md](11-pitfalls.md) | Toda armadilha silenciosa, em duas partes. Do runtime: skill com nome de comando nativo, `$ARGUMENTS` interpolado em prosa, segmentos de pipe em `allowed-tools`, cwd de injeção, frontmatter desconhecido, as quatro falhas mudas de um hook, `AskUserQuestion`, e os quatro pitfalls de `.mcp.json`. Deste repositório: territórios de escrita e os guards, pastas de spec congeladas, alcance do compose, quem é dono do `pom.xml` e do outbox |
+| [12-issues.md](12-issues.md) | Issues, dos dois lados: o `/report-issue` abre, a partir de um projeto gerado, uma issue verificável e sem dados do projeto; o `/triage-issue` faz o `issue-verifier`, só-leitura, checar cada afirmação no `HEAD` — diagnóstico e fix proposto incluídos — antes de comentário, label ou design |
 
 ## Como este repositório está organizado (referência rápida)
 

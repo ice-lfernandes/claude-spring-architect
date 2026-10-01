@@ -92,6 +92,26 @@ public class AgentTerritoryTest {
         failures += write(hook, session, "project-initializer", "docker-compose.yml",
                 0, "the driver writes the whole tree of a new project");
 
+        // ── verifier · issue-verifier ────────────────────────────────────────
+        // Reads a public issue — text nobody here wrote. An empty territory is the whole point
+        // (decision 0103): an instruction hidden in the body must not reach a hook or a norm,
+        // whichever tool it is spelled through.
+        failures += write(hook, session, "issue-verifier", ".claude/settings.json",
+                2, "issue-verifier is refused .claude/settings.json");
+
+        failures += write(hook, session, "issue-verifier", "CLAUDE.md",
+                2, "issue-verifier is refused CLAUDE.md");
+
+        failures += bash(hook, session, "issue-verifier",
+                "cat > .claude/rules/naming.md <<'EOF'\\nx\\nEOF",
+                2, "issue-verifier is refused a heredoc into .claude/rules/");
+
+        // Layer 2 materializes a generated project in a scratch directory: outside the
+        // repository, so the guard has no say.
+        failures += bash(hook, session, "issue-verifier",
+                "echo x > /tmp/issue-verifier-scratch/probe.txt",
+                0, "issue-verifier writes its scratch outside the repository");
+
         // ── the phase does not reach a classed agent ─────────────────────────
         failures += run(hook, "prompt", session,
                 "{\"session_id\":\"%s\",\"prompt\":\"/new-feature add a use case\"}",
@@ -103,6 +123,15 @@ public class AgentTerritoryTest {
 
         failures += write(hook, session, "archunit-installer", "docker-compose.yml",
                 2, "nor widen it");
+
+        // The phase whose territory is .claude/** — the designer's — is the one an issue would
+        // most want to borrow. It does not reach the verifier.
+        failures += run(hook, "prompt", session,
+                "{\"session_id\":\"%s\",\"prompt\":\"/claude-code-architect-designer x\"}",
+                0, "the meta phase is open");
+
+        failures += write(hook, session, "issue-verifier", ".claude/hooks/ArchHook.java",
+                2, "the meta phase does not widen issue-verifier's empty territory");
 
         // An agent no class lists has nothing else describing it: the caller's phase applies.
         failures += write(hook, session, "general-purpose", "docker-compose.yml",
@@ -124,6 +153,15 @@ public class AgentTerritoryTest {
         return run(hook, "write", session,
                 "{\"session_id\":\"%s\",\"agent_type\":\"" + agent + "\","
                         + "\"tool_input\":{\"file_path\":\"" + file + "\"}}",
+                wanted, label);
+    }
+
+    /** One `guard bash` as the given subagent; `command` is already JSON-escaped. */
+    static int bash(Path hook, String session, String agent, String command,
+                    int wanted, String label) throws Exception {
+        return run(hook, "bash", session,
+                "{\"session_id\":\"%s\",\"agent_type\":\"" + agent + "\","
+                        + "\"tool_input\":{\"command\":\"" + command + "\"}}",
                 wanted, label);
     }
 

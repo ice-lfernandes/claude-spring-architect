@@ -82,8 +82,8 @@ skill pertence a exatamente uma das sete classes, e a classe declara duas coisas
 | `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/`, só o build file raiz e `.github/workflows/` |
 | `observer` | `arch-doctor`, `audit-usage` | nada |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
-| `ops` | `git-publish` | nada — o efeito é `git`, via Bash |
-| `report` | `sonar-lessons` | `docs/lessons-learned/**` — e, depois de confirmação, uma issue fora da árvore, via `gh` |
+| `ops` | `git-publish`, `triage-issue` | nada — o efeito é `git`, ou um comentário numa issue deste repo, via Bash |
+| `report` | `sonar-lessons`, `report-issue` | `docs/lessons-learned/**` — e, só no `report-issue` e depois de confirmação, uma issue fora da árvore, via `gh` |
 
 `ArchHook.java schema` cobra a estrutura (classe declarada no corpo com `**Class:** <c>`,
 seções obrigatórias presentes) e `guard` cobra o território, com exit 2 em qualquer
@@ -157,7 +157,7 @@ um agent só se justifica por um dos três motivos — preservar contexto (saíd
 que não deveria poluir a conversa principal), restringir tools, ou trocar de model. Se
 nenhum se aplica, a peça é uma skill.
 
-Os quatro agents deste repositório documentam explicitamente qual motivo aplica, na
+Os cinco agents deste repositório documentam explicitamente qual motivo aplica, na
 própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 
 | Agent | Contexto | Tools | Model |
@@ -166,6 +166,7 @@ própria seção `## Why this is an agent` (ou `## Why this is Form 3`):
 | `java-spring-boot-developer` | Spec completo substitui a entrevista — o agent só executa | `Read, Write, Edit, Bash` — só lê spec/templates, só escreve em `src/` | `sonnet`, `effort: high` — gerar ~19 passos de código compilável |
 | `archunit-installer` | Modo setup da `test-architect` não tem entrevista — `curl` no Maven Central e até três builds `./mvnw` ficariam permanentes na conversa principal se rodassem inline | `Read, Write, Edit, Bash` — só dentro do projeto | `sonnet`, `effort: medium` — traduzir pacotes do exemplar para o layout real do blueprint e diagnosticar falha de regra ArchUnit exige julgamento, não só execução mecânica |
 | `commons-logging-installer` | Mesma forma do `archunit-installer`: traduz treze exemplares de logging/máscara para o package real, edita um POM, compila até ficar verde — onze escritas e um log de build que não precisam voltar ao contexto do `/new-feature` que o disparou | `Read, Write, Edit, Bash` — só dentro de `commons.logging` e do POM correspondente | `sonnet`, `effort: medium` |
+| `issue-verifier` | Lê o corpo de uma issue pública — texto de terceiros — longe da thread que tem território de escrita em `.claude/` | `Read, Grep, Glob, Bash` — sem `Write`/`Edit`; a classe `verifier` tem território vazio, então `guard` recusa toda escrita no repo, Bash incluso | `opus`, `effort: high` — refutar a narrativa do relato é o trabalho todo (decisão 0103) |
 
 Cada um pertence a uma **classe**, em `extensions.json` → `agent_classes`, e é a classe que
 diz qual é a forma do corpo, quais campos de frontmatter ele deve, se ele escreve (`executor`)
@@ -176,6 +177,7 @@ e **quais caminhos**:
 | `driver` | `project-initializer` | `**` — escreve a árvore de um projeto que ainda não existe |
 | `executor` | `java-spring-boot-developer` | `src/**`, os POMs (só para uma dependência que a spec declara), e o seu `UC-*-spec.md` — onde a regra de pasta congelada admite só o fechamento do `status:` e os toggles do checklist |
 | `installer` | `archunit-installer`, `commons-logging-installer` | `overrides` por agent: POMs + `ArchitectureTest.java`/`TestcontainersConfiguration.java` no primeiro; POMs + `**/logging/**` (main e test) + `META-INF/spring/*.imports` no segundo |
+| `verifier` | `issue-verifier` | nada — `executor: false`; o scratch da reprodução em projeto gerado fica fora do repo |
 
 O território vale por `agent_type`, que o payload `PreToolUse` de toda escrita de subagent já
 carrega — então nenhuma fase de skill aberta o alarga nem o estreita. Antes disso os quatro

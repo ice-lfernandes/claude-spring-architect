@@ -207,6 +207,11 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
   `/arch-doctor` can name every locally edited file *before* the next update overwrites it.
   The only creation skill that travels into the generated project — that is how a project
   updates itself once the plugin that delivered it is gone.
+- **Issues filed from the project, triaged skeptically here** — `/report-issue` turns a
+  description or a lessons-learned file into an issue on this repository: verifiable or not
+  filed, nothing of the project in it, published after a confirmation. `/triage-issue`
+  checks every claim at `HEAD` through a read-only agent before a comment or a design run.
+  Details: [`docs/en/12-issues.md`](docs/en/12-issues.md).
 
 ---
 
@@ -266,9 +271,12 @@ claude-spring-architect/
     │   ├── git-publish/           #   git init/commit + gh create/push, two confirmation gates — copied
     │   ├── sonarqube-setup/       #   scanner + server URL, CI step for an external server, local container otherwise — copied
     │   ├── sonar-lessons/         #   /sonar-lessons — Sonar findings traced to .claude/, issue filed here — copied
+    │   ├── report-issue/          #   /report-issue — the one door from a project to this repo's issues — copied
+    │   ├── triage-issue/          #   /triage-issue <N> — every claim checked at HEAD by issue-verifier — stays in this repo
     │   └── audit-usage/           #   /audit-usage — reads the execution trail — copied
     ├── agents/                    # isolated context
     │   ├── project-initializer.md         #   drives /init-project — stays in this repo
+    │   ├── issue-verifier.md              #   /triage-issue's read-only checker, opus — stays in this repo
     │   ├── java-spring-boot-developer.md  #   /new-feature's executor — copied
     │   ├── archunit-installer.md          #   test-architect's setup mode — copied
     │   └── commons-logging-installer.md   #   logging/masking aspects, /new-feature's pre-flight — copied
@@ -303,14 +311,14 @@ repository: `/init-project` copies over the norms (`rules/*.md`), the developmen
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
 `rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
 `test-architect`, `new-feature`, `gof-design-patterns`, `docker-architect`, `git-publish`,
-`sonarqube-setup`, `sonar-lessons`, `audit-usage`), the
+`sonarqube-setup`, `sonar-lessons`, `report-issue`, `audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
 `commons-logging-installer`), `ArchHook.java`, and `schemas/extensions.json` — and what
 travels is **data**, the `export` block of `schemas/extensions.json`, checked against disk
 by `ArchHook.java schema`. Only `project-bootstrap`, `init-project`,
-`claude-code-architect-designer`, `project-initializer`, and the blueprint **catalog** are
-left out — they serve before the project exists; the **active** blueprint does travel,
-because the next update has to resolve the id the provenance stamp records. `arch-adopt` is
+`claude-code-architect-designer`, `triage-issue`, `project-initializer`, `issue-verifier`, and
+the blueprint **catalog** are left out — they serve before the project exists, or only here; the
+**active** blueprint does travel, because the next update has to resolve the id the provenance stamp records. `arch-adopt` is
 the one creation skill that travels: it is how the project pulls a newer `.claude/`
 afterwards. The project also
 gets its own `README.md`, `README.pt-br.md`, and `.claude/audit-usage/GENESIS.md`
@@ -567,6 +575,28 @@ double counting, failure rate, which report to open). The trail is a hook, not a
 it survives the model forgetting and the session dying, and costs zero tokens to
 produce. Prompts are redacted before landing in git; prices are `null` until you fill
 `pricing.json`. Details: [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md).
+
+### Issues — reported from a project, verified here
+
+The repository is public, so an issue can come from anyone, and it brings a diagnosis and
+often a fix. Neither is taken as true.
+
+```text
+generated project                               this repository
+/report-issue <description | lessons file>      /triage-issue <N>
+  form fetched from this repo's HEAD              issue-verifier (opus, cannot write)
+  no evidence → not filed                         every claim checked at HEAD
+  behind the latest release → warned              proposed fix judged apart, never adopted
+  project stripped, duplicates searched           verdict: confirmed · already-fixed · by-design
+  confirm → gh issue create  ──────────────▶        · duplicate · not-reproduced · needs-evidence
+                                                comment + label, after a yes
+                                                confirmed → /claude-code-architect-designer
+```
+
+`/sonar-lessons` hands its file to `/report-issue`. Every arrow into a manual-only skill is a
+person typing the command, so the issue body never reaches a thread that can write
+`.claude/`. Details: [`docs/en/12-issues.md`](docs/en/12-issues.md) ·
+[`docs/pt-br/12-issues.md`](docs/pt-br/12-issues.md).
 
 ---
 
@@ -923,6 +953,7 @@ Not yet in `validate.yml`, known gaps:
 | [`docs/en/06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The eight forms an extension can take, the decision matrix, and how a new piece propagates |
 | [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
 | [`docs/en/11-pitfalls.md`](docs/en/11-pitfalls.md) | Every silent trap — the runtime's (a skill, hook, injection or MCP server that does nothing without an error) and this repository's (write territories, frozen spec folders, who owns `pom.xml` and the outbox) |
+| [`docs/en/12-issues.md`](docs/en/12-issues.md) | `/report-issue` in a generated project and `/triage-issue` here: how an issue is filed with evidence and verified claim by claim before anything changes |
 | [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
 
 Portuguese versions of every document live under [`docs/pt-br/`](docs/pt-br/README.md).

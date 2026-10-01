@@ -201,6 +201,13 @@ filtro falha no `schema`, a menos que o seu `## Contract` traga uma linha
 demais listam prefixos, e um comando de injeção que falta nessa lista aborta a skill. Design:
 `.claude/decisions/0076-bash-scope-and-force-push-guard.md`.
 
+**Comentar, editar, fechar uma issue e `gh api` sempre pedem confirmação, neste repo.** As
+quatro formas ficam em `permissions.ask` de `.claude/settings.json` — o prompt aparece até
+depois do sim do `/triage-issue`, e é a mesma confirmação que você vê se o corpo de uma issue
+convencer o `issue-verifier` a tentar publicar algo. Não é ferramenta quebrada: o texto de uma
+issue pública é de terceiros. Só aqui; o projeto gerado não tem essas linhas. Design:
+`.claude/decisions/0103-issue-filing-and-skeptical-triage.md`.
+
 ### Classes e modelos
 
 **Toda skill declara `model`, dentro do conjunto da sua classe.** `schema` reprova um
