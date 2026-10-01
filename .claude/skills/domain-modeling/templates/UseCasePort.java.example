@@ -26,7 +26,7 @@
  */
 
 // --- CreateUserUseCase.java
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.user;
 
 import com.example.demo.domain.model.UserId;
 
@@ -53,10 +53,10 @@ public interface UserRepository {
 }
 
 // --- CreateUserService.java
-package com.example.demo.application.service;
+package com.example.demo.application.service.user;
 
-import com.example.demo.application.port.in.CreateUserCommand;
-import com.example.demo.application.port.in.CreateUserUseCase;
+import com.example.demo.application.port.in.user.CreateUserCommand;
+import com.example.demo.application.port.in.user.CreateUserUseCase;
 import com.example.demo.application.port.out.UserRepository;
 import com.example.demo.domain.exception.ConflictException;
 import com.example.demo.domain.model.DepartmentId;

@@ -12,7 +12,7 @@ package com.exemplo.minhaapi.adapter.in.rest;
 
 import com.exemplo.minhaapi.adapter.in.rest.dto.CreateUserRequest;
 import com.exemplo.minhaapi.adapter.in.rest.dto.UserResponse;
-import com.exemplo.minhaapi.application.port.in.CreateUserCommand;
+import com.exemplo.minhaapi.application.port.in.user.CreateUserCommand;
 import com.exemplo.minhaapi.application.port.in.PageCriteria;
 import com.exemplo.minhaapi.application.port.in.PageCriteria.SortCriterion;
 import com.exemplo.minhaapi.domain.model.user.DepartmentId;

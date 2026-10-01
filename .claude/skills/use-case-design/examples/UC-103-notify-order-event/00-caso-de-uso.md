@@ -56,8 +56,8 @@ already exists and serves.
 | File | Layer | Role | State | Detailed by |
 |---|---|---|---|---|
 | `infrastructure/messaging/OrderConfirmedListener.java` | infrastructure (in) | consumes the event | NEW | `rest-api-architect` |
-| `application/usecase/NotifyOrderEventCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/NotifyOrderEventUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
+| `application/usecase/order/NotifyOrderEventCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/order/NotifyOrderEventUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
 | `application/port/NotificationSender.java` | application | outbound port — base send, one implementation per channel | NEW | `domain-modeling` |
 | `application/port/NotificationLog.java` | application | outbound port — audit record | NEW | `domain-modeling` |
 | `domain/model/NotificationChannel.java` | domain | value object | NEW | `domain-modeling` |
@@ -102,10 +102,10 @@ retry/audit/rate-limit behavior instead.
 
 - [ ] 1. `domain/model/NotificationChannel.java`
 - [ ] 2. `domain/exception/NotificationDeliveryFailedException.java`
-- [ ] 3. `application/usecase/NotifyOrderEventCommand.java`
+- [ ] 3. `application/usecase/order/NotifyOrderEventCommand.java`
 - [ ] 4. `application/port/NotificationSender.java`
 - [ ] 5. `application/port/NotificationLog.java`
-- [ ] 6. `application/usecase/NotifyOrderEventUseCase.java`
+- [ ] 6. `application/usecase/order/NotifyOrderEventUseCase.java`
 - [ ] 7. `db/migration/V6__create_notification_log.sql`
 - [ ] 8. `infrastructure/notification/`
 - [ ] 9. `infrastructure/messaging/OrderConfirmedListener.java`

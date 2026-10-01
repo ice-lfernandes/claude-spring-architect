@@ -395,7 +395,12 @@ fails silently.
 **`.claude/commands/`.** Never. Invariant 4: write a skill and control invocation with
 `disable-model-invocation`.
 
-**Blueprints.** Architecture is data, not extension — `@.claude/blueprints/_schema.md`.
+**Blueprints are data, not an extension form.** No interview axis routes to one, and a
+new architecture is a new `<id>.yaml` that `@.claude/blueprints/_schema.md` describes. But
+an existing blueprint's naming convention or `packages.map` is often where an approved
+option lands — the owner of a convention is the blueprint (invariant 7) — so this skill
+writes `.claude/blueprints/**` after approval, like any other file of the option, and the
+record names each one it touched (`@.claude/decisions/0104-use-case-subpackage-per-aggregate.md`).
 
 **MCP where a CLI already solves it.** Decision matrix § 2.1: `gh`/`psql`/`aws`/etc. wins
 over a new server, and this skill says so and proposes nothing. A tool that must never be
@@ -431,7 +436,8 @@ win where the two disagree.
 `CLAUDE.md` of **this repository**, `.mcp.json` at this repo's root (Form 6a), the `hooks`
 and `permissions` blocks of `.claude/settings.json` (Forms 7a and 8), and
 `.claude/hooks/ArchHook.java` plus the lists it reads in `.claude/schemas/extensions.json`
-(Form 7c), and — for the CI item of whichever form was approved (Phase 4 step 9) — the
+(Form 7c), `.claude/blueprints/**` when the approved option changes a
+convention a blueprint owns, and — for the CI item of whichever form was approved (Phase 4 step 9) — the
 tests in `.claude/.ci/**`, the jobs of `.github/workflows/**`, the matching rows of
 `docs/*/07-ci-validate.md`, and, when axis 8 = "both", `project-bootstrap/templates/ci.yml.example`
 and `ci-gradle.yml.example`. Only after explicit approval.
@@ -441,7 +447,7 @@ and `ci-gradle.yml.example`. Only after explicit approval.
 other piece writes there, and nothing inside it is a rule.
 
 **Does not write** `.claude/settings.local.json`, `~/.claude/settings.json`,
-`~/.claude.json`, `.claude/blueprints/**`, a hook file other than `ArchHook.java`, nor
+`~/.claude.json`, a hook file other than `ArchHook.java`, nor
 project Java code. Does not create `.claude/commands/`. **Never writes a literal secret**
 into `.mcp.json` — invariant 11; a static credential from axis 12 becomes a `${VAR}`
 placeholder plus a line in the companion setup doc, never a value.

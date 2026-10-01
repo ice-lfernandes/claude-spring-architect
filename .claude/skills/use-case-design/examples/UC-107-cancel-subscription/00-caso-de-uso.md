@@ -60,8 +60,8 @@ already exists and serves.
 | `infrastructure/rest/SubscriptionCancellationController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/CancelSubscriptionRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/CancellationResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/CancelSubscriptionCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/CancelSubscriptionUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/usecase/subscription/CancelSubscriptionCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/subscription/CancelSubscriptionUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/SubscriptionRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `application/port/CancellationAuditLog.java` | application | outbound port — records who/when/why | NEW | `domain-modeling` |
 | `domain/model/Subscription.java` | domain | aggregate | CHANGE — adds `PENDING_CANCELLATION` and its undo | `domain-modeling` |
@@ -105,9 +105,9 @@ already exists and serves.
 
 - [ ] 1. `domain/exception/SubscriptionNotActiveException.java`
 - [ ] 2. `domain/model/Subscription.java` (change)
-- [ ] 3. `application/usecase/CancelSubscriptionCommand.java`
+- [ ] 3. `application/usecase/subscription/CancelSubscriptionCommand.java`
 - [ ] 4. `application/port/CancellationAuditLog.java`
-- [ ] 5. `application/usecase/CancelSubscriptionUseCase.java`
+- [ ] 5. `application/usecase/subscription/CancelSubscriptionUseCase.java`
 - [ ] 6. `db/migration/V8__create_cancellation_audit_log.sql`
 - [ ] 7. `infrastructure/persistence/cancellationaudit/CancellationAuditLogAdapter.java`
 - [ ] 8. `infrastructure/rest/`

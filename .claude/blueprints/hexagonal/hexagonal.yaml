@@ -97,6 +97,20 @@ packages:
 #   Input port:  <Verb><Noun>UseCase   — e.g. ConfirmOrderUseCase
 #   Output port: <Noun><Action>Port        — e.g. OrderRepositoryPort
 #   Implementation:    <Verb><Noun>Service     — e.g. ConfirmOrderService
+#   Command:     <Verb><Noun>Command   — e.g. ConfirmOrderCommand, a record next to its input port
+#   Grouping (one subpackage per aggregate, always — even with a single aggregate):
+#                `application.port.in.<aggregate>` and `application.service.<aggregate>`
+#                — e.g. application.port.in.order holds ConfirmOrderUseCase and
+#                ConfirmOrderCommand, application.service.order holds ConfirmOrderService.
+#                A use case lives with the aggregate it writes, a query with the one it
+#                reads, the outbox relay and prune use cases in `outbox`; one that touches
+#                no aggregate, with the one its trigger concerns (a reaction to
+#                OrderConfirmed: `order`), else under the noun of its own name
+#                (RequestShippingQuote: `shippingquote`). Same lowercase
+#                segment as the persistence adapter's subpackage; the test tree mirrors
+#                it. Output ports stay flat (a capability, not a use case), and a type the
+#                use cases of several aggregates share (`PageCriteria`, `IdempotentExecution`)
+#                stays at the package root
 
 dependency_rules:
   direction: inward

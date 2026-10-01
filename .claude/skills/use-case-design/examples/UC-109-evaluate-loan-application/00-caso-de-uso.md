@@ -59,8 +59,8 @@ already exists and serves.
 | `infrastructure/rest/LoanApplicationController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/LoanApplicationRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/LoanEvaluationResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/EvaluateLoanApplicationCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/EvaluateLoanApplicationUseCase.java` | application | orchestrates, runs the checks in order | NEW | `domain-modeling` |
+| `application/usecase/loanapplication/EvaluateLoanApplicationCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/loanapplication/EvaluateLoanApplicationUseCase.java` | application | orchestrates, runs the checks in order | NEW | `domain-modeling` |
 | `application/port/KycProvider.java` | application | outbound port | NEW | `domain-modeling` |
 | `application/port/CreditScoreProvider.java` | application | outbound port | NEW | `domain-modeling` |
 | `application/port/FraudSignalProvider.java` | application | outbound port | NEW | `domain-modeling` |
@@ -107,9 +107,9 @@ already exists and serves.
 - [ ] 1. `domain/model/LoanApplication.java`
 - [ ] 2. `domain/model/LoanEvaluation.java`
 - [ ] 3. `domain/exception/LoanApplicationRejectedException.java`
-- [ ] 4. `application/usecase/EvaluateLoanApplicationCommand.java`
+- [ ] 4. `application/usecase/loanapplication/EvaluateLoanApplicationCommand.java`
 - [ ] 5. `application/port/` (three provider ports + repository)
-- [ ] 6. `application/usecase/EvaluateLoanApplicationUseCase.java`
+- [ ] 6. `application/usecase/loanapplication/EvaluateLoanApplicationUseCase.java`
 - [ ] 7. `db/migration/V9__create_loan_evaluations.sql`
 - [ ] 8. `infrastructure/persistence/loanapplication/`
 - [ ] 9. `infrastructure/rest/`

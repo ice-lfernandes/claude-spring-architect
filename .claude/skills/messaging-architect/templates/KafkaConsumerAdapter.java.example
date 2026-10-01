@@ -28,7 +28,7 @@
  */
 
 // --- ReserveStockUseCase.java (declared by domain-modeling, unrelated to Kafka)
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.stock;
 
 public interface ReserveStockUseCase {
 
@@ -56,8 +56,8 @@ public interface ProcessedEventStore {
 // --- orderconfirmed/OrderConfirmedListener.java
 package com.example.demo.adapter.in.messaging.orderconfirmed;
 
-import com.example.demo.application.port.in.ReserveStockUseCase;
-import com.example.demo.application.port.in.ReserveStockCommand;
+import com.example.demo.application.port.in.stock.ReserveStockUseCase;
+import com.example.demo.application.port.in.stock.ReserveStockCommand;
 import com.example.demo.application.port.out.ProcessedEventStore;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;

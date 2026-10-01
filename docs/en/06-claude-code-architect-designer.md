@@ -666,8 +666,7 @@ after explicit approval.
 touches *before* approval, as the Phase 3.5 draft. It is the exclusive owner of the
 directory: no other piece writes there, and nothing inside it is a rule.
 
-**Does not write** `.claude/settings.json`, `.claude/hooks/**`,
-`.claude/blueprints/**`, `~/.claude.json`, nor project Java code. Does not create
+**Does not write** `.claude/settings.json`, `.claude/hooks/**`, `~/.claude.json`, nor project Java code. Does not create
 `.claude/commands/`. **Never writes a literal secret** into `.mcp.json` — invariant 11;
 a static credential from axis 12 becomes a `${VAR}` placeholder plus a line in the
 companion setup doc, never a value.

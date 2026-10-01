@@ -72,10 +72,20 @@ packages:
 #   Use case (concrete, no interface): <Verb><Noun>UseCase  — e.g. CreateUserUseCase
 #   Command (record, co-located in the SAME package as its UseCase, one per use case):
 #                            <Verb><Noun>Command             — e.g. CreateUserCommand.
-#                            The one class in `application.usecase` that doesn't end in
-#                            `UseCase` — an ArchUnit naming rule for this package must
-#                            name `Command` as an explicit exception, not assume the
-#                            package is single-suffix (lessons-learned-006 § 5)
+#                            The one type in the use-case package that doesn't end in
+#                            `UseCase`; being a record, the ArchUnit role rules already
+#                            exempt it by type
+#   Grouping (one subpackage per aggregate, always — even with a single aggregate):
+#                            `application.usecase.<aggregate>`  — e.g. application.usecase.user
+#                            holds CreateUserUseCase and CreateUserCommand. A use case lives
+#                            with the aggregate it writes, a query with the one it reads, the
+#                            outbox relay and prune use cases in `outbox`; one that touches no
+#                            aggregate, with the one its trigger concerns (a reaction to
+#                            OrderConfirmed: `order`), else under the noun of its own name
+#                            (RequestShippingQuote: `shippingquote`). Same lowercase
+#                            segment as the persistence adapter's subpackage; the test tree
+#                            mirrors it. A type the use cases of several aggregates share
+#                            stays at the package root
 #   Output port (interface, lives in application, implemented by infra):
 #                            <Capability>                    — e.g. SendNotification, RegisterEvent, DataProvider
 #   Port implementation (lives in infrastructure): <Capability><Technology>Adapter

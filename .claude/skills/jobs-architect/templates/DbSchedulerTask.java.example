@@ -32,8 +32,8 @@
 // --- DbSchedulerTasks.java
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.ExpireTrialSubscription;
-import com.example.demo.application.port.in.RecomputeLoyaltyTiers;
+import com.example.demo.application.port.in.subscription.ExpireTrialSubscription;
+import com.example.demo.application.port.in.loyaltytier.RecomputeLoyaltyTiers;
 import com.github.kagkarlsson.scheduler.task.helper.OneTimeTask;
 import com.github.kagkarlsson.scheduler.task.helper.RecurringTask;
 import com.github.kagkarlsson.scheduler.task.helper.Tasks;

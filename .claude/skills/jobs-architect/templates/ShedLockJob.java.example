@@ -62,7 +62,7 @@ class ShedLockConfig {
 // --- CloseExpiredQuotesJob.java
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.CloseExpiredQuotes;
+import com.example.demo.application.port.in.quote.CloseExpiredQuotes;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

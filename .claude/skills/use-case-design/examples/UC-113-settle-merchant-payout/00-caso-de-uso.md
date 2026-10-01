@@ -65,8 +65,8 @@ already exists and serves.
 | `infrastructure/rest/PayoutSettlementController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/PayoutSettlementRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/PayoutSettlementResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/SettleMerchantPayoutCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/SettleMerchantPayoutUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/usecase/payout/SettleMerchantPayoutCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/payout/SettleMerchantPayoutUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/PayoutRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `application/port/PublishPayoutSettledPort.java` | application | outbound port for the event | NEW | `domain-modeling` |
 | `domain/model/Payout.java` | domain | aggregate | CHANGE — adds `settle()` | `domain-modeling` |
@@ -120,8 +120,8 @@ already exists and serves.
 - [ ] 2. `domain/event/PayoutSettled.java`
 - [ ] 3. `domain/exception/` (the two)
 - [ ] 4. `domain/model/Payout.java` (change)
-- [ ] 5. `application/usecase/SettleMerchantPayoutCommand.java`
-- [ ] 6. `application/usecase/SettleMerchantPayoutUseCase.java`
+- [ ] 5. `application/usecase/payout/SettleMerchantPayoutCommand.java`
+- [ ] 6. `application/usecase/payout/SettleMerchantPayoutUseCase.java`
 - [ ] 7. `application/port/PublishPayoutSettledPort.java` + its adapter
 - [ ] 8. `infrastructure/rest/`
 - [ ] 9. tests for the levels above

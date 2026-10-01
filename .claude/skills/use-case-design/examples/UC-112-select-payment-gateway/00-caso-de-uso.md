@@ -55,8 +55,8 @@ already exists and serves.
 |---|---|---|---|---|
 | `infrastructure/rest/PaymentGatewaySelectionController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/PaymentGatewaySelectionResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/SelectPaymentGatewayCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/SelectPaymentGatewayUseCase.java` | application | resolves and checks availability | NEW | `domain-modeling` |
+| `application/usecase/paymentgateway/SelectPaymentGatewayCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/paymentgateway/SelectPaymentGatewayUseCase.java` | application | resolves and checks availability | NEW | `domain-modeling` |
 | `application/port/PaymentGatewayClient.java` | application | outbound port — one contract, one concrete class per method | NEW | `domain-modeling` |
 | `domain/model/PaymentMethod.java` | domain | value object | NEW | `domain-modeling` |
 | `domain/exception/UnsupportedPaymentMethodException.java` | domain | exception | NEW | `domain-modeling` |
@@ -98,9 +98,9 @@ already exists and serves.
 
 - [ ] 1. `domain/model/PaymentMethod.java`
 - [ ] 2. `domain/exception/UnsupportedPaymentMethodException.java`
-- [ ] 3. `application/usecase/SelectPaymentGatewayCommand.java`
+- [ ] 3. `application/usecase/paymentgateway/SelectPaymentGatewayCommand.java`
 - [ ] 4. `application/port/PaymentGatewayClient.java`
-- [ ] 5. `application/usecase/SelectPaymentGatewayUseCase.java`
+- [ ] 5. `application/usecase/paymentgateway/SelectPaymentGatewayUseCase.java`
 - [ ] 6. `infrastructure/gateway/` (three clients)
 - [ ] 7. `infrastructure/rest/`
 - [ ] 8. tests for the levels above

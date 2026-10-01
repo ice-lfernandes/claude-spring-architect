@@ -59,8 +59,8 @@ already exists and serves.
 |---|---|---|---|---|
 | `infrastructure/rest/ProductChargesController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/ProductChargesResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/ComputeProductChargesCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/ComputeProductChargesUseCase.java` | application | orchestrates the three operations | NEW | `domain-modeling` |
+| `application/usecase/product/ComputeProductChargesCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/product/ComputeProductChargesUseCase.java` | application | orchestrates the three operations | NEW | `domain-modeling` |
 | `application/port/ProductRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `domain/model/Product.java` | domain | aggregate — fixed hierarchy (`PhysicalGood`, `DigitalGood`, `Subscription`) | REUSE | `domain-modeling` |
 | `domain/model/ProductCharges.java` | domain | value object — tax, eligibility, export payload | NEW | `domain-modeling` |
@@ -100,8 +100,8 @@ already exists and serves.
 ## Implementation order
 
 - [ ] 1. `domain/model/ProductCharges.java`
-- [ ] 2. `application/usecase/ComputeProductChargesCommand.java`
-- [ ] 3. `application/usecase/ComputeProductChargesUseCase.java`
+- [ ] 2. `application/usecase/product/ComputeProductChargesCommand.java`
+- [ ] 3. `application/usecase/product/ComputeProductChargesUseCase.java`
 - [ ] 4. `infrastructure/rest/`
 - [ ] 5. tests for the levels above
 - [ ] 6. `./mvnw clean verify` green

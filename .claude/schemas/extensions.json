@@ -388,6 +388,20 @@
     "stamp_file": ".claude/.arch-provenance.json"
   },
 
+  "migrations": {
+    "$comment": "Convention changes that leave already-generated code behind, one entry each. Read by `arch-adopt` on an update: it collects the `id`s in the project's own copy of this file BEFORE `export` overwrites it, compares them with the fetched copy, and for every new entry whose `blueprints` names the active blueprint prints `note` and `prompt` — the prompt is for the user to paste into Claude Code inside the project, never run by the skill. A sibling of `source`, not a field of `export`, for the same reason: it has to travel, since the project's copy is the record of which entries it has already been shown, and a project generated after an entry was written carries its id and never sees it. `required_fields` and `id_pattern` are what `schema` checks; `blueprints` must name existing blueprints, checked only in this repository (a project has its active one alone). An entry is never edited after it ships — a correction is a new id. Design: .claude/decisions/0104-use-case-subpackage-per-aggregate.md",
+    "required_fields": ["id", "blueprints", "note", "prompt"],
+    "id_pattern": "[a-z0-9]+(-[a-z0-9]+)*",
+    "entries": [
+      {
+        "id": "use-case-subpackage-per-aggregate",
+        "blueprints": ["clean-architecture-single-module", "clean-architecture-multi-module", "hexagonal"],
+        "note": "Use cases are now grouped in one subpackage per aggregate: `application.usecase.<aggregate>` in clean-architecture, `application.port.in.<aggregate>` and `application.service.<aggregate>` in hexagonal. Code generated before this change sits flat at the package root, and new use cases will land in subpackages, so the package mixes both layouts until the old ones are moved. Nothing breaks if they stay; the move is a refactor, no behavior changes.",
+        "prompt": "Move this project's use cases into one subpackage per aggregate, as the naming convention in .claude/rules/naming.md now requires. Every *UseCase sitting directly in the use-case package — with its *Command, and in hexagonal its *Service too — goes into the subpackage named after the aggregate it writes (a query: the aggregate it reads; the outbox relay and prune use cases: `outbox`; one that touches no aggregate: the aggregate its trigger concerns, else the noun of its own name), lowercase, the same segment the persistence adapter's subpackage uses. Output ports and types shared by several aggregates stay at the package root. Mirror the moves in src/test, fix every import, change no behavior, and run ./mvnw verify. Show me the list of moves before applying any."
+      }
+    ]
+  },
+
   "hook_build": {
     "$comment": "How `ArchHook.java build` turns the source into the jar every hook registration launches, and what `schema` and `doctor` compare to call it stale. `javac_feature` is the pin: `build` refuses under any other JDK feature release, because `--verify` (run by CI) recompiles and compares class bytes, and two javac majors emit different bytes for the same source. `release` is what the classes target — the stated JDK 21+ dependency. `hash_entry` holds the SHA-256 of the source with CRLF normalized to LF: `* text=auto` gives a Windows checkout CRLF, and a raw hash would call a fresh jar stale. Design: .claude/decisions/0075-precompiled-hook-jar.md",
     "source": ".claude/hooks/ArchHook.java",

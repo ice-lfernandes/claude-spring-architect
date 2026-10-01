@@ -53,6 +53,14 @@ has no `Bounded context:` line, the skill asks once — the first segment of the
 topics, or the build file's `artifactId` when there are none — and writes the line with the
 text of the fetched `root.CLAUDE.md.example`. The skill's territory now includes that file.
 
+**A convention change reaches existing code as a prompt, never as an edit.** When the
+norms change in a way that leaves code generated before behind — use cases grouped by
+aggregate, decision 0104 — the change ships as an entry in the `migrations` block of
+`extensions.json`. On an update, step 9 shows every entry the project has not seen yet and
+that applies to its blueprint: a note and a prompt to paste into Claude Code in the
+project. The skill never runs it. The project's own copy of `extensions.json` is the
+record of what it was shown, so a project generated after an entry never sees it.
+
 That split replaced the previous model, where the copy tables lived as prose inside
 `project-bootstrap/SKILL.md` §§ 6.6–6.8: a markdown table is copied by a model, row by
 row, and the row it forgets breaks nothing at generation time — it breaks for whoever
@@ -127,9 +135,16 @@ Provenance ... ⚠️ 2 files edited locally since the stamp:
                .claude/rules/persistence.md
                .claude/settings.json
 Bounded ctx .. already declared
+Migrations ... 1 below, to paste when you choose
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
+```
+
+Use cases are now grouped in one subpackage per aggregate: … (the entry's `note`)
+
+```text
+Move this project's use cases into one subpackage per aggregate, … (the entry's `prompt`)
 ```
 
 `--source <local path>` bypasses the `source` block entirely and uses a tree on the

@@ -32,8 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.exemplo.minhaapi.application.port.in.CreateUserUseCase;
-import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.application.port.in.user.CreateUserUseCase;
+import com.exemplo.minhaapi.application.port.in.user.ListUsersQuery;
 import com.exemplo.minhaapi.application.service.IdempotentExecution;
 import com.exemplo.minhaapi.application.service.IdempotentOutcome;
 import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;

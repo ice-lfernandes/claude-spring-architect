@@ -66,7 +66,7 @@ already exists and serves.
 | `infrastructure/rest/OrderSearchController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/OrderSearchResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/OrderSearchMapper.java` | infrastructure (in) | DTO ↔ criteria | NEW | `rest-api-architect` |
-| `application/usecase/SearchOrdersUseCase.java` | application | passes criteria to the outbound query | NEW | `domain-modeling` |
+| `application/usecase/order/SearchOrdersUseCase.java` | application | passes criteria to the outbound query | NEW | `domain-modeling` |
 | `application/port/OrderSearchQuery.java` | application | outbound port — read-only query | NEW | `domain-modeling` |
 | `domain/model/OrderSearchCriteria.java` | domain | value object — the reusable predicate composition | NEW | `domain-modeling` |
 | `infrastructure/persistence/order/OrderSearchQueryAdapter.java` | infrastructure (out) | implements the query | NEW | `persistence-architect` |
@@ -104,7 +104,7 @@ already exists and serves.
 
 - [ ] 1. `domain/model/OrderSearchCriteria.java`
 - [ ] 2. `application/port/OrderSearchQuery.java`
-- [ ] 3. `application/usecase/SearchOrdersUseCase.java`
+- [ ] 3. `application/usecase/order/SearchOrdersUseCase.java`
 - [ ] 4. `infrastructure/persistence/order/OrderSearchQueryAdapter.java`
 - [ ] 5. `infrastructure/rest/` (DTO, mapper, controller)
 - [ ] 6. tests for the levels above
