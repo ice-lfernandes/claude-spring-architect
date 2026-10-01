@@ -10,6 +10,10 @@
 // it reports somebody's half-finished edit on every Stop (and gets routed around), or it
 // reports nothing at all. Decision 0065.
 //
+// It also proves the one exemption, `guard.sweep_exempt`: the audit trail a hook writes during
+// the turn is not handed back as the phase's write, while a Write to it is still refused.
+// Decision 0105, issue #55.
+//
 // Runs in a throwaway git repository holding a copy of the real extensions.json, so the
 // territory under test is production data. Writes the files with plain Java — the point is
 // that no tool-time guard saw them.
@@ -57,13 +61,31 @@ public class SweepTest {
         failures += guard(hook, repo, "sweep", "{\"session_id\":\"" + s2 + "\"}", 0, null, null,
                 "write inside the territory — silent");
 
+        // The audit hook writes its versioned trail in parallel with the baseline and at Stop.
+        // The sweep must not hand it back as the phase's write; the tool-time guard still
+        // refuses the model the same path. Decision 0105, issue #55.
+        String s3 = "ci-sweep-" + System.nanoTime();
+        failures += guard(hook, repo, "prompt", "{\"session_id\":\"" + s3
+                + "\",\"prompt\":\"/new-feature UC-002-x\"}", 0, null, null,
+                "orchestrator phase opens");
+        Path audit = repo.resolve(".claude/audit-usage");
+        Files.createDirectories(audit);
+        Files.writeString(audit.resolve("history.jsonl"), "{}\n");
+        Files.writeString(audit.resolve("2026-10-01T11-07-39--new-feature.md"), "# run");
+        failures += guard(hook, repo, "sweep", "{\"session_id\":\"" + s3 + "\"}", 0, null,
+                ".claude/audit-usage/", "audit trail written during the turn — not reported");
+        failures += guard(hook, repo, "write", "{\"session_id\":\"" + s3
+                + "\",\"tool_input\":{\"file_path\":\".claude/audit-usage/history.jsonl\"}}", 2,
+                ".claude/audit-usage/history.jsonl", null,
+                "the model writing the trail through Write — still refused");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `guard sweep` is NOT"
                     + " separating what this turn wrote from what was already dirty.");
             System.exit(1);
         }
         System.out.println("✅ guard sweep: this turn's out-of-territory write reported,"
-                + " pre-existing changes and in-territory writes left alone.");
+                + " pre-existing changes, in-territory writes and the audit trail left alone.");
     }
 
     static void git(Path dir, String... args) throws Exception {
