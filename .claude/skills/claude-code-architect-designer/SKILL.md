@@ -109,6 +109,7 @@ below eliminates candidate forms, and an unanswered axis leaves the decision gue
 | 14 | Lifecycle event — what exactly has to have just happened: a tool call, a prompt, the end of a turn, session start | The event key of Form 7, and whether a `matcher` is even read there — `references/hook-events.md` |
 | 15 | Reaction — observe and report, add context, or block | Exit code, and Form 7 vs Form 8: a call that must **never** happen is `permissions.deny`, cheaper than a hook that spawns a process to refuse it |
 | 16 | Existing mode — does `ArchHook.java` already run this check | Form 7a alone vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lists the modes in use |
+| 17 | CI coverage — which job already proves the piece does what it claims, what it leaves unproven, and in which pipeline the missing check runs | The CI item of every Phase 3 option and the CI step of Phase 4 — `references/ci-coverage.md` |
 
 Axis 9 is checked against the inventory injected at the top, not from memory. Two pieces
 writing to the same paths is an ownership bug, not a style decision.
@@ -123,6 +124,14 @@ matrix is persuasion, and asking which lifecycle event a skill fires on is a cat
 error. Axis 8 (destination) covers Form 7 unchanged: the generated project's hooks live
 in `project-bootstrap/templates/settings.json.example`, and a mode in `ArchHook.java`
 travels there on its own, since the `export` mode copies the whole file.
+
+Axis 17 applies to **every** form, and is answered by you, not asked: read
+`references/ci-coverage.md` and the workflows under `.github/workflows/`, and name the job
+that already covers the candidate piece. Ask only when the answer is the user's call — a
+check that needs network or minutes, path-filtered or on every PR. The case behind it:
+the guard modes of `0063`–`0077` ran in every session with no CI until `0084`, and two
+template defects were caught by hand until `0099` — each time, CI came in a later review
+instead of with the piece.
 
 ### Phase 2 · Classify
 
@@ -146,6 +155,11 @@ when it is defensible. Each in this form, in this order:
 4. **Cons** — includes the invariant it strains, if any
 5. **Score 0-10** — rubric in `references/decision-matrix.md`, § Rubric
 6. **Visual** — file tree or ASCII graph of who calls whom
+7. **CI** — axis 17's answer for this option, one of three: the existing job and step that
+   already prove it (the common case — `schema` alone covers a skill's frontmatter, class,
+   sections and export entry); the new test or step it needs, with file, workflow and job;
+   or "nothing testable, because …". "Later" is not an answer — anti-pattern 21 of the
+   decision matrix
 
 And at the end, a **references** table: for each decision, the concrete source
 (`@claude-help.md` § N, `@CLAUDE.md` invariant N, or the repo file that serves as
@@ -155,7 +169,7 @@ precedent). A claim about the runtime without a source is decoration — cut it.
 
 What Phase 3 produced — options, scores, rejected alternatives, the references table —
 evaporates at the end of the session. Six months from now nobody knows why the piece is
-a skill and not an agent, and the thirteen-axis interview starts over from scratch.
+a skill and not an agent, and the seventeen-axis interview starts over from scratch.
 
 **When to save a file.** Only if at least one of these is true:
 
@@ -179,8 +193,9 @@ decision is ceremony, not memory.
 **How.** Generate from `templates/decision.md.example` to
 `.claude/decisions/NNNN-<slug>.md`, where `NNNN` is the highest existing plus one — read
 it from the inventory injected at the top, not from memory. Save with **all** options and
-without the `State` line: the decision hasn't been made yet. Directory rules in
-`@.claude/decisions/README.md`.
+without the `State` line: the decision hasn't been made yet. Each option keeps its CI item
+from Phase 3; the `## CI coverage` section stays pending until Phase 4 step 9 fills it.
+Directory rules in `@.claude/decisions/README.md`.
 
 **Stop here.** Wait for explicit approval. "Looks good" is not approval of which option.
 
@@ -288,16 +303,48 @@ the same interview again.
    executes, and a wrong `if` or `matcher` copied into the generated project's template
    ships to every project made afterwards.
 
-   Steps 1 through 7 **never** get delegated. Writing the `description` decides whether
+   Steps 1 through 7, and step 9, **never** get delegated. Writing the `description` decides whether
    the skill fires, and the `## Contract` decides ownership — that's design, not
    transcription. For MCP the same split holds: which server to add, its credential
    shape, and its destination are design; copying an already-approved `.mcp.json` entry
    into a second file is the only mechanical part.
 
-9. If you saved a draft in Phase 3.5, promote it: fill in `Decision`, `State` (approved
-   by whom, on what date), and the `Propagation` table with the files step 8 touched.
+9. **CI coverage — write the check the approved option's CI item named.** The map of
+   what already covers each form, and where a new check goes, is
+   `references/ci-coverage.md`; read it again here, the workflows may have moved since
+   Phase 1.
 
-10. Run `claude plugin validate .claude/skills` and report the output without rewriting
+   - **Existing check covers it** — write nothing; name the job and step in the record.
+   - **An existing test needs a case** — add the case to that `.claude/.ci/<Name>Test.java`
+     (a new class to `SkillTerritoryTest`, a new agent to `AgentTerritoryTest`, a new
+     spelling to `BashGuardTest`).
+   - **A new test** — `.claude/.ci/<Name>Test.java`, a single-file Java program like its
+     neighbours: `java`, `git` and `curl` only (`@CLAUDE.md` § Dependencies). When it
+     exercises a hook mode, it spawns `java -jar .claude/hooks/ArchHook.jar` — the bytes
+     the hooks run, not the source (`0084`). Register it as a step of the job the map
+     names, in `.github/workflows/validate.yml`; a check that needs network or minutes
+     goes in the path-filtered `.github/workflows/templates.yml` instead, with its paths
+     added to **both** trigger lists (`0099`).
+   - **A claim about files that `extensions.json` can carry as data** — extend `schema`
+     (Form 7c rules apply, invariant 10), not a `grep` step in YAML: a YAML step never runs
+     inside a generated project (`0084`, `native_commands`).
+   - **Axis 8 = "both"** — also `project-bootstrap/templates/ci.yml.example` and
+     `ci-gradle.yml.example`, identically, and **only** with what exists inside the
+     generated project: nothing under `.claude/.ci/` travels, so a step calling it starts
+     red (the header of `ci.yml.example`).
+   - **Nothing testable** — write the reason in the record's `## CI coverage`.
+
+   Prove the check before reporting it: run it green, then once with the defect it guards
+   against injected, and see it fail by name (`0099` § Verified before committing). A test
+   that never failed proves nothing. **Never delegated**, not even with axis 8 = "both":
+   which cases the test holds is design, the same as the piece's `description`.
+
+10. If you saved a draft in Phase 3.5, promote it: fill in `Decision`, `State` (approved
+    by whom, on what date), the `Propagation` table with the files steps 8 and 9 touched,
+    and `## CI coverage` with step 9's outcome — the job and step that run it, and the
+    green and red runs.
+
+11. Run `claude plugin validate .claude/skills` and report the output without rewriting
     it. **It does not look at `.mcp.json`, `.claude/settings.json`, or
     `.claude/agents/`** — run `java .claude/hooks/ArchHook.java schema` too, always when
     step 1 touched a `.mcp.json` or any `settings.json`. For Form 7, add
@@ -307,12 +354,15 @@ the same interview again.
     as done, and rebuild the jar every hook launches — `java .claude/hooks/ArchHook.java
     build` — committing it with the source: `schema` fails on a jar built from another
     version of the file. A mode that throws exits 0 through the top-level catch and looks like it
-    passed.
+    passed. Whenever step 9 wrote or changed a test, run it again here, after the jar is
+    rebuilt — `java .claude/.ci/<Name>Test.java` — since the test exercises the jar.
 
 ### Phase 5 · Report
 
 Files created, files changed, the decision record path (or the sentence explaining why
-there wasn't one), the `validate` and `schema` output, and — whenever a hook or a
+there wasn't one), the `validate` and `schema` output, the **CI line** — the job and step
+that cover the piece, the test step 9 wrote with its green and red runs, or the reason
+nothing is testable — and — whenever a hook or a
 `permissions` rule was written — the restart warning, in its own line: `.claude/settings.json`
 is read only at session startup, so nothing written in Forms 7a or 8 takes effect until
 `claude` is restarted. Say it even if the user already knows; a hook believed to be
@@ -364,13 +414,18 @@ registered in this meta-repository at all. A new skill is **incomplete** until a
 **Reads** `@claude-help.md`, `@CLAUDE.md` (the eleven invariants),
 `@docs/pt-br/11-pitfalls.md` (every silent trap, runtime and repository), `@.claude/rules/00-index.md`, `@.claude/blueprints/_schema.md` when the decision touches
 blueprints, and the inventory injected at the top. Reads this skill's `references/`
-before classifying — the matrix is deliberately not in the body.
+before classifying — the matrix is deliberately not in the body — and
+`.github/workflows/*.yml` for axis 17, since `references/ci-coverage.md` quotes them and they
+win where the two disagree.
 
 **Writes** `.claude/skills/**`, `.claude/agents/**`, `.claude/rules/**`, the root
 `CLAUDE.md` of **this repository**, `.mcp.json` at this repo's root (Form 6a), the `hooks`
 and `permissions` blocks of `.claude/settings.json` (Forms 7a and 8), and
 `.claude/hooks/ArchHook.java` plus the lists it reads in `.claude/schemas/extensions.json`
-(Form 7c). Only after explicit approval.
+(Form 7c), and — for the CI item of whichever form was approved (Phase 4 step 9) — the
+tests in `.claude/.ci/**`, the jobs of `.github/workflows/**`, the matching rows of
+`docs/*/07-ci-validate.md`, and, when axis 8 = "both", `project-bootstrap/templates/ci.yml.example`
+and `ci-gradle.yml.example`. Only after explicit approval.
 
 **Also writes** `.claude/decisions/NNNN-<slug>.md` — and this is the only path it touches
 *before* approval, as the Phase 3.5 draft. It is the exclusive owner of the directory: no
@@ -389,8 +444,9 @@ invariant 10.
 
 **Delegates** at most step 8 of Phase 4 (propagation), and only when axis 8 or axis 13 is
 "both", a decision record has been saved, and the approved form is **not** 7 or 8.
-Classifying, proposing, and writing the body always stay in this thread — the subagent
-doesn't receive the conversation, and the interview is the heart of the task.
+Classifying, proposing, writing the body, and writing the CI check (step 9) always stay in
+this thread — the subagent doesn't receive the conversation, and the interview is the
+heart of the task.
 
 **Stays out of the generated project.** It's a creation skill, like `project-bootstrap`
 and `init-project`: whoever clones an already-generated project has no extensions to

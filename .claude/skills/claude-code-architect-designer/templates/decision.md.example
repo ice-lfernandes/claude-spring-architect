@@ -32,6 +32,9 @@ included.
 
 **Points cut in the rubric:** <§ 8 criterion → why>
 
+**CI:** <the job and step that already cover it · the test Phase 4 step 9 writes (file,
+workflow, job) · or "nothing testable, because …">
+
 ### Option 2 — `<file>` (score <N>)
 
 <same, shorter: just enough that nobody re-proposes it without reading this>
@@ -50,11 +53,21 @@ included.
 
 Goes to the generated project: **<yes, via step 6.6/6.7 — or no, and why>**
 
+## CI coverage
+
+| Pipeline · job › step | What it proves | Run |
+|---|---|---|
+| `<validate · hooks-cross-platform › step name>` | <the claim of the piece it checks> | <green on the tree · red with <defect> injected> |
+
+<Or one sentence: what already covers the piece and nothing was added — or why nothing is
+testable in CI. Filled by Phase 4 step 9; pending in the draft.>
+
 <!--
 HOW TO USE:
 - File created by Phase 3 of the `claude-code-architect-designer` skill as a draft,
   BEFORE approval, with all options and without the "State" line.
-- Promoted in Phase 4 after approval: fills in "Decision", "State", and "Propagation".
+- Promoted in Phase 4 after approval: fills in "Decision", "State", "Propagation", and
+  "CI coverage" (step 9 — the CI item of each option is already there from Phase 3).
 - If the user doesn't approve any option, the draft stays with
   `State: rejected — no option approved`. Don't delete it: it avoids repeating the
   interview.
