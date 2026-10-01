@@ -40,6 +40,8 @@ flowchart TB
         SK_GIT["skill: git-publish"]:::skill
         SK_SONAR["skill: sonarqube-setup"]:::skill
         SK_ADOPT["skill: arch-adopt\n(installs/updates this .claude/ in a project)"]:::skill
+        SK_REPORT["skill: report-issue\n(files an issue here from a project)"]:::skill
+        SK_TRIAGE["skill: triage-issue\n(checks an issue at HEAD — stays here)"]:::skill
     end
 
     subgraph L2["Isolated execution — agents"]
@@ -47,6 +49,7 @@ flowchart TB
         AG_DEV["agent: java-spring-boot-developer\n(model: sonnet, effort: high)"]:::agent
         AG_ARCH["agent: archunit-installer\n(model: sonnet, effort: medium)"]:::agent
         AG_LOG["agent: commons-logging-installer\n(model: sonnet, effort: medium)"]:::agent
+        AG_VER["agent: issue-verifier\n(model: opus, writes nothing)"]:::agent
     end
 
     subgraph L3["Norms and data — leaves"]
@@ -60,6 +63,9 @@ flowchart TB
     CLAUDEMD -->|routes via table| SK_DESIGNER
     CLAUDEMD -->|routes via table| SK_AUDIT
     CLAUDEMD -->|routes via table| SK_ADOPT
+    CLAUDEMD -->|routes via table| SK_TRIAGE
+    SK_TRIAGE -->|Agent tool: restricted tools + model opus| AG_VER
+    SK_TRIAGE -.->|prints the command on a confirmed issue| SK_DESIGNER
 
     SK_INIT -->|Agent tool: context + restricted tools + model sonnet| AG_INITZR
     AG_INITZR -->|follows the procedure of| SK_BOOT
@@ -67,7 +73,7 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs, with guard + audit wired| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR & SK_REPORT
     SK_BOOT -.->|Skill tool, step 8.4| SK_SONAR
     SK_ADOPT -.->|Skill tool, when the build file has no scanner| SK_SONAR
     SK_SONAR -.->|Skill tool, no existing server| SK_DOCKER

@@ -207,6 +207,11 @@ Full analysis, sources, and what is deliberately *not* a differentiator:
   `/arch-doctor` can name every locally edited file *before* the next update overwrites it.
   The only creation skill that travels into the generated project — that is how a project
   updates itself once the plugin that delivered it is gone.
+- **Issues filed from the project, triaged skeptically here** — `/report-issue` turns a
+  description or a lessons-learned file into an issue on this repository: verifiable or not
+  filed, nothing of the project in it, published after a confirmation. `/triage-issue`
+  checks every claim at `HEAD` through a read-only agent before a comment or a design run.
+  Details: [`docs/en/12-issues.md`](docs/en/12-issues.md).
 
 ---
 
@@ -571,6 +576,28 @@ it survives the model forgetting and the session dying, and costs zero tokens to
 produce. Prompts are redacted before landing in git; prices are `null` until you fill
 `pricing.json`. Details: [`docs/en/08-audit-usage.md`](docs/en/08-audit-usage.md).
 
+### Issues — reported from a project, verified here
+
+The repository is public, so an issue can come from anyone, and it brings a diagnosis and
+often a fix. Neither is taken as true.
+
+```text
+generated project                               this repository
+/report-issue <description | lessons file>      /triage-issue <N>
+  form fetched from this repo's HEAD              issue-verifier (opus, cannot write)
+  no evidence → not filed                         every claim checked at HEAD
+  behind the latest release → warned              proposed fix judged apart, never adopted
+  project stripped, duplicates searched           verdict: confirmed · already-fixed · by-design
+  confirm → gh issue create  ──────────────▶        · duplicate · not-reproduced · needs-evidence
+                                                comment + label, after a yes
+                                                confirmed → /claude-code-architect-designer
+```
+
+`/sonar-lessons` hands its file to `/report-issue`. Every arrow into a manual-only skill is a
+person typing the command, so the issue body never reaches a thread that can write
+`.claude/`. Details: [`docs/en/12-issues.md`](docs/en/12-issues.md) ·
+[`docs/pt-br/12-issues.md`](docs/pt-br/12-issues.md).
+
 ---
 
 ## Blueprints
@@ -926,6 +953,7 @@ Not yet in `validate.yml`, known gaps:
 | [`docs/en/06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The eight forms an extension can take, the decision matrix, and how a new piece propagates |
 | [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still doesn't |
 | [`docs/en/11-pitfalls.md`](docs/en/11-pitfalls.md) | Every silent trap — the runtime's (a skill, hook, injection or MCP server that does nothing without an error) and this repository's (write territories, frozen spec folders, who owns `pom.xml` and the outbox) |
+| [`docs/en/12-issues.md`](docs/en/12-issues.md) | `/report-issue` in a generated project and `/triage-issue` here: how an issue is filed with evidence and verified claim by claim before anything changes |
 | [`claude-help.md`](claude-help.md) | The Claude Code runtime reference every doc above cites |
 
 Portuguese versions of every document live under [`docs/pt-br/`](docs/pt-br/README.md).

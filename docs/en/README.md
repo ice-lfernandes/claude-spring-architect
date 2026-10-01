@@ -4,7 +4,7 @@ Versão em português: [`docs/pt-br/`](../pt-br/README.md).
 
 This folder documents how the pieces of this repository's `.claude/` collaborate to
 run the main commands — `/init-project`, `/new-feature`, `/arch-doctor`,
-`/audit-usage`, and `/arch-adopt` — and what this project does that similar
+`/audit-usage`, `/arch-adopt`, `/report-issue` and `/triage-issue` — and what this project does that similar
 repositories don't. A
 first-time reader should start at [09-differentiators.md](09-differentiators.md).
 
@@ -30,6 +30,7 @@ the others.
 | [09-differentiators.md](09-differentiators.md) | What this repository does that templates, skills packs, and agent bundles on GitHub don't — comparison table, sources, and what is not a differentiator |
 | [10-arch-adopt.md](10-arch-adopt.md) | `/arch-adopt` workflow: installing this `.claude/` into a project never generated here, or updating one that is behind — the `export` mode, the copy manifest, the provenance stamp |
 | [11-pitfalls.md](11-pitfalls.md) | Every silent trap, in two parts. The runtime's: a skill named after a native command, `$ARGUMENTS` interpolated in prose, pipe segments in `allowed-tools`, an injection's cwd, unknown frontmatter, a hook's four mute failures, `AskUserQuestion`, and the four `.mcp.json` ones. This repository's: write territories and the guards, frozen spec folders, compose reachability, who owns `pom.xml` and the outbox |
+| [12-issues.md](12-issues.md) | Issues, both sides: `/report-issue` files a verifiable, sanitized issue from a generated project; `/triage-issue` has the read-only `issue-verifier` check every claim at `HEAD` — diagnosis and proposed fix included — before a comment, a label, or a design run |
 
 ## How this repository is organized (quick reference)
 
