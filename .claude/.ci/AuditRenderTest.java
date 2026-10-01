@@ -3,7 +3,8 @@
 // CI test: proves `ArchHook.jar audit` renders "where the run spent" from the transcripts —
 // tool calls per piece, including a subagent's own transcript; the most expensive turns; the
 // peak context; each tool error's first line, redacted — writes the matching ledger fields,
-// that `audit summary` aggregates them next to a legacy pt-BR ledger row, and that an
+// that `audit summary` aggregates them next to a legacy pt-BR ledger row, that a model with
+// no price is named in the report header and by `doctor` (lessons-learned-018), and that an
 // observer — a piece whose class declares `audited: false` — leaves no report of its own.
 //
 // Why this test exists: every number here is parsed out of a transcript layout that is
@@ -44,6 +45,11 @@ public class AuditRenderTest {
                 + "\"start\":\"2026-01-01T00:00:00Z\",\"duration_ms\":\"1000\",\"status\":\"❌ erro\","
                 + "\"tokens_billable\":\"10\",\"tokens_self\":\"10\",\"cost\":\"USD 1.234,56\","
                 + "\"files\":\"0\",\"failures\":\"0\",\"report\":\".claude/audit-usage/old--demo-skill.md\"}\n");
+
+        // Prices one model, not the one the fixture runs on: the report must name the gap,
+        // not send the reader to a file that looks complete (lessons-learned-018).
+        Files.writeString(trail.resolve("pricing.json"), "{\"currency\":\"USD\",\"per\":1000000,"
+                + "\"models\":{\"other-model\":{\"input\":1,\"output\":1,\"cache_read\":1,\"cache_write\":1}}}");
 
         Path transcripts = repo.resolve("transcripts");
         Path main = transcripts.resolve("s1.jsonl");
@@ -105,12 +111,19 @@ public class AuditRenderTest {
         must(md, "| 2 | Auth | Credential / scope? | password=[REDACTED] |", "asked: redacted, pipe made table-safe");
         mustNot(md, "hunter2x", "no secret from an answer reaches the versioned report");
 
+        String gap = "— (no price for `fixture-model` in `.claude/audit-usage/pricing.json`)";
+        must(md, "| 💰 Estimated cost | " + gap + " |", "header shows the cost cell, naming the unpriced model (018)");
+        must(md, "| 💰 estimated cost | " + gap + " |", "aggregate reuses the same cell");
+
         String history = Files.readString(trail.resolve("history.jsonl"));
         must(history, "\"tool_calls\":\"Grep:2,Bash:1,Edit:1,Read:1\"", "history: run total of tool calls");
         must(history, "\"tool_calls_self\":\"Bash:1,Edit:1,Read:1\"", "history: root's own tool calls");
         must(history, "\"peak_context\":\"8010\"", "history: run peak");
         must(history, "\"status\":\"✅ success\"", "history: English status");
         must(Files.readString(trail.resolve("nodes.jsonl")), "\"tool_calls\":\"Grep:2\"", "nodes: agent's own tool calls");
+
+        String doctor = runMode(hook, repo, "doctor");
+        must(doctor, "no price for fixture-model in pricing.json", "doctor names a recent model with no price (018)");
 
         String summary = run(hook, repo, "summary", "");
         must(summary, "closed runs: 2", "summary reads the legacy row and the new one");
@@ -200,9 +213,18 @@ public class AuditRenderTest {
     }
 
     static String run(Path hook, Path repo, String phase, String stdin) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-                ProcessHandle.current().info().command().orElse("java"),
-                "-jar", hook.toString(), "audit", phase).directory(repo.toFile());
+        return exec(hook, repo, stdin, "audit", phase);
+    }
+
+    static String runMode(Path hook, Path repo, String mode) throws Exception {
+        return exec(hook, repo, "", mode);
+    }
+
+    static String exec(Path hook, Path repo, String stdin, String... argv) throws Exception {
+        java.util.List<String> cmd = new java.util.ArrayList<>(java.util.List.of(
+                ProcessHandle.current().info().command().orElse("java"), "-jar", hook.toString()));
+        cmd.addAll(java.util.List.of(argv));
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(repo.toFile());
         pb.environment().put("CLAUDE_PROJECT_DIR", repo.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();

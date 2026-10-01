@@ -120,7 +120,7 @@ Relatórios gravados antes da 0085 continuam em português no disco:
 …
 ```
 
-Seções, na ordem: cabeçalho · comando inicial (redigido, com `sha256` do original) ·
+Seções, na ordem: cabeçalho (com o custo estimado logo após o modelo) · comando inicial (redigido, com `sha256` do original) ·
 etapas mais longas · encadeamento · tokens por peça · tokens agregados (input, output,
 cache read, cache write, faturável, custo estimado, cache hit) · onde o run gastou ·
 permissões adicionadas (diff de `settings.local.json` entre início e fim) · regras
@@ -177,10 +177,13 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
   truncada em 160 caracteres — um erro pode ecoar o comando que carregava o token. Um
   `Bash` que falha começa com `Exit code N`; o relatório junta essa linha com a seguinte,
   que é o que de fato falhou.
-- **Preço é dado com default nulo.** `pricing.json` chega sem valores e o relatório
-  imprime "cost: not configured" em vez de um `USD 0.00` confiante — a mesma razão
-  pela qual o invariante 8 proíbe versões de memória. Preencha o arquivo e o custo
-  aparece por modelo (um subagent em outro modelo é precificado na própria taxa).
+- **Preço é dado, nunca memória.** `pricing.json` chega preenchido com as taxas da página
+  oficial na data do seu `$comment`, e o custo aparece por modelo (um subagent em outro
+  modelo é precificado na própria taxa). O id do modelo casa exato — `claude-opus-5-5` não
+  herda o preço de `claude-opus-5`. Um modelo sem preço deixa o total desconhecido, nunca
+  uma soma parcial nem um `USD 0.00` confiante, e a célula diz qual falta:
+  `— (no price for claude-opus-5-5 in .claude/audit-usage/pricing.json)`. Mesma razão pela
+  qual o invariante 8 proíbe versões de memória.
 
 ## Os ledgers e o `audit summary`
 
@@ -319,7 +322,8 @@ fronteira pode depender de qual deles rodou primeiro.
 ## O que `doctor` mostra
 
 `/arch-doctor` traz duas linhas sobre a trilha: `Audit` (quantas execuções registradas,
-e se `pricing.json` existe) e `Audit rule inference` (um arquivo sintético que casa com
+se `pricing.json` existe, e ❌ nomeando cada modelo das últimas 15 execuções de
+`history.jsonl` que ele não precifica) e `Audit rule inference` (um arquivo sintético que casa com
 o `paths` de uma norma real — a forma exata que uma vez lançou
 `ArrayIndexOutOfBoundsException` dentro da inferência e congelou todo relatório dali
 em diante, em silêncio). Sem o diretório: `⚪ no .claude/audit-usage/ — execution trail

@@ -237,8 +237,27 @@ public class ArchHook {
                 runs = s.filter(f -> f.toString().endsWith(".md")).count();
             } catch (IOException ignored) { }
             boolean priced = Files.isRegularFile(auditDir.resolve("pricing.json"));
-            report("Audit", true, runs + " execution(s) recorded"
-                    + (priced ? "" : " — pricing.json missing, no cost estimate"), "");
+            // A model upgrade is routine, and a pricing.json complete for every model it
+            // lists still prices none of a new one's runs — every report then printed no
+            // cost, and nothing said which model was missing (lessons-learned-018).
+            List<String> unpriced = List.of();
+            if (priced) {
+                Set<String> recent = new LinkedHashSet<>();
+                try {
+                    List<Map<String, Object>> hist = jsonl(auditDir.resolve("history.jsonl"));
+                    for (int i = Math.max(0, hist.size() - AUDIT_RECENT_RUNS); i < hist.size(); i++) {
+                        String m = asStr(hist.get(i).get("model"));
+                        if (m != null) for (String id : m.split(",")) if (!id.isBlank()) recent.add(id.strip());
+                    }
+                } catch (IOException ignored) { }
+                List<String> missing = auditUnpriced(auditDir, recent);
+                unpriced = missing == null ? List.of() : missing;
+            }
+            report("Audit", unpriced.isEmpty(), runs + " execution(s) recorded"
+                    + (priced ? "" : " — pricing.json missing, no cost estimate"),
+                    runs + " execution(s) recorded — no price for " + String.join(", ", unpriced)
+                    + " in pricing.json (models of the last " + AUDIT_RECENT_RUNS + " runs);"
+                    + " copy the rates from platform.claude.com/docs/en/about-claude/pricing");
 
             // A synthetic touched file that matches a real rule's `paths` — the exact
             // shape that once threw `ArrayIndexOutOfBoundsException` inside rule
@@ -3291,6 +3310,13 @@ public class ArchHook {
     static final String AUDIT_DIR = ".claude/audit-usage";
 
     /**
+     * How far back "recent" reaches: the runs `audit summary` lists, and the runs whose
+     * models `doctor` checks against pricing.json — so a model that left use stops being
+     * reported once it scrolls out of the summary too.
+     */
+    static final int AUDIT_RECENT_RUNS = 15;
+
+    /**
      * The trail's directory. In a git worktree `.git` is a file, and the trail belongs to
      * the main checkout — one history.jsonl, one pricing.json, whichever checkout ran.
      * Everywhere else, and whenever git can't answer, it's this project's own.
@@ -3870,6 +3896,10 @@ public class ArchHook {
         md.append("# 🧾 Execution audit — `").append(rootLabel)
           .append(args == null || args.isBlank() ? "" : " " + args).append("`\n\n");
 
+        // Computed once, shown twice: the header is what a reader of the summary sees, and
+        // a cost that appeared only in the aggregate table near the bottom went unnoticed
+        // as missing (lessons-learned-018).
+        String costCell = auditCostCell(dir, all);
         md.append("| | |\n|---|---|\n")
           .append("| 🎯 Piece | `").append(rootLabel).append("` · ")
           .append("agent".equals(kind) ? "agent" : "skill").append(" |\n")
@@ -3884,6 +3914,7 @@ public class ArchHook {
           .append("| ").append(status.substring(0, status.indexOf(' ')))
           .append(" Status | ").append(status.substring(status.indexOf(' ') + 1)).append(" |\n")
           .append("| 🤖 Model | ").append(orDash(all.model())).append(" |\n")
+          .append("| 💰 Estimated cost | ").append(costCell).append(" |\n")
           .append("| 🌿 HEAD | ").append(orDash(headStart)).append(" → ")
           .append(orDash(headEnd)).append(" |\n\n");
 
@@ -3973,10 +4004,7 @@ public class ArchHook {
           .append("| ♻️ cache read | ").append(n(all.cacheRead())).append(" |\n")
           .append("| 💾 cache write | ").append(n(all.cacheWrite())).append(" |\n")
           .append("| 🧮 billable (input + output + cache write) | **").append(n(all.billable())).append("** |\n");
-        String cost = auditCost(dir, all);
-        md.append("| 💰 estimated cost | ")
-          .append(cost == null ? "— (fill in `" + AUDIT_DIR + "/pricing.json`)" : "**" + cost + "**")
-          .append(" |\n\n");
+        md.append("| 💰 estimated cost | ").append(costCell).append(" |\n\n");
         long ctx = all.contextRead();
         double hit = ctx == 0 ? 0 : (double) all.cacheRead() / ctx;
         md.append("Cache hit ").append(pct(all.cacheRead(), Math.max(1, ctx))).append(" ")
@@ -4164,7 +4192,7 @@ public class ArchHook {
                        "status", status,
                        "tokens_billable", String.valueOf(all.billable()),
                        "tokens_self", String.valueOf(rootSelf.billable()),
-                       "cost", cost,
+                       "cost", auditCost(dir, all),
                        "cost_usd", usd(auditUsd(dir, all)),
                        "cost_self_usd", usd(auditUsd(dir, rootSelf)),
                        // Run total and root's own, like the tokens: `audit summary` sums
@@ -4501,6 +4529,36 @@ public class ArchHook {
 
     static String auditCost(Path dir, Usage u) { return money(dir, auditUsd(dir, u)); }
 
+    /**
+     * The model ids in {@code models} that pricing.json cannot price — absent, or missing
+     * one of the four rates. `auditUsd` stops at the first one; this names them all, so
+     * the report and `doctor` point at the gap instead of at a file that looks complete
+     * (lessons-learned-018). Null when pricing.json itself is missing or unreadable.
+     */
+    static List<String> auditUnpriced(Path dir, Collection<String> models) {
+        Map<String, Object> pr = asMap(Json.parse(readOrNull(dir.resolve("pricing.json"))));
+        if (pr == null) return null;
+        List<String> out = new ArrayList<>();
+        for (String id : models) {
+            Map<String, Object> m = asMap(get(pr, "models", id));
+            if (m == null || dbl(m.get("input")) == null || dbl(m.get("output")) == null
+                    || dbl(m.get("cache_read")) == null || dbl(m.get("cache_write")) == null) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
+
+    /** The cost cell of the report: the amount, or what keeps it unknown, by name. */
+    static String auditCostCell(Path dir, Usage u) {
+        String cost = auditCost(dir, u);
+        if (cost != null) return "**" + cost + "**";
+        if (u == null || u.byModel.isEmpty()) return "—";
+        List<String> missing = auditUnpriced(dir, u.byModel.keySet());
+        if (missing == null) return "— (no `" + AUDIT_DIR + "/pricing.json`)";
+        return "— (no price for `" + String.join("`, `", missing) + "` in `" + AUDIT_DIR + "/pricing.json`)";
+    }
+
     static String money(Path dir, Double amount) {
         if (amount == null) return null;
         String cur = asStr(get(Json.parse(readOrNull(dir.resolve("pricing.json"))), "currency"));
@@ -4594,7 +4652,7 @@ public class ArchHook {
              .append("| # | 🕐 When | 🎯 Piece | 🙋 Origin | 🤖 Model | Status | ⏱️ Duration | 🧮 Billable | 💰 Cost | 🛠️ Calls | 📏 Peak | 📁 Files | 🔁 Failures |\n")
              .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
             int shown = 0;
-            for (int i = runs.size() - 1; i >= 0 && shown < 15; i--, shown++) {
+            for (int i = runs.size() - 1; i >= 0 && shown < AUDIT_RECENT_RUNS; i--, shown++) {
                 Map<String, Object> r = runs.get(i);
                 String st = orEmpty(asStr(r.get("status")));
                 String calls = asStr(r.get("tool_calls"));
@@ -4613,7 +4671,9 @@ public class ArchHook {
                  .append(r.get("peak_context") == null ? "—" : n(lnum(r.get("peak_context")))).append(" | ")
                  .append(lnum(r.get("files"))).append(" | ").append(lnum(r.get("failures"))).append(" |\n");
             }
-            if (runs.size() > 15) o.append("\n… ").append(runs.size() - 15).append(" more runs\n");
+            if (runs.size() > AUDIT_RECENT_RUNS) {
+                o.append("\n… ").append(runs.size() - AUDIT_RECENT_RUNS).append(" more runs\n");
+            }
 
             o.append("\n### Totals\n\n")
              .append("billable: ").append(n(sumTok)).append(" tok · cost: ")
