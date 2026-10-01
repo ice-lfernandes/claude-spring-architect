@@ -202,11 +202,15 @@ commit, and it reads the level from § Release bump of the PR description — `m
 `minor` or `patch`, exactly one ticked. The `release bump is declared` check fails while
 the PR is open otherwise, so the decision is made by review and not after the fact.
 
+Right after tagging, `release.yml` sends a `repository_dispatch` to
+[`claude-spring-architect-marketplace`](https://github.com/ice-lfernandes/claude-spring-architect-marketplace),
+whose `sync.yml` runs `./sync.sh vX.Y.Z`, sets the plugin version, validates the result and
+opens a PR. The dispatch needs the `MARKETPLACE_DISPATCH_TOKEN` secret here — a fine-grained
+PAT scoped to the marketplace with Contents: read and write; without it the step only warns.
+
 Two things stay manual on purpose: a GitHub Release, when a ref deserves more prose than
-the tag message the workflow writes, and the plugin marketplace, where
-[`claude-spring-architect-marketplace`](https://github.com/ice-lfernandes/claude-spring-architect-marketplace)
-pins a ref with `./sync.sh vX.Y.Z` — publishing is a decision, not a consequence of
-merging.
+the tag message the workflow writes, and merging that marketplace PR — publishing is a
+decision, not a consequence of merging.
 
 ## Reporting instead of contributing
 
