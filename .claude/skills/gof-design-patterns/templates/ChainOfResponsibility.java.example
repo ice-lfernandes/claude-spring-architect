@@ -3,6 +3,11 @@
 // Spring's own HandlerInterceptor chain already is this at the HTTP boundary
 // (`@.claude/skills/rest-api-architect/templates/IdempotencyKeyInterceptor.java.example`)
 // — this shape is for a sequence of checks inside application code, not a second HTTP layer.
+//
+// Wiring, in the bootstrap — the order in the list is the order the checks run in:
+//     @Bean OrderValidationChain orderValidationChain(StockLevelPort stockLevel) {
+//         return new OrderValidationChain(List.of(new MinimumAmountCheck(), new StockAvailableCheck(stockLevel)));
+//     }
 package com.example.application.order;
 
 import com.example.application.port.out.StockLevelPort;
@@ -62,7 +67,3 @@ public final class OrderValidationChain {
     }
 }
 
-// --- wiring in the bootstrap; order in the list is the order checks run in
-// @Bean OrderValidationChain orderValidationChain(StockLevelPort stockLevel) {
-//     return new OrderValidationChain(List.of(new MinimumAmountCheck(), new StockAvailableCheck(stockLevel)));
-// }

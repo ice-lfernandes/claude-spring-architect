@@ -20,7 +20,7 @@
  *
  * The trade-off is accepted because no guard has state or effect: calling it from
  * outside throws or returns the argument, and nothing else. If that's unacceptable in a
- * project, the final block shows the static variant, which isn't inherited by anyone —
+ * project, the VARIANT section below shows the static form, which isn't inherited by anyone —
  * same signature, no `implements`, with `import static`.
  *
  * DO NOT PUT HERE: business rule of a concrete aggregate. A guard is structural (`null`,
@@ -28,6 +28,54 @@
  * invariant and lives in its method.
  *
  * Each `// --- <File>.java` block is its own file.
+ *
+ * ============================================================================
+ * VARIANT — static guards, no inheritance. Choose ONE of the two per project.
+ * ============================================================================
+ *
+ * When to use: if adding public methods to every model object is unacceptable.
+ * A `static` method on an interface is NOT inherited by whoever implements it, so
+ * there's no API leak — and no `implements` either.
+ *
+ *   // --- DomainGuards.java
+ *   package com.example.demo.domain.model;
+ *
+ *   public final class DomainGuards {
+ *
+ *       private DomainGuards() { }
+ *
+ *       public static <T> T requireNonNull(T value, String errorCode, String message) {
+ *           if (value == null) {
+ *               throw new ValidationException(errorCode, message);
+ *           }
+ *           return value;
+ *       }
+ *       // … the rest, same signatures with `static`
+ *   }
+ *
+ *   // --- Email.java
+ *   import static com.example.demo.domain.model.DomainGuards.requireText;
+ *
+ *   public record Email(String value) {
+ *       public Email {
+ *           value = requireText(value, "EMAIL_REQUIRED", "email is required");
+ *       }
+ *   }
+ *
+ * Cost: `import static` in every file, and the reader can't tell from the class
+ * signature that it shares guards. Gain: `Email`'s public API stays just `Email`.
+ *
+ * WHAT'S NOT DONE IN EITHER VARIANT:
+ *
+ * - A guard that returns `boolean` instead of throwing. The caller forgets to check;
+ *   the invalid object is born anyway.
+ * - A guard without `errorCode`. `throw new DomainRuleException(message)` doesn't exist
+ *   in this taxonomy: `.claude/rules/error-handling.md` fixes four final types and makes
+ *   `errorCode` mandatory in every constructor.
+ * - `Objects.requireNonNull`, `IllegalArgumentException`, `assert`. A generic JDK
+ *   exception leaking out of the domain is forbidden by the same rule.
+ * - A guard with I/O — checking uniqueness against the database. That's an output port
+ *   called by the use case, not a construction invariant.
  */
 
 // --- DomainGuards.java
@@ -145,7 +193,7 @@ import com.example.demo.domain.exception.ValidationException;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/*
+/**
  * Calling an instance method inside a `record`'s compact constructor is legal and
  * tested: `this` is available, and the guards don't touch fields. Fields are assigned
  * after the body, with the parameter values — so reassigning the parameter
@@ -209,53 +257,3 @@ public final class Order implements DomainGuards {
         return lines;
     }
 }
-
-/*
- * ============================================================================
- * VARIANT — static guards, no inheritance. Choose ONE of the two per project.
- * ============================================================================
- *
- * When to use: if adding public methods to every model object is unacceptable.
- * A `static` method on an interface is NOT inherited by whoever implements it, so
- * there's no API leak — and no `implements` either.
- *
- *   // --- DomainGuards.java
- *   package com.example.demo.domain.model;
- *
- *   public final class DomainGuards {
- *
- *       private DomainGuards() { }
- *
- *       public static <T> T requireNonNull(T value, String errorCode, String message) {
- *           if (value == null) {
- *               throw new ValidationException(errorCode, message);
- *           }
- *           return value;
- *       }
- *       // … the rest, same signatures with `static`
- *   }
- *
- *   // --- Email.java
- *   import static com.example.demo.domain.model.DomainGuards.requireText;
- *
- *   public record Email(String value) {
- *       public Email {
- *           value = requireText(value, "EMAIL_REQUIRED", "email is required");
- *       }
- *   }
- *
- * Cost: `import static` in every file, and the reader can't tell from the class
- * signature that it shares guards. Gain: `Email`'s public API stays just `Email`.
- *
- * WHAT'S NOT DONE IN EITHER VARIANT:
- *
- * - A guard that returns `boolean` instead of throwing. The caller forgets to check;
- *   the invalid object is born anyway.
- * - A guard without `errorCode`. `throw new DomainRuleException(message)` doesn't exist
- *   in this taxonomy: `.claude/rules/error-handling.md` fixes four final types and makes
- *   `errorCode` mandatory in every constructor.
- * - `Objects.requireNonNull`, `IllegalArgumentException`, `assert`. A generic JDK
- *   exception leaking out of the domain is forbidden by the same rule.
- * - A guard with I/O — checking uniqueness against the database. That's an output port
- *   called by the use case, not a construction invariant.
- */

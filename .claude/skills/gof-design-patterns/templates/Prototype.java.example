@@ -6,7 +6,7 @@ package com.example.domain.model.pricing;
 
 import java.util.List;
 
-// One evaluation of every DiscountPolicy against the order, then reused freely.
+/** One evaluation of every DiscountPolicy against the order, then reused freely. */
 public interface PricingQuote {
 
     PricingQuote copy();
@@ -30,8 +30,10 @@ public final class EvaluatedPricingQuote implements PricingQuote {
         this.finalPrice = appliedDiscounts.stream().reduce(basePrice, Money::subtract);
     }
 
-    // The cheap path: no policy runs again. Every later quote for the same order —
-    // a retry, a follow-up screen — clones this instead of rebuilding it.
+    /**
+     * The cheap path: no policy runs again. Every later quote for the same order — a retry,
+     * a follow-up screen — clones this instead of rebuilding it.
+     */
     private EvaluatedPricingQuote(Money basePrice, List<Money> appliedDiscounts, Money finalPrice) {
         this.basePrice = basePrice;
         this.appliedDiscounts = appliedDiscounts;

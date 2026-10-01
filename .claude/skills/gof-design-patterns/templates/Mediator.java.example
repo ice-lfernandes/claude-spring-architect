@@ -45,8 +45,11 @@ public final class ReleaseWarehouseHoldReaction implements ShipmentReaction {
     }
 }
 
-// --- the mediator: colleagues are wired here, never against each other. Adding a
-// third reaction touches this list, not NotifyCustomerReaction or the other one
+// --- the mediator
+/**
+ * Colleagues are wired here, never against each other. Adding a third reaction touches
+ * this list, not NotifyCustomerReaction or the other one.
+ */
 public final class OrderShippedMediator {
 
     private final List<ShipmentReaction> reactions;

@@ -92,6 +92,112 @@ public class CheckstyleConfigTest {
                 }
                 """);
 
+        // code-quality.md § Comments: Javadoc is the only comment in production code. One
+        // file per form the main config must reject, named by the check that owns it, and one
+        // file holding every form it must let through — the two exceptions plus the string
+        // literals a careless regex would read as comments (decision 0108).
+        Map<String, Path> comments = new LinkedHashMap<>();
+        comments.put("LineComment", write(src.resolve("LineComment.java"), """
+                package example;
+
+                /** Holds one value. */
+                public final class LineComment {
+
+                    private LineComment() {
+                    }
+
+                    public static int one() {
+                        // explains what the next line does
+                        return 1;
+                    }
+                }
+                """));
+        comments.put("TrailingComment", write(src.resolve("TrailingComment.java"), """
+                package example;
+
+                /** Holds one value. */
+                public final class TrailingComment {
+
+                    private TrailingComment() {
+                    }
+
+                    public static int one() {
+                        return 1; // explains the value
+                    }
+                }
+                """));
+        comments.put("BlockComment", write(src.resolve("BlockComment.java"), """
+                package example;
+
+                /** Holds one value. */
+                public final class BlockComment {
+
+                    private BlockComment() {
+                    }
+
+                    public static int one() {
+                        /* explains the value */
+                        return 1;
+                    }
+                }
+                """));
+        comments.put("InvalidJavadocPosition", write(src.resolve("JavadocInBody.java"), """
+                package example;
+
+                /** Holds one value. */
+                public final class JavadocInBody {
+
+                    private JavadocInBody() {
+                    }
+
+                    public static int one() {
+                        /** Explains the value. */
+                        return 1;
+                    }
+                }
+                """));
+        comments.put("TodoComment", write(src.resolve("TodoInJavadoc.java"), """
+                package example;
+
+                /** Holds one value. */
+                public final class TodoInJavadoc {
+
+                    private TodoInJavadoc() {
+                    }
+
+                    /** TODO return the real value. */
+                    public static int one() {
+                        return 1;
+                    }
+                }
+                """));
+        Path allowed = write(src.resolve("AllowedComments.java"), """
+                package example;
+
+                /** Every comment form code-quality.md § Comments allows, and strings that only look like comments. */
+                public final class AllowedComments {
+
+                    private static final String URL = "http://example.com/a//b";
+                    private static final String PATTERN = "/api/*";
+
+                    private AllowedComments() {
+                        // no instances: constants only
+                    }
+
+                    /** Joins the two constants. */
+                    public static String joined() {
+                        return URL + PATTERN; // NOSONAR
+                    }
+
+                    // spotless:off
+                    /** Does nothing on purpose. */
+                    public static void noop() {
+                        // nothing to do: a hook point kept for subclasses of the caller
+                    }
+                    // spotless:on
+                }
+                """);
+
         int failures = 0;
         for (Path config : List.of(mainConfig, testConfig)) {
             String name = config.getFileName().toString();
@@ -99,13 +205,33 @@ public class CheckstyleConfigTest {
             failures += expectRestricted(jar, config, record, "record", name);
             failures += expectRestricted(jar, config, permits, "permits", name);
         }
+        String mainName = mainConfig.getFileName().toString();
+        for (Map.Entry<String, Path> form : comments.entrySet()) {
+            failures += expectFlagged(jar, mainConfig, form.getValue(), form.getKey(), mainName);
+        }
+        failures += expectClean(jar, mainConfig, allowed, mainName);
+        // Main only: test code holds § Comments by review, so the light config must not flag it.
+        failures += expectClean(jar, testConfig, comments.get("LineComment"), testConfig.getFileName().toString());
 
         if (failures > 0) {
             System.out.println("❌ " + failures + " Checkstyle config assertion(s) failed (Checkstyle " + version + ").");
             System.exit(1);
         }
         System.out.println("✅ Both Checkstyle configs parse on Checkstyle " + version
-                + ", pass a clean file, and reject `record` and `permits` as names.");
+                + ", pass a clean file, and reject `record` and `permits` as names;"
+                + " checkstyle.xml rejects every comment but Javadoc and its two exceptions.");
+    }
+
+    static int expectFlagged(Path jar, Path config, Path file, String check, String configName) throws Exception {
+        Run run = checkstyle(jar, config, file);
+        if (run.exit != 0 && run.out.contains("[" + check + "]")) {
+            System.out.println("  ✓ " + configName + " rejects " + file.getFileName() + " with " + check);
+            return 0;
+        }
+        System.out.println("  ✗ " + configName + " should reject " + file.getFileName() + " with " + check
+                + " — exit " + run.exit + ". code-quality.md § Comments: Javadoc is the only comment.");
+        System.out.println(indent(run.out));
+        return 1;
     }
 
     static int expectClean(Path jar, Path config, Path file, String configName) throws Exception {

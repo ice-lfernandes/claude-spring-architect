@@ -9,6 +9,7 @@
  *
  * Default pagination is offset (decision P5(h)). The cursor form is at the end, and is
  * used only when volume is high or the set changes while paging.
+ * In the real project the cursor form is its own file, `CursorPageResponse.java`.
  */
 package com.exemplo.minhaapi.adapter.in.rest.dto;
 
@@ -33,11 +34,10 @@ public record PageResponse<T>(
             @Schema(description = "Total elements", example = "137") long totalElements,
             @Schema(description = "Total pages", example = "7") int totalPages) {}
 
-    /*
-     * Cursor form. Its own file in the real project (`CursorPageResponse.java`).
-     * `nextCursor` is opaque and absent on the last page — hence the NON_NULL. Has no
-     * totalElements: counting isn't cheap with a cursor.
-     * The cursor carries the sort key; it's not a base64-encoded offset.
+    /**
+     * Cursor form. `nextCursor` is opaque and absent on the last page — hence the NON_NULL.
+     * Has no totalElements: counting isn't cheap with a cursor. The cursor carries the sort
+     * key; it's not a base64-encoded offset.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @Schema(description = "Page of results, cursor form")

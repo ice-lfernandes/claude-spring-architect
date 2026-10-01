@@ -12,6 +12,9 @@
  *   - @Schema with description, example, and explicit requiredMode on each field.
  *     requiredMode is NEVER inferred from the presence of @NotNull (`.claude/rules/api-rest.md`).
  *   - no domain type in here. The DTO doesn't know about `Email` or `UserId`.
+ *
+ * `UserResponse` is `public` here because the neighboring exemplar's `UserMapper` imports
+ * it; in the real project it is its own file — two public types don't fit in one.
  */
 package com.exemplo.minhaapi.adapter.in.rest.dto;
 
@@ -44,11 +47,10 @@ public record CreateUserRequest(
                         requiredMode = Schema.RequiredMode.NOT_REQUIRED)
                 String departmentId) {}
 
-/*
- * Response. In the real project it's its own file — two public types don't fit in the
- * same file. It's `public` here because the neighboring exemplar's `UserMapper` imports it.
- * It's not the serialized aggregate: a new field on the aggregate doesn't leak into the
- * contract by accident, and renaming a domain field doesn't break clients.
+/**
+ * Response of the user resource. It's not the serialized aggregate: a new field on the
+ * aggregate doesn't leak into the contract by accident, and renaming a domain field
+ * doesn't break clients.
  */
 @Schema(description = "Representation of a user")
 public record UserResponse(

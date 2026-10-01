@@ -4,12 +4,15 @@
 // varies — a `protected abstract` hook for one step is overkill a constructor argument
 // already solves. This earns its keep only when ≥ 2 steps vary together in a fixed skeleton,
 // as below: transform and destination both change per variant, fetch/validate/finalize don't.
+// If a third variant only ever changed transform() and never write(), that's the signal
+// to stop subclassing and inject a Strategy for transform() instead — this shape earns
+// its keep only while both steps keep varying together.
 package com.example.application.export;
 
 // --- the skeleton: fetch, validate, transform, write, finalize — fixed order, fixed count
 public abstract class OrderExportRoutine {
 
-    // final: the order of steps is the one invariant no subclass may touch
+    /** {@code final}: the order of steps is the one invariant no subclass may touch. */
     public final void run(OrderId id) {
         Order order = fetch(id);
         validate(order);
@@ -18,7 +21,7 @@ public abstract class OrderExportRoutine {
         finalizeExport(id);
     }
 
-    // shared steps — same for every variant, no reason to repeat them
+    /** Shared step — same for every variant, no reason to repeat it. */
     private Order fetch(OrderId id) {
         return orderRepository().byId(id)
                 .orElseThrow(() -> new NotFoundException("ORDER_NOT_FOUND", id.toString()));
@@ -32,7 +35,7 @@ public abstract class OrderExportRoutine {
         exportLog().recordCompleted(id);
     }
 
-    // the two steps that actually vary between variants — everything else stays put
+    /** One of the two steps that actually vary between variants — everything else stays put. */
     protected abstract String transform(Order order);
 
     protected abstract void write(String payload);
@@ -75,7 +78,3 @@ final class CsvFileExport extends OrderExportRoutine {
         return exportLog;
     }
 }
-
-// If a third variant only ever changed transform() and never write(), that's the signal
-// to stop subclassing and inject a Strategy for transform() instead — this shape earns
-// its keep only while both steps keep varying together.

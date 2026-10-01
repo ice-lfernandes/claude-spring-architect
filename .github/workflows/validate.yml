@@ -250,6 +250,13 @@ jobs:
           fi
           echo "✅ Uniform exemplar naming."
 
+      # The executor copies an exemplar's shape, comments included, and the generated
+      # project's Checkstyle rejects every comment but Javadoc (code-quality.md § Comments).
+      # A comment that returns to a template body is a red `check` hook in every project that
+      # copies it. Reads its patterns from checkstyle.xml.example, so the two never disagree (0108).
+      - name: exemplar bodies carry no comment but Javadoc
+        run: java .claude/.ci/TemplateCommentsTest.java
+
       - name: blueprint-declared templates exist on disk
         run: |
           FAIL=0

@@ -50,13 +50,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.springframework.http.ProblemDetail;
 
-/** Goes on `UserApi#create` alone — `@PostMapping` lives on `UserController#create` instead. */
+/**
+ * Goes on `UserApi#create` alone — `@PostMapping` lives on `UserController#create` instead.
+ * The operationId is stable: it becomes a method name in the generated client, so changing
+ * it breaks consumers — it's a contract, not a label.
+ */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Operation(
         summary = "Creates a user",
-        // stable operationId: becomes a method name in the generated client. Changing it
-        // breaks consumers — it's a contract, not a label.
         operationId = "createUser",
         parameters = {
             @Parameter(
@@ -105,6 +107,11 @@ public @interface CreateUserOpenApiDocs {}
  * (`Controller.java.example`). springdoc still needs these three `@Parameter`s by name
  * to attach a description and example; it merges them with what it infers from
  * `Pageable` instead of documenting an opaque object.
+ *
+ * {@code size} is at most 100: above that is 400. Truncating silently makes the client
+ * believe it saw everything. {@code sort} is stable: the unique-key tiebreak is added in
+ * the application, not requested from the client. Without it page 2 repeats and skips
+ * records.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -113,15 +120,11 @@ public @interface CreateUserOpenApiDocs {}
         operationId = "listUsers",
         parameters = {
             @Parameter(name = "page", in = ParameterIn.QUERY, description = "Page, 0-based", example = "0"),
-            // Maximum 100: above that is 400. Truncating silently makes the client believe
-            // it saw everything.
             @Parameter(
                     name = "size",
                     in = ParameterIn.QUERY,
                     description = "Elements per page, maximum 100",
                     example = "20"),
-            // Stable ordering: the unique-key tiebreak is added in the application, not
-            // requested from the client. Without it page 2 repeats and skips records.
             @Parameter(
                     name = "sort",
                     in = ParameterIn.QUERY,

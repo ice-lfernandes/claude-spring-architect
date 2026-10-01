@@ -3,6 +3,14 @@
 // adapter — one business rule, two places to forget when it changes. DDD
 // idiom (Evans/Fowler), not one of the 23 GoF patterns.
 // Lives in the domain: the rule is business, however it eventually gets used.
+//
+// Query side: reused where the persistence adapter used to encode the same rule as its
+// own separate WHERE clause. The specification doesn't write SQL; the adapter reads
+// `threshold` off it and builds the query — one definition of "high value", two consumers
+// instead of two definitions. The adapter translates, the spec supplies the value:
+//     interface OrderRepositoryPort {
+//         List<Order> findAbove(Money threshold);
+//     }
 package com.example.domain.model.order;
 
 import java.util.List;
@@ -23,8 +31,10 @@ public interface Specification<T> {
         return candidate -> !this.isSatisfiedBy(candidate);
     }
 
-    // Filters an already-loaded collection. Fine for a handful of orders in
-    // memory; wrong tool for a table — see the query-side note below.
+    /**
+     * Filters an already-loaded collection. Fine for a handful of orders in memory; wrong
+     * tool for a table — the query side reads the threshold off the specification instead.
+     */
     default List<T> filter(List<T> candidates) {
         return candidates.stream().filter(this::isSatisfiedBy).toList();
     }
@@ -59,11 +69,3 @@ public final class ExpediteHighValueOrders {
     }
 }
 
-// --- reused where the persistence adapter used to encode the same rule as
-// its own separate WHERE clause. The specification doesn't write SQL; the
-// adapter reads `threshold` off it and builds the query — one definition of
-// "high value", two consumers instead of two definitions.
-//
-// interface OrderRepositoryPort {
-//     List<Order> findAbove(Money threshold); // adapter translates, spec supplies the value
-// }

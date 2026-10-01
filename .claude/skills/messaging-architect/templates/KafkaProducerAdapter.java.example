@@ -77,8 +77,10 @@ public class OrderConfirmedPublisher implements PublishOrderConfirmedPort {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final JsonMapper jsonMapper;
 
-    // `JsonMapper` is the `@Primary` bean Boot's Jackson autoconfiguration registers (Jackson 3
-    // on Spring Boot 4) — injected, never `new`-ed, so the application's Jackson settings apply.
+    /**
+     * `JsonMapper` is the `@Primary` bean Boot's Jackson autoconfiguration registers (Jackson 3
+     * on Spring Boot 4) — injected, never `new`-ed, so the application's Jackson settings apply.
+     */
     public OrderConfirmedPublisher(KafkaTemplate<String, String> kafkaTemplate, JsonMapper jsonMapper) {
         this.kafkaTemplate = kafkaTemplate;
         this.jsonMapper = jsonMapper;

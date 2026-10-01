@@ -32,6 +32,28 @@
  * resolve the Boot 4 artifact from the JobRunr documentation at runtime.
  *
  * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ *
+ * application.yml:
+ *
+ * jobrunr:
+ *   background-job-server:
+ *     enabled: true
+ *     worker-count: 4
+ *   dashboard:
+ *     enabled: true
+ *     port: 8000                        # behind authentication, never public
+ *
+ * application-test.yml:
+ *
+ * jobrunr:
+ *   background-job-server:
+ *     enabled: false
+ *   dashboard:
+ *     enabled: false
+ *
+ * METRICS. JobRunr publishes its own Micrometer metrics when the integration is on; the
+ * last-success gauge of `scheduling.md` § Observability is still this project's — JobRunr
+ * reports job states, not the staleness of a recurring job that stopped being scheduled.
  */
 
 // --- JobRunrWelcomeEmail.java (outbound port implementation — the use case enqueues through it)
@@ -53,7 +75,7 @@ class JobRunrWelcomeEmail implements SendWelcomeEmailLaterPort {
         this.jobScheduler = jobScheduler;
     }
 
-    /*
+    /**
      * Deterministic job id from the customer id: a retried registration enqueues the SAME job,
      * which JobRunr refuses to duplicate.
      */
@@ -81,7 +103,10 @@ public class WelcomeEmailJob {
         this.sendWelcomeEmail = sendWelcomeEmail;
     }
 
-    // `public`: JobRunr invokes it by reflection from storage. Retries from the partial's § 4.
+    /**
+     * {@code public}: JobRunr invokes it by reflection from storage. Retries come from the
+     * partial's § 4.
+     */
     @Job(name = "Send welcome email", retries = 5)
     public void send(UUID customerId) {
         sendWelcomeEmail.send(customerId);
@@ -111,27 +136,3 @@ public class NightlyDigestJob {
         sendNightlyDigest.send();
     }
 }
-
-/*
- * application.yml:
- *
- * jobrunr:
- *   background-job-server:
- *     enabled: true
- *     worker-count: 4
- *   dashboard:
- *     enabled: true
- *     port: 8000                        # behind authentication, never public
- *
- * application-test.yml:
- *
- * jobrunr:
- *   background-job-server:
- *     enabled: false
- *   dashboard:
- *     enabled: false
- *
- * METRICS. JobRunr publishes its own Micrometer metrics when the integration is on; the
- * last-success gauge of `scheduling.md` § Observability is still this project's — JobRunr
- * reports job states, not the staleness of a recurring job that stopped being scheduled.
- */

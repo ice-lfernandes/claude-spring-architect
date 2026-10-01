@@ -21,15 +21,19 @@ import com.exemplo.minhaapi.domain.model.user.User;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
-// Utility class: final, private constructor. No state, no Spring bean —
-// there's no dependency to inject.
+/**
+ * Utility class: final, private constructor. No state, no Spring bean —
+ * there's no dependency to inject.
+ */
 public final class UserMapper {
 
     private UserMapper() {}
 
-    // The only place `org.springframework.data.domain.Pageable` and this adapter's
-    // package meet. PageCriteria.java.example carries zero Spring Data import —
-    // `architecture-ddd.md` § Application forbids it past this point.
+    /**
+     * The only place `org.springframework.data.domain.Pageable` and this adapter's
+     * package meet. PageCriteria.java.example carries zero Spring Data import —
+     * `architecture-ddd.md` § Application forbids it past this point.
+     */
     public static PageCriteria toCriteria(Pageable pageable) {
         var sort = pageable.getSort().stream()
                 .map(order -> new SortCriterion(
@@ -41,12 +45,14 @@ public final class UserMapper {
         return new PageCriteria(pageable.getPageNumber(), pageable.getPageSize(), sort);
     }
 
+    /**
+     * Absent in the DTO becomes the domain's explicit value, never null
+     * crossing the boundary (`.claude/rules/code-quality.md`).
+     */
     public static CreateUserCommand toCommand(CreateUserRequest request) {
         return new CreateUserCommand(
                 Email.of(request.email()),
                 request.name(),
-                // Absent in the DTO becomes the domain's explicit value, never null
-                // crossing the boundary (`.claude/rules/code-quality.md`).
                 request.departmentId() == null
                         ? DepartmentId.unassigned()
                         : DepartmentId.of(request.departmentId()));

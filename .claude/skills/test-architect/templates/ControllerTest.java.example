@@ -63,12 +63,16 @@ class UserControllerTest {
 
     @MockitoBean private CreateUserUseCase createUser;
     @MockitoBean private ListUsersQuery listUsers;
-    // ApiExceptionHandler injects Tracer. Without this double the slice doesn't start, and
-    // the failure shows up as a context error, not a red test — hard to read.
+    /**
+     * ApiExceptionHandler injects Tracer. Without this double the slice doesn't start, and
+     * the failure shows up as a context error, not a red test — hard to read.
+     */
     @MockitoBean private Tracer tracer;
-    // Idempotency is the application layer's (`.claude/rules/api-rest.md` § Idempotency) and
-    // has its own tests there. Here the double just runs the effect, so the slice tests the
-    // HTTP contract and nothing else.
+    /**
+     * Idempotency is the application layer's (`.claude/rules/api-rest.md` § Idempotency) and
+     * has its own tests there. Here the double just runs the effect, so the slice tests the
+     * HTTP contract and nothing else.
+     */
     @MockitoBean private IdempotentExecution idempotent;
     @MockitoBean private Clock clock;
 
@@ -78,6 +82,7 @@ class UserControllerTest {
                 new IdempotentOutcome.Executed<>(invocation.<Supplier<?>>getArgument(1).get()));
     }
 
+    /** 201 without Location is half a contract. Always assert it. */
     @Test
     @DisplayName("creates and returns 201 with Location and the representation")
     void createsUser() throws Exception {
@@ -89,11 +94,11 @@ class UserControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_BODY))
                 .andExpect(status().isCreated())
-                // 201 without Location is half a contract. Always assert it.
                 .andExpect(header().exists("Location"))
                 .andExpect(jsonPath("$.email").value("ana@exemplo.com"));
     }
 
+    /** Asserts the errorCode too: without it the test passes with the wrong rule firing. */
     @Test
     @DisplayName("valid body the aggregate rejects is 422 with errorCode")
     void rejectsBusinessRuleViolation() throws Exception {
@@ -107,10 +112,10 @@ class UserControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_BODY))
                 .andExpect(status().isUnprocessableEntity())
-                // Without this line the test passes even with the wrong rule firing.
                 .andExpect(jsonPath("$.errorCode").value("EMAIL_ALREADY_REGISTERED"));
     }
 
+    /** Bean validation is structural: doesn't come from the domain, so no errorCode. */
     @Test
     @DisplayName("missing required field is 400 with violations and no errorCode")
     void rejectsInvalidBody() throws Exception {
@@ -122,7 +127,6 @@ class UserControllerTest {
                                         {"name":"Ana Silva"}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.violations[0].field").value("email"))
-                // Bean validation is structural: doesn't come from the domain, so no errorCode.
                 .andExpect(jsonPath("$.errorCode").doesNotExist());
     }
 

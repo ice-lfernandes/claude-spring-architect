@@ -62,6 +62,9 @@
  * helpers, the annotation, and `IdempotencyKeyInterceptor.java.example` +
  * `MissingIdempotencyKeyException`) share that one `idempotent` subpackage of the inbound
  * REST adapter — not loose in the adapter's root package next to the controller and DTOs.
+ *
+ * Controller side: see `Controller.java.example`'s `create` method — one
+ * `@Idempotent(bodyArgIndex = ...)` annotation, no by-hand claim/replay call.
  */
 
 // --- Idempotent.java
@@ -72,13 +75,15 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-// Single source of truth both IdempotencyKeyInterceptor (structural check) and
-// IdempotencyAspect (transactional check) read.
+/**
+ * Single source of truth both IdempotencyKeyInterceptor (structural check) and
+ * IdempotencyAspect (transactional check) read.
+ */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface Idempotent {
 
-    // Index, among the annotated method's parameters, of the request body to hash.
+    /** Index, among the annotated method's parameters, of the request body to hash. */
     int bodyArgIndex() default 0;
 }
 
@@ -91,8 +96,10 @@ import java.util.HexFormat;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-// Canonical JSON serialization of the whole request DTO, not one hand-picked field —
-// generalizes across any request shape instead of one endpoint's chosen field.
+/**
+ * Canonical JSON serialization of the whole request DTO, not one hand-picked field —
+ * generalizes across any request shape instead of one endpoint's chosen field.
+ */
 @Component
 class IdempotencyRequestHasher {
 
@@ -104,13 +111,15 @@ class IdempotencyRequestHasher {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Every JDK must ship SHA-256 (Java Cryptography Architecture spec).
+     */
     String hash(Object requestBody) {
         byte[] json = objectMapper.writeValueAsBytes(requestBody);
         try {
             byte[] digest = MessageDigest.getInstance(SHA_256).digest(json);
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
-            // Every JDK must ship SHA-256 (Java Cryptography Architecture spec).
             throw new AssertionError(SHA_256 + " unavailable", e);
         }
     }
@@ -130,8 +139,10 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 
-// Turns a ResponseEntity into a StoredResponse for the recorder, and back into a
-// ResponseEntity on replay — body and headers, Location included.
+/**
+ * Turns a ResponseEntity into a StoredResponse for the recorder, and back into a
+ * ResponseEntity on replay — body and headers, Location included.
+ */
 @Component
 class IdempotencyResponseCodec {
 
@@ -148,8 +159,10 @@ class IdempotencyResponseCodec {
                 encodeHeaders(response.getHeaders()));
     }
 
-    // bodyType comes from the join point's own generic return type — see
-    // IdempotencyAspect#responseBodyType below.
+    /**
+     * bodyType comes from the join point's own generic return type — see
+     * IdempotencyAspect#responseBodyType below.
+     */
     ResponseEntity<Object> decode(StoredResponse stored, Type bodyType) {
         JavaType javaType = objectMapper.getTypeFactory().constructType(bodyType);
         Object body = objectMapper.readValue(stored.body(), javaType);
@@ -158,9 +171,11 @@ class IdempotencyResponseCodec {
                 .body(body);
     }
 
+    /**
+     * HttpHeaders isn't accepted by a Map copy constructor in Spring's current
+     * version — build the plain map via forEach, not `new LinkedHashMap<>(headers)`.
+     */
     private String encodeHeaders(HttpHeaders headers) {
-        // HttpHeaders isn't accepted by a Map copy constructor in Spring's current
-        // version — build the plain map via forEach, not `new LinkedHashMap<>(headers)`.
         Map<String, List<String>> plain = new LinkedHashMap<>();
         headers.forEach(plain::put);
         return objectMapper.writeValueAsString(plain);
@@ -182,10 +197,12 @@ class IdempotencyResponseCodec {
 // --- AspectInvocationException.java
 package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
-// Unchecked carrier for whatever `ProceedingJoinPoint#proceed()` threw, alive only
-// between `proceedUnchecked` and `aroundIdempotent` — never seen outside this file, and
-// never seen by ApiExceptionHandler: `aroundIdempotent` unwraps it and rethrows the
-// original cause before returning.
+/**
+ * Unchecked carrier for whatever `ProceedingJoinPoint#proceed()` threw, alive only
+ * between `proceedUnchecked` and `aroundIdempotent` — never seen outside this file, and
+ * never seen by ApiExceptionHandler: `aroundIdempotent` unwraps it and rethrows the
+ * original cause before returning.
+ */
 class AspectInvocationException extends RuntimeException {
     AspectInvocationException(Throwable cause) {
         super(cause);
@@ -213,15 +230,17 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-// Delegates the whole transaction shape to IdempotentExecution — this class only
-// adapts a join point to the (IdempotencyRequest, Supplier<R>, Function<R, StoredResponse>)
-// shape that component already takes. It never opens a transaction itself
-// (architecture-ddd.md § Application).
+/**
+ * Delegates the whole transaction shape to IdempotentExecution — this class only
+ * adapts a join point to the (IdempotencyRequest, Supplier<R>, Function<R, StoredResponse>)
+ * shape that component already takes. It never opens a transaction itself
+ * (architecture-ddd.md § Application).
+ */
 @Aspect
 @Component
 class IdempotencyAspect {
 
-    // No auth designed yet — placeholder until one exists, same as Controller.java.example.
+    /** No auth designed yet — placeholder until one exists, same as Controller.java.example. */
     private static final String CALLER_PLACEHOLDER = "anonymous";
 
     private final IdempotentExecution idempotentExecution;
@@ -288,8 +307,3 @@ class IdempotencyAspect {
         return Object.class;
     }
 }
-
-/*
- * Controller side: see `Controller.java.example`'s `create` method — one
- * `@Idempotent(bodyArgIndex = ...)` annotation, no by-hand claim/replay call.
- */

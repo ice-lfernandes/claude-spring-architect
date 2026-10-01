@@ -106,6 +106,20 @@
  * `UseCase` (lessons-learned-016 § 11). No `@Configuration` anywhere builds the service by hand.
  *
  * Each `// --- <dir>/<File>.java` block is its own file, at that subpackage.
+ *
+ * The sender binds nothing of `app.outbox.*`. `batch-size` and `max-attempts` are bound by
+ * the relay job, which builds `RelayOutboxEventsCommand` from them on every pass —
+ * `jobs-architect/templates/OutboxRelayJob.java.example`. No `@Configuration` here turns
+ * them into a bean for the use case.
+ *
+ * TESTS (`40-testes.md`), none of them deferrable, all without a broker:
+ *  - `RelayOutboxEventsServiceTest` — unit, fake gateway and sender: the SENT, FAILED and
+ *    UNROUTABLE paths, the FAILED row that exhausts its attempts, and one failing row not
+ *    stopping the rest of the batch;
+ *  - `KafkaOutboxEventSenderTest` — unit, mocked `KafkaTemplate`: the three results.
+ * The broker-level test may be deferred by `40-testes.md`; these may not. Relay coverage that
+ * comes only from a scheduler having run during the integration tests is accidental
+ * (lessons-learned-013 § 8.1).
  */
 
 // --- OutboxRelayGateway.java (application layer — the relay's only view of outbox state)
@@ -161,7 +175,7 @@ package com.example.demo.adapter.out.messaging.orderconfirmed;
 import com.example.demo.application.port.out.PublishOrderConfirmedPort;
 import com.example.demo.domain.event.OrderConfirmed;
 
-/*
+/**
  * No `@Transactional` here: the use case owns the transaction
  * (`.claude/rules/architecture-ddd.md` § Application). This class only has to run inside it —
  * writing the row in its own transaction would recreate exactly the gap Form B closes.
@@ -205,7 +219,7 @@ package com.example.demo.application.port.out;
 
 public interface OutboxEventSender {
 
-    /*
+    /**
      * Three outcomes, and the relay treats each differently: a sent row is marked published, a
      * failed one spends an attempt, an unroutable one is dead-lettered now — no retry will map a
      * type nobody registered. Nothing Kafka-typed crosses this signature.
@@ -254,7 +268,7 @@ import java.time.Duration;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
-/*
+/**
  * No `@Transactional`: claim, send and mark are three separate units by design — the gateway
  * opens one per mark (`OutboxEventStore.java.example`), and holding a transaction across a
  * broker send is the long transaction Form B exists to avoid.
@@ -272,6 +286,13 @@ public class RelayOutboxEventsService implements RelayOutboxEvents {
         this.clock = clock;
     }
 
+    /**
+     * Dead-lettered by name, not by an attempts count that happens to arrive at
+     * the same state (lessons-learned-013 § 8.4).
+     *
+     * The send may well have succeeded; the consumer's dedupe is what makes the
+     * retry safe. One poisoned row must not stall the batch.
+     */
     @Override
     public RelayOutcome relayPending(RelayOutboxEventsCommand command) {
         int published = 0;
@@ -285,14 +306,10 @@ public class RelayOutboxEventsService implements RelayOutboxEvents {
                     published++;
                 }
                 case UNROUTABLE -> {
-                    // Dead-lettered by name, not by an attempts count that happens to arrive at
-                    // the same state (lessons-learned-013 § 8.4).
                     gateway.markDeadLettered(event.eventId(), result.reason());
                     deadLettered++;
                 }
                 case FAILED -> {
-                    // The send may well have succeeded; the consumer's dedupe is what makes the
-                    // retry safe. One poisoned row must not stall the batch.
                     if (gateway.markFailed(event.eventId(), result.reason(), command.maxAttempts())) {
                         deadLettered++;
                     } else {
@@ -330,6 +347,13 @@ class KafkaOutboxEventSender implements OutboxEventSender {
         this.topics = topics;
     }
 
+    /**
+     * Partition key = aggregate id, so per-aggregate order holds (`messaging.md`).
+     *
+     * `join()` wraps every send failure in this one type, which is also why the catch is
+     * not `RuntimeException`: Checkstyle's IllegalCatch rejects that, and the narrower
+     * type is what the call actually throws.
+     */
     @Override
     public SendResult send(OutboxEventRecord event) {
         String topic = topics.forEventType(event.eventType());
@@ -337,30 +361,10 @@ class KafkaOutboxEventSender implements OutboxEventSender {
             return new SendResult(Status.UNROUTABLE, "no topic mapped for " + event.eventType());
         }
         try {
-            // Partition key = aggregate id, so per-aggregate order holds (`messaging.md`).
             kafkaTemplate.send(topic, event.aggregateId(), event.payload()).join();
             return SendResult.sent();
         } catch (CompletionException e) {
-            // `join()` wraps every send failure in this one type, which is also why the catch is
-            // not `RuntimeException`: Checkstyle's IllegalCatch rejects that, and the narrower
-            // type is what the call actually throws.
             return new SendResult(Status.FAILED, e.getMessage());
         }
     }
 }
-
-// This adapter binds nothing of `app.outbox.*`. `batch-size` and `max-attempts` are bound by the
-// relay job, which builds `RelayOutboxEventsCommand` from them on every pass —
-// `jobs-architect/templates/OutboxRelayJob.java.example`. No `@Configuration` here turns them
-// into a bean for the use case.
-
-/*
- * TESTS (`40-testes.md`), none of them deferrable, all without a broker:
- *  - `RelayOutboxEventsServiceTest` — unit, fake gateway and sender: the SENT, FAILED and
- *    UNROUTABLE paths, the FAILED row that exhausts its attempts, and one failing row not
- *    stopping the rest of the batch;
- *  - `KafkaOutboxEventSenderTest` — unit, mocked `KafkaTemplate`: the three results.
- * The broker-level test may be deferred by `40-testes.md`; these may not. Relay coverage that
- * comes only from a scheduler having run during the integration tests is accidental
- * (lessons-learned-013 § 8.1).
- */

@@ -37,6 +37,40 @@
  * needed and names it; it doesn't model it. Shape reference for the other half:
  * `@.claude/skills/persistence-architect/templates/IdempotencyKeyTable.sql.example` and
  * `.../IdempotencyKeyStore.java.example`, and `.../IdempotentExecution.java.example`.
+ *
+ * ANNOTATION-BASED VARIANT — only `requiresKey` and its supporting field change;
+ * `preHandle`, `requireValidKey`, `isUuid`, and the `WebMvcConfig` registration below stay
+ * as written.
+ *
+ * Switch to this once `IdempotencyAspect.java.example` is the project's chosen strategy
+ * (rest-api-architect's SKILL.md § "Fix pagination and idempotency": second
+ * `Idempotency-Key` endpoint onward). A hardcoded path set has one advantage this loses:
+ * it still works for a project using the by-hand `IdempotentExecution` call without ever
+ * introducing `@Idempotent`. Don't make this switch for a single-endpoint project.
+ *
+ * import org.springframework.web.method.HandlerMethod;
+ *
+ * private boolean requiresKey(HttpServletRequest request, Object handler) {
+ *     // The annotation is the single source of truth both this interceptor
+ *     // (structural check) and IdempotencyAspect (transactional check) read — a second
+ *     // annotated endpoint needs no change here.
+ *     return handler instanceof HandlerMethod handlerMethod
+ *             && handlerMethod.hasMethodAnnotation(Idempotent.class);
+ * }
+ *
+ * // preHandle's signature already receives `handler` — pass it to requiresKey instead
+ * // of PROTECTED_POST_PATHS/HttpMethod.POST.matches(request.getMethod()).
+ *
+ * Registration. Its own file in the real project (`WebMvcConfig.java`), in the same module.
+ *
+ * @Configuration
+ * class WebMvcConfig implements WebMvcConfigurer {
+ *     private final IdempotencyKeyInterceptor interceptor;
+ *     WebMvcConfig(IdempotencyKeyInterceptor interceptor) { this.interceptor = interceptor; }
+ *     @Override public void addInterceptors(InterceptorRegistry registry) {
+ *         registry.addInterceptor(interceptor).addPathPatterns("/api/**");
+ *     }
+ * }
  */
 package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
@@ -53,15 +87,19 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 
     public static final String HEADER = "Idempotency-Key";
 
-    // Routes that require the key: POST that creates a resource, moves money, or touches an
-    // external system. Explicit list — requiring it across the whole API puts 400 on harmless actions.
+    /**
+     * Routes that require the key: POST that creates a resource, moves money, or touches an
+     * external system. Explicit list — requiring it across the whole API puts 400 on harmless actions.
+     */
     private static final Set<String> PROTECTED_POST_PATHS = Set.of("/api/v1/users");
 
+    /**
+     * One return, always `true`: a rejection is a thrown exception, so the error body
+     * comes from `ApiExceptionHandler`. Two `return true` branches read to Sonar as a
+     * method that "always returns the same value" (java:S3516), a BLOCKER.
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        // One return, always `true`: a rejection is a thrown exception, so the error body
-        // comes from `ApiExceptionHandler`. Two `return true` branches read to Sonar as a
-        // method that "always returns the same value" (java:S3516), a BLOCKER.
         if (requiresKey(request)) {
             requireValidKey(request);
         }
@@ -93,51 +131,15 @@ public class IdempotencyKeyInterceptor implements HandlerInterceptor {
 // --- MissingIdempotencyKeyException.java
 package com.exemplo.minhaapi.adapter.in.rest.idempotent;
 
-// Thrown by IdempotencyKeyInterceptor when Idempotency-Key is missing or malformed.
-// Deliberately NOT a DomainException: `.claude/rules/api-rest.md` § Errors classifies this
-// case as adapter/structural, same family as bean validation — the request never reached
-// the use case, so the response carries `violations` and no `errorCode`
-// (ApiExceptionHandler#handleMissingIdempotencyKey, ApiExceptionHandler.java.example).
+/**
+ * Thrown by IdempotencyKeyInterceptor when Idempotency-Key is missing or malformed.
+ * Deliberately NOT a DomainException: `.claude/rules/api-rest.md` § Errors classifies this
+ * case as adapter/structural, same family as bean validation — the request never reached
+ * the use case, so the response carries `violations` and no `errorCode`
+ * (ApiExceptionHandler#handleMissingIdempotencyKey, ApiExceptionHandler.java.example).
+ */
 public class MissingIdempotencyKeyException extends RuntimeException {
     public MissingIdempotencyKeyException(String message) {
         super(message);
     }
 }
-
-/*
- * Registration. Its own file in the real project (`WebMvcConfig.java`), in the same module.
- *
- * @Configuration
- * class WebMvcConfig implements WebMvcConfigurer {
- *     private final IdempotencyKeyInterceptor interceptor;
- *     WebMvcConfig(IdempotencyKeyInterceptor interceptor) { this.interceptor = interceptor; }
- *     @Override public void addInterceptors(InterceptorRegistry registry) {
- *         registry.addInterceptor(interceptor).addPathPatterns("/api/**");
- *     }
- * }
- */
-
-/*
- * ANNOTATION-BASED VARIANT — only `requiresKey` and its supporting field change;
- * `preHandle`, `requireValidKey`, `isUuid`, and the `WebMvcConfig` registration above stay
- * as written.
- *
- * Switch to this once `IdempotencyAspect.java.example` is the project's chosen strategy
- * (rest-api-architect's SKILL.md § "Fix pagination and idempotency": second
- * `Idempotency-Key` endpoint onward). A hardcoded path set has one advantage this loses:
- * it still works for a project using the by-hand `IdempotentExecution` call without ever
- * introducing `@Idempotent`. Don't make this switch for a single-endpoint project.
- *
- * import org.springframework.web.method.HandlerMethod;
- *
- * private boolean requiresKey(HttpServletRequest request, Object handler) {
- *     // The annotation is the single source of truth both this interceptor
- *     // (structural check) and IdempotencyAspect (transactional check) read — a second
- *     // annotated endpoint needs no change here.
- *     return handler instanceof HandlerMethod handlerMethod
- *             && handlerMethod.hasMethodAnnotation(Idempotent.class);
- * }
- *
- * // preHandle's signature already receives `handler` — pass it to requiresKey instead
- * // of PROTECTED_POST_PATHS/HttpMethod.POST.matches(request.getMethod()).
- */

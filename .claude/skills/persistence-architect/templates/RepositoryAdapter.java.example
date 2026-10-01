@@ -19,6 +19,15 @@
  * is the outbound port, not a `public` on the adapter.
  *
  * Each `// --- <File>.java` block is its own file.
+ *
+ * `order/OrderRepositoryAdapter.java` is the second `save` variant: an UPDATE-only port for
+ * an aggregate whose domain type deliberately doesn't carry `version`
+ * (`@.claude/rules/value-objects.md`'s counter-catalog — optimistic locking is a pure
+ * persistence concern here). `UserRepositoryAdapter.save` stays the reference for a first
+ * INSERT, where a fresh detached entity is correct. The order adapter must NOT reuse that
+ * shape: a fresh `mapper.toEntity(order)` always carries `version = 0` (Java primitive
+ * default), so the second UPDATE's `WHERE version = 0` would match nothing and
+ * false-conflict — `@.claude/rules/persistence.md` § Boundary.
  */
 
 // --- user/UserRepositoryAdapter.java
@@ -47,25 +56,29 @@ class UserRepositoryAdapter implements SaveUserPort, LoadUserPort, UserExistsPor
         this.mapper = mapper;
     }
 
+    /**
+     * saveAndFlush, not save: `save` only registers the entity in the
+     * persistence context, and the INSERT reaches the database on flush —
+     * which by default happens at the transaction commit, opened in the
+     * application layer. By then this try/catch has already gone out of scope,
+     * the UNIQUE violation bubbles up wrapped by the transaction manager, and
+     * the client gets a 500 instead of a 409.
+     * The explicit flush brings the INSERT inside the try.
+     *
+     * Constraint violation — the UNIQUE (email) resolved the race between two
+     * concurrent INSERTs. Without this catch the driver/JPA exception would
+     * cross the domain boundary.
+     *
+     * Translates the infrastructure detail into the domain's vocabulary.
+     * The port doesn't know Spring or Hibernate types.
+     */
     @Override
     public User save(User user) {
         try {
-            // saveAndFlush, not save: `save` only registers the entity in the
-            // persistence context, and the INSERT reaches the database on flush —
-            // which by default happens at the transaction commit, opened in the
-            // application layer. By then this try/catch has already gone out of scope,
-            // the UNIQUE violation bubbles up wrapped by the transaction manager, and
-            // the client gets a 500 instead of a 409.
-            // The explicit flush brings the INSERT inside the try.
             return mapper.toDomain(repository.saveAndFlush(mapper.toEntity(user)));
         } catch (DataIntegrityViolationException cause) {
-            // Constraint violation — the UNIQUE (email) resolved the race between two
-            // concurrent INSERTs. Without this catch the driver/JPA exception would
-            // cross the domain boundary.
             throw new ConflictException("USER_EMAIL_ALREADY_EXISTS", user.email().value(), cause);
         } catch (OptimisticLockingFailureException cause) {
-            // Translates the infrastructure detail into the domain's vocabulary.
-            // The port doesn't know Spring or Hibernate types.
             throw new ConflictException("USER_CONCURRENT_UPDATE", user.id().value().toString(), cause);
         }
     }
@@ -82,14 +95,6 @@ class UserRepositoryAdapter implements SaveUserPort, LoadUserPort, UserExistsPor
 }
 
 // --- order/OrderRepositoryAdapter.java
-// Second `save` variant: an UPDATE-only port for an aggregate whose domain type
-// deliberately doesn't carry `version` (`@.claude/rules/value-objects.md`'s
-// counter-catalog — optimistic locking is a pure persistence concern here).
-// `UserRepositoryAdapter.save` above stays the reference for a first INSERT, where a
-// fresh detached entity is correct. This one must NOT reuse that shape: a fresh
-// `mapper.toEntity(order)` always carries `version = 0` (Java primitive default), so
-// the second UPDATE's `WHERE version = 0` would match nothing and false-conflict —
-// `@.claude/rules/persistence.md` § Boundary.
 package com.example.demo.adapter.out.persistence.order;
 
 import com.example.demo.application.port.out.SaveOrderPort;
@@ -110,17 +115,20 @@ class OrderRepositoryAdapter implements SaveOrderPort {
         this.mapper = mapper;
     }
 
+    /**
+     * Load the managed entity instead of building a fresh detached one: the
+     * application layer's own `findById` earlier in this same transaction already
+     * put it in the first-level cache, so this doesn't add a round trip.
+     *
+     * Mutate only the changed fields on the managed instance — Hibernate's
+     * dirty-checking then carries the row's real current `version` into the
+     * UPDATE. A genuine concurrent write is still caught, at flush time.
+     */
     @Override
     public Order save(Order order) {
-        // Load the managed entity instead of building a fresh detached one: the
-        // application layer's own `findById` earlier in this same transaction already
-        // put it in the first-level cache, so this doesn't add a round trip.
         OrderEntity entity = repository
                 .findById(order.id().value())
                 .orElseThrow(() -> new NotFoundException("ORDER_NOT_FOUND", order.id().value().toString()));
-        // Mutate only the changed fields on the managed instance — Hibernate's
-        // dirty-checking then carries the row's real current `version` into the
-        // UPDATE. A genuine concurrent write is still caught, at flush time.
         mapper.updateEntity(entity, order);
         try {
             return mapper.toDomain(repository.saveAndFlush(entity));
@@ -139,8 +147,10 @@ import org.springframework.stereotype.Component;
 @Component
 class OrderPersistenceMapper {
 
-    // No `toEntity(Order)` here on purpose: this port only ever updates a row that
-    // already exists, so there's no first-INSERT case that needs a fresh entity.
+    /**
+     * No `toEntity(Order)` here on purpose: this port only ever updates a row that
+     * already exists, so there's no first-INSERT case that needs a fresh entity.
+     */
     void updateEntity(OrderEntity entity, Order order) {
         entity.applyTotal(order.discountPercentage().value(), order.total().amount());
     }
@@ -160,8 +170,10 @@ import com.example.demo.domain.model.UserId;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-// Explicit translation in both directions. Neither class inherits from the other and
-// no persistence entity crosses the boundary.
+/**
+ * Explicit translation in both directions. Neither class inherits from the other and
+ * no persistence entity crosses the boundary.
+ */
 @Component
 class UserPersistenceMapper {
 

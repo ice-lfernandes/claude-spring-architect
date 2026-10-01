@@ -45,6 +45,7 @@ flowchart TD
         D6[norm has no code boilerplate]
         D7[no commands/]
         D8[.example suffix]
+        D16[exemplar bodies carry no comment but Javadoc]
         D9[blueprint templates exist]
         D15[compose service templates merge and parse]
         D10[norm has a single owner]
@@ -89,6 +90,7 @@ flowchart TD
 | `norm contains no code boilerplate` | no `class`/`record`/`interface`/`enum` declaration inside `rules/` | Invariant 3 |
 | `no new commands/` | `.claude/commands/` doesn't exist | Invariant 4 |
 | `exemplar imports have the .example suffix at the end` | every file under `skills/*/templates/` | Precondition globs that key off the suffix |
+| `exemplar bodies carry no comment but Javadoc` | `TemplateCommentsTest.java`: no `*.java.example` (outside `claude-code-architect-designer/`) has a `//` or `/* */` in its body — after the `EXEMPLAR` header, and outside the `// --- ` markers at column 0 — that `checkstyle.xml.example` would reject. It reads the patterns of the `LineComment`, `BlockComment` and `TrailingComment` modules from that template, so the two cannot disagree | Decision 0108 — the executor copies an exemplar's shape, comments included, and 60 templates carried 508 body comments. With the generated project's Checkstyle rejecting them, a comment that returns to a template is a red `check` hook in every project that copies it |
 | `blueprint-declared templates exist on disk` | every `templates.<role>` in a blueprint resolves to a real file | A blueprint pointing at a renamed or deleted template |
 | `issue forms cited by skills exist` | every `.github/ISSUE_TEMPLATE/*.yml` cited in `.claude/skills` exists | A renamed or deleted form: projects already exported fetch it from this repository's HEAD, and `report-issue`'s form step — `sonar-lessons`' publish step in projects exported before decision 0103 — stops in every one of them (decisions 0100, 0103) |
 | `compose service templates merge and parse` | every `docker-architect/templates/*-service.yml.example` merged at once into `project-bootstrap`'s base compose, then `docker compose config -q` | Nothing else reads these templates before a generated project's `docker compose up`: a wrong indentation, or a named volume a template uses without declaring (the Kafka and Grafana-stack templates had both shapes of that), surfaced only there |
@@ -187,7 +189,7 @@ path-filtered workflow stays pending on every PR it skips. Design:
 
 | Job | Verifies | Against what |
 |---|---|---|
-| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` and `checkstyle-test.xml.example` run on the **latest** Checkstyle release (resolved from Maven Central, `-all` jar from its GitHub release) over three fixtures — a clean file passes both, `record` and `permits` as names fail both with `IllegalIdentifierName` | Decision 0097 — Checkstyle 14's default `format` rejects `var` only; a config relying on it passed four `record` variables with 0 violations, and the config never runs in this repository |
+| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` and `checkstyle-test.xml.example` run on the **latest** Checkstyle release (resolved from Maven Central, `-all` jar from its GitHub release) over three fixtures — a clean file passes both, `record` and `permits` as names fail both with `IllegalIdentifierName`. Plus six comment fixtures, `checkstyle.xml` only: an own-line `//`, a trailing `//`, a `/* */`, a `/** */` inside a body and a `TODO` in Javadoc each fail by their own module; a file holding both exceptions (empty body, tool directive) and the strings `"http://…"` and `"/api/*"` passes; `checkstyle-test.xml` lets the comment through | Decision 0097 — Checkstyle 14's default `format` rejects `var` only; a config relying on it passed four `record` variables with 0 violations, and the config never runs in this repository. Decision 0108 — Javadoc is the only comment in `src/main` |
 | `java-templates` | `JavaTemplatesTest.java`: every file of `new-feature/templates/commons/` plus the `// --- ` blocks of `JpaEntity.java.example` (`AssignedIdEntity` included) placed into a fresh `start.spring.io` project, then `./mvnw test` over the three `*Test` templates | Decisions 0096 and 0098 — these templates are copied as files, not read as shapes: one that stops compiling breaks `commons-logging-installer` in every project. `exemplar-imports` proves each import exists; this proves the files compile together and the shipped tests pass |
 
 ## What's not here yet

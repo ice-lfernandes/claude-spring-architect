@@ -66,10 +66,12 @@ public class LoggingCommonsMethods {
         }
     }
 
-    // `List`, not `Object[]`: a record with an array component gets identity-based
-    // `equals`/`hashCode` and a `toString` of `[Ljava.lang.Object;@…` — a Sonar bug
-    // (java:S6218). `Arrays.asList`, not `List.of`: an argument may be null. The log line
-    // prints the same `[a, b]` either way.
+    /**
+     * `List`, not `Object[]`: a record with an array component gets identity-based
+     * `equals`/`hashCode` and a `toString` of `[Ljava.lang.Object;@…` — a Sonar bug
+     * (java:S6218). `Arrays.asList`, not `List.of`: an argument may be null. The log line
+     * prints the same `[a, b]` either way.
+     */
     private record Call(String method, String type, List<Object> args) {
         static Call of(ProceedingJoinPoint joinPoint) {
             return new Call(joinPoint.getSignature().getName(),

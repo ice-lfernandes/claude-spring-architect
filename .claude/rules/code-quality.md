@@ -42,9 +42,22 @@ Covers only what no other rule already covers. Layer SRP and DIP live in
 
 ## Comments
 
-A comment explains **why**, never **what**. A comment that describes the code is a sign
-of a bad name — fix the name. Forbidden: commented-out code, `TODO` without an issue
-reference, Javadoc that repeats the signature.
+Javadoc is the only comment. Code that needs a comment to be understood has the wrong
+name — rename it, or extract a method whose name says what the comment said. A reason
+that must survive the next edit goes in the Javadoc of the type or method it explains. No
+`//` and no `/* */`, on a line of their own or at the end of one, and no `/** */` inside a
+method body.
+
+Two exceptions, and nothing else:
+
+- **An otherwise empty body** — one `//` line saying why it is empty. An empty block with
+  no text is a violation of its own (Sonar S108, S1186). Where a test fixture must carry
+  one, `@.claude/rules/testing.md` says so.
+- **A tool directive** — `// NOSONAR`, `// CHECKSTYLE:OFF`/`ON`, `// spotless:off`/`on`,
+  `// @formatter:off`/`on`. It addresses a tool, not a reader.
+
+Forbidden as well: commented-out code, a `TODO` in any form — the work it names belongs in
+the issue tracker — and Javadoc that repeats the signature.
 
 ## How to verify
 
@@ -52,10 +65,12 @@ A rule in markdown doesn't enforce anything. What's mechanical lives in the gene
 project's build:
 
 - **Checkstyle** (`config/checkstyle/checkstyle.xml`, `validate` phase) — length,
-  parameters, complexity, nesting, magic numbers, generic `catch`. The numbers in that
-  file and in this rule are the same: changing one side without the other is a bug.
-  Test code has its own light set, `config/checkstyle/checkstyle-test.xml`: these size
-  limits apply to production code only
+  parameters, complexity, nesting, magic numbers, generic `catch`, and § Comments: a `//`
+  or `/* */` outside its two exceptions, a `/** */` inside a body, a `TODO`. The numbers
+  and the exceptions in that file and in this rule are the same: changing one side
+  without the other is a bug. Test code has its own light set,
+  `config/checkstyle/checkstyle-test.xml`: these size limits and the comment check apply
+  to production code only — in test code § Comments is held by review
 - **Spotless** (`spotless:check` at `verify`; part of `check` in Gradle) — formatting and
   unused imports, main and test alike
 - **ArchUnit** (`ArchitectureTest.java` in the main module) — boundaries, ISP, `private

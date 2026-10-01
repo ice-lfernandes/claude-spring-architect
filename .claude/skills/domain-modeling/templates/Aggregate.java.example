@@ -84,7 +84,7 @@ package com.example.demo.domain.model;
 import com.example.demo.domain.exception.ValidationException;
 import java.util.UUID;
 
-/*
+/**
  * Reference to another aggregate, by id. Never the whole `Department` object: that would
  * widen this aggregate's boundary and force loading it just to create a user.
  *

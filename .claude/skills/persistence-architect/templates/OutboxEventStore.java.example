@@ -77,11 +77,11 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
+import lombok.experimental.FieldDefaults;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-/*
+/**
  * Package-private, like every class in this subpackage. The one exception the write side
  * forces: `OutboxAppender` lives in the messaging adapter and constructs this entity, so
  * either it reaches the table through a narrow `public` port declared in the application
@@ -89,19 +89,32 @@ import org.hibernate.type.SqlTypes;
  * its constructor become `public`, one class at a time and never the whole subpackage
  * (`.claude/rules/persistence.md` § Boundary). Whichever the partial picks, it says so: the
  * executor must not decide it by reflex.
+ *
+ * The no-arg constructor is {@code PROTECTED}: required by Hibernate, closed to everyone
+ * else. {@code @FieldDefaults} comes from {@code lombok.experimental}, not {@code lombok}.
+ *
+ * No {@code @Version}. Two relays racing on the same row is handled by the send being
+ * idempotent on the consumer's side, not by failing the second mark — and a false
+ * optimistic-lock failure here would leave a sent row pending.
+ *
+ * No setter, and no mutator either: every state change a row makes after the insert is a
+ * single UPDATE in the repository. A {@code markPublished(Instant)} here would be the
+ * load-mutate-save shape those statements exist to replace.
  */
 @Entity
 @Table(name = "outbox_events")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)   // required by Hibernate, closed to everyone else
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 class OutboxEventEntity extends AssignedIdEntity<UUID> {
 
-    // Assigned id, never `@GeneratedValue`: `event_id` is the event's own identity and the
-    // consumer's dedupe key. Without the `isNew` flag `AssignedIdEntity` carries — shared
-    // with every assigned-id entity, `JpaEntity.java.example`'s last block — Spring Data
-    // calls `merge()` on the insert: a SELECT before every append, on the request path
-    // (`.claude/rules/persistence.md` § Identity and keys).
+    /**
+     * Assigned id, never `@GeneratedValue`: `event_id` is the event's own identity and the
+     * consumer's dedupe key. Without the `isNew` flag `AssignedIdEntity` carries — shared
+     * with every assigned-id entity, `JpaEntity.java.example`'s last block — Spring Data
+     * calls `merge()` on the insert: a SELECT before every append, on the request path
+     * (`.claude/rules/persistence.md` § Identity and keys).
+     */
     @Id
     @Column(name = "event_id", nullable = false, updatable = false)
     UUID eventId;
@@ -112,9 +125,11 @@ class OutboxEventEntity extends AssignedIdEntity<UUID> {
     @Column(name = "event_type", nullable = false, length = 120, updatable = false)
     String eventType;
 
-    // `jsonb` in the migration; a bare `String` infers `varchar` and `ddl-auto: validate`
-    // refuses to start. The payload stays a `String` here: this adapter never parses it,
-    // and mapping it to a tree would put the consumer's contract in two places.
+    /**
+     * `jsonb` in the migration; a bare `String` infers `varchar` and `ddl-auto: validate`
+     * refuses to start. The payload stays a `String` here: this adapter never parses it,
+     * and mapping it to a tree would put the consumer's contract in two places.
+     */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload", nullable = false, updatable = false)
     String payload;
@@ -122,25 +137,21 @@ class OutboxEventEntity extends AssignedIdEntity<UUID> {
     @Column(name = "occurred_at", nullable = false, updatable = false)
     Instant occurredAt;
 
-    // Null while pending. Set once, by `markPublished`.
+    /** Null while pending. Set once, by `markPublished`. */
     @Column(name = "published_at")
     Instant publishedAt;
 
-    // `smallint` in the migration; an `Integer` infers `integer`.
+    /** `smallint` in the migration; an `Integer` infers `integer`. */
     @JdbcTypeCode(SqlTypes.SMALLINT)
     @Column(name = "attempts", nullable = false)
     short attempts;
 
-    // No `@Lob`: on Postgres it maps a `String` to `oid`, not `text`.
+    /** No `@Lob`: on Postgres it maps a `String` to `oid`, not `text`. */
     @Column(name = "last_error")
     String lastError;
 
     @Column(name = "dead_lettered", nullable = false)
     boolean deadLettered;
-
-    // No `@Version`. Two relays racing on the same row is handled by the send being
-    // idempotent on the consumer's side, not by failing the second mark — and a false
-    // optimistic-lock failure here would leave a sent row pending.
 
     OutboxEventEntity(UUID eventId, String aggregateId, String eventType, String payload, Instant occurredAt) {
         this.eventId = eventId;
@@ -149,10 +160,6 @@ class OutboxEventEntity extends AssignedIdEntity<UUID> {
         this.payload = payload;
         this.occurredAt = occurredAt;
     }
-
-    // No setter, and no mutator either: every state change a row makes after the insert is a
-    // single UPDATE in the repository above. A `markPublished(Instant)` here would be the
-    // load-mutate-save shape those statements exist to replace.
 
     @Override
     public UUID getId() {
@@ -173,7 +180,7 @@ import org.springframework.data.jpa.repository.Query;
 
 interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID> {
 
-    /*
+    /**
      * The claim query. Derived, not native: the partial index
      * `ix_outbox_events_pending (occurred_at) WHERE published_at IS NULL AND NOT dead_lettered`
      * serves it exactly, and `Limit` keeps the batch bound out of the method name.
@@ -183,7 +190,7 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
      */
     List<OutboxEventEntity> findByPublishedAtIsNullAndDeadLetteredIsFalseOrderByOccurredAtAsc(Limit limit);
 
-    /*
+    /**
      * The marks, as single statements. Loading the row and saving it back costs two
      * round-trips per event in two separate transactions, with the entity detached in
      * between: a batch of 100 pays ~201 where ~101 does the same work
@@ -200,7 +207,7 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
              where e.eventId = :eventId""")
     int markPublished(UUID eventId, Instant now);
 
-    /*
+    /**
      * Dead-lettering by exhaustion, attempted FIRST so its row count is the answer to "did
      * this attempt exhaust the row": 1 means it did. Zero means the row has attempts left and
      * `recordAttempt` below records one. Two statements in the failure path, one in the
@@ -223,7 +230,7 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
                and e.deadLettered = false""")
     int recordAttempt(UUID eventId, String reason);
 
-    /* Dead-lettering by decision, not by exhaustion: an event type no topic maps. */
+    /** Dead-lettering by decision, not by exhaustion: an event type no topic maps. */
     @Modifying
     @Query("""
             update OutboxEventEntity e
@@ -231,7 +238,7 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
              where e.eventId = :eventId""")
     int markDeadLettered(UUID eventId, String reason);
 
-    /*
+    /**
      * Feeds the relay's pending-age gauge. A scalar `min`, served by the same partial index as
      * the claim query, so a scrape costs an index lookup and not a row.
      */
@@ -240,7 +247,7 @@ interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID
              where e.publishedAt is null and e.deadLettered = false""")
     Instant oldestPendingOccurredAt();
 
-    /*
+    /**
      * The prune's statement — bounded, published rows only. Native, because JPQL has no
      * `LIMIT` on a `DELETE`; the subquery is served by `ix_outbox_events_published_at`. Never
      * on the relay path. A dead-lettered row is never pruned — it has no `published_at`, and it
@@ -274,14 +281,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 class OutboxEventStore implements OutboxRelayGateway, OutboxRetentionGateway {
 
-    // `last_error` is `text`, so nothing truncates for us. A stack trace in every row turns
-    // the outbox into a log table.
+    /**
+     * `last_error` is `text`, so nothing truncates for us. A stack trace in every row turns
+     * the outbox into a log table.
+     */
     private static final int MAX_ERROR_LENGTH = 500;
 
     private final OutboxEventJpaRepository repository;
-    // Injected, never `Instant.now()` — `.claude/rules/architecture-ddd.md` § Domain, and the
-    // reason this adapter can be tested without waiting for a clock. The port's signature
-    // carries no timestamp, so the stamp is this adapter's to produce.
+    /**
+     * Injected, never `Instant.now()` — `.claude/rules/architecture-ddd.md` § Domain, and the
+     * reason this adapter can be tested without waiting for a clock. The port's signature
+     * carries no timestamp, so the stamp is this adapter's to produce.
+     */
     private final Clock clock;
 
     OutboxEventStore(OutboxEventJpaRepository repository, Clock clock) {
@@ -298,7 +309,7 @@ class OutboxEventStore implements OutboxRelayGateway, OutboxRetentionGateway {
                 .toList();
     }
 
-    /*
+    /**
      * `@Transactional` on the three marks, and ONLY on them: a `@Modifying` statement needs a
      * transaction of its own, and this is the one place in this adapter that writes without
      * the caller providing one — the relay's claim, send and mark are three separate units by
@@ -334,11 +345,7 @@ class OutboxEventStore implements OutboxRelayGateway, OutboxRetentionGateway {
         return Optional.ofNullable(repository.oldestPendingOccurredAt());
     }
 
-    // The port's type, not the entity: nothing outside this subpackage sees a JPA class
-    // (`.claude/rules/persistence.md` § Boundary). One carrier serves both directions — the
-    // appender writes it, the relay reads it; a second record with the same components is the
-    // same type written twice (lessons-learned-013 § 8.3).
-    /*
+    /**
      * One bounded batch per call, in its own transaction: the prune's service loops, and a
      * failure halfway keeps every batch already deleted.
      */
@@ -348,6 +355,12 @@ class OutboxEventStore implements OutboxRelayGateway, OutboxRetentionGateway {
         return repository.deletePublishedBefore(cutoff, limit);
     }
 
+    /**
+     * The port's type, not the entity: nothing outside this subpackage sees a JPA class
+     * (`.claude/rules/persistence.md` § Boundary). One carrier serves both directions — the
+     * appender writes it, the relay reads it; a second record with the same components is the
+     * same type written twice (lessons-learned-013 § 8.3).
+     */
     private static OutboxEventRecord toRecord(OutboxEventEntity event) {
         return new OutboxEventRecord(
                 event.getEventId(),
