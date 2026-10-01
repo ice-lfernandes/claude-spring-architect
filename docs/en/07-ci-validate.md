@@ -35,6 +35,7 @@ flowchart TD
         H10[SubagentContextTest.java — catalog to pattern_catalog agents only]
         H11[AuditRenderTest.java — where the run spent, redacted errors, observer classes skipped]
         H12[MigrationsSchemaTest.java — migrations entry no project would see → exit 2]
+        H13[ModuleMapTest.java — edited file → the Maven module format, check and tests hand to -pl]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -71,8 +72,9 @@ flowchart TD
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then ten tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then twelve tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompiles under the pinned `hook_build.javac_feature` and compares byte for byte | Decision 0075 — an edit to `ArchHook.java` without a rebuild changes nothing any hook executes. Runs before the tests, so they exercise reviewed bytes |
+| `format, check and tests hand Maven the module the edited file belongs to` | `ModuleMapTest.java`, throwaway projects with a stub `mvnw` that records its arguments: a file under the root `src/main` or `src/test` of a single-module project reaches `format`, `check` and `tests` as `-pl .`, a multi-module file as `-pl <module>`; a `.java` under `.claude/` and a project with no `pom.xml` never call Maven | Decision 0107, issue #60 — `moduleOf` never looked at the root POM, so those three hooks returned before calling Maven in every single-module project since the first commit, and a hook that does nothing looks like a hook that passed |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 20 cases: every force-push spelling in `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) refused, a redirect / `sed -i` outside a design phase's territory refused, a plain `sed`, an unresolvable `$OUT` target and `ls` let through; in `sonar-lessons`' phase, `./mvnw -q` and `gh issue create` let through and the scan redirected to `target/` refused | Decision 0076. The mode runs before every shell command in every session: it fails expensively in both directions, and the parser is data a JSON edit can change |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` in a throwaway git repo: a file dirty before the prompt is never named, an out-of-territory write in the turn exits 2, `stop_hook_active` does not block twice, an in-territory write is silent, the `audit` trail written during the turn is not reported while a `Write` to it is still refused | Decisions 0065 and 0105 — the sweep is only as good as the `guard prompt` baseline, and a broken baseline fails quietly either way |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` exits 2 naming the advertised-address line, `stop_hook_active` exits 0, a `localhost` listener clears that line, no compose file is silent | Decision 0064. Needs no Docker — the advertised-address check reads the file |
@@ -214,6 +216,7 @@ java .claude/hooks/ArchHook.java schema
 claude plugin validate .claude/skills   # not run in CI — CLI missing on the runner
 java .claude/hooks/ArchHook.java doctor
 java .claude/.ci/BoundaryTest.java
+java .claude/.ci/ModuleMapTest.java
 java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/MigrationsSchemaTest.java
 java .claude/.ci/ComposeTagTest.java
