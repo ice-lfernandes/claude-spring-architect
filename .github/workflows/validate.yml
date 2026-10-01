@@ -617,20 +617,23 @@ jobs:
           FAIL=0
           # Each entry: symbol that must not appear, and why. Add a line
           # whenever a new version renames something — it's the record that keeps the
-          # exemplar from regressing to the old name on the next rewrite.
+          # exemplar from regressing to the old name on the next rewrite. The yml exemplars are
+          # scanned too: a serializer class is named in `application-kafka.yml.example`, not imported.
           DENY="HttpStatus.UNPROCESSABLE_ENTITY=deprecated in Spring Framework 7; RFC 9110 renamed it to UNPROCESSABLE_CONTENT
           org.springframework.boot.test.autoconfigure.orm.jpa=Boot 3 package; in Boot 4 it's org.springframework.boot.data.jpa.test.autoconfigure
           org.springframework.boot.test.autoconfigure.web.servlet=Boot 3 package; in Boot 4 it's org.springframework.boot.webmvc.test.autoconfigure
-          org.testcontainers.containers.PostgreSQLContainer=Testcontainers 1.x package; in 2.x it's org.testcontainers.postgresql"
+          org.testcontainers.containers.PostgreSQLContainer=Testcontainers 1.x package; in 2.x it's org.testcontainers.postgresql
+          org.springframework.kafka.support.serializer.JsonSerializer=deprecated for removal since spring-kafka 4.0, and a JSON value serializer double-encodes the outbox relay's text; the wire contract is StringSerializer (decision 0106)
+          org.springframework.kafka.support.serializer.JsonDeserializer=deprecated for removal since spring-kafka 4.0; the wire contract is StringDeserializer plus a StringJacksonJsonMessageConverter bean (decision 0106)"
           # `<<<`, not `echo … | while`: a pipeline runs the loop in a subshell, where
           # `FAIL=1` is lost and the only way to fail the step is `exit 1` inside it — which
-          # aborts the sweep at the first hit. Four symbols, one reported. Here the loop
+          # aborts the sweep at the first hit. Six symbols, one reported. Here the loop
           # runs in this shell, so every entry is checked and every hit is printed.
           while IFS= read -r linha; do
             SYMBOL=$(echo "$linha" | sed -e 's/=.*//' -e 's/^ *//')
             REASON=$(echo "$linha" | sed 's/^[^=]*=//')
             [ -n "$SYMBOL" ] || continue
-            if grep -rn --fixed-strings "$SYMBOL" .claude/skills/*/templates/*.java.example; then
+            if grep -rn --fixed-strings "$SYMBOL" .claude/skills/*/templates/*.java.example .claude/skills/*/templates/*.yml.example; then
               echo "❌ '$SYMBOL' — $REASON"
               FAIL=1
             fi

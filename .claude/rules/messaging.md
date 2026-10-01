@@ -143,6 +143,14 @@ Form B's own boundaries:
 - Payload: JSON by default. A schema registry (Avro/Protobuf) is a deliberate upgrade for
   when two teams need a contract they can validate at build time — not a default, and not
   assumed until a use case actually needs it
+- JSON on the wire is **JSON text**, and each side converts it exactly once. The producer
+  turns the payload record into text before it reaches the broker client — the publisher right
+  before sending, or the outbox writer when it writes the row, after which the relay carries
+  the text untouched — and the record value is serialized as a `String`. The consumer reads a
+  `String` and one message converter builds the listener's typed parameter. Both publication
+  forms therefore put the same bytes on a topic: a JSON object with no type header. A JSON
+  value serializer would encode already-serialized text a second time, and its type header
+  names the producer's class, coupling every consumer to the producer's packages
 - The payload's fields are the minimum the consumer needs to act. It is not the full domain
   event object serialized as-is: a payload that leaks internal fields couples the consumer to
   the producer's domain model
@@ -179,6 +187,10 @@ grep -rn "org.apache.kafka\|org.springframework.kafka" --include=*.java . | grep
 
 # Producer idempotence and acks are set explicitly, not left to the client default.
 grep -rn "enable.idempotence\|acks" src/main/resources/
+
+# The record value is a String on both sides: no JSON (de)serializer configured.
+# Zero lines is the expected result.
+grep -rn "value-serializer\|value-deserializer" src/main/resources/ | grep -v "StringSerializer\|StringDeserializer"
 
 # Form B only: the relay never reaches the persistence adapter's entity or repository.
 # Zero lines is the expected result.

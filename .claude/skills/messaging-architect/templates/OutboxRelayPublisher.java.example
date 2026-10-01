@@ -63,6 +63,14 @@
  * no messaging decision in either — and retry/DLQ of the broker send itself, which stays
  * `application-kafka.yml`'s `DefaultErrorHandler`, same as Form A.
  *
+ * ONE SERIALIZATION, AT APPEND TIME. `OutboxAppender` turns the payload record into JSON text
+ * with Boot's `JsonMapper` — the same conversion the Form A publisher does before `send` — and
+ * that text is the row's `payload`. From there on it is only carried: `KafkaOutboxEventSender`
+ * sends it as it is, through a `StringSerializer` (`application-kafka.yml.example`). A JSON
+ * value serializer at this point would encode the text a second time, as a quoted string, with
+ * a `__TypeId__` header of `java.lang.String` (issue #58). The relay never learns any flow's
+ * payload class, which is what keeps those classes package-private.
+ *
  * ELIDED, adapter-local and uninteresting: `OutboxAppender` (serializes the payload record
  * and inserts the row through the same outbound abstraction, in `…messaging.outbox` —
  * every flow appends through it, so it is shared infrastructure and `public`),

@@ -33,16 +33,30 @@ spring:
       properties:
         enable.idempotence: true
       retries: 3
+      # THE WIRE CONTRACT — `.claude/rules/messaging.md` § Topics and serialization. The value
+      # is JSON TEXT, turned into text once, by the producer side's adapter: the Form A
+      # publisher right before `send`, Form B's `OutboxAppender` when it writes the row — the
+      # relay then sends that text untouched. So the serializer only moves a `String`, in both
+      # forms, and both forms put the same bytes on the wire.
+      # NOT spring-kafka's `JsonSerializer`: it re-encodes a `String` as a quoted JSON literal
+      # (the relay's payload arrives double-encoded), adds a `__TypeId__` header naming the
+      # PRODUCER's class, and is `@Deprecated(forRemoval = true)` since spring-kafka 4.0.
+      # `JacksonJsonSerializer`, its replacement, has the same first two effects — issue #58.
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP}
       auto-offset-reset: earliest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "com.example.demo.adapter.in.messaging"
+      # Text in, text out: the typed listener parameter is built AFTER this, by the one
+      # `StringJacksonJsonMessageConverter` bean the consumer exemplar declares — Boot's Kafka
+      # autoconfiguration hands a unique `RecordMessageConverter` bean to every
+      # `@KafkaListener`, so no container factory is built by hand. No type header is read and
+      # no `trusted.packages` list exists to keep in sync: the target type is the listener's
+      # own parameter. A payload that doesn't parse fails conversion, which `DefaultErrorHandler`
+      # treats as not retryable — straight to the DLQ, no `ErrorHandlingDeserializer` needed.
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     listener:
       ack-mode: manual
       # Backoff: 3 attempts, 1s / 2s / 4s, then DLQ — wired once in a
