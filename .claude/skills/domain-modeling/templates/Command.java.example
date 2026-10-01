@@ -23,7 +23,7 @@
  */
 
 // --- CreateUserCommand.java
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.user;
 
 import java.util.UUID;
 

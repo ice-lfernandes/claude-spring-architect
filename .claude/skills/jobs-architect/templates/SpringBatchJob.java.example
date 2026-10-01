@@ -41,7 +41,7 @@
 // --- ImportPriceListJobConfig.java
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.ApplyPriceListLine;
+import com.example.demo.application.port.in.pricelist.ApplyPriceListLine;
 import com.example.demo.application.port.out.PriceListSource;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;

@@ -123,7 +123,7 @@ class JobRunRecorder {
 // --- ReconcilePaymentsJob.java (one job — the trigger and nothing else)
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.ReconcilePayments;
+import com.example.demo.application.port.in.payment.ReconcilePayments;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

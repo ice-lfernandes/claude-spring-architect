@@ -59,9 +59,9 @@ already exists and serves.
 | `adapter/in/rest/dto/CreateUserRequest.java` | inbound adapter | input DTO | NEW | `rest-api-architect` |
 | `adapter/in/rest/dto/UserResponse.java` | inbound adapter | output DTO | NEW | `rest-api-architect` |
 | `adapter/in/rest/UserMapper.java` | inbound adapter | DTO ↔ domain | NEW | `rest-api-architect` |
-| `application/port/in/CreateUserUseCase.java` | application | inbound port | NEW | `domain-modeling` |
-| `application/port/in/CreateUserCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/service/CreateUserService.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/port/in/user/CreateUserUseCase.java` | application | inbound port | NEW | `domain-modeling` |
+| `application/port/in/user/CreateUserCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/service/user/CreateUserService.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/out/UserRepository.java` | application | outbound port | NEW | `domain-modeling` |
 | `domain/model/User.java` | domain | aggregate | NEW | `domain-modeling` |
 | `domain/model/Email.java` | domain | typed field for `email` — value object or `enum`, `domain-modeling` decides | NEW | `domain-modeling` |
@@ -74,7 +74,11 @@ already exists and serves.
 Paths derived from the active blueprint's `packages.map`. If the blueprint changes,
 this table is what gets rewritten — never the flow above. The persistence path carries
 one extra level, the aggregate's own subpackage (`…/persistence/user/`), whatever the
-blueprint calls the layer — `@.claude/rules/persistence.md` § Boundary.
+blueprint calls the layer — `@.claude/rules/persistence.md` § Boundary. The use-case
+paths carry one too, the aggregate the use case writes (`…/port/in/user/`,
+`…/service/user/`, `…/usecase/user/`), whenever the active blueprint's naming convention
+groups use cases by aggregate — that convention owns the rule; a blueprint whose
+convention says nothing about grouping keeps the flat path.
 
 A domain field's row names the field and what it holds; the **shape stays open** — value
 object or `enum` is `domain-modeling`'s call, by `@.claude/rules/value-objects.md`, a rule
@@ -149,10 +153,10 @@ Derived from the Components table, in compile order.
 - [ ] 1. `domain/model/Email.java`
 - [ ] 2. `domain/model/User.java`
 - [ ] 3. domain exceptions — named in `10-dominio.md`
-- [ ] 4. `application/port/in/CreateUserCommand.java`
-- [ ] 5. `application/port/in/CreateUserUseCase.java`
+- [ ] 4. `application/port/in/user/CreateUserCommand.java`
+- [ ] 5. `application/port/in/user/CreateUserUseCase.java`
 - [ ] 6. `application/port/out/UserRepository.java`
-- [ ] 7. `application/service/CreateUserService.java`
+- [ ] 7. `application/service/user/CreateUserService.java`
 - [ ] 8. `db/migration/V3__create_users.sql`
 - [ ] 9. `adapter/out/persistence/user/` (entity, Spring Data, adapter)
 - [ ] 10. `adapter/in/rest/` (DTOs, mapper, controller)

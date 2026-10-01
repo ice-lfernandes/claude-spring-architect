@@ -654,8 +654,7 @@ e, com eixo 8 "ambos", `project-bootstrap/templates/ci.yml.example` e
 toca *antes* da aprovação, como rascunho da Fase 3.5. É dona exclusiva do diretório:
 nenhuma outra peça escreve lá, e nada dentro dele é rule.
 
-**Não escreve** `.claude/settings.json`, `.claude/hooks/**`, `.claude/blueprints/**`,
-`~/.claude.json`, nem código Java de projeto. Não cria `.claude/commands/`. **Nunca
+**Não escreve** `.claude/settings.json`, `.claude/hooks/**`, `~/.claude.json`, nem código Java de projeto. Não cria `.claude/commands/`. **Nunca
 escreve um segredo literal** no `.mcp.json` — invariante 11; uma credencial estática do
 eixo 12 vira placeholder `${VAR}` mais uma linha no doc de setup, nunca um valor.
 

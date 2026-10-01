@@ -45,7 +45,7 @@
  */
 
 // --- PruneOutboxEvents.java (application layer — inbound port)
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.outbox;
 
 public interface PruneOutboxEvents {
 
@@ -54,7 +54,7 @@ public interface PruneOutboxEvents {
 }
 
 // --- PruneOutboxEventsCommand.java (application layer — one run's input, no framework type)
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.outbox;
 
 import java.time.Duration;
 
@@ -84,10 +84,10 @@ public interface OutboxRetentionGateway {
 }
 
 // --- PruneOutboxEventsService.java (application layer)
-package com.example.demo.application.service;
+package com.example.demo.application.service.outbox;
 
-import com.example.demo.application.port.in.PruneOutboxEvents;
-import com.example.demo.application.port.in.PruneOutboxEventsCommand;
+import com.example.demo.application.port.in.outbox.PruneOutboxEvents;
+import com.example.demo.application.port.in.outbox.PruneOutboxEventsCommand;
 import com.example.demo.application.port.out.OutboxRetentionGateway;
 import java.time.Clock;
 import org.springframework.stereotype.Service;
@@ -124,8 +124,8 @@ public class PruneOutboxEventsService implements PruneOutboxEvents {
 // --- OutboxPruneJob.java (scheduling package — the trigger)
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.PruneOutboxEvents;
-import com.example.demo.application.port.in.PruneOutboxEventsCommand;
+import com.example.demo.application.port.in.outbox.PruneOutboxEvents;
+import com.example.demo.application.port.in.outbox.PruneOutboxEventsCommand;
 import java.time.Duration;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;

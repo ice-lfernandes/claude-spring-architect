@@ -70,9 +70,9 @@
 // --- OutboxRelayJob.java
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.RelayOutboxEvents;
-import com.example.demo.application.port.in.RelayOutboxEvents.RelayOutcome;
-import com.example.demo.application.port.in.RelayOutboxEventsCommand;
+import com.example.demo.application.port.in.outbox.RelayOutboxEvents;
+import com.example.demo.application.port.in.outbox.RelayOutboxEvents.RelayOutcome;
+import com.example.demo.application.port.in.outbox.RelayOutboxEventsCommand;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;

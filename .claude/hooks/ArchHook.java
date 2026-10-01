@@ -1908,6 +1908,7 @@ public class ArchHook {
             checkSubagentContext(sch, errors);
             checkExportManifest(sch, errors);
             checkSourceBlock(sch, errors);
+            checkMigrations(sch, errors);
             String jarProblem = hookJarProblem(asMap(sch.get("hook_build")));
             if (jarProblem != null) errors.add("  " + jarProblem);
         }
@@ -2626,6 +2627,63 @@ public class ArchHook {
         if (authEnv != null && !authEnv.matches("[A-Z][A-Z0-9_]*")) {
             errors.add("  source.auth_env is `" + authEnv
                     + "` — it names an environment variable, never its value");
+        }
+    }
+
+    /**
+     * The `migrations` block: what `arch-adopt` shows a project after an update, so code
+     * generated under an older convention gets a note and a prompt instead of silently
+     * mixing two layouts. Every failure here is silent at runtime — `arch-adopt` reads the
+     * block with the model, and an entry with a misspelled blueprint id, a missing `prompt`,
+     * or an id already used by another entry is simply never shown, or shown once for two
+     * changes. Checked at `schema` time, the one moment a person is still looking.
+     *
+     * <p>Extension of the existing `schema` mode (Form 7c rules, invariant 10: the field list
+     * and the id pattern are read from the block itself), motivated by axis 17 of
+     * `claude-code-architect-designer` — the data has no other check, and the arch-adopt step
+     * that reads it is procedure CI cannot run. The closest rejected form was data with no
+     * check, recorded as untestable: a typo would ship to every project. Blueprint ids are
+     * checked only in this repository, since a generated project holds its active blueprint
+     * alone. Design: .claude/decisions/0104-use-case-subpackage-per-aggregate.md
+     */
+    static void checkMigrations(Map<String, Object> sch, List<String> errors) {
+        Map<String, Object> mig = asMap(sch.get("migrations"));
+        if (mig == null) return;
+        List<String> required = asStrList(mig.get("required_fields"));
+        String idPattern = asStr(mig.get("id_pattern"));
+        boolean source = isSourceRepo(sch);
+        Set<String> seen = new HashSet<>();
+        int i = 0;
+        for (Object o : asList(mig.get("entries"))) {
+            String where = "  migrations.entries[" + i++ + "]";
+            Map<String, Object> e = asMap(o);
+            if (e == null) {
+                errors.add(where + " is not an object");
+                continue;
+            }
+            String id = asStr(e.get("id"));
+            if (id != null) where += " `" + id + "`";
+            for (String f : required) {
+                Object v = e.get(f);
+                boolean empty = v == null
+                        || (v instanceof String s && s.isBlank())
+                        || (v instanceof List<?> l && l.isEmpty());
+                if (empty) errors.add(where + " has no `" + f + "`");
+            }
+            if (id != null && idPattern != null && !id.matches(idPattern)) {
+                errors.add(where + " — id does not match `" + idPattern + "`");
+            }
+            if (id != null && !seen.add(id)) {
+                errors.add(where + " — id already used by an earlier entry; a project"
+                        + " that saw the first would never see this one");
+            }
+            if (!source) continue;
+            for (String bp : asStrList(e.get("blueprints"))) {
+                if (!Files.isRegularFile(ROOT.resolve(".claude/blueprints/" + bp + "/" + bp + ".yaml"))) {
+                    errors.add(where + " — blueprint `" + bp + "` does not exist under"
+                            + " .claude/blueprints/; no project would ever be shown this entry");
+                }
+            }
         }
     }
 

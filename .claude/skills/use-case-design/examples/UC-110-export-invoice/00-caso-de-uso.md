@@ -57,8 +57,8 @@ already exists and serves.
 |---|---|---|---|---|
 | `infrastructure/rest/InvoiceExportController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/InvoiceExportResponse.java` | infrastructure (in) | output DTO — binary + content type | NEW | `rest-api-architect` |
-| `application/usecase/ExportInvoiceCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/ExportInvoiceUseCase.java` | application | orchestrates: fetch, validate, format | NEW | `domain-modeling` |
+| `application/usecase/invoice/ExportInvoiceCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/invoice/ExportInvoiceUseCase.java` | application | orchestrates: fetch, validate, format | NEW | `domain-modeling` |
 | `application/port/InvoiceRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `domain/model/Invoice.java` | domain | aggregate | REUSE | `domain-modeling` |
 | `domain/exception/InvoiceIncompleteException.java` | domain | exception | NEW | `domain-modeling` |
@@ -98,8 +98,8 @@ already exists and serves.
 
 - [ ] 1. `domain/exception/InvoiceIncompleteException.java`
 - [ ] 2. `domain/exception/UnsupportedExportFormatException.java`
-- [ ] 3. `application/usecase/ExportInvoiceCommand.java`
-- [ ] 4. `application/usecase/ExportInvoiceUseCase.java`
+- [ ] 3. `application/usecase/invoice/ExportInvoiceCommand.java`
+- [ ] 4. `application/usecase/invoice/ExportInvoiceUseCase.java`
 - [ ] 5. `infrastructure/rest/`
 - [ ] 6. tests for the levels above
 - [ ] 7. `./mvnw clean verify` green

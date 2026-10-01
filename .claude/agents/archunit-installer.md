@@ -110,7 +110,7 @@ back to the caller.
    **Records are exempt from every package-based role rule — keep the exemplar's
    `.and().areNotAssignableTo(Record.class)` when translating.** A record is a value
    carrier living next to the role it serves: `clean-architecture-*`'s `<Verb><Noun>Command`
-   in `application.usecase`, a port's result record, a record nested in a port interface.
+   next to its use case, a port's result record, a record nested in a port interface.
    A suffix rule without it blocks every command the moment real code lands
    (lessons-learned-006 § 5), and "ports are interfaces" fails on the record the port
    returns (lessons-learned-016 § 11). **A second role that is not a record** still needs

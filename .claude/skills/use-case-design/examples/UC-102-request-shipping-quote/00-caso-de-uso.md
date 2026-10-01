@@ -63,8 +63,8 @@ already exists and serves.
 | `infrastructure/rest/dto/ShippingQuoteRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/ShippingQuoteResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/ShippingQuoteMapper.java` | infrastructure (in) | DTO ↔ domain | NEW | `rest-api-architect` |
-| `application/usecase/RequestShippingQuoteCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/RequestShippingQuoteUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
+| `application/usecase/shippingquote/RequestShippingQuoteCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/shippingquote/RequestShippingQuoteUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
 | `application/port/ShippingRateProvider.java` | application | outbound port | NEW | `domain-modeling` |
 | `domain/model/ShipmentRequest.java` | domain | value object — the invalid-combination guard lives here | NEW | `domain-modeling` |
 | `domain/model/ShippingQuote.java` | domain | value object — computed result | NEW | `domain-modeling` |
@@ -107,9 +107,9 @@ already exists and serves.
 - [ ] 1. `domain/model/ShipmentRequest.java`
 - [ ] 2. `domain/model/ShippingQuote.java`
 - [ ] 3. `domain/exception/NoCarrierAvailableException.java`
-- [ ] 4. `application/usecase/RequestShippingQuoteCommand.java`
+- [ ] 4. `application/usecase/shippingquote/RequestShippingQuoteCommand.java`
 - [ ] 5. `application/port/ShippingRateProvider.java`
-- [ ] 6. `application/usecase/RequestShippingQuoteUseCase.java`
+- [ ] 6. `application/usecase/shippingquote/RequestShippingQuoteUseCase.java`
 - [ ] 7. `infrastructure/rate/ShippingRateProviderAdapter.java`
 - [ ] 8. `infrastructure/rest/` (DTOs, mapper, controller)
 - [ ] 9. tests for the levels above

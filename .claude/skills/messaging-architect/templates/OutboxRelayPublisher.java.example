@@ -86,7 +86,7 @@
  * VOCABULARY. Names and packages here follow the hexagonal blueprint — an inbound port
  * interface plus a `…Service`. The active blueprint's naming convention wins: in the
  * clean-architecture blueprints the pass is one concrete `RelayOutboxEventsUseCase` in
- * `application.usecase`, no interface, and the relay job depends on that class. Same shape,
+ * `application.usecase.outbox`, no interface, and the relay job depends on that class. Same shape,
  * same annotations, one type fewer — and never both vocabularies in one project.
  *
  * WIRING. The pass is a use case like any other, so it is wired like one — `@Service` in the
@@ -176,7 +176,7 @@ public class OrderConfirmedOutboxWriter implements PublishOrderConfirmedPort {
 }
 
 // --- RelayOutboxEvents.java (application layer — the inbound port the relay job calls)
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.outbox;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -215,12 +215,13 @@ public interface OutboxEventSender {
 }
 
 // --- RelayOutboxEventsCommand.java (application layer — one pass's input, no framework type)
-package com.example.demo.application.port.in;
+package com.example.demo.application.port.in.outbox;
 
 /**
  * Values are `20-persistencia.md`'s; the relay job binds them from `app.outbox.*` and passes
  * them on every call. Next to the inbound port here; in the clean-architecture blueprints, next
- * to `RelayOutboxEventsUseCase` in `application.usecase`, as that convention places every Command.
+ * to `RelayOutboxEventsUseCase` in `application.usecase.outbox`, as that convention places every
+ * Command.
  */
 public record RelayOutboxEventsCommand(int batchSize, int maxAttempts) {
 
@@ -232,10 +233,10 @@ public record RelayOutboxEventsCommand(int batchSize, int maxAttempts) {
 }
 
 // --- RelayOutboxEventsService.java (application layer — one pass; no scheduling, no Kafka)
-package com.example.demo.application.service;
+package com.example.demo.application.service.outbox;
 
-import com.example.demo.application.port.in.RelayOutboxEvents;
-import com.example.demo.application.port.in.RelayOutboxEventsCommand;
+import com.example.demo.application.port.in.outbox.RelayOutboxEvents;
+import com.example.demo.application.port.in.outbox.RelayOutboxEventsCommand;
 import com.example.demo.application.port.out.OutboxEventRecord;
 import com.example.demo.application.port.out.OutboxEventSender;
 import com.example.demo.application.port.out.OutboxEventSender.SendResult;

@@ -58,8 +58,8 @@ already exists and serves.
 | `infrastructure/rest/OrderStatusController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/TransitionOrderStatusRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/OrderStatusResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/TransitionOrderStatusCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/TransitionOrderStatusUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
+| `application/usecase/order/TransitionOrderStatusCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/order/TransitionOrderStatusUseCase.java` | application | orchestrates | NEW | `domain-modeling` |
 | `application/port/OrderRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds `transitionTo(OrderStatus)` | `domain-modeling` |
 | `domain/model/OrderStatus.java` | domain | value object — legal-next-status table | NEW | `domain-modeling` |
@@ -103,8 +103,8 @@ already exists and serves.
 - [ ] 1. `domain/model/OrderStatus.java`
 - [ ] 2. `domain/exception/IllegalOrderTransitionException.java`
 - [ ] 3. `domain/model/Order.java` (change)
-- [ ] 4. `application/usecase/TransitionOrderStatusCommand.java`
-- [ ] 5. `application/usecase/TransitionOrderStatusUseCase.java`
+- [ ] 4. `application/usecase/order/TransitionOrderStatusCommand.java`
+- [ ] 5. `application/usecase/order/TransitionOrderStatusUseCase.java`
 - [ ] 6. `infrastructure/rest/`
 - [ ] 7. tests for the levels above
 - [ ] 8. `./mvnw clean verify` green

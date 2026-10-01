@@ -63,8 +63,8 @@ already exists and serves.
 |---|---|---|---|---|
 | `infrastructure/rest/OrderConfirmationController.java` | infrastructure (in) | receives HTTP | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/OrderConfirmationResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
-| `application/usecase/ConfirmOrderCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/ConfirmOrderUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/usecase/order/ConfirmOrderCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/order/ConfirmOrderUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/OrderRepository.java` | application | outbound port | REUSE | `domain-modeling` |
 | `application/port/DomainEventPublisher.java` | application | outbound port | REUSE | `domain-modeling` |
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds `confirm()` | `domain-modeling` |
@@ -109,8 +109,8 @@ already exists and serves.
 - [ ] 1. `domain/event/OrderConfirmed.java`
 - [ ] 2. `domain/exception/OrderNotAuthorizedException.java`
 - [ ] 3. `domain/model/Order.java` (change)
-- [ ] 4. `application/usecase/ConfirmOrderCommand.java`
-- [ ] 5. `application/usecase/ConfirmOrderUseCase.java`
+- [ ] 4. `application/usecase/order/ConfirmOrderCommand.java`
+- [ ] 5. `application/usecase/order/ConfirmOrderUseCase.java`
 - [ ] 6. `infrastructure/rest/`
 - [ ] 7. tests for the levels above
 - [ ] 8. `./mvnw clean verify` green

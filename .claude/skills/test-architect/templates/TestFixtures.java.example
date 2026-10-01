@@ -11,7 +11,7 @@
  */
 package com.exemplo.minhaapi.test;
 
-import com.exemplo.minhaapi.application.port.in.ListUsersQuery;
+import com.exemplo.minhaapi.application.port.in.user.ListUsersQuery;
 import com.exemplo.minhaapi.domain.model.user.DepartmentId;
 import com.exemplo.minhaapi.domain.model.user.Email;
 import com.exemplo.minhaapi.domain.model.user.User;

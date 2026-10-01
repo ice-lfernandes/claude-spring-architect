@@ -67,7 +67,7 @@ class JobRunrWelcomeEmail implements SendWelcomeEmailLaterPort {
 // --- WelcomeEmailJob.java (the stored call — stable name, serializable arguments)
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.SendWelcomeEmail;
+import com.example.demo.application.port.in.customer.SendWelcomeEmail;
 import java.util.UUID;
 import org.jobrunr.jobs.annotations.Job;
 import org.springframework.stereotype.Component;
@@ -91,7 +91,7 @@ public class WelcomeEmailJob {
 // --- NightlyDigestJob.java (recurring — declared, not enqueued)
 package com.example.demo.adapter.in.scheduling;
 
-import com.example.demo.application.port.in.SendNightlyDigest;
+import com.example.demo.application.port.in.nightlydigest.SendNightlyDigest;
 import org.jobrunr.jobs.annotations.Job;
 import org.jobrunr.jobs.annotations.Recurring;
 import org.springframework.stereotype.Component;

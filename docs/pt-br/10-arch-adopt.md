@@ -54,6 +54,15 @@ dos tópicos já existentes, senão o `artifactId` do build file — e escreve a
 texto do `root.CLAUDE.md.example` buscado. O território da skill passa a incluir esse
 arquivo.
 
+**Mudança de convenção chega ao código existente como prompt, nunca como edição.** Quando
+as normas mudam de um jeito que deixa para trás o código gerado antes — use cases
+agrupados por aggregate, decisão 0104 —, a mudança vai como uma entrada no bloco
+`migrations` do `extensions.json`. Num update, o step 9 mostra cada entrada que o projeto
+ainda não viu e que vale para o blueprint dele: uma nota e um prompt para colar no Claude
+Code dentro do projeto. A skill nunca roda o prompt. A cópia do `extensions.json` do
+próprio projeto é o registro do que ele já viu, então um projeto gerado depois de uma
+entrada nunca a vê.
+
 Essa separação é o que substituiu o modelo anterior, em que as tabelas de cópia viviam em
 prosa dentro de `project-bootstrap/SKILL.md` §§ 6.6–6.8: uma tabela em markdown é copiada
 por um modelo, linha a linha, e a linha que ele esquece não quebra a geração — quebra para
@@ -128,9 +137,16 @@ Provenance ... ⚠️ 2 files edited locally since the stamp:
                .claude/rules/persistence.md
                .claude/settings.json
 Bounded ctx .. already declared
+Migrations ... 1 below, to paste when you choose
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
+```
+
+Use cases are now grouped in one subpackage per aggregate: … (the entry's `note`)
+
+```text
+Move this project's use cases into one subpackage per aggregate, … (the entry's `prompt`)
 ```
 
 `--source <caminho local>` ignora o bloco `source` inteiro e usa uma árvore da máquina —

@@ -62,8 +62,8 @@ already exists and serves.
 | `infrastructure/rest/dto/AuthorizePaymentRequest.java` | infrastructure (in) | input DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/dto/PaymentAuthorizationResponse.java` | infrastructure (in) | output DTO | NEW | `rest-api-architect` |
 | `infrastructure/rest/PaymentAuthorizationMapper.java` | infrastructure (in) | DTO ↔ domain | NEW | `rest-api-architect` |
-| `application/usecase/AuthorizePaymentCommand.java` | application | command | NEW | `domain-modeling` |
-| `application/usecase/AuthorizePaymentUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
+| `application/usecase/order/AuthorizePaymentCommand.java` | application | command | NEW | `domain-modeling` |
+| `application/usecase/order/AuthorizePaymentUseCase.java` | application | orchestrates, opens transaction | NEW | `domain-modeling` |
 | `application/port/PaymentAuthorizer.java` | application | outbound port — one contract, two technologies behind it | NEW | `domain-modeling` |
 | `domain/model/Order.java` | domain | aggregate | CHANGE — adds authorized state | `domain-modeling` |
 | `domain/exception/AmountMismatchException.java` | domain | exception | NEW | `domain-modeling` |
@@ -109,9 +109,9 @@ already exists and serves.
 - [ ] 1. `domain/exception/AmountMismatchException.java`
 - [ ] 2. `domain/exception/PaymentDeclinedException.java`
 - [ ] 3. `domain/model/Order.java` (change)
-- [ ] 4. `application/usecase/AuthorizePaymentCommand.java`
+- [ ] 4. `application/usecase/order/AuthorizePaymentCommand.java`
 - [ ] 5. `application/port/PaymentAuthorizer.java`
-- [ ] 6. `application/usecase/AuthorizePaymentUseCase.java`
+- [ ] 6. `application/usecase/order/AuthorizePaymentUseCase.java`
 - [ ] 7. `db/migration/V7__create_ledger_entries.sql`
 - [ ] 8. `infrastructure/ledger/`, `infrastructure/gateway/`
 - [ ] 9. `infrastructure/rest/`

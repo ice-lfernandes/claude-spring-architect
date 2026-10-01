@@ -146,6 +146,11 @@ so the variant survives the temporary directory and the next update can resolve 
 
 ### 5 · Write
 
+**On an update, first note which migrations this project has already been shown** — the
+export overwrites the file that records them. Read the `id` of every entry in
+`migrations.entries` of the project's own `.claude/schemas/extensions.json`; no `migrations`
+block there means none. Keep the list for step 9.
+
 ```bash
 CLAUDE_PROJECT_DIR="$SRC" java "$SRC/.claude/hooks/ArchHook.java" export . \
   --blueprint <id> --ref <ref>
@@ -208,6 +213,27 @@ with `{{boundedContext}}` filled — that template owns the wording — right be
 first heading of the root `CLAUDE.md`, or as the whole file when there is none. Never a
 prefix you chose: the answer is the user's.
 
+### 9 · Migrations — shown, never run
+
+A convention change leaves the code generated before it behind: the norms now say one
+thing and the existing classes another, and the next `/new-feature` writes the new layout
+next to the old one. Every such change is an entry in `migrations.entries` of the fetched
+`$SRC/.claude/schemas/extensions.json` — a `note` saying what changed and a `prompt` that
+does the move.
+
+Install → skip, and say "not applicable — install" in the report: there is no earlier
+convention to migrate from. On an update, the entries to show are the fetched ones whose
+`id` is **not** in the list step 5 kept **and** whose `blueprints` names the active
+blueprint. None → "none pending".
+
+For each one, print its `note`, then its `prompt` verbatim in a fenced block, and say it
+once, plainly: the prompt is for the user to paste into Claude Code in this project, now
+or later, or never. **Never run it, never start the move, never ask whether to** — the
+refactor is a decision about their code, made in a session they open for it, against the
+diff they just reviewed. The entry is recorded as shown the moment the export wrote the
+new `extensions.json`; it won't be printed again on the next update, so the report is
+where it stays.
+
 ## Report
 
 ```
@@ -220,10 +246,13 @@ Schema ....... <exit 0 | the failure>
 Provenance ... <the doctor line>
 SonarQube .... <already configured | configured by sonarqube-setup — <its first line> | pending: run /reload-skills, then /sonarqube-setup>
 Bounded ctx .. <already declared | written: <name>>
+Migrations ... <none pending | not applicable — install | <n> below, to paste when you choose>
 
 Review: git diff · Undo: git checkout -- .claude
 Next: /arch-doctor for the full diagnosis
 ```
+
+Then each pending migration from step 9: its `note`, and its `prompt` in a fenced block.
 
 On an update that overwrote files the user had edited, list them. `doctor`'s Provenance
 line names them **before** the export too — run it first when the project already has a
@@ -252,7 +281,7 @@ Pinned to `opus`: it merges into a project it did not write, and may write the o
 **Unfiltered Bash:** adoption fetches the source (`git ls-remote`, `curl`, `tar`), inspects the worktree (`git status`, `git rev-parse`, `find`), and runs `java … export` — spread over two tools that fetch from the network and a command list that grows with the source's layout. Writes stay under `guard`/`guard bash`, and a force push is blocked by `guard bash` (`guard.force_push`).
 
 **Reads** `.claude/schemas/extensions.json` (the `source` block — never a URL from
-memory), `.claude/.arch-provenance.json` when it exists, `src/main/java/**` to detect the
+memory — and, before the export, the `migrations` ids already shown), `.claude/.arch-provenance.json` when it exists, `src/main/java/**` to detect the
 layout, and the fetched source's `.claude/blueprints/*/*.yaml`.
 
 **Writes** one thing directly in the project: the bounded-context line of the root
