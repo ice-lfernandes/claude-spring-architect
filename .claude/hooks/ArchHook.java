@@ -5722,16 +5722,23 @@ public class ArchHook {
         return raw;   // Windows arrives with '\\'; Paths.get handles both separators
     }
 
-    /** Path of the Maven module containing the file, or null if there is no POM. */
+    /**
+     * Path of the Maven module containing the file, {@code "."} for the root POM of a
+     * single-module project, or null if there is no POM. The walk never reaches the root, so
+     * it is tested last, and only for Maven's {@code src/} tree: {@code .claude/hooks/ArchHook.java}
+     * matches the hooks' {@code Edit(**}{@code /*.java)} filter too, and must not build the
+     * whole project. Design: .claude/decisions/0107-moduleof-root-pom.md.
+     */
     static String moduleOf(String rel) {
         Path p = Paths.get(rel).getParent();
         while (p != null) {
             if (Files.isRegularFile(ROOT.resolve(p).resolve("pom.xml"))) {
-                String s = p.toString().replace('\\', '/');
-                return s.isEmpty() ? "." : s;
+                return p.toString().replace('\\', '/');
             }
             p = p.getParent();
         }
+        if (rel.replace('\\', '/').startsWith("src/")
+                && Files.isRegularFile(ROOT.resolve("pom.xml"))) return ".";
         return null;
     }
 

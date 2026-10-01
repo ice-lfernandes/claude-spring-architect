@@ -35,6 +35,7 @@ flowchart TD
         H10[SubagentContextTest.java — catálogo só para agents pattern_catalog]
         H11[AuditRenderTest.java — onde a execução gastou, erros redigidos, classes observer puladas]
         H12[MigrationsSchemaTest.java — entrada de migrations que nenhum projeto veria → exit 2]
+        H13[ModuleMapTest.java — arquivo editado → o módulo Maven que format, check e tests passam no -pl]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -71,8 +72,9 @@ flowchart TD
 
 | Job / passo | Verifica | Contra o quê |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois dez testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois doze testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompila sob o `hook_build.javac_feature` fixado e compara byte a byte | Decisão 0075 — editar `ArchHook.java` sem rebuild não muda nada que um hook executa. Roda antes dos testes, para que exercitem bytes revisados |
+| `format, check and tests hand Maven the module the edited file belongs to` | `ModuleMapTest.java`, projetos descartáveis com um `mvnw` stub que registra seus argumentos: um arquivo sob o `src/main` ou `src/test` da raiz de um projeto single-module chega a `format`, `check` e `tests` como `-pl .`, um arquivo multi-module como `-pl <módulo>`; um `.java` sob `.claude/` e um projeto sem `pom.xml` nunca chamam o Maven | Decisão 0107, issue #60 — `moduleOf` nunca olhava o POM da raiz, então esses três hooks retornavam antes de chamar o Maven em todo projeto single-module desde o primeiro commit, e um hook que não faz nada parece um hook que passou |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 20 casos: toda grafia de force push de `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) recusada, redirect / `sed -i` fora do território de uma fase de design recusados, `sed` simples, alvo `$OUT` irresolvível e `ls` liberados; na fase do `sonar-lessons`, `./mvnw -q` e `gh issue create` liberados e o scan redirecionado para `target/` recusado | Decisão 0076. O modo roda antes de todo comando de shell em toda sessão: falha caro nas duas direções, e o parser é dado que uma edição de JSON muda |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` num repo git descartável: arquivo sujo antes do prompt nunca é nomeado, escrita fora do território no turno sai 2, `stop_hook_active` não bloqueia duas vezes, escrita dentro do território fica calada, a trilha do `audit` gravada no turno não é reportada enquanto um `Write` nela continua recusado | Decisões 0065 e 0105 — o sweep vale o que vale a baseline do `guard prompt`, e uma baseline quebrada falha calada nos dois sentidos |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` sai 2 nomeando a linha de endereço anunciado, `stop_hook_active` sai 0, um listener `localhost` limpa a linha, sem compose fica calado | Decisão 0064. Não precisa de Docker — a checagem de endereço anunciado lê o arquivo |
@@ -209,6 +211,7 @@ java .claude/hooks/ArchHook.java schema
 claude plugin validate .claude/skills   # não roda em CI — CLI ausente no runner
 java .claude/hooks/ArchHook.java doctor
 java .claude/.ci/BoundaryTest.java
+java .claude/.ci/ModuleMapTest.java
 java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/MigrationsSchemaTest.java
 java .claude/.ci/ComposeTagTest.java
