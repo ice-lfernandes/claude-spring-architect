@@ -15,7 +15,14 @@
  *  - the domain event never serializes directly: an explicit payload record, only the
  *    fields the consumer needs;
  *  - the aggregate id as the partition key, so events of the same aggregate stay ordered;
- *  - the adapter is the only class in the codebase that imports `KafkaTemplate`.
+ *  - the adapter is the only class in the codebase that imports `KafkaTemplate`;
+ *  - the payload becomes JSON text HERE, once, with Boot's `JsonMapper`, and the template
+ *    only moves a `String` — the wire contract of `.claude/rules/messaging.md` § Topics and
+ *    serialization. Form B's `OutboxAppender` does the same conversion at append time, so
+ *    both publication forms put the same bytes on the wire and one consumer reads either.
+ *    A `KafkaTemplate<String, OrderConfirmedPayload>` with a JSON value serializer is the
+ *    shape this replaces: it cannot also carry the relay's already-serialized text without
+ *    encoding it a second time (issue #58).
  *
  * WHAT'S NOT HERE: retry/backoff and DLQ wiring — that's `application-kafka.yml`'s
  * `DefaultErrorHandler`, not per-adapter code. Schema registry — not assumed until a use
@@ -61,20 +68,26 @@ package com.example.demo.adapter.out.messaging.orderconfirmed;
 import com.example.demo.application.port.out.PublishOrderConfirmedPort;
 import com.example.demo.domain.event.OrderConfirmed;
 import org.springframework.kafka.core.KafkaTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 public class OrderConfirmedPublisher implements PublishOrderConfirmedPort {
 
     private static final String TOPIC = "orders.order.confirmed";
 
-    private final KafkaTemplate<String, OrderConfirmedPayload> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final JsonMapper jsonMapper;
 
-    public OrderConfirmedPublisher(KafkaTemplate<String, OrderConfirmedPayload> kafkaTemplate) {
+    // `JsonMapper` is the `@Primary` bean Boot's Jackson autoconfiguration registers (Jackson 3
+    // on Spring Boot 4) — injected, never `new`-ed, so the application's Jackson settings apply.
+    public OrderConfirmedPublisher(KafkaTemplate<String, String> kafkaTemplate, JsonMapper jsonMapper) {
         this.kafkaTemplate = kafkaTemplate;
+        this.jsonMapper = jsonMapper;
     }
 
     @Override
     public void publish(OrderConfirmed event) {
         String partitionKey = event.orderId().value().toString();
-        kafkaTemplate.send(TOPIC, partitionKey, OrderConfirmedPayload.from(event));
+        String payload = jsonMapper.writeValueAsString(OrderConfirmedPayload.from(event));
+        kafkaTemplate.send(TOPIC, partitionKey, payload);
     }
 }

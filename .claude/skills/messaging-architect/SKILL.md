@@ -282,6 +282,15 @@ still transport.
    values are the rule; what this skill decides is the per-use-case sizing (group id, offset
    reset tolerance) from step 3.
 
+   **JSON means JSON text on the wire, converted once per side** —
+   `@.claude/rules/messaging.md` § Topics and serialization. The yml's `StringSerializer` /
+   `StringDeserializer` pair is not a default to tune per case: it is what lets the Form A
+   publisher and the Form B relay put the same bytes on one topic, and the partial names
+   where each conversion happens (the publisher or the `OutboxAppender`; the converter bean
+   in front of the listeners). A JSON value serializer in the yml next to a Form B relay
+   publishes every payload double-encoded — the contradiction the exemplars carried until
+   issue #58.
+
    **This skill owns the `bootstrap-servers` default, and it is host-first.** The application
    started with `./mvnw spring-boot:run` runs on the host, so the default has to be an address
    the host resolves — `${KAFKA_BOOTSTRAP_SERVERS:localhost:<external port>}`, the port

@@ -11,7 +11,15 @@
  *  - manual acknowledgment: the offset only commits after the use case returns
  *    successfully, never before;
  *  - a business rejection (typed domain exception) does not retry — it's a poison
- *    message, route straight to the DLQ instead of exhausting retries first.
+ *    message, route straight to the DLQ instead of exhausting retries first;
+ *  - the listener takes its payload record TYPED, while the record value on the wire is JSON
+ *    text read by `StringDeserializer` (`.claude/rules/messaging.md` § Topics and
+ *    serialization). What turns one into the other is the single
+ *    `StringJacksonJsonMessageConverter` bean below: Boot's Kafka autoconfiguration hands a
+ *    unique `RecordMessageConverter` bean to every `@KafkaListener`, and the target type is
+ *    the method's own parameter — no type header, no trusted-packages list. Text that doesn't
+ *    parse fails conversion, which `DefaultErrorHandler` classifies as not retryable: straight
+ *    to the DLQ, like a business rejection.
  *
  * WHAT'S NOT HERE: the DLQ routing and retry backoff themselves — that's
  * `application-kafka.yml`'s `DefaultErrorHandler`, wired once per consumer group, not
@@ -33,6 +41,31 @@ package com.example.demo.application.port.in.stock;
 public interface ReserveStockUseCase {
 
     void reserve(ReserveStockCommand command);
+}
+
+// --- listener/KafkaListenerConfiguration.java (shared by every flow's listener — declared once)
+package com.example.demo.adapter.in.messaging.listener;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.support.converter.StringJacksonJsonMessageConverter;
+import tools.jackson.databind.json.JsonMapper;
+
+/*
+ * Shared listener wiring, so its own subpackage — not one flow's, and not the adapter root
+ * (`.claude/rules/messaging.md` § Boundary). The `DefaultErrorHandler` +
+ * `DeadLetterPublishingRecoverer` bean belongs in this same class. Exactly one
+ * `RecordMessageConverter` bean in the context: autoconfiguration takes it only `getIfUnique`,
+ * so a second one silently drops both and every listener falls back to the default converter,
+ * which cannot build a typed parameter from JSON text.
+ */
+@Configuration
+class KafkaListenerConfiguration {
+
+    @Bean
+    StringJacksonJsonMessageConverter kafkaRecordMessageConverter(JsonMapper jsonMapper) {
+        return new StringJacksonJsonMessageConverter(jsonMapper);
+    }
 }
 
 // --- orderconfirmed/OrderConfirmedPayload.java (adapter-local — mirrors the producer side's shape)

@@ -20,7 +20,9 @@
 |---|---|---|
 | Topic | `orders.order.confirmed` | `<bounded-context>.<aggregate>.<event>`, per the rule |
 | Partition key | `orderId` | Keeps every event of the same order in order |
-| Serialization | JSON | No cross-team schema contract needed yet — rule default |
+| Serialization | JSON text — `StringSerializer` / `StringDeserializer` | No cross-team schema contract needed yet — rule default |
+| Converted to JSON by | `OrderConfirmedPublisher`, with `JsonMapper`, before `send` | The producer side converts once; under Form B this cell names `OutboxAppender` |
+| Converted from JSON by | the `StringJacksonJsonMessageConverter` bean, into the listener's typed parameter | One bean for every listener; the rule's wire contract |
 | Delivery | At-least-once + idempotent consumer | Rule default; exactly-once isn't assumed |
 
 ## 2 · Producer adapter
@@ -201,5 +203,6 @@ consolidation collects this section into `UC-NNN-spec.md`.
 3. `OrderConfirmedPayload` (consumer side) + `OrderConfirmedListener`
 4. `ProcessedEventStore` port + adapter (or reuse, if `persistence-architect` already built one)
 5. Properties in `application.yml`
-6. `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` bean, once per consumer group
+6. `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` bean, once per consumer group, next
+   to the one `StringJacksonJsonMessageConverter` bean — skip both when the project already has them
 7. Integration test against a real broker (Testcontainers) — `40-testes.md`
