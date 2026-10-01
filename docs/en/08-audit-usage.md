@@ -119,7 +119,7 @@ its numbers are unchanged. Reports written before 0085 stay in Portuguese on dis
 …
 ```
 
-Sections, in order: header · initial command (redacted, with the original's `sha256`)
+Sections, in order: header (with the estimated cost right after the model) · initial command (redacted, with the original's `sha256`)
 · longest steps · chain · tokens per piece · aggregate tokens (input, output,
 cache read, cache write, billable, estimated cost, cache hit) · where the run spent ·
 permissions added (a diff of `settings.local.json` between start and end) · rules
@@ -176,10 +176,13 @@ Four design decisions the report states about itself:
   patterns, truncated to 160 characters — an error can echo the command that held the
   token. A failed `Bash` result opens with `Exit code N`; the report joins it with the
   line after it, which is what actually failed.
-- **Prices are data with null defaults.** `pricing.json` ships empty and the report
-  prints "cost: not configured" instead of a confident `USD 0.00` — the same reason
-  invariant 8 forbids versions from memory. Fill the file and cost appears per model
-  (a subagent on another model is priced at its own rate).
+- **Prices are data, never memory.** `pricing.json` ships filled with the official
+  page's rates as of the date in its `$comment`, and cost appears per model (a subagent on
+  another model is priced at its own rate). The model id matches exactly —
+  `claude-opus-5-5` does not inherit `claude-opus-5`'s price. A model with no price makes
+  the total unknown, never a partial sum nor a confident `USD 0.00`, and the cell says
+  which one is missing: `— (no price for claude-opus-5-5 in .claude/audit-usage/pricing.json)`.
+  The same reason invariant 8 forbids versions from memory.
 
 ## The ledgers and `audit summary`
 
@@ -317,7 +320,8 @@ order, so no boundary may depend on which of them ran first.
 ## What `doctor` shows
 
 `/arch-doctor` carries two lines about the trail: `Audit` (how many runs recorded, and
-whether `pricing.json` exists) and `Audit rule inference` (a synthetic file matching a
+whether `pricing.json` exists, and ❌ naming each model of `history.jsonl`'s last 15 runs it
+does not price) and `Audit rule inference` (a synthetic file matching a
 real norm's `paths` — the exact shape that once threw
 `ArrayIndexOutOfBoundsException` inside the inference and froze every report from that
 point on, silently). Without the directory: `⚪ no .claude/audit-usage/ — execution

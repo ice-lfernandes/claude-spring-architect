@@ -1,8 +1,14 @@
 {
-  "$comment": "Prices for the cost estimate in .claude/audit-usage/*.md. Filled from https://platform.claude.com/docs/en/about-claude/pricing on 2026-09-26 — cache_write is the 5-minute cache write rate (1.25x base input), not the 1-hour rate (2x). Re-check the official page before trusting these on a later date: same discipline as @CLAUDE.md invariant 8, a number that changes outside this repository is never written from memory.",
+  "$comment": "Prices for the cost estimate in .claude/audit-usage/*.md. Filled from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-01 — cache_write is the 5-minute cache write rate (1.25x base input), not the 1-hour rate (2x). Re-check the official page before trusting these on a later date: same discipline as @CLAUDE.md invariant 8, a number that changes outside this repository is never written from memory.",
   "currency": "USD",
   "per": 1000000,
   "models": {
+    "claude-opus-5-5": {
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.2,
+      "cache_write": 5
+    },
     "claude-opus-5": {
       "input": 5,
       "output": 25,

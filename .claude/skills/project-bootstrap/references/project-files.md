@@ -164,8 +164,9 @@ prose and a real run broke anyway: while a design skill runs, nothing is written
 
 **`pricing.json` ages on its own.** It ships pre-filled with the official per-model rates
 as of the date in its own `$comment`, never from memory — same discipline as invariant 8.
-A model missing from it, or a rate that has since changed, prints "não configurado"
-instead of a confident `US$ 0.00` nobody checked. Tell the user, in the final report, to
+A model missing from it prints `— (no price for <model> in pricing.json)` instead of a
+confident `US$ 0.00` nobody checked, and `doctor` names it once it appears in the last 15
+runs; a rate that has since changed prints nothing at all. Tell the user, in the final report, to
 compare that date against
 `platform.claude.com/docs/en/about-claude/pricing` and update the file if it has gone
 stale; it does not refresh itself.

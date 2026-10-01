@@ -71,7 +71,7 @@ sequenceDiagram
 | `Boundaries` | ≥ 1 regra válida em `.claude/forbidden-imports.txt` | ❌ 0 regras — enforcement OFF, gerado por `/init-project` |
 | `Schema` | todos os arquivos de extensão passam | ❌ N arquivos com frontmatter inválido, ou ⚠️ sem `extensions.json` — validação OFF |
 | `Hook jar` | `.claude/hooks/ArchHook.jar` carrega o hash do `ArchHook.java` atual | ❌ ausente, ilegível ou desatualizado — construído de outra versão do fonte, então todo hook roda o código antigo; `java .claude/hooks/ArchHook.java build` o reconstrói |
-| `Audit` | N execuções registradas em `.claude/audit-usage/` (avisa se `pricing.json` falta) | ⚪ sem o diretório — trilha OFF (opcional; é o caso deste meta-repo) |
+| `Audit` | N execuções registradas em `.claude/audit-usage/` (avisa se `pricing.json` falta; ❌ nomeando cada modelo das últimas 15 execuções sem preço nele) | ⚪ sem o diretório — trilha OFF (opcional; é o caso deste meta-repo) |
 | `Audit rule inference` | a inferência de regras renderiza sem erro para um `.java` sintético | ❌ `auditRules()` lança — todo relatório congelaria assim que uma execução tocasse `src/**` |
 | `MCP` | N servidores declarados em `.mcp.json`, todos válidos | ❌ N problemas — rodar `java ArchHook.java schema`; ou "no .mcp.json" (opcional) |
 | `Hooks` | N registros válidos em M eventos | ❌ evento desconhecido, `matcher` em evento que não lê um, ou string de shell no `command` — os quatro modos de falhar silenciosamente de um hook |
