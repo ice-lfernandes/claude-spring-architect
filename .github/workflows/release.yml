@@ -11,14 +11,14 @@ name: release
 #                  ticks exactly one level, and publishes that level as an output.
 #                  Make it a required status check in the branch protection of `main` —
 #                  that, and nothing in this file, is what makes the field mandatory.
-#   tag            runs once, on the `closed` event of a merged PR, and creates the
-#                  annotated tag from the merge commit.
+#   tag            runs once, on the `closed` event of a merged PR, creates the annotated
+#                  tag from the merge commit, and tells the marketplace a tag exists.
 #
 # What this does NOT do, on purpose: create a GitHub Release, write release notes, or
-# touch the marketplace repository. The tag message points at the PR, which is where the
-# prose already is; `claude-spring-architect-marketplace` pins a ref by hand
-# (`./sync.sh vX.Y.Z`) because bumping it is a decision about what to publish, not a
-# consequence of merging.
+# write to the marketplace repository. The tag message points at the PR, which is where
+# the prose already is. `claude-spring-architect-marketplace` receives a
+# `repository_dispatch` and its own `sync.yml` opens a PR there; merging that PR is the
+# decision about what to publish, and it stays a person's.
 on:
   pull_request:
     types: [opened, reopened, edited, synchronize, ready_for_review, closed]
@@ -184,3 +184,25 @@ jobs:
             printf '### `%s`\n\n' "$NEW"
             printf '%s bump from `%s`, on #%s.\n' "$LEVEL" "$LAST" "$PR_NUMBER"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The marketplace pulls this tag into a PR of its own (its `sync.yml`); nothing here
+      # writes to it. The secret is a fine-grained PAT scoped to that one repository with
+      # Contents: read and write — what `repository_dispatch` requires, since GITHUB_TOKEN
+      # cannot reach another repository. A missing secret is a warning, not a failure: the
+      # tag is already pushed, and a red run would read as a release that did not happen.
+      # The fallback is the marketplace's own `workflow_dispatch`, which takes the ref.
+      - name: notify the marketplace
+        env:
+          GH_TOKEN: ${{ secrets.MARKETPLACE_DISPATCH_TOKEN }}
+          NEW: ${{ steps.next.outputs.new }}
+          MARKETPLACE: ${{ github.repository_owner }}/claude-spring-architect-marketplace
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::MARKETPLACE_DISPATCH_TOKEN is not set — $MARKETPLACE was not told about $NEW. Run its sync workflow by hand."
+            exit 0
+          fi
+          gh api --silent "repos/$MARKETPLACE/dispatches" \
+            -f event_type=source-released -f "client_payload[ref]=$NEW"
+          echo "✅ $MARKETPLACE notified of $NEW"
+          printf '\nMarketplace notified: its `sync` workflow opens the PR.\n' >> "$GITHUB_STEP_SUMMARY"

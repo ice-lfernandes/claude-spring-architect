@@ -146,7 +146,7 @@ exactly that. A merge with no tag is a state nobody can point at.
 | `bump-declared` | every PR event (`opened`, `edited`, `synchronize`, …) | Reads § Release bump from the PR body and requires **exactly one** level ticked: `major`, `minor` or `patch`. Publishes the level as an output |
 | `tag` | once, on the `closed` event of a **merged** PR whose base is `main` | Runs `schema` and `doctor` on the merge commit, computes the next semver from the latest tag, then creates and pushes the annotated tag |
 
-Three decisions the file doesn't make obvious:
+Four decisions the file doesn't make obvious:
 
 - **The level lives in the PR body, not in a label or a commit.** The field is mandatory
   in the template and `bump-declared` fails while the PR is open — the decision happens
@@ -159,11 +159,17 @@ Three decisions the file doesn't make obvious:
   `validate.yml` passed on the PR head, which is a different tree whenever `main` moved
   underneath — a semantic conflict in `extensions.json` fails there instead of shipping as
   a ref the marketplace can pin.
+- **The marketplace is notified, not written.** The last step sends a
+  `repository_dispatch` (`source-released`, payload `{ref}`) to
+  `claude-spring-architect-marketplace`, whose own `sync.yml` runs `./sync.sh vX.Y.Z`,
+  sets the plugin version, calls its `validate.yml` on the branch and opens a PR.
+  `GITHUB_TOKEN` cannot reach another repository, so the step reads the
+  `MARKETPLACE_DISPATCH_TOKEN` secret (fine-grained PAT, that repository only, Contents:
+  read and write). Missing, it warns instead of failing: the tag is already pushed.
 
 Two things stay manual on purpose: the GitHub Release, for a ref that deserves more prose
-than the message the workflow writes (that message points at the PR), and the
-marketplace, which pins the ref with `./sync.sh vX.Y.Z` — publishing is a decision, not a
-consequence of merging.
+than the message the workflow writes (that message points at the PR), and merging the
+marketplace PR — publishing is a decision, not a consequence of merging.
 
 **What makes the field mandatory isn't in the file:** it's `bump-declared` as a required
 status check in the branch protection of `main`. Without that, the job fails and the merge

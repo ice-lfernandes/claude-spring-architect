@@ -145,7 +145,7 @@ guardam exatamente isso. Um merge sem tag é um estado que ninguém consegue apo
 | `bump-declared` | todo evento de PR (`opened`, `edited`, `synchronize`, …) | Lê § Release bump do corpo do PR e exige **exatamente um** nível marcado: `major`, `minor` ou `patch`. Publica o nível como output |
 | `tag` | uma vez, no `closed` de um PR **merged** com base `main` | Roda `schema` e `doctor` no commit de merge, calcula o próximo semver a partir da última tag e cria e empurra a tag anotada |
 
-Três decisões que não são óbvias no arquivo:
+Quatro decisões que não são óbvias no arquivo:
 
 - **O nível vive no corpo do PR, não numa label nem num commit.** O campo é obrigatório
   no template e o job `bump-declared` falha enquanto o PR está aberto — a decisão
@@ -157,11 +157,16 @@ Três decisões que não são óbvias no arquivo:
   seguinte quando o job roda. E o job revalida esse commit: `validate.yml` passou na head
   do PR, que é outra árvore sempre que `main` andou por baixo — um conflito semântico em
   `extensions.json` falha ali em vez de virar um ref que o marketplace pode fixar.
+- **O marketplace é avisado, não escrito.** O último step manda um `repository_dispatch`
+  (`source-released`, payload `{ref}`) para `claude-spring-architect-marketplace`, cujo
+  `sync.yml` roda `./sync.sh vX.Y.Z`, ajusta a versão do plugin, chama o próprio
+  `validate.yml` na branch e abre um PR. O `GITHUB_TOKEN` não alcança outro repositório, então
+  o step lê o secret `MARKETPLACE_DISPATCH_TOKEN` (PAT fine-grained, só aquele repositório,
+  Contents: read and write). Sem ele, o step avisa em vez de falhar: a tag já foi enviada.
 
 Duas coisas continuam manuais, de propósito: o GitHub Release, quando um ref merece mais
-prosa do que a mensagem que o workflow escreve (a mensagem aponta para o PR), e o
-marketplace, que fixa o ref com `./sync.sh vX.Y.Z` — publicar é uma decisão, não
-consequência de um merge.
+prosa do que a mensagem que o workflow escreve (a mensagem aponta para o PR), e o merge do PR
+no marketplace — publicar é uma decisão, não consequência de um merge.
 
 **O que torna o campo obrigatório não está no arquivo:** é `bump-declared` como *required
 status check* na branch protection de `main`. Sem isso, o job falha e o merge acontece
