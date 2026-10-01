@@ -24,8 +24,11 @@ public final class EmailChannel implements NotificationChannel {
     }
 }
 
-// --- abstraction hierarchy: what happened, independent of how it's delivered.
-// `protected`, not `private`: subclasses call the channel directly — that's the bridge.
+// --- abstraction hierarchy: what happened, independent of how it's delivered
+/**
+ * The channel is {@code protected}, not {@code private}: subclasses call it directly —
+ * that's the bridge.
+ */
 public abstract class OrderNotification {
 
     protected final NotificationChannel channel;
@@ -37,8 +40,11 @@ public abstract class OrderNotification {
     public abstract void notify(Order order);
 }
 
-// --- one concrete type; a new one (OrderShippedNotification) is a new file, no
-// existing file edited, and it works with every channel already implemented
+// --- one concrete type
+/**
+ * A new type (OrderShippedNotification) is a new file, no existing file edited, and it
+ * works with every channel already implemented.
+ */
 public final class OrderConfirmedNotification extends OrderNotification {
 
     public OrderConfirmedNotification(NotificationChannel channel) {

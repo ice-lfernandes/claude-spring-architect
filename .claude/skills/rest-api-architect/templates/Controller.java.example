@@ -49,8 +49,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Explicit version in the path. Never `server.servlet.context-path`: it hides the version
-// and prevents /v1 and /v2 from coexisting (decision P5(g)).
+/**
+ * Explicit version in the path. Never `server.servlet.context-path`: it hides the version
+ * and prevents /v1 and /v2 from coexisting (decision P5(g)).
+ */
 @RestController
 @RequestMapping(path = "/api/v1/users", produces = MediaType.APPLICATION_JSON_VALUE)
 public class UserController implements UserApi {
@@ -63,47 +65,48 @@ public class UserController implements UserApi {
         this.listUsers = listUsers;
     }
 
-    // `@Idempotent` wraps this method in the claim/replay transaction
-    // (`IdempotencyAspect.java.example`); `bodyArgIndex = 0` names `request` — the only
-    // parameter here — as the one to hash. The aspect gets the key itself from the
-    // request header, not from a controller parameter.
-    // `@Idempotent` wraps this method in the claim/replay transaction
-    // (`IdempotencyAspect.java.example`); `bodyArgIndex = 0` names `request` — the only
-    // parameter here — as the one to hash. The aspect gets the key itself from the
-    // request header, not from a controller parameter.
+    /**
+     * `@Idempotent` wraps this method in the claim/replay transaction
+     * (`IdempotencyAspect.java.example`); `bodyArgIndex = 0` names `request` — the only
+     * parameter here — as the one to hash. The aspect gets the key itself from the
+     * request header, not from a controller parameter.
+     *
+     * 201 carries Location + the created representation. Only one of the two is half a
+     * contract. A replay answers the same 201 with the stored body — the aspect
+     * captures both from this return value.
+     */
     @Override
     @Idempotent(bodyArgIndex = 0)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         User user = createUser.handle(UserMapper.toCommand(request));
         UserResponse body = UserMapper.toResponse(user);
-        // 201 carries Location + the created representation. Only one of the two is half a
-        // contract. A replay answers the same 201 with the stored body — the aspect
-        // captures both from this return value.
         return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
     }
 
-    // `Pageable` instead of three `@RequestParam` primitives (`.claude/rules/api-rest.md`
-    // § Pagination) — Spring Data Web binds `page`/`size`/`sort` from the query string on
-    // its own, same names `ListUsersOpenApiDocs` documents. `@ParameterObject` stops
-    // springdoc from treating it as a request body. `size` above
-    // `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
-    // silent truncation — Spring Data doesn't enforce that cap by itself.
-    //
-    // A collection with one extra filter (a name/status/date-range search) takes it as a
-    // second parameter next to `Pageable` — `list(Pageable pageable, String status)` —
-    // and stays inside `code-quality.md`'s ParameterNumber ≤ 3. Only when a third
-    // independent filter shows up does the pair stop fitting; that's the point to
-    // introduce a small criteria object instead of a fourth primitive.
-    //
-    // `Pageable`'s own resolver clamps an out-of-range `page` (negative, or past the
-    // last one) to the first page instead of rejecting it — there's no way to tell
-    // "explicitly invalid" from "omitted" once Spring has already bound the parameter.
-    // A hard 400 on `page` needs a custom `HandlerMethodArgumentResolver` in front of
-    // it; accepting the clamp is the default unless the spec says otherwise.
-    //
-    // `toCriteria` is the one spot that converts it to `PageCriteria` — the port never
-    // sees `Pageable` (`.claude/rules/architecture-ddd.md` § Application).
+    /**
+     * `Pageable` instead of three `@RequestParam` primitives (`.claude/rules/api-rest.md`
+     * § Pagination) — Spring Data Web binds `page`/`size`/`sort` from the query string on
+     * its own, same names `ListUsersOpenApiDocs` documents. `@ParameterObject` stops
+     * springdoc from treating it as a request body. `size` above
+     * `spring.data.web.pageable.max-page-size` (set in `application.yml`) is 400, not a
+     * silent truncation — Spring Data doesn't enforce that cap by itself.
+     *
+     * A collection with one extra filter (a name/status/date-range search) takes it as a
+     * second parameter next to `Pageable` — `list(Pageable pageable, String status)` —
+     * and stays inside `code-quality.md`'s ParameterNumber ≤ 3. Only when a third
+     * independent filter shows up does the pair stop fitting; that's the point to
+     * introduce a small criteria object instead of a fourth primitive.
+     *
+     * `Pageable`'s own resolver clamps an out-of-range `page` (negative, or past the
+     * last one) to the first page instead of rejecting it — there's no way to tell
+     * "explicitly invalid" from "omitted" once Spring has already bound the parameter.
+     * A hard 400 on `page` needs a custom `HandlerMethodArgumentResolver` in front of
+     * it; accepting the clamp is the default unless the spec says otherwise.
+     *
+     * `toCriteria` is the one spot that converts it to `PageCriteria` — the port never
+     * sees `Pageable` (`.claude/rules/architecture-ddd.md` § Application).
+     */
     @Override
     @GetMapping
     public PageResponse<UserResponse> list(

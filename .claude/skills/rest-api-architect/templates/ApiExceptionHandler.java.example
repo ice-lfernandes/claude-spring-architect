@@ -18,9 +18,39 @@
  *
  *   feature active → this variant. traceId source: Micrometer Tracing (decision P5(c),
  *                    `.claude/decisions/0006-rest-api-architect-design.md`).
- *   feature off    → variant at the end of the file. Injecting `Tracer` without the bridge
+ *   feature off    → the VARIANT section below. Injecting `Tracer` without the bridge
  *                    on the classpath doesn't cause a compile error: there's no bean, and the
  *                    context blows up at startup, far from the cause.
+ *
+ * ─── VARIANT: project without `feature: observability` ───────────────────────────────
+ *
+ * Replace the constructor and the `currentTraceId()` of the class below with what follows,
+ * and remove the `io.micrometer.tracing` imports. Everything else stays the same.
+ *
+ * The identifier stops correlating with a distributed trace and instead correlates
+ * the response with this service's log line, and nothing else. This is a deliberate
+ * degradation, allowed by `.claude/rules/observability.md` § Correlation, and the
+ * constructor's Javadoc saying so is mandatory: without it nobody can tell this choice apart
+ * from a missing configuration. Its text:
+ *
+ *    Without a tracing bridge on the classpath there's no `Tracer` bean, and injecting it
+ *    would prevent the context from starting. The identifier is generated here: it meets
+ *    the requirement that every 5xx carry correlation, without promising a distributed
+ *    correlation this project doesn't have. To get that, enable `feature: observability`
+ *    in the blueprint.
+ *
+ * The code:
+ *
+ *    public ApiExceptionHandler() {
+ *        // no dependencies
+ *    }
+ *
+ *    private String currentTraceId() {
+ *        return UUID.randomUUID().toString();
+ *    }
+ *
+ * Additional import: java.util.UUID
+ * ─────────────────────────────────────────────────────────────────────────────────────
  */
 package com.exemplo.minhaapi.adapter.in.rest;
 
@@ -67,11 +97,13 @@ public class ApiExceptionHandler {
         return problemDetail(HttpStatus.BAD_REQUEST, e, request);
     }
 
+    /**
+     * UNPROCESSABLE_CONTENT, not UNPROCESSABLE_ENTITY: RFC 9110 renamed the status and
+     * Spring Framework 7 deprecated the old constant. The number is still 422.
+     */
     @ExceptionHandler(BusinessRuleViolationException.class)
     public ProblemDetail handleBusinessRuleViolation(
             BusinessRuleViolationException e, HttpServletRequest request) {
-        // UNPROCESSABLE_CONTENT, not UNPROCESSABLE_ENTITY: RFC 9110 renamed the status and
-        // Spring Framework 7 deprecated the old constant. The number is still 422.
         return problemDetail(HttpStatus.UNPROCESSABLE_CONTENT, e, request);
     }
 
@@ -80,9 +112,11 @@ public class ApiExceptionHandler {
         return problemDetail(HttpStatus.CONFLICT, e, request);
     }
 
-    // Structural, same family as bean validation below: the request never reached the use
-    // case, so there's no domain exception and no `errorCode` — just `violations`, with the
-    // header name as the offending "field" (`IdempotencyKeyInterceptor.java.example`).
+    /**
+     * Structural, same family as bean validation below: the request never reached the use
+     * case, so there's no domain exception and no `errorCode` — just `violations`, with the
+     * header name as the offending "field" (`IdempotencyKeyInterceptor.java.example`).
+     */
     @ExceptionHandler(MissingIdempotencyKeyException.class)
     public ProblemDetail handleMissingIdempotencyKey(MissingIdempotencyKeyException e, HttpServletRequest request) {
         log.debug("Missing/malformed Idempotency-Key at {}", request.getRequestURI());
@@ -92,8 +126,10 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    // Bean validation is structural: the body never reached the domain. Carries `violations`
-    // and never `errorCode` — there's no domain exception to supply it.
+    /**
+     * Bean validation is structural: the body never reached the domain. Carries `violations`
+     * and never `errorCode` — there's no domain exception to supply it.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleBeanValidation(
             MethodArgumentNotValidException e, HttpServletRequest request) {
@@ -109,8 +145,10 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    // Malformed JSON, incompatible type, or unknown enum: 400 shape-wise, no
-    // per-field violations — deserialization stopped before there were any fields.
+    /**
+     * Malformed JSON, incompatible type, or unknown enum: 400 shape-wise, no
+     * per-field violations — deserialization stopped before there were any fields.
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ProblemDetail handleUnreadableBody(
             HttpMessageNotReadableException e, HttpServletRequest request) {
@@ -121,14 +159,17 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    // Fallback — the only untyped exception allowed to exist here: it's the handler
-    // that catches what escaped, not code that throws it. Never leaks the real
-    // message/stack trace in the body — that stays in the log only, tied by traceId.
+    /**
+     * Fallback — the only untyped exception allowed to exist here: it's the handler
+     * that catches what escaped, not code that throws it. Never leaks the real
+     * message/stack trace in the body — that stays in the log only, tied by traceId.
+     *
+     * A single value, computed once, written in both places. The rule requires the
+     * identifier in the body to be *the same* as the one that went into the log; calling
+     * it twice would leave that to chance.
+     */
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception e, HttpServletRequest request) {
-        // A single value, computed once, written in both places. The rule requires the
-        // identifier in the body to be *the same* as the one that went into the log; calling
-        // it twice would leave that to chance.
         String traceId = currentTraceId();
         log.error("Unmapped error at {} [traceId={}]", request.getRequestURI(), traceId, e);
         ProblemDetail problem =
@@ -146,8 +187,10 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    // No traceId outside an active span. Returning "unavailable" keeps the field
-    // present on every 5xx, as the rule requires, and tells the truth about what happened.
+    /**
+     * No traceId outside an active span. Returning "unavailable" keeps the field
+     * present on every 5xx, as the rule requires, and tells the truth about what happened.
+     */
     private String currentTraceId() {
         Span span = tracer.currentSpan();
         return span == null ? "unavailable" : span.context().traceId();
@@ -159,32 +202,3 @@ public class ApiExceptionHandler {
 
     public record Violation(String field, String message) {}
 }
-
-/*
- * ─── VARIANT: project without `feature: observability` ───────────────────────────────
- *
- * Replace the constructor and the `currentTraceId()` above with what follows, and remove
- * the `io.micrometer.tracing` imports. Everything else stays the same.
- *
- * The identifier stops correlating with a distributed trace and instead correlates
- * the response with this service's log line, and nothing else. This is a deliberate
- * degradation, allowed by `.claude/rules/observability.md` § Correlation, and the Javadoc
- * below is mandatory: without it nobody can tell this choice apart from a missing
- * configuration.
-
-    // Without a tracing bridge on the classpath there's no `Tracer` bean, and injecting it
-    // would prevent the context from starting. The identifier is generated here: it meets
-    // the requirement that every 5xx carry correlation, without promising a distributed
-    // correlation this project doesn't have. To get that, enable `feature: observability`
-    // in the blueprint and go back to the variant at the top.
-    public ApiExceptionHandler() {
-        // no dependencies
-    }
-
-    private String currentTraceId() {
-        return UUID.randomUUID().toString();
-    }
-
- * Additional import: java.util.UUID
- * ─────────────────────────────────────────────────────────────────────────────────────
- */

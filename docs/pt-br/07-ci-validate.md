@@ -45,6 +45,7 @@ flowchart TD
         D6[norma sem boilerplate de código]
         D7[sem commands/]
         D8[sufixo .example]
+        D16[corpo de exemplar sem comentário além de Javadoc]
         D9[templates do blueprint existem]
         D10[dono único da norma]
         D15[templates de serviço do compose mesclam e parseiam]
@@ -89,6 +90,7 @@ flowchart TD
 | `norm contains no code boilerplate` | nenhuma declaração de `class`/`record`/`interface`/`enum` dentro de `rules/` | Invariante 3 |
 | `no new commands/` | `.claude/commands/` não existe | Invariante 4 |
 | `exemplar imports have the .example suffix at the end` | todo arquivo sob `skills/*/templates/` | Globs de precondição que dependem do sufixo |
+| `exemplar bodies carry no comment but Javadoc` | `TemplateCommentsTest.java`: nenhum `*.java.example` (fora de `claude-code-architect-designer/`) tem `//` ou `/* */` no corpo — depois do cabeçalho `EXEMPLAR` e fora dos marcadores `// --- ` na coluna 0 — que o `checkstyle.xml.example` rejeitaria. Lê as regex dos módulos `LineComment`, `BlockComment` e `TrailingComment` do próprio template, então os dois não divergem | Decisão 0108 — o executor copia a forma do exemplar, comentários inclusive, e 60 templates carregavam 508 comentários no corpo. Com o Checkstyle do projeto gerado rejeitando-os, um comentário que volta a um template vira hook `check` vermelho em todo projeto que o copiar |
 | `blueprint-declared templates exist on disk` | todo `templates.<role>` de um blueprint resolve a um arquivo real | Blueprint apontando para template renomeado ou apagado |
 | `issue forms cited by skills exist` | todo `.github/ISSUE_TEMPLATE/*.yml` citado em `.claude/skills` existe | Form renomeado ou apagado: projetos já exportados o buscam do `HEAD` deste repo, e o passo de formulário do `report-issue` — o de publicação do `sonar-lessons`, nos projetos exportados antes da decisão 0103 — para em todos eles (decisões 0100, 0103) |
 | `compose service templates merge and parse` | todo `docker-architect/templates/*-service.yml.example` mesclado de uma vez no compose base do `project-bootstrap`, depois `docker compose config -q` | Nada mais lê esses templates antes do `docker compose up` de um projeto gerado: uma indentação errada, ou um volume nomeado que o template usa sem declarar (os templates de Kafka e da stack Grafana tinham as duas formas disso), só aparecia lá |
@@ -184,7 +186,7 @@ check num workflow filtrado por paths fica pendente em todo PR que ele pula. Des
 
 | Job | Verifica | Contra o quê |
 |---|---|---|
-| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` e `checkstyle-test.xml.example` rodando no Checkstyle **mais recente** (resolvido no Maven Central, jar `-all` da release no GitHub) sobre três fixtures — arquivo limpo passa nos dois, `record` e `permits` como nome falham nos dois com `IllegalIdentifierName` | Decisão 0097 — o `format` default do Checkstyle 14 só rejeita `var`; uma config que dependia dele passou quatro variáveis `record` com 0 violações, e a config nunca roda neste repositório |
+| `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` e `checkstyle-test.xml.example` rodando no Checkstyle **mais recente** (resolvido no Maven Central, jar `-all` da release no GitHub) sobre três fixtures — arquivo limpo passa nos dois, `record` e `permits` como nome falham nos dois com `IllegalIdentifierName`. Mais seis fixtures de comentário só no `checkstyle.xml`: `//` em linha própria, `//` no fim da linha, `/* */`, `/** */` dentro de corpo e `TODO` em Javadoc falham, cada um pelo seu módulo; um arquivo com as duas exceções (corpo vazio, diretiva de ferramenta) e strings `"http://…"` e `"/api/*"` passa; o `checkstyle-test.xml` deixa o comentário passar | Decisão 0097 — o `format` default do Checkstyle 14 só rejeita `var`; uma config que dependia dele passou quatro variáveis `record` com 0 violações, e a config nunca roda neste repositório. Decisão 0108 — Javadoc é o único comentário em `src/main` |
 | `java-templates` | `JavaTemplatesTest.java`: todo arquivo de `new-feature/templates/commons/` mais os blocos `// --- ` de `JpaEntity.java.example` (`AssignedIdEntity` incluído) num projeto novo do `start.spring.io`, depois `./mvnw test` sobre os três templates `*Test` | Decisões 0096 e 0098 — esses templates são copiados como arquivo, não lidos como forma: um que para de compilar quebra o `commons-logging-installer` em todo projeto. `exemplar-imports` prova que cada import existe; este prova que os arquivos compilam juntos e que os testes enviados passam |
 
 ## O que ainda não está aqui

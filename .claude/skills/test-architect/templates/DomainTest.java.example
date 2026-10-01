@@ -30,13 +30,13 @@ class EmailTest {
         assertThat(email.value()).isEqualTo("ana@exemplo.com");
     }
 
+    /** Asserts the error code too: without it the test passes with the wrong rule firing. */
     @ParameterizedTest
     @ValueSource(strings = {"ana", "ana@", "@exemplo.com", "", "   "})
     @DisplayName("rejects an address without email shape")
     void rejectsInvalidAddress(String invalid) {
         assertThatThrownBy(() -> Email.of(invalid))
                 .isInstanceOf(ValidationException.class)
-                // Without this line the test passes even with the wrong rule firing.
                 .extracting("errorCode")
                 .isEqualTo("EMAIL_INVALID");
     }

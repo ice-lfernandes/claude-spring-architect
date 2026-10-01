@@ -30,86 +30,7 @@
  * Boot parent, no version.
  *
  * Each `// --- <File>.java` block is its own file, in the scheduling package.
- */
-
-// --- SettleMerchantPayoutsJob.java
-package com.example.demo.adapter.in.scheduling;
-
-import com.example.demo.application.port.in.payout.SettleMerchantPayouts;
-import java.time.LocalDate;
-import org.quartz.DisallowConcurrentExecution;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
-
-@DisallowConcurrentExecution
-class SettleMerchantPayoutsJob implements Job {
-
-    private final SettleMerchantPayouts settleMerchantPayouts;
-    private final JobRunRecorder recorder;
-
-    SettleMerchantPayoutsJob(SettleMerchantPayouts settleMerchantPayouts, JobRunRecorder recorder) {
-        this.settleMerchantPayouts = settleMerchantPayouts;
-        this.recorder = recorder;
-    }
-
-    /*
-     * The business date comes from the SCHEDULED fire time, not from "now": a fire caught up at
-     * 09:00 after a night of downtime still settles the day it was scheduled for.
-     */
-    @Override
-    public void execute(JobExecutionContext context) {
-        LocalDate businessDate = LocalDate.ofInstant(
-                context.getScheduledFireTime().toInstant(), SettlementCalendar.ZONE);
-        recorder.run("settle-merchant-payouts", () -> settleMerchantPayouts.settle(businessDate));
-    }
-}
-
-// --- QuartzSchedulingConfig.java
-package com.example.demo.adapter.in.scheduling;
-
-import org.quartz.CronScheduleBuilder;
-import org.quartz.JobBuilder;
-import org.quartz.JobDetail;
-import org.quartz.Trigger;
-import org.quartz.TriggerBuilder;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-class QuartzSchedulingConfig {
-
-    @Bean
-    JobDetail settleMerchantPayoutsJobDetail() {
-        return JobBuilder.newJob(SettleMerchantPayoutsJob.class)
-                .withIdentity("settle-merchant-payouts")
-                .storeDurably()
-                // Re-run on another node if the one executing dies mid-run — only because the
-                // use case is idempotent per business date (partial § 4).
-                .requestRecovery()
-                .build();
-    }
-
-    /*
-     * `withMisfireHandlingInstructionFireAndProceed`: a fire missed during downtime runs ONCE on
-     * recovery, then the schedule continues. The alternative the partial may choose instead is
-     * `withMisfireHandlingInstructionDoNothing` — skip it and wait for the next fire.
-     */
-    @Bean
-    Trigger settleMerchantPayoutsTrigger(
-            JobDetail settleMerchantPayoutsJobDetail,
-            @Value("${app.jobs.settle-merchant-payouts.cron:0 0 1 * * ?}") String cron) {
-        return TriggerBuilder.newTrigger()
-                .forJob(settleMerchantPayoutsJobDetail)
-                .withIdentity("settle-merchant-payouts")
-                .withSchedule(CronScheduleBuilder.cronSchedule(cron)
-                        .inTimeZone(java.util.TimeZone.getTimeZone(SettlementCalendar.ZONE))
-                        .withMisfireHandlingInstructionFireAndProceed())
-                .build();
-    }
-}
-
-/*
+ *
  * application.yml — Quartz's own keys pass through `spring.quartz.properties`:
  *
  * spring:
@@ -136,3 +57,82 @@ class QuartzSchedulingConfig {
  * derived from the business key so a retry replaces instead of duplicating. The application
  * layer never sees a Quartz type.
  */
+
+// --- SettleMerchantPayoutsJob.java
+package com.example.demo.adapter.in.scheduling;
+
+import com.example.demo.application.port.in.payout.SettleMerchantPayouts;
+import java.time.LocalDate;
+import org.quartz.DisallowConcurrentExecution;
+import org.quartz.Job;
+import org.quartz.JobExecutionContext;
+
+@DisallowConcurrentExecution
+class SettleMerchantPayoutsJob implements Job {
+
+    private final SettleMerchantPayouts settleMerchantPayouts;
+    private final JobRunRecorder recorder;
+
+    SettleMerchantPayoutsJob(SettleMerchantPayouts settleMerchantPayouts, JobRunRecorder recorder) {
+        this.settleMerchantPayouts = settleMerchantPayouts;
+        this.recorder = recorder;
+    }
+
+    /**
+     * The business date comes from the SCHEDULED fire time, not from "now": a fire caught up at
+     * 09:00 after a night of downtime still settles the day it was scheduled for.
+     */
+    @Override
+    public void execute(JobExecutionContext context) {
+        LocalDate businessDate = LocalDate.ofInstant(
+                context.getScheduledFireTime().toInstant(), SettlementCalendar.ZONE);
+        recorder.run("settle-merchant-payouts", () -> settleMerchantPayouts.settle(businessDate));
+    }
+}
+
+// --- QuartzSchedulingConfig.java
+package com.example.demo.adapter.in.scheduling;
+
+import org.quartz.CronScheduleBuilder;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
+import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+class QuartzSchedulingConfig {
+
+    /**
+     * {@code requestRecovery()}: re-run on another node if the one executing dies mid-run —
+     * only because the use case is idempotent per business date (partial § 4).
+     */
+    @Bean
+    JobDetail settleMerchantPayoutsJobDetail() {
+        return JobBuilder.newJob(SettleMerchantPayoutsJob.class)
+                .withIdentity("settle-merchant-payouts")
+                .storeDurably()
+                .requestRecovery()
+                .build();
+    }
+
+    /**
+     * `withMisfireHandlingInstructionFireAndProceed`: a fire missed during downtime runs ONCE on
+     * recovery, then the schedule continues. The alternative the partial may choose instead is
+     * `withMisfireHandlingInstructionDoNothing` — skip it and wait for the next fire.
+     */
+    @Bean
+    Trigger settleMerchantPayoutsTrigger(
+            JobDetail settleMerchantPayoutsJobDetail,
+            @Value("${app.jobs.settle-merchant-payouts.cron:0 0 1 * * ?}") String cron) {
+        return TriggerBuilder.newTrigger()
+                .forJob(settleMerchantPayoutsJobDetail)
+                .withIdentity("settle-merchant-payouts")
+                .withSchedule(CronScheduleBuilder.cronSchedule(cron)
+                        .inTimeZone(java.util.TimeZone.getTimeZone(SettlementCalendar.ZONE))
+                        .withMisfireHandlingInstructionFireAndProceed())
+                .build();
+    }
+}

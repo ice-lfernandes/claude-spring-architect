@@ -3,6 +3,19 @@
 // editors and explicit-rollback workflows — most "undo" needs are better served by simply
 // reloading from the repository; reach for this only when reloading would lose in-memory
 // work the rollback has to preserve.
+//
+// The caretaker holds the snapshot and never inspects it:
+//     class BulkDiscountService {
+//         void applyWithRollback(Order order, List<OrderLine> targets, Money discount) {
+//             OrderSnapshot before = order.snapshot();
+//             try {
+//                 targets.forEach(line -> order.applyDiscount(line, discount));
+//             } catch (BusinessRuleViolationException e) {
+//                 order.restore(before);
+//                 throw e;
+//             }
+//         }
+//     }
 package com.example.domain.model.order;
 
 import java.util.List;
@@ -13,13 +26,13 @@ public final class Order {
     private OrderStatus status;
     private List<OrderLine> lines;
 
-    // narrow interface for the caretaker below: opaque, no accessors on it at all
+    /** Narrow interface for the caretaker: opaque, no accessors on it at all. */
     public OrderSnapshot snapshot() {
         return new Captured(status, lines);
     }
 
+    /** The cast is safe: Order is the only class that ever constructs a Captured. */
     public void restore(OrderSnapshot snapshot) {
-        // safe: Order is the only class that ever constructs a Captured
         Captured captured = (Captured) snapshot;
         this.status = captured.status;
         this.lines = captured.lines;
@@ -29,7 +42,7 @@ public final class Order {
         // the mutation a caretaker might need to roll back — body omitted, not the point here
     }
 
-    // wide interface: fields visible only inside this file, never through OrderSnapshot
+    /** Wide interface: fields visible only inside this file, never through OrderSnapshot. */
     private static final class Captured implements OrderSnapshot {
         private final OrderStatus status;
         private final List<OrderLine> lines;
@@ -43,16 +56,3 @@ public final class Order {
 
 // --- the marker the caretaker actually holds — no methods, so there's nothing to read
 public interface OrderSnapshot {}
-
-// --- the caretaker: holds the snapshot, never inspects it
-// class BulkDiscountService {
-//     void applyWithRollback(Order order, List<OrderLine> targets, Money discount) {
-//         OrderSnapshot before = order.snapshot();
-//         try {
-//             targets.forEach(line -> order.applyDiscount(line, discount));
-//         } catch (BusinessRuleViolationException e) {
-//             order.restore(before);
-//             throw e;
-//         }
-//     }
-// }

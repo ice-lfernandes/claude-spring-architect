@@ -5,6 +5,22 @@
 // justifies State over plain Strategy: the states themselves have distinct allowed
 // transitions between them. Two states that never grow past a single if/else are still
 // just an if/else, not a missing pattern.
+//
+// The aggregate holds the current phase and delegates; it never switches on a status enum:
+//     class Order {
+//         private OrderPhase phase = new Pending();
+//
+//         public void confirm() {
+//             this.phase = phase.confirm(this);
+//         }
+//
+//         public void cancel() {
+//             this.phase = phase.cancel(this);
+//         }
+//
+//         void assertHasLines() { ... }      guard used by Pending.confirm
+//         void assertNotShipped() { ... }    guard used by Confirmed.cancel
+//     }
 package com.example.domain.model.order;
 
 // --- the role every phase implements; Order holds one, delegates to it, replaces it
@@ -57,18 +73,3 @@ final class Cancelled implements OrderPhase {
     }
 }
 
-// --- the aggregate holds the current phase and delegates; it never switches on a status enum
-// class Order {
-//     private OrderPhase phase = new Pending();
-//
-//     public void confirm() {
-//         this.phase = phase.confirm(this);
-//     }
-//
-//     public void cancel() {
-//         this.phase = phase.cancel(this);
-//     }
-//
-//     void assertHasLines() { /* guard used by Pending.confirm */ }
-//     void assertNotShipped() { /* guard used by Confirmed.cancel */ }
-// }

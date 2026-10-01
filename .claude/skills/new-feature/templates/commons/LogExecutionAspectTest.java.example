@@ -49,8 +49,10 @@ class LogExecutionAspectTest {
         verify(joinPoint).proceed();
     }
 
-    // Carriers of the annotation under test. The aspect reads it through reflection, so the
-    // methods are never called — their bodies stay empty on purpose.
+    /**
+     * Carriers of the annotation under test. The aspect reads it through reflection, so the
+     * methods are never called — their bodies stay empty on purpose.
+     */
     private static final class Annotated {
 
         @LogExecution

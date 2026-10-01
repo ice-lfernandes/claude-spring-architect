@@ -36,6 +36,24 @@
  * Boot parent. Plus the scheduler's own (ShedLock here).
  *
  * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ *
+ * PACKAGE NAMES ABOVE follow Spring Batch 6's reorganization (`…core.job.Job`,
+ * `…core.step.Step`, `…infrastructure.item.*`); `validate.yml` resolves every import against the
+ * classpath the Initializr gives today. They moved between majors: a project on an older parent
+ * resolves them against its own version, never from this file.
+ *
+ * application.yml:
+ *
+ * spring:
+ *   batch:
+ *     job:
+ *       enabled: false                # the trigger launches; startup does not
+ *     jdbc:
+ *       initialize-schema: never      # BATCH_* come from a migration
+ *
+ * JDBC job repository: `@EnableJdbcJobRepository` on a configuration class (Batch 6), or the
+ * Boot autoconfiguration when a DataSource is present — verify which one the resolved version
+ * applies; a resourceless repository silently makes the restart above impossible.
  */
 
 // --- ImportPriceListJobConfig.java
@@ -55,6 +73,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
 
+/**
+ * Reader: pages through {@code PriceListSource} (an application-owned outbound port). Writer:
+ * calls {@code ApplyPriceListLine} (the inbound port) per line — the use case owns the
+ * business rule; Batch owns chunking, restart and skip.
+ */
 @Configuration
 class ImportPriceListJobConfig {
 
@@ -65,7 +88,7 @@ class ImportPriceListJobConfig {
         return new JobBuilder(JOB_NAME, repository).start(applyPriceListStep).build();
     }
 
-    /*
+    /**
      * Chunk of 500: one transaction per 500 lines, one committed chunk per restart point.
      * Skip a malformed line (counted, reported), retry a transient failure — per item, so one
      * bad line never fails the other 99 999. Limits from the partial's § 4.
@@ -88,10 +111,6 @@ class ImportPriceListJobConfig {
                 .retryLimit(3)
                 .build();
     }
-
-    // Reader: pages through `PriceListSource` (an application-owned outbound port).
-    // Writer: calls `ApplyPriceListLine` (the inbound port) per line — the use case owns the
-    // business rule; Batch owns chunking, restart and skip.
 }
 
 // --- ImportPriceListTrigger.java (the scheduler fires; Batch runs)
@@ -123,11 +142,13 @@ class ImportPriceListTrigger {
         this.recorder = recorder;
     }
 
+    /**
+     * Identifying parameter = business date: the same date twice is refused once complete, and
+     * a failed run for it restarts from its last chunk.
+     */
     @Scheduled(cron = "${app.jobs.import-price-list.cron:0 0 4 * * *}", zone = "${app.jobs.zone:America/Sao_Paulo}")
     @SchedulerLock(name = "importPriceList", lockAtMostFor = "PT2H", lockAtLeastFor = "PT1M")
     void run() {
-        // Identifying parameter = business date: the same date twice is refused once complete,
-        // and a failed run for it restarts from its last chunk.
         var parameters = new JobParametersBuilder()
                 .addLocalDate("businessDate", LocalDate.now(ZONE))
                 .toJobParameters();
@@ -146,23 +167,3 @@ class ImportPriceListTrigger {
         }
     }
 }
-
-/*
- * PACKAGE NAMES ABOVE follow Spring Batch 6's reorganization (`…core.job.Job`,
- * `…core.step.Step`, `…infrastructure.item.*`); `validate.yml` resolves every import against the
- * classpath the Initializr gives today. They moved between majors: a project on an older parent
- * resolves them against its own version, never from this file.
- *
- * application.yml:
- *
- * spring:
- *   batch:
- *     job:
- *       enabled: false                # the trigger launches; startup does not
- *     jdbc:
- *       initialize-schema: never      # BATCH_* come from a migration
- *
- * JDBC job repository: `@EnableJdbcJobRepository` on a configuration class (Batch 6), or the
- * Boot autoconfiguration when a DataSource is present — verify which one the resolved version
- * applies; a resourceless repository silently makes the restart above impossible.
- */

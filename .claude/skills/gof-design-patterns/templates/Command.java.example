@@ -41,9 +41,12 @@ public final class ReserveStockCommand implements InventoryCommand {
     }
 }
 
-// --- the invoker: runs commands, keeps the ones that succeeded so a later failure
-// can unwind exactly what was done, in reverse order — this is what "undo" buys that
-// a plain method call doesn't
+// --- the invoker
+/**
+ * Runs commands and keeps the ones that succeeded, so a later failure can unwind exactly
+ * what was done, in reverse order — this is what "undo" buys that a plain method call
+ * doesn't.
+ */
 public final class ReversibleInventoryBatch {
 
     private final Deque<InventoryCommand> executed = new ArrayDeque<>();

@@ -13,6 +13,47 @@
  * arrived. A mask is output formatting, never state.
  *
  * Each `// --- <File>.java` block is its own file.
+ *
+ * ============================================================================
+ * COUNTER-EXAMPLE — what NOT to do. None of these blocks is code to generate.
+ * ============================================================================
+ *
+ * 1. PRIMITIVE WHERE THERE WAS A RULE
+ *
+ *    public class Customer {
+ *        private String email;      // format → Email
+ *        private String phone;      // E.164   → PhoneNumber
+ *        private String cpf;        // check digit → Cpf
+ *        private String document;   // cpf or cnpj? → Document
+ *        private double balance;    // which currency? and double loses cents → Money
+ *    }
+ *
+ *    Consequence: validation lives in the caller. Every new caller is a chance to
+ *    forget it, and the aggregate stops guaranteeing its invariant.
+ *
+ * 2. CLASS WHERE THERE WAS NO RULE
+ *
+ *    public record Description(String value) { }   // free text, zero invariant
+ *    public record Name(String value) { }          // same
+ *    public record Comments(String value) { }       // same
+ *
+ *    Ceremony with no gain: one class per field, one more mapping in each adapter,
+ *    and no invalid state made impossible. `name`, `description`, and `comments`
+ *    stay `String`; the length limit is validated in the aggregate's constructor:
+ *
+ *        public Product {
+ *            if (description != null && description.length() > 500) {
+ *                throw new ValidationException(
+ *                        "DESCRIPTION_TOO_LONG", "description exceeds 500 characters");
+ *            }
+ *        }
+ *
+ * 3. TWO FIELDS FOR ONE CONCEPT
+ *
+ *    private String cpf;    // one of the two is always null
+ *    private String cnpj;   // and all the code has to test which one
+ *
+ *    It's a `Document`, sealed, with the compiler requiring both cases in the switch.
  */
 
 // --- Cpf.java
@@ -116,7 +157,7 @@ package com.example.demo.domain.model;
 
 import com.example.demo.domain.exception.ValidationException;
 
-/*
+/**
  * ONE document field, not two with one of them null. The type knows which it is.
  * `sealed` lets the compiler require every switch to handle all cases — the chain of
  * `if (document.length() == 11)` scattered through the code disappears.
@@ -145,7 +186,7 @@ package com.example.demo.domain.model;
 
 import com.example.demo.domain.exception.ValidationException;
 
-/*
+/**
  * Phone number in E.164 format: `+` followed by country and subscriber, no separators.
  * The per-country length isn't hardcoded here — the international standard gives the
  * global limit, and a country-specific rule is a business decision that goes in the
@@ -200,7 +241,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
 
-/*
+/**
  * Amount AND currency, together. `BigDecimal` always — `double` loses cents on
  * addition. Operating across different currencies is a domain error, not a silent
  * conversion: the exchange rate is I/O, and I/O doesn't belong here
@@ -280,46 +321,3 @@ public record Percentage(BigDecimal value) {
         return value.divide(MAX, 6, java.math.RoundingMode.HALF_UP);
     }
 }
-
-/*
- * ============================================================================
- * COUNTER-EXAMPLE — what NOT to do. None of these blocks is code to generate.
- * ============================================================================
- *
- * 1. PRIMITIVE WHERE THERE WAS A RULE
- *
- *    public class Customer {
- *        private String email;      // format → Email
- *        private String phone;      // E.164   → PhoneNumber
- *        private String cpf;        // check digit → Cpf
- *        private String document;   // cpf or cnpj? → Document
- *        private double balance;    // which currency? and double loses cents → Money
- *    }
- *
- *    Consequence: validation lives in the caller. Every new caller is a chance to
- *    forget it, and the aggregate stops guaranteeing its invariant.
- *
- * 2. CLASS WHERE THERE WAS NO RULE
- *
- *    public record Description(String value) { }   // free text, zero invariant
- *    public record Name(String value) { }          // same
- *    public record Comments(String value) { }       // same
- *
- *    Ceremony with no gain: one class per field, one more mapping in each adapter,
- *    and no invalid state made impossible. `name`, `description`, and `comments`
- *    stay `String`; the length limit is validated in the aggregate's constructor:
- *
- *        public Product {
- *            if (description != null && description.length() > 500) {
- *                throw new ValidationException(
- *                        "DESCRIPTION_TOO_LONG", "description exceeds 500 characters");
- *            }
- *        }
- *
- * 3. TWO FIELDS FOR ONE CONCEPT
- *
- *    private String cpf;    // one of the two is always null
- *    private String cnpj;   // and all the code has to test which one
- *
- *    It's a `Document`, sealed, with the compiler requiring both cases in the switch.
- */

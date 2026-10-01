@@ -1,5 +1,10 @@
 // Exemplar: Strategy. Replaces a switch over type that grows with each new rule.
 // Lives in the domain — zero framework. Name says the role (Policy), never the pattern.
+//
+// Wiring, in the bootstrap — Spring injects every implementation into the List:
+//     @Bean DiscountCalculator discountCalculator(List<DiscountPolicy> policies) {
+//         return new DiscountCalculator(policies);
+//     }
 package com.example.domain.model.pricing;
 
 import java.util.List;
@@ -45,7 +50,3 @@ public final class DiscountCalculator {
     }
 }
 
-// --- wiring in the bootstrap; Spring injects all implementations into the List
-// @Bean DiscountCalculator discountCalculator(List<DiscountPolicy> policies) {
-//     return new DiscountCalculator(policies);
-// }

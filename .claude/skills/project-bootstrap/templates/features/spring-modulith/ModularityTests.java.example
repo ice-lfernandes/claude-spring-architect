@@ -17,9 +17,11 @@ import org.springframework.modulith.core.ApplicationModules;
 
 class ModularityTests {
 
-    // Rebuilding the model on every test run — not caching it in a static field — keeps
-    // this test honest about the *current* package structure, including a module added
-    // five minutes ago in the same session.
+    /**
+     * Rebuilding the model on every test run — not caching it in a static field — keeps
+     * this test honest about the *current* package structure, including a module added
+     * five minutes ago in the same session.
+     */
     ApplicationModules modules = ApplicationModules.of(MinhaApiApplication.class);
 
     @Test
@@ -27,10 +29,12 @@ class ModularityTests {
         modules.verify();
     }
 
+    /**
+     * Non-blocking: a Documenter failure here is a diagram problem, never a
+     * structural one — verifiesModularStructure() above is the actual gate.
+     */
     @Test
     void writesDocumentationSnippets() {
-        // Non-blocking: a Documenter failure here is a diagram problem, never a
-        // structural one — verifiesModularStructure() above is the actual gate.
         assertThatCode(() -> new org.springframework.modulith.docs.Documenter(modules)
                         .writeDocumentation())
                 .doesNotThrowAnyException();

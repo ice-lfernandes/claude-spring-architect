@@ -29,6 +29,32 @@
     <property name="max" value="200"/>
   </module>
 
+  <!-- code-quality.md § Comments: Javadoc is the only comment. A `//` on a line of its own
+       is a violation unless it is a tool directive, or the single line of an otherwise
+       empty body (previous line ends in `{`, next line starts with `}` — EmptyBlock below
+       requires that text). Read over the raw file, outside the TreeWalker, because the
+       exception is about the lines around the comment. The look-behind is bounded
+       ({0,40}) because Java's regex engine refuses an unbounded one. -->
+  <module name="RegexpMultiline">
+    <property name="id" value="LineComment"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="format"
+              value="^(?:(?&lt;!\{[ \t]{0,40}\r?\n)|(?=[^\r\n]*\r?\n(?![ \t]*\})))[ \t]*//(?![ \t]*(?:NOSONAR|CHECKSTYLE:(?:OFF|ON)|spotless:(?:off|on)|@formatter:(?:off|on))\b)"/>
+    <property name="message"
+              value="code-quality.md § Comments: Javadoc is the only comment. Rename, extract a method, or move the reason into the Javadoc of the method."/>
+  </module>
+
+  <!-- code-quality.md § Comments: a block comment on a line of its own. `/**` is Javadoc
+       and passes; one after code is TrailingComment's. Only at line start: "/api/*" in a
+       string literal must not match. -->
+  <module name="RegexpMultiline">
+    <property name="id" value="BlockComment"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="format" value="^[ \t]*/\*(?!\*)"/>
+    <property name="message"
+              value="code-quality.md § Comments: Javadoc is the only comment. Turn /* */ into Javadoc on the type or method, or remove it."/>
+  </module>
+
   <module name="TreeWalker">
 
     <!-- code-quality.md: method ≤ 20 lines -->
@@ -127,10 +153,28 @@
       <property name="query" value="//METHOD_DEF[IDENT[@text='proceedUnchecked']]//LITERAL_CATCH//IDENT[@text='Throwable']"/>
     </module>
 
-    <!-- code-quality.md: comments — no commented-out code left nearby -->
+    <!-- code-quality.md § Comments: no comment after code on the same line. `format` is
+         what may stand before the comment — whitespace only, so `} // end` is caught too
+         (the default lets `}` and `);` through). A tool directive is the exception. -->
+    <module name="TrailingComment">
+      <property name="format" value="^\s*$"/>
+      <property name="legalComment" value="^\s*(NOSONAR|CHECKSTYLE:(OFF|ON)|spotless:(off|on)|@formatter:(off|on))\b"/>
+      <message key="trailing.comments"
+               value="code-quality.md § Comments: Javadoc is the only comment. Rename, extract a method, or move the reason into the Javadoc of the method."/>
+    </module>
+
+    <!-- code-quality.md § Comments: no /** */ inside a body — it is Javadoc of nothing -->
+    <module name="InvalidJavadocPosition">
+      <message key="invalid.position"
+               value="code-quality.md § Comments: Javadoc goes on a type, method or field, never inside a body. Extract a method and document it."/>
+    </module>
+
+    <!-- code-quality.md § Comments: no TODO in any form, Javadoc included — the work it
+         names belongs in the issue tracker -->
     <module name="TodoComment">
-      <property name="format" value="TODO(?!\s*\(#\d+\))"/>
-      <property name="severity" value="warning"/>
+      <property name="format" value="\bTODO\b"/>
+      <message key="todo.match"
+               value="code-quality.md § Comments: no TODO in code. Open an issue for the work and remove the comment."/>
     </module>
 
     <!-- naming.md: the rule file is the owner; here only what's mechanical -->

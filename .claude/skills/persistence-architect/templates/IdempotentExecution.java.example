@@ -29,11 +29,13 @@ package com.example.demo.application.service;
 
 import com.example.demo.application.port.out.StoredResponse;
 
-// Executed: the effect ran now, the adapter builds a fresh response from the result.
-// Replayed: a prior request already finished, the adapter returns its response verbatim.
-// `R` is never named in the interface body — it exists so both records share one sealed
-// type. Sonar's java:S2326 on it is suppressed for this file by
-// `sonar.issue.ignore.multicriteria` (`sonarqube-setup/templates/pom-sonar.xml.example`).
+/**
+ * Executed: the effect ran now, the adapter builds a fresh response from the result.
+ * Replayed: a prior request already finished, the adapter returns its response verbatim.
+ * `R` is never named in the interface body — it exists so both records share one sealed
+ * type. Sonar's java:S2326 on it is suppressed for this file by
+ * `sonar.issue.ignore.multicriteria` (`sonarqube-setup/templates/pom-sonar.xml.example`).
+ */
 public sealed interface IdempotentOutcome<R> {
     record Executed<R>(R result) implements IdempotentOutcome<R> {}
     record Replayed<R>(StoredResponse response) implements IdempotentOutcome<R> {}
@@ -62,16 +64,21 @@ public class IdempotentExecution {
         this.transactions = transactions;
     }
 
+    /**
+     * Transaction 1, the claim, commits on its own: a concurrent request with the same key
+     * collides there, before any effect. Transaction 2 commits the effect and the stored
+     * response together. When transaction 2 rolls back (business rule, conflict, anything),
+     * the key is freed so the retry runs again instead of waiting out the IN_PROGRESS lease
+     * — a {@code finally} with a flag, not a catch of the base runtime exception: whatever
+     * was thrown propagates untouched.
+     */
     public <R> IdempotentOutcome<R> execute(
             IdempotencyRequest request, Supplier<R> effect, Function<R, StoredResponse> recorder) {
-        // Transaction 1 — commits on its own. A concurrent request with the same key
-        // collides here, before any effect.
         if (idempotencyKeys.claim(request) instanceof IdempotencyClaim.Replay(StoredResponse response)) {
             return new IdempotentOutcome.Replayed<>(response);
         }
         boolean committed = false;
         try {
-            // Transaction 2 — the effect and the stored response commit together.
             R result = transactions.execute(status -> {
                 R produced = effect.get();
                 idempotencyKeys.complete(request.key(), recorder.apply(produced));
@@ -80,10 +87,6 @@ public class IdempotentExecution {
             committed = true;
             return new IdempotentOutcome.Executed<>(result);
         } finally {
-            // Rolled back (business rule, conflict, anything): free the key so the retry
-            // runs again instead of waiting out the IN_PROGRESS lease. `finally` with a
-            // flag, not a catch of the base runtime exception: whatever was thrown
-            // propagates untouched.
             if (!committed) {
                 idempotencyKeys.release(request.key());
             }

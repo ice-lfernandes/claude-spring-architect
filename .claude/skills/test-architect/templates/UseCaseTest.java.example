@@ -53,13 +53,17 @@ class CreateUserServiceTest {
         verify(saveUser).save(any());
     }
 
+    /**
+     * Built here, not inside the lambda: the lambda makes exactly one call, the one under
+     * test. A builder that throws inside it would pass the test for the wrong reason
+     * (Sonar java:S5778).
+     *
+     * The assertion that catches the worst bug: rejecting and saving at the same time.
+     */
     @Test
     @DisplayName("rejects when the email is already registered, and nothing is saved")
     void rejectsAlreadyRegisteredEmail() {
         given(loadUser.findByEmail(any())).willReturn(Optional.of(TestFixtures.user()));
-        // Built here, not inside the lambda: the lambda makes exactly one call, the one under
-        // test. A builder that throws inside it would pass the test for the wrong reason
-        // (Sonar java:S5778).
         CreateUserCommand command = command("ana@exemplo.com");
 
         assertThatThrownBy(() -> service.handle(command))
@@ -67,7 +71,6 @@ class CreateUserServiceTest {
                 .extracting("errorCode")
                 .isEqualTo("EMAIL_ALREADY_REGISTERED");
 
-        // The assertion that catches the worst bug: rejecting and saving at the same time.
         verify(saveUser, never()).save(any());
     }
 

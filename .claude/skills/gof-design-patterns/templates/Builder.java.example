@@ -6,6 +6,11 @@
 // Lives in the domain. Not Lombok @Builder — that generates a setter-shaped
 // builder for every field with no way to enforce "items before coupon";
 // this one validates once, in build(), and nowhere else.
+//
+// Collaborators this exemplar assumes but doesn't define: CustomerId,
+// OrderLine, Address, CouponCode, OrderPriority (enum: STANDARD, EXPRESS),
+// and Order.of(...) — the aggregate's own static factory, which re-checks
+// nothing the builder already validated and does the rest (id, createdAt).
 package com.example.domain.model.order;
 
 import com.example.domain.exception.ValidationException;
@@ -36,9 +41,10 @@ public final class OrderBuilder {
         return this;
     }
 
-    // Coupon needs at least one item to know what it discounts — the step
-    // order the header mentions. Enforced here, not in build(): the caller
-    // finds out at the exact call that broke it, not three lines later.
+    /**
+     * A coupon needs at least one item to know what it discounts. Enforced here, not in
+     * build(): the caller finds out at the exact call that broke it, not three lines later.
+     */
     public OrderBuilder couponCode(CouponCode couponCode) {
         if (items.isEmpty()) {
             throw new ValidationException("ORDER_COUPON_NEEDS_ITEMS", "Add items before a coupon code");
@@ -68,7 +74,3 @@ public final class OrderBuilder {
     }
 }
 
-// --- collaborators this exemplar assumes but doesn't define: CustomerId,
-// OrderLine, Address, CouponCode, OrderPriority (enum: STANDARD, EXPRESS),
-// and Order.of(...) — the aggregate's own static factory, which re-checks
-// nothing the builder already validated and does the rest (id, createdAt).

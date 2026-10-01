@@ -27,6 +27,23 @@
  *   Boot 4: com.github.kagkarlsson:db-scheduler-spring-boot-4-starter
  *
  * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ *
+ * application.yml:
+ *
+ * db-scheduler:
+ *   enabled: true
+ *   threads: 4
+ *   polling-interval: PT10S
+ *   polling-strategy: fetch              # `lock-and-fetch` only when § 2 chose it
+ *   table-name: scheduled_tasks
+ *
+ * application-test.yml:
+ *
+ * db-scheduler:
+ *   enabled: false
+ *
+ * Verify the property names against the starter version resolved — they are the library's, not
+ * Spring's, and this file does not pin a version.
  */
 
 // --- DbSchedulerTasks.java
@@ -48,7 +65,7 @@ class DbSchedulerTasks {
 
     static final String EXPIRE_TRIAL = "expire-trial-subscription";
 
-    /*
+    /**
      * Recurring, cron in an explicit zone. One instance picks each execution; an execution
      * overdue after downtime runs on the next poll.
      */
@@ -60,7 +77,7 @@ class DbSchedulerTasks {
                 .execute((instance, context) -> recorder.run("recompute-loyalty-tiers", useCase::recompute));
     }
 
-    /*
+    /**
      * One-time, with data: the subscription id travels in the task instance. The failure
      * handler is part of the design (partial § 4): retry with backoff a bounded number of
      * times, then give up and leave the failure visible.
@@ -96,7 +113,7 @@ class DbSchedulerTrialExpiry implements ScheduleTrialExpiryPort {
         this.scheduler = scheduler;
     }
 
-    /*
+    /**
      * Instance id = subscription id: a retried use case schedules the same instance, which the
      * table's primary key turns into a no-op instead of a second expiry.
      */
@@ -107,22 +124,3 @@ class DbSchedulerTrialExpiry implements ScheduleTrialExpiryPort {
                 at);
     }
 }
-
-/*
- * application.yml:
- *
- * db-scheduler:
- *   enabled: true
- *   threads: 4
- *   polling-interval: PT10S
- *   polling-strategy: fetch              # `lock-and-fetch` only when § 2 chose it
- *   table-name: scheduled_tasks
- *
- * application-test.yml:
- *
- * db-scheduler:
- *   enabled: false
- *
- * Verify the property names against the starter version resolved — they are the library's, not
- * Spring's, and this file does not pin a version.
- */

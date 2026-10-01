@@ -51,7 +51,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.support.converter.StringJacksonJsonMessageConverter;
 import tools.jackson.databind.json.JsonMapper;
 
-/*
+/**
  * Shared listener wiring, so its own subpackage — not one flow's, and not the adapter root
  * (`.claude/rules/messaging.md` § Boundary). The `DefaultErrorHandler` +
  * `DeadLetterPublishingRecoverer` bean belongs in this same class. Exactly one

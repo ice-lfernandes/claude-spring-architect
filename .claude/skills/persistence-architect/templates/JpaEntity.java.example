@@ -51,22 +51,28 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.experimental.FieldDefaults;   // experimental, NOT `lombok.FieldDefaults`
+import lombok.experimental.FieldDefaults;
 
+/**
+ * The no-arg constructor is {@code PROTECTED}: required by Hibernate, closed to everyone
+ * else. All fields are private, so the modifier is declared once, with
+ * {@code @FieldDefaults} from {@code lombok.experimental}, not {@code lombok}
+ * (`.claude/rules/lombok.md` § @FieldDefaults). No {@code makeFinal}: Hibernate writes the
+ * fields by reflection and needs them mutable — the exception the rule allows for.
+ */
 @Entity
 @Table(name = "users")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)   // required by Hibernate, closed to everyone else
-// All fields are private, so the modifier is declared once
-// (`.claude/rules/lombok.md` § @FieldDefaults). No `makeFinal`: Hibernate writes the
-// fields by reflection and needs them mutable — the exception the rule allows for.
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 class UserEntity extends AssignedIdEntity<UUID> {
 
-    // Id assigned by the application: the aggregate is already born with a `UserId`, so
-    // there's no "half-created" state waiting for a database id. Where the id comes
-    // from the database, prefer `GenerationType.SEQUENCE` — `IDENTITY` disables insert
-    // batching.
+    /**
+     * Id assigned by the application: the aggregate is already born with a `UserId`, so
+     * there's no "half-created" state waiting for a database id. Where the id comes
+     * from the database, prefer `GenerationType.SEQUENCE` — `IDENTITY` disables insert
+     * batching.
+     */
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     UUID id;
@@ -77,12 +83,14 @@ class UserEntity extends AssignedIdEntity<UUID> {
     @Column(name = "name", nullable = false, length = 120)
     String name;
 
-    // Absence modeled as null in the column. The mapper translates to the domain's Null
-    // Object (`DepartmentId.unassigned()`) — the domain never sees null.
+    /**
+     * Absence modeled as null in the column. The mapper translates to the domain's Null
+     * Object (`DepartmentId.unassigned()`) — the domain never sees null.
+     */
     @Column(name = "department_id")
     UUID departmentId;
 
-    // STRING, never ORDINAL: reordering the enum would corrupt already-stored rows.
+    /** STRING, never ORDINAL: reordering the enum would corrupt already-stored rows. */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     UserStatus status;
@@ -90,8 +98,10 @@ class UserEntity extends AssignedIdEntity<UUID> {
     @Column(name = "created_at", nullable = false, updatable = false)
     Instant createdAt;
 
-    // Optimistic locking. Invisible to the domain: the adapter translates the failure
-    // into the conflict exception from `.claude/rules/error-handling.md`.
+    /**
+     * Optimistic locking. Invisible to the domain: the adapter translates the failure
+     * into the conflict exception from `.claude/rules/error-handling.md`.
+     */
     @Version
     @Column(name = "version", nullable = false)
     long version;
@@ -106,9 +116,11 @@ class UserEntity extends AssignedIdEntity<UUID> {
         this.createdAt = createdAt;
     }
 
-    // No setters. The entity changes through methods that say what changed — and even
-    // these decide nothing: the rule was already applied on the aggregate before it got
-    // here.
+    /**
+     * No setters. The entity changes through methods that say what changed — and even
+     * these decide nothing: the rule was already applied on the aggregate before it got
+     * here.
+     */
     void applyName(String newName) {
         this.name = newName;
     }
@@ -126,7 +138,7 @@ class UserEntity extends AssignedIdEntity<UUID> {
 // --- user/UserStatus.java
 package com.example.demo.adapter.out.persistence.user;
 
-// Persistence-side enum. Mirrors the domain's; not the same type.
+/** Persistence-side enum. Mirrors the domain's; not the same type. */
 enum UserStatus { ACTIVE, SUSPENDED, CLOSED }
 
 // --- shared/AssignedIdEntity.java
@@ -138,7 +150,7 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Transient;
 import org.springframework.data.domain.Persistable;
 
-/*
+/**
  * The `Persistable` mechanics every assigned-id entity needs, once per project. Not an
  * aggregate's class, so it lives in `…persistence.shared`, and it is `public` because every
  * aggregate subpackage extends it — the one consumer the visibility default allows for
@@ -153,8 +165,10 @@ import org.springframework.data.domain.Persistable;
 @MappedSuperclass
 public abstract class AssignedIdEntity<T> implements Persistable<T> {
 
-    // Not a column. True only for an instance built by a constructor; loaded or
-    // already-persisted instances flip it, so an update still goes through `merge()`.
+    /**
+     * Not a column. True only for an instance built by a constructor; loaded or
+     * already-persisted instances flip it, so an update still goes through `merge()`.
+     */
     @Transient
     private boolean isNew = true;
 

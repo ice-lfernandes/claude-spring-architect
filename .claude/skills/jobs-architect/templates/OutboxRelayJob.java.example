@@ -92,14 +92,16 @@ class OutboxRelayJob {
     private final JobRunRecorder recorder;
     private final Counter deadLettered;
 
+    /**
+     * Registers the dead-letter counter and the pending-age gauge. An event declared "must not
+     * be lost" whose failure path only logs is loss made silent and permanent
+     * (lessons-learned-013 § 6). The counter says it happened; the gauge says it is about to.
+     */
     OutboxRelayJob(RelayOutboxEvents relay, OutboxProperties properties, JobRunRecorder recorder,
             MeterRegistry meters) {
         this.relay = relay;
         this.command = new RelayOutboxEventsCommand(properties.batchSize(), properties.maxAttempts());
         this.recorder = recorder;
-        // An event declared "must not be lost" whose failure path only logs is loss made silent
-        // and permanent (lessons-learned-013 § 6). The counter says it happened; the gauge says
-        // it is about to.
         this.deadLettered = Counter.builder("outbox.events.dead_lettered")
                 .description("Outbox rows abandoned after exhausting their attempts")
                 .register(meters);
@@ -123,7 +125,7 @@ package com.example.demo.adapter.in.scheduling;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/*
+/**
  * `app.outbox.*` bound once, next to the only class that reads it. WHICH VALUES exist and what
  * they should be is `persistence-architect`'s call for batch size and attempt ceiling — it owns
  * the table and the pacing the columns encode — and `jobs-architect`'s for the switch and the

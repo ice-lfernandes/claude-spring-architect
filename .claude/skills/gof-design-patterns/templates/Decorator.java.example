@@ -4,6 +4,11 @@
 // Same subpackage as the aggregate it decorates (`@.claude/rules/persistence.md`
 // § Boundary) — that's what lets it take the package-private `OrderRepositoryAdapter`
 // as its delegate without widening anything to `public`.
+//
+// Exemplar invariants:
+// - implements the same port, not a sub-interface — LSP intact
+// - no business rule here; only caching
+// - the domain and application don't know the decorator exists
 package com.example.adapter.out.persistence.order;
 
 import com.example.application.port.out.OrderRepositoryPort;
@@ -13,8 +18,12 @@ import java.util.Optional;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
+/**
+ * {@code @Primary}: the decorator is what the application receives; the delegate stays
+ * behind it.
+ */
 @Component
-@Primary // the decorator is what the application receives; the delegate stays behind it
+@Primary
 public final class CachedOrderRepository implements OrderRepositoryPort {
 
     private final OrderRepositoryPort delegate;
@@ -40,8 +49,3 @@ public final class CachedOrderRepository implements OrderRepositoryPort {
         cache.evict(order.id());
     }
 }
-
-// Exemplar invariants:
-// - implements the same port, not a sub-interface — LSP intact
-// - no business rule here; only caching
-// - the domain and application don't know the decorator exists

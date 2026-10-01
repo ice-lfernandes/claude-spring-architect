@@ -29,6 +29,10 @@
  *   net.javacrumbs.shedlock:shedlock-provider-jdbc-template
  *
  * Each `// --- <File>.java` block is its own file, in the scheduling package.
+ *
+ * TESTING. A test that calls the job's method directly has no lock: call the inbound port
+ * instead, which is what the test proves anyway. When the lock itself is under test,
+ * `LockAssert.TestHelper.makeAllAssertsPass(true)` in the test and nowhere else.
  */
 
 // --- ShedLockConfig.java (the provider — one per project, next to SchedulingConfig)
@@ -42,7 +46,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/*
+/**
  * The default upper bound is a safety net for a job that forgot its own, not a value to rely
  * on: every `@SchedulerLock` below states both bounds.
  */
@@ -81,22 +85,16 @@ class CloseExpiredQuotesJob {
         this.recorder = recorder;
     }
 
-    /*
+    /**
      * The lock name is the job's identity across instances — stable, one per job, never shared
      * between two jobs. Bounds from the partial's § 3.
+     * {@code LockAssert} fails fast if the method is ever called without the lock — a refactor
+     * that drops the annotation, or a direct call from a test that believed it was locked.
      */
     @Scheduled(fixedDelayString = "${app.jobs.close-expired-quotes.interval:PT5M}")
     @SchedulerLock(name = "closeExpiredQuotes", lockAtMostFor = "PT15M", lockAtLeastFor = "PT30S")
     void run() {
-        // Fails fast if the method is ever called without the lock — a refactor that drops
-        // the annotation, or a direct call from a test that believed it was locked.
         LockAssert.assertLocked();
         recorder.run("close-expired-quotes", closeExpiredQuotes::closeExpired);
     }
 }
-
-/*
- * TESTING. A test that calls the job's method directly has no lock: call the inbound port
- * instead, which is what the test proves anyway. When the lock itself is under test,
- * `LockAssert.TestHelper.makeAllAssertsPass(true)` in the test and nowhere else.
- */
