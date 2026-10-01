@@ -5405,7 +5405,13 @@ public class ArchHook {
      * <p>Only paths whose porcelain entry is new or changed since the baseline are read, so a
      * tree dirty before the turn stays out of the report. Exit 2 hands the lines back to the
      * model; `stop_hook_active` bounds it to one firing, the way `tests` already does.
+     *
+     * <p>A path matching `guard.sweep_exempt` is skipped before the territory check: those are
+     * versioned files a hook writes in parallel with the baseline — the `audit` trail — so the
+     * turn never wrote them, and the advice to revert would delete what `git-publish` commits.
+     * Only here: `guard write` and `guard bash` still refuse the model those paths.
      * Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+     * Exemption: `.claude/decisions/0105-guard-sweep-exempts-audit-trail.md`.
      */
     static void guardSweep(Map<String, Object> sch, Path state, Object in, String stdin)
             throws Exception {
@@ -5416,12 +5422,14 @@ public class ArchHook {
         if (now.exit != 0) return;                               // no git, nothing to compare
         Set<String> before = new LinkedHashSet<>(
                 Arrays.asList(readOrNull(baselineFile).split("\n")));
+        List<String> exempt = asStrList(get(sch, "guard", "sweep_exempt"));
 
         List<String> lines = new ArrayList<>();
         for (String entry : now.out) {
             if (entry.isBlank() || before.contains(entry)) continue;
             String rel = porcelainPath(entry);
             if (rel == null) continue;
+            if (matchesAny(exempt, rel)) continue;
             List<String> v = guardViolations(sch, state, in, rel, true);
             if (!v.isEmpty()) { lines.add(""); lines.addAll(v); }
         }

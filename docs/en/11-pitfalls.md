@@ -183,7 +183,7 @@ path git ignores never appears in `git status --porcelain` and is never swept �
 repository is only what `.gitignore` still lists, `.claude/decisions/` and
 `.claude/lessons-learned/` having been versioned since 2026-09-28. A spec's `status:` close and
 its `[ ]` → `[x]` toggles are admitted by comparing against `git show HEAD:`, since the sweep
-has no `old_string` to read. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+has no `old_string` to read. Paths in `guard.sweep_exempt` are skipped — today `.claude/audit-usage/**`, the versioned trail the `audit` hook writes in parallel with the baseline; the tool-time guards still refuse the model a write there. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`, exemption `0105`.
 
 **A push always prompts, a force push never runs, and a skill's `Bash` is scoped.**
 `git push` and `gh repo create` sit in `permissions.ask`, which is evaluated before any

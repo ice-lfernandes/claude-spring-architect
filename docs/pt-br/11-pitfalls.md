@@ -188,7 +188,7 @@ caminho que o git ignora nunca aparece em `git status --porcelain` e nunca é va
 neste repositório, é só o que o `.gitignore` ainda lista, já que `.claude/decisions/` e
 `.claude/lessons-learned/` são versionados desde 2026-09-28. O fechamento do `status:` de uma
 spec e os toggles `[ ]` → `[x]` são admitidos comparando com `git show HEAD:`, já que o sweep
-não tem `old_string` para ler. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
+não tem `old_string` para ler. Caminhos em `guard.sweep_exempt` são pulados — hoje `.claude/audit-usage/**`, a trilha versionada que o hook `audit` grava em paralelo com a baseline; os guards de tool-time continuam recusando escrita do modelo ali. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`, isenção `0105`.
 
 **Um push sempre pede confirmação, um force push nunca roda, e o `Bash` de uma skill é
 restrito.** `git push` e `gh repo create` ficam em `permissions.ask`, que é avaliado antes de
