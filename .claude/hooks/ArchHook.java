@@ -3786,12 +3786,12 @@ public class ArchHook {
             String group = agent ? "agent_classes" : "skill_classes";
             for (Map.Entry<String, Object> p : pieces.entrySet()) {
                 String n = p.getKey();
-                Path f = ROOT.resolve(agent ? ".claude/agents/" + n + ".md" : ".claude/skills/" + n + "/SKILL.md");
+                String rel = agent ? ".claude/agents/" + n + ".md" : ".claude/skills/" + n + "/SKILL.md";
                 String cls = agent ? agentClassOf(sch, n) : skillClassOf(sch, n);
                 if (!(p.getValue() instanceof Boolean on)) {
                     out.add("`" + n + "` must be true or false");
-                } else if (!Files.isRegularFile(f)) {
-                    out.add("`" + n + "` — no " + ROOT.relativize(f) + " in this project");
+                } else if (!Files.isRegularFile(ROOT.resolve(rel))) {
+                    out.add("`" + n + "` — no " + rel + " in this project");
                 } else if (cls != null && get(sch, group, "classes", cls, "overrides", n, "audited") != null) {
                     out.add("`" + n + "` is fixed by " + group + ".classes." + cls + ".overrides." + n
                             + ".audited — remove it from " + file);
