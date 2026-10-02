@@ -737,7 +737,7 @@ public class ArchHook {
 
     // ── compose ──────────────────────────────────────────────────────────────
     //
-    // Four questions `docker compose up -d` does not answer, all cheap:
+    // Five questions `docker compose up -d` does not answer, all cheap:
     //   1. Is every service of this project actually running — not `created`, not
     //      `exited`?
     //   2. Is a container from ANOTHER project publishing a host port this project's
@@ -753,8 +753,13 @@ public class ArchHook {
     //      healthcheck runs INSIDE the container, where `localhost` is the service, and
     //      Testcontainers configures its own listeners, so the ITs exercise a broker the
     //      compose file does not produce.
+    //   5. Does every `${VAR:default}` the application points at a compose service hold on
+    //      both sides — the default reaching a port that service publishes, for the run on
+    //      the host, and `app` setting VAR, for the run in the container? The collector
+    //      published nothing from 0046 to issue #66, so every host-run export failed, and
+    //      projects older than 0046 never set the metrics endpoint on `app`.
     //
-    // Questions 3 and 4 need no Docker at all — they read files — and they are here because
+    // Questions 3 to 5 need no Docker at all — they read files — and they are here because
     // this mode already owns `docker-compose.yml`. Two skills used to promise the match in
     // prose (`docker-architect` step 4, `test-architect`'s setup mode), with a YAML comment
     // as the only link between the halves and the execution order deciding which side led.
@@ -840,6 +845,7 @@ public class ArchHook {
         // every early return below. A machine with Docker off still gets this answer.
         List<String> tagIssues = new ArrayList<>(imageTagMismatches(file));
         tagIssues.addAll(advertisedAddressIssues(file, declared));
+        tagIssues.addAll(placeholderIssues(file, declared));
 
         Proc ps;
         try {
@@ -913,7 +919,8 @@ public class ArchHook {
         String summary = ok
                 ? running + "/" + total
                         + " service(s) running, no port collision, image tags match,"
-                        + " published ports advertised to the host"
+                        + " published ports advertised to the host, placeholders hold on host"
+                        + " and container"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";
         return new ComposeReport(ok, summary, detail);
     }
@@ -1098,6 +1105,201 @@ public class ArchHook {
         return out;
     }
 
+    /** One `${NAME:default}` read from an application config file. */
+    record Placeholder(String name, String fallback, String property, String file) {}
+
+    /**
+     * Question 5: every `${VAR:default}` the application points at a compose service has to
+     * hold on both sides of the network. The default serves `./mvnw spring-boot:run` on the
+     * host; the `app` service's environment serves the container. Each side can be wrong
+     * alone, and neither failure shows anywhere else:
+     *
+     * <p>(a) `app` sets `VAR` to `<svc>:<port>`, and the default is not a host address on a
+     * port `<svc>` publishes. The host run cannot reach `<svc>` — the OTLP collector from
+     * 0046 until issue #66, every export failing while `compose` reported healthy.
+     *
+     * <p>(b) The default is a host address on a port another service publishes, and `app`
+     * does not set `VAR`. Inside the container `localhost` is the application itself — the
+     * metrics endpoint of projects generated before 0046. Skipped when a config file already
+     * names `<svc>:<port>`: a profile file then wires the container side.
+     *
+     * <p>Reads files only, like questions 3 and 4, so it answers with the daemon down. Which
+     * files are config and which service is the application are data, `compose.app_config_globs`
+     * and `compose.app_service_key` (invariant 10). A placeholder with no default claims nothing
+     * about the host and is left alone. Design: `.claude/decisions/0110-otlp-host-first-collector.md`.
+     */
+    static List<String> placeholderIssues(Path composeFile, Map<String, Set<String>> ports) {
+        Map<String, Object> cfg = asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))),
+                "compose"));
+        if (cfg == null) return List.of();
+        List<String> hosts = asStrList(cfg.get("host_addresses"));
+        List<String> globs = asStrList(cfg.get("app_config_globs"));
+        String appKey = asStr(cfg.get("app_service_key"));
+        if (hosts.isEmpty() || globs.isEmpty() || appKey == null) return List.of();
+
+        String yaml = readOrNull(composeFile);
+        Map<String, Set<String>> keys = composeServiceKeys(yaml);
+        Set<String> apps = keys.entrySet().stream().filter(e -> e.getValue().contains(appKey))
+                .map(Map.Entry::getKey).collect(Collectors.toCollection(LinkedHashSet::new));
+        if (apps.isEmpty()) return List.of();
+
+        List<Placeholder> placeholders = new ArrayList<>();
+        StringBuilder allConfig = new StringBuilder();
+        for (Path f : projectFiles(rel -> matchesAny(globs, rel))) {
+            String content = readOrNull(f);
+            if (content == null) continue;
+            allConfig.append(content).append('\n');
+            placeholders.addAll(placeholdersIn(content, relative(f)));
+        }
+        if (placeholders.isEmpty()) return List.of();
+
+        Map<String, Map<String, String>> env = composeServiceEnv(yaml);
+        Set<String> services = keys.keySet();
+        String compose = relative(composeFile);
+        List<String> out = new ArrayList<>();
+        for (String app : apps) {
+            Map<String, String> appEnv = env.getOrDefault(app, Map.of());
+            for (Placeholder p : placeholders) {
+                // Relaxed binding: `SPRING_DATASOURCE_URL` replaces the whole property, so it
+                // overrides `${DB_URL:…}` as surely as `DB_URL` would.
+                String set = Stream.of(p.name(), envForm(p.name()), envForm(p.property()))
+                        .filter(appEnv::containsKey).map(appEnv::get).findFirst().orElse(null);
+                List<String[]> fallback = hostPorts(p.fallback());
+                if (set != null) {
+                    for (String[] target : hostPorts(set)) {
+                        String svc = target[0];
+                        if (!services.contains(svc) || apps.contains(svc)) continue;
+                        Set<String> published = ports.getOrDefault(svc, Set.of());
+                        boolean reachable = fallback.stream().anyMatch(hp ->
+                                hosts.contains(hp[0]) && published.contains(hp[1]));
+                        if (reachable) continue;
+                        out.add("`" + p.name() + "` reaches `" + svc + "` from service `" + app
+                                + "` (`" + set + "`), but its default in " + p.file() + " is `"
+                                + p.fallback() + "` and `" + svc + "` "
+                                + (published.isEmpty() ? "publishes no host port"
+                                        : "publishes only " + String.join(", ", published))
+                                + " — the application run on the host cannot reach it  →  publish"
+                                + " the port in " + compose + " (variable host port, e.g."
+                                + " `\"${<SVC>_PORT:-<port>}:<port>\"`) and default `" + p.name()
+                                + "` to " + hosts.get(0) + ":<published port>");
+                    }
+                    continue;
+                }
+                for (String[] hp : fallback) {
+                    if (!hosts.contains(hp[0])) continue;
+                    String svc = ports.entrySet().stream()
+                            .filter(e -> !apps.contains(e.getKey()) && e.getValue().contains(hp[1]))
+                            .map(Map.Entry::getKey).findFirst().orElse(null);
+                    if (svc == null) continue;
+                    if (Pattern.compile("(?<![A-Za-z0-9_.-])" + Pattern.quote(svc) + ":\\d")
+                            .matcher(allConfig).find()) continue;
+                    out.add(p.file() + " defaults `" + p.name() + "` to `" + p.fallback()
+                            + "`, a host port `" + svc + "` publishes, but service `" + app
+                            + "` in " + compose + " does not set `" + p.name() + "` — inside the"
+                            + " container `" + hp[0] + "` is the application itself, so it never"
+                            + " reaches `" + svc + "`  →  add `" + p.name() + "` to `" + app
+                            + "`'s environment, pointing at `" + svc + "` by its compose hostname");
+                    break;
+                }
+            }
+        }
+        return new ArrayList<>(new LinkedHashSet<>(out));
+    }
+
+    /**
+     * Every `${NAME:default}` in a YAML config file, with the dotted property it sits under
+     * (`spring.datasource.url`). Nested defaults resolve to their own default:
+     * `${A:http://localhost:${P:4318}/x}` reads as `http://localhost:4318/x`. `${NAME}` with
+     * no default is skipped. Same indentation walk as {@link #composeHostPorts}: no YAML
+     * library, one placeholder never spans lines.
+     */
+    static List<Placeholder> placeholdersIn(String content, String file) {
+        List<Placeholder> out = new ArrayList<>();
+        Deque<Map.Entry<Integer, String>> path = new ArrayDeque<>();
+        Pattern key = Pattern.compile("^([A-Za-z0-9_.\\-\"']+)\\s*:(\\s|$)");
+        Pattern nested = Pattern.compile("\\$\\{[^:{}]+:([^{}]*)}");
+        for (String raw : content.split("\r?\n", -1)) {
+            String body = raw.strip();
+            if (body.isEmpty() || body.startsWith("#") || body.equals("---")) continue;
+            int indent = raw.length() - raw.stripLeading().length();
+            Matcher k = key.matcher(body);
+            if (k.find()) {
+                while (!path.isEmpty() && path.peekLast().getKey() >= indent) path.removeLast();
+                path.addLast(Map.entry(indent, k.group(1).replace("\"", "").replace("'", "")));
+            }
+            String property = path.stream().map(Map.Entry::getValue).collect(Collectors.joining("."));
+            int i = 0;
+            while ((i = body.indexOf("${", i)) >= 0) {
+                int depth = 0, end = -1;
+                for (int j = i; j < body.length(); j++) {
+                    char c = body.charAt(j);
+                    if (c == '{') depth++;
+                    else if (c == '}' && --depth == 0) { end = j; break; }
+                }
+                if (end < 0) break;
+                String inner = body.substring(i + 2, end);
+                int colon = inner.indexOf(':');
+                if (colon > 0) {
+                    String fallback = inner.substring(colon + 1);
+                    for (String prev = null; !fallback.equals(prev); ) {
+                        prev = fallback;
+                        fallback = nested.matcher(fallback)
+                                .replaceAll(m -> Matcher.quoteReplacement(m.group(1)));
+                    }
+                    out.add(new Placeholder(inner.substring(0, colon).strip(), fallback.strip(),
+                            property, file));
+                }
+                i = end + 1;
+            }
+        }
+        return out;
+    }
+
+    /** Every `host:port` in a value: a URL, a JDBC URL, or a comma-separated list. */
+    static List<String[]> hostPorts(String value) {
+        List<String[]> out = new ArrayList<>();
+        Matcher m = Pattern.compile("(?<![A-Za-z0-9_.-])([A-Za-z0-9_][A-Za-z0-9_.-]*):(\\d{1,5})(?!\\d)")
+                .matcher(value == null ? "" : value);
+        while (m.find()) out.add(new String[] {m.group(1), m.group(2)});
+        return out;
+    }
+
+    /** The environment variable Spring's relaxed binding reads for a property name. */
+    static String envForm(String name) {
+        return name.replace('.', '_').replace("-", "").toUpperCase(Locale.ROOT);
+    }
+
+    /** The keys directly under each compose service. Same walk as {@link #composeHostPorts}. */
+    static Map<String, Set<String>> composeServiceKeys(String yaml) {
+        Map<String, Set<String>> byService = new LinkedHashMap<>();
+        if (yaml == null) return byService;
+        boolean inServices = false;
+        String service = null;
+        for (String raw : yaml.split("\r?\n", -1)) {
+            String line = raw.stripTrailing();
+            if (line.isBlank() || line.strip().startsWith("#")) continue;
+            int indent = line.length() - line.stripLeading().length();
+            String body = line.strip();
+
+            if (indent == 0) {
+                inServices = body.startsWith("services:");
+                service = null;
+                continue;
+            }
+            if (!inServices) continue;
+            if (indent == 2 && body.endsWith(":")) {
+                service = body.substring(0, body.length() - 1).strip();
+                byService.put(service, new LinkedHashSet<>());
+                continue;
+            }
+            int colon = body.indexOf(':');
+            if (service != null && indent == 4 && colon > 0 && !body.startsWith("- ")) {
+                byService.get(service).add(body.substring(0, colon).strip());
+            }
+        }
+        return byService;
+    }
+
     /**
      * The `environment:` of each compose service, in both shapes YAML allows: a mapping
      * (`KEY: value`) and a list (`- KEY=value`). Same walk as {@link #composeHostPorts},
@@ -1180,6 +1382,21 @@ public class ArchHook {
     static List<ImagePin> testImagePins() {
         List<ImagePin> pins = new ArrayList<>();
         Pattern re = Pattern.compile("DockerImageName\\s*\\.\\s*parse\\s*\\(\\s*\"([^\"]+)\"");
+        for (Path f : projectFiles(rel -> rel.endsWith(".java") && rel.contains("src/test/"))) {
+            String content = readOrNull(f);
+            if (content == null) continue;
+            Matcher m = re.matcher(content);
+            while (m.find()) {
+                String[] img = splitImage(m.group(1));
+                if (img != null) pins.add(new ImagePin(img[0], img[1], relative(f)));
+            }
+        }
+        return pins;
+    }
+
+    /** Project files whose relative path passes {@code keep}, build output and VCS metadata skipped. */
+    static List<Path> projectFiles(java.util.function.Predicate<String> keep) {
+        List<Path> found = new ArrayList<>();
         try {
             Files.walkFileTree(ROOT, new SimpleFileVisitor<>() {
                 @Override
@@ -1193,17 +1410,7 @@ public class ArchHook {
 
                 @Override
                 public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) {
-                    String rel = relative(f);
-                    if (!rel.endsWith(".java") || !rel.contains("src/test/")) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    String content = readOrNull(f);
-                    if (content == null) return FileVisitResult.CONTINUE;
-                    Matcher m = re.matcher(content);
-                    while (m.find()) {
-                        String[] img = splitImage(m.group(1));
-                        if (img != null) pins.add(new ImagePin(img[0], img[1], rel));
-                    }
+                    if (keep.test(relative(f))) found.add(f);
                     return FileVisitResult.CONTINUE;
                 }
 
@@ -1213,9 +1420,9 @@ public class ArchHook {
                 }
             });
         } catch (IOException ignored) {
-            // No `src/test` yet, or an unreadable tree: nothing to compare, not a failure.
+            // An unreadable tree: nothing to compare, not a failure.
         }
-        return pins;
+        return found;
     }
 
     /**

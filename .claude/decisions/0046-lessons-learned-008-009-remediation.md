@@ -5,6 +5,10 @@
 - **Decision:** Option 1 — no new extension form. Content changes inside `docker-architect` and `project-bootstrap`, five new `templates/*.example`, and a new `compose` mode in `ArchHook.java`.
 - **State:** approved by the user, on 2026-09-24. The `ArchHook` change was approved in the same turn, explicitly and by name, which is why it was written here instead of only proposed — see § Note on scope below.
 
+> **Host port 4318 — superseded by `0110-otlp-host-first-collector.md`.** The collector
+> publishes again, on a variable host port, because the host run (`./mvnw spring-boot:run`)
+> was a fact this record did not weigh (issue #66). The rest of this record stands.
+
 ## Note on scope
 
 `claude-code-architect-designer`'s contract says it does not write `.claude/hooks/**`,

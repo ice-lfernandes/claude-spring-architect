@@ -8,11 +8,11 @@
 # between this project's collector and it. Version resolved against the registry, not
 # memory — same rule as every other version in this repo.
 #
-# The UI port is variable with a default on purpose, unlike the collector's 4318, which
-# this repo stopped publishing entirely: a UI is opened by a human and needs a
-# predictable number, so it gets a default; OTLP ingest is machine-to-machine inside the
-# compose network and needs no host binding at all. Two sibling projects generated from
-# the same blueprint can both run a UI by setting JAEGER_UI_PORT in one of them.
+# The UI port is variable with a default on purpose: a UI is opened by a human and needs a
+# predictable number. Jaeger's own OTLP ports stay unpublished. Only this project's
+# collector sends to them, over the compose network. The application on the host reaches
+# the collector, not Jaeger. Two sibling projects generated from the same blueprint can
+# both run a UI by setting JAEGER_UI_PORT in one of them.
   jaeger:
     image: jaegertracing/jaeger:2.21.0
     ports:
