@@ -117,7 +117,9 @@ jobs:
       - name: guard bash refuses force pushes and holds shell writes to the phase
         run: java .claude/.ci/BashGuardTest.java
 
-      # The only filesystem-shaped guard (0065). Needs `git`, which every runner has.
+      # The only filesystem-shaped guard (0065). Needs `git`, which every runner has. It skips
+      # what a tool-time guard admitted, so a cross-class chain does not re-judge the run's
+      # own writes against the narrower phase open at Stop (0114, issue #74).
       - name: guard sweep reports this turn's writes, never pre-existing dirt
         run: java .claude/.ci/SweepTest.java
 

@@ -14,6 +14,12 @@
 // the turn is not handed back as the phase's write, while a Write to it is still refused.
 // Decision 0105, issue #55.
 //
+// And it proves the sweep skips what a tool-time guard already admitted: a `/new-feature` run
+// whose design skill wrote the spec and partials, whose executor wrote src/, and which then
+// chained `git-publish` (class `ops`, nothing writable) and approved the folder, is silent —
+// while a file no tool-time guard saw in that same turn is still named. Decision 0114,
+// issue #74.
+//
 // Runs in a throwaway git repository holding a copy of the real extensions.json, so the
 // territory under test is production data. Writes the files with plain Java — the point is
 // that no tool-time guard saw them.
@@ -79,13 +85,65 @@ public class SweepTest {
                 ".claude/audit-usage/history.jsonl", null,
                 "the model writing the trail through Write — still refused");
 
+        // A write a tool-time guard admitted is not judged again at Stop. `/new-feature` hands
+        // over to a design skill, writes its spec and partials, approves the folder, chains
+        // `git-publish` (class `ops`, nothing writable) — and the sweep used to judge all of it
+        // against that empty territory, then against the folder's `approved` status. Issue #74,
+        // decision 0114.
+        String s4 = "ci-sweep-" + System.nanoTime();
+        failures += guard(hook, repo, "prompt", "{\"session_id\":\"" + s4
+                + "\",\"prompt\":\"/new-feature an order\"}", 0, null, null,
+                "orchestrator phase opens");
+        failures += guard(hook, repo, "call", "{\"session_id\":\"" + s4
+                + "\",\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"use-case-design\"}}", 0,
+                null, null, "a design skill narrows the phase");
+        Path uc = repo.resolve("docs/use-cases/UC-006-order");
+        String spec = "docs/use-cases/UC-006-order/UC-006-spec.md";
+        String partial = "docs/use-cases/UC-006-order/00-caso-de-uso.md";
+        String changelog = "docs/use-cases/UC-001-x/CHANGELOG.md";
+        for (String rel : new String[] { spec, partial, changelog }) {
+            failures += guard(hook, repo, "write", "{\"session_id\":\"" + s4
+                    + "\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"" + abs(repo, rel)
+                    + "\"}}",
+                    0, null, null, "design skill writes " + rel + " — admitted");
+            Files.createDirectories(repo.resolve(rel).getParent());
+            Files.writeString(repo.resolve(rel), "---\nstatus: draft\n---\n");
+        }
+        Files.writeString(repo.resolve(spec), "---\nstatus: approved\n---\n");
+        failures += guard(hook, repo, "call", "{\"session_id\":\"" + s4
+                + "\",\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"git-publish\"}}", 0,
+                null, null, "git-publish (ops) replaces the phase");
+        String src = "src/main/java/Order.java";
+        failures += guard(hook, repo, "write", "{\"session_id\":\"" + s4
+                + "\",\"agent_type\":\"java-spring-boot-developer\",\"tool_name\":\"Write\","
+                + "\"tool_input\":{\"file_path\":\"" + abs(repo, src) + "\"}}", 0, null, null,
+                "executor writes src/ — admitted by its own class");
+        Files.createDirectories(repo.resolve(src).getParent());
+        Files.writeString(repo.resolve(src), "class Order {}");
+        failures += guard(hook, repo, "sweep", "{\"session_id\":\"" + s4 + "\"}", 0, null, "UC-006",
+                "admitted writes under an earlier phase, folder approved since — silent");
+
+        // The same turn with one file no tool-time guard saw: still judged, against the phase
+        // open at Stop, and named alone.
+        Path unseen = uc.resolve("20-persistencia.md");
+        Files.writeString(unseen, "written by a script");
+        failures += guard(hook, repo, "sweep", "{\"session_id\":\"" + s4 + "\"}", 2,
+                "UC-006-order/20-persistencia.md", "UC-006-spec.md",
+                "a write no tool-time guard saw — still reported, admitted ones are not");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `guard sweep` is NOT"
                     + " separating what this turn wrote from what was already dirty.");
             System.exit(1);
         }
         System.out.println("✅ guard sweep: this turn's out-of-territory write reported,"
-                + " pre-existing changes, in-territory writes and the audit trail left alone.");
+                + " pre-existing changes, in-territory writes, the audit trail and writes a tool-time"
+                + " guard already admitted left alone.");
+    }
+
+    /** An absolute `file_path`, as the runtime sends it, with `/` so Windows stays valid JSON. */
+    static String abs(Path repo, String rel) {
+        return repo.resolve(rel).toString().replace('\\', '/');
     }
 
     static void git(Path dir, String... args) throws Exception {

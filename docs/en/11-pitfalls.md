@@ -183,7 +183,7 @@ path git ignores never appears in `git status --porcelain` and is never swept �
 repository is only what `.gitignore` still lists, `.claude/decisions/` and
 `.claude/lessons-learned/` having been versioned since 2026-09-28. A spec's `status:` close and
 its `[ ]` → `[x]` toggles are admitted by comparing against `git show HEAD:`, since the sweep
-has no `old_string` to read. Paths in `guard.sweep_exempt` are skipped — today `.claude/audit-usage/**`, the versioned trail the `audit` hook writes in parallel with the baseline; the tool-time guards still refuse the model a write there. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`, exemption `0105`.
+has no `old_string` to read. Paths in `guard.sweep_exempt` are skipped — today `.claude/audit-usage/**`, the versioned trail the `audit` hook writes in parallel with the baseline; the tool-time guards still refuse the model a write there. **A path `guard write` or `guard bash` already admitted this turn is skipped too:** it was judged against the phase and the spec status of its own moment, and re-judging it at `Stop` against the phase open then — `git-publish`'s empty territory after `/new-feature` — or against a folder approved since flagged the run's own spec, partials and executor writes (issue #74). What the sweep judges is the writes no tool-time guard saw, against the phase open at `Stop`; a path admitted earlier and rewritten later by a spelling no guard reads is skipped with it. Design: `.claude/decisions/0065-guard-sweep-on-stop.md`, exemption `0105`, admitted paths `0114`.
 
 **A push always prompts, a force push never runs, and a skill's `Bash` is scoped.**
 `git push` and `gh repo create` sit in `permissions.ask`, which is evaluated before any
