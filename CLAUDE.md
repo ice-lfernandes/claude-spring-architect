@@ -21,7 +21,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
 | Check every compose service is up, no foreign container holds its ports, every published port is advertised at a host-resolvable address, and every `${VAR:default}` pointing at a service holds on the host and in the `app` container | `java .claude/hooks/ArchHook.java compose` |
 | Check which paths a shell command would write, and whether the guard admits them — and whether it is a force push, which it blocks | `echo '{"tool_input":{"command":"…"}}' \| java .claude/hooks/ArchHook.java guard bash` |
-| Sweep what the current turn wrote against the open phase's territory and the frozen folders — the audit trail excepted | `echo '{}' \| java .claude/hooks/ArchHook.java guard sweep` |
+| Sweep what the current turn wrote and no tool-time guard admitted against the open phase's territory and the frozen folders — the audit trail excepted | `echo '{}' \| java .claude/hooks/ArchHook.java guard sweep` |
 | The compose check as a gate — silent while healthy, exit 2 otherwise | `echo '{}' \| java .claude/hooks/ArchHook.java compose gate` |
 | Show what an agent receives at `SubagentStart` — the pattern catalog, or nothing | `echo '{"agent_type":"java-spring-boot-developer"}' \| java .claude/hooks/ArchHook.java context subagent` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |

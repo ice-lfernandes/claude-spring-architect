@@ -5329,6 +5329,7 @@ public class ArchHook {
 
     static void guardPrompt(Map<String, Object> sch, Path state, Object in) throws IOException {
         Files.deleteIfExists(state);
+        Files.deleteIfExists(guardAdmittedFile(state));
         guardBaseline(state);
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)").matcher(orEmpty(asStr(get(in, "prompt"))));
         if (m.find() && skillClassOf(sch, m.group(1)) != null) guardOpen(state, m.group(1));
@@ -5337,6 +5338,18 @@ public class ArchHook {
     /** Where `guard sweep` finds the working tree as it stood when the turn began. */
     static Path guardBaselineFile(Path state) {
         return state.resolveSibling(state.getFileName() + ".baseline");
+    }
+
+    /**
+     * The paths `guard write` and `guard bash` admitted this turn, one per line. Each was judged
+     * against the phase and the frozen state of its own moment, so `guard sweep` skips them and
+     * judges only what no tool-time guard saw. Re-judging them at `Stop` is what flagged
+     * `/new-feature`'s own spec once `git-publish` (class `ops`) narrowed the phase, and its
+     * just-approved folder as immutable: issue #74,
+     * `.claude/decisions/0114-guard-sweep-judges-only-unseen-writes.md`.
+     */
+    static Path guardAdmittedFile(Path state) {
+        return state.resolveSibling(state.getFileName() + ".admitted");
     }
 
     /**
@@ -5452,11 +5465,19 @@ public class ArchHook {
      * fails them by construction. That is deliberate — `sed -i` cannot prove it is closing a
      * `status:` line, and the legitimate path for that single write is the `Edit` the executor
      * already makes.
+     *
+     * <p>An admitted path goes into {@link #guardAdmittedFile}, so the `Stop` sweep does not
+     * judge it a second time against later state.
      */
     static void guardPath(Map<String, Object> sch, Path state, Object in, String rel)
             throws IOException {
         List<String> violation = guardViolations(sch, state, in, rel, false);
-        if (violation.isEmpty()) return;
+        if (violation.isEmpty()) {
+            Files.createDirectories(state.getParent());
+            Files.writeString(guardAdmittedFile(state), rel + "\n", StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            return;
+        }
         violation.forEach(ArchHook::err);
         System.exit(2);
     }
@@ -5693,8 +5714,18 @@ public class ArchHook {
      * versioned files a hook writes in parallel with the baseline — the `audit` trail — so the
      * turn never wrote them, and the advice to revert would delete what `git-publish` commits.
      * Only here: `guard write` and `guard bash` still refuse the model those paths.
+     *
+     * <p>A path in {@link #guardAdmittedFile} is skipped too: a tool-time guard already admitted
+     * it against the phase and the frozen state of its own moment. Judging it again here used the
+     * phase open at `Stop` — `git-publish`'s empty territory after `/new-feature` — and the spec
+     * status at `Stop`, `approved` by then, so the run's own spec, partials and executor writes
+     * came back as violations (issue #74). What is left is what this sweep was built for, the
+     * writes no tool-time guard saw, judged as before against the phase open now. Known gap,
+     * accepted: an admitted path rewritten later in the turn by a spelling no guard reads is
+     * skipped as well.
      * Design: `.claude/decisions/0065-guard-sweep-on-stop.md`.
      * Exemption: `.claude/decisions/0105-guard-sweep-exempts-audit-trail.md`.
+     * Admitted paths: `.claude/decisions/0114-guard-sweep-judges-only-unseen-writes.md`.
      */
     static void guardSweep(Map<String, Object> sch, Path state, Object in, String stdin)
             throws Exception {
@@ -5706,13 +5737,15 @@ public class ArchHook {
         Set<String> before = new LinkedHashSet<>(
                 Arrays.asList(readOrNull(baselineFile).split("\n")));
         List<String> exempt = asStrList(get(sch, "guard", "sweep_exempt"));
+        Set<String> admitted = new HashSet<>(
+                Arrays.asList(orEmpty(readOrNull(guardAdmittedFile(state))).split("\n")));
 
         List<String> lines = new ArrayList<>();
         for (String entry : now.out) {
             if (entry.isBlank() || before.contains(entry)) continue;
             String rel = porcelainPath(entry);
             if (rel == null) continue;
-            if (matchesAny(exempt, rel)) continue;
+            if (matchesAny(exempt, rel) || admitted.contains(rel)) continue;
             List<String> v = guardViolations(sch, state, in, rel, true);
             if (!v.isEmpty()) { lines.add(""); lines.addAll(v); }
         }
