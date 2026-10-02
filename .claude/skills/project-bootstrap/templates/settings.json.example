@@ -130,6 +130,12 @@
             "command": "java",
             "args": ["-jar", "${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.jar", "context", "subagent"],
             "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["-jar", "${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.jar", "tests", "agent-start"],
+            "timeout": 20
           }
         ]
       }
@@ -141,6 +147,12 @@
             "type": "command",
             "command": "java",
             "args": ["-jar", "${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.jar", "audit", "agent"],
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "java",
+            "args": ["-jar", "${CLAUDE_PROJECT_DIR}/.claude/hooks/ArchHook.jar", "tests", "agent-end"],
             "timeout": 20
           }
         ]

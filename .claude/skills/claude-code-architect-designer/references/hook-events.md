@@ -118,7 +118,7 @@ Before proposing Form 7c, check whether one of these already runs the check — 
 | `check` | Dependency-direction boundaries, from the blueprint's rules |
 | `format` | Formats what was just written |
 | `schema` | Frontmatter, `.mcp.json`, `settings.json` hooks, and frontmatter injections |
-| `tests` | Tests of the modules a turn touched |
+| `tests` | Tests of the modules a turn touched; `agent-start`/`agent-end` defer it while a writer subagent runs |
 | `guard` | Blocks a design skill from writing `src/`, and freezes approved specs |
 | `audit` | Execution trail — off in this repo, on in the generated project |
 | `compose` | Compose services up, port conflicts, image tag vs. Testcontainers |

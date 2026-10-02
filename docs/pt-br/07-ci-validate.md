@@ -36,6 +36,7 @@ flowchart TD
         H11[AuditRenderTest.java — onde a execução gastou, erros redigidos, classes observer puladas]
         H12[MigrationsSchemaTest.java — entrada de migrations que nenhum projeto veria → exit 2]
         H13[ModuleMapTest.java — arquivo editado → o módulo Maven que format, check e tests passam no -pl]
+        H14[TestsDeferTest.java — subagent escritor da sessão rodando → tests adiado, Maven não chamado]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -73,9 +74,10 @@ flowchart TD
 
 | Job / passo | Verifica | Contra o quê |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois doze testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify` e depois treze testes nas três OSes, todos disparando `java -jar .claude/hooks/ArchHook.jar` — o mesmo comando que os registros rodam | Decisão D8 — "cross-platform" como fato, não alegação — e decisão 0084: testar o source não prova nada sobre o jar que os hooks lançam |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompila sob o `hook_build.javac_feature` fixado e compara byte a byte | Decisão 0075 — editar `ArchHook.java` sem rebuild não muda nada que um hook executa. Roda antes dos testes, para que exercitem bytes revisados |
 | `format, check and tests hand Maven the module the edited file belongs to` | `ModuleMapTest.java`, projetos descartáveis com um `mvnw` stub que registra seus argumentos: um arquivo sob o `src/main` ou `src/test` da raiz de um projeto single-module chega a `format`, `check` e `tests` como `-pl .`, um arquivo multi-module como `-pl <módulo>`; um `.java` sob `.claude/` e um projeto sem `pom.xml` nunca chamam o Maven | Decisão 0107, issue #60 — `moduleOf` nunca olhava o POM da raiz, então esses três hooks retornavam antes de chamar o Maven em todo projeto single-module desde o primeiro commit, e um hook que não faz nada parece um hook que passou |
+| `tests defers while a writer subagent of the session runs, and only then` | `TestsDeferTest.java`, projetos descartáveis com um `mvnw` stub e uma cópia do `extensions.json` real: depois de `tests agent-start` de um agente cuja classe tem `executor: true`, o `Stop` não chama o Maven e imprime `Tests deferred`; um agente só de leitura, um agente sem classe, um escritor que já parou, o escritor de outra sessão e um marcador além de `tests.writer_agent_max_minutes` chamam o Maven como antes | Decisão 0116, issue #76 — um `Stop` da thread principal durante um executor em background rodava o Maven sobre a árvore pela metade e bloqueava uma thread que não pode escrever `src/`. Um marcador nunca escrito traz isso de volta, um nunca apagado desliga o gate — os dois em silêncio |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 20 casos: toda grafia de force push de `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) recusada, redirect / `sed -i` fora do território de uma fase de design recusados, `sed` simples, alvo `$OUT` irresolvível e `ls` liberados; na fase do `sonar-lessons`, `./mvnw -q` e `gh issue create` liberados e o scan redirecionado para `target/` recusado | Decisão 0076. O modo roda antes de todo comando de shell em toda sessão: falha caro nas duas direções, e o parser é dado que uma edição de JSON muda |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` num repo git descartável: arquivo sujo antes do prompt nunca é nomeado, escrita fora do território no turno sai 2, `stop_hook_active` não bloqueia duas vezes, escrita dentro do território fica calada, a trilha do `audit` gravada no turno não é reportada enquanto um `Write` nela continua recusado, uma cadeia `/new-feature` → skill de design → `git-publish` cujos spec, parciais e escrita do executor em `src/` foram admitidos em tool-time fica calada com a pasta aprovada depois, e um arquivo que nenhum guard de tool-time viu no mesmo turno continua nomeado | Decisões 0065, 0105 e 0114 — o sweep vale o que vale a baseline do `guard prompt`, e uma baseline quebrada falha calada nos dois sentidos |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` sai 2 nomeando a linha de endereço anunciado, `stop_hook_active` sai 0, um listener `localhost` limpa a linha, sem compose fica calado; collector sem porta publicada e `app` sem `OTLP_METRICS_ENDPOINT` saem 2 pela pergunta 5, e as variantes corrigidas, `SPRING_DATASOURCE_URL` sobrescrevendo `${DB_URL:…}` e o default host-first do Kafka ficam calados | Decisões 0064 e 0110. Não precisa de Docker — as checagens de endereço anunciado e de placeholders leem os arquivos |
@@ -214,6 +216,7 @@ claude plugin validate .claude/skills   # não roda em CI — CLI ausente no run
 java .claude/hooks/ArchHook.java doctor
 java .claude/.ci/BoundaryTest.java
 java .claude/.ci/ModuleMapTest.java
+java .claude/.ci/TestsDeferTest.java
 java .claude/.ci/InjectionPathTest.java
 java .claude/.ci/MigrationsSchemaTest.java
 java .claude/.ci/ComposeTagTest.java
