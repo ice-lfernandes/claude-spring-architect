@@ -15,6 +15,7 @@ it is not a norm and is not loaded by any skill or hook.
 | 5 | `new-feature` orchestrator + `java-spring-boot-developer` executor | ✅ end-to-end run against `demo-app`, gaps remediated in D24 |
 | 6 | Publication: README, LICENSE, cross-platform CI | ✅ only missing examples with real output |
 | 7 | Post-bootstrap extension skills (`docker-architect`, `messaging-architect`, `jobs-architect`, `git-publish`, `arch-adopt`, `audit-usage`) and meta-tooling (`claude-code-architect-designer`, now also deciding MCP server placement, hooks and `permissions`) | ✅ done; more triggered by real symptoms as they show up |
+| 8 | Multi-agent generated project: the project a team uses daily also guides GitHub Copilot (and other `AGENTS.md` readers), from the same sources, in this repository | ⬜ planned — see § Multi-agent portability |
 
 Deliberate order: rules come **before** skills. Writing skills first leads to rules
 copied inside them — exactly the duplication this design exists to avoid.
@@ -119,6 +120,42 @@ copied inside them — exactly the duplication this design exists to avoid.
       `export` manifest against disk and `export-determinism` exports every blueprint; a real
       generated project compiling is still checked by hand
 - [ ] `claude plugin validate` in CI — not installed on the GitHub Actions runner, run by hand before a PR
+
+### Multi-agent portability (generated project)
+
+Origin: `@.claude/lessons-learned/lessons-learned-019.md`. Decided on 2026-10-02: adapt this
+repository, not a separate Copilot repository. A fork would hold a second copy of every
+norm, blueprint and `ArchHook.java`, which is invariant 2 broken at repository scale. Copilot
+becomes another target of `export`, fed by the same `rules/` and blueprints.
+
+Split: the **generator** (`/init-project`, `project-bootstrap`, `claude-code-architect-designer`)
+stays Claude Code only — it relies on `context: fork`, the `Agent` tool, `AskUserQuestion`,
+`` !`…` `` injections and `SubagentStart`, and one person runs it once. The **generated
+project** is what a mixed team uses daily, so that is what becomes portable.
+
+Every step goes through `/claude-code-architect-designer` with a decision record. Each
+Copilot capability below is re-verified against GitHub's documentation at design time.
+Cheapest mechanism first: a step starts only after the previous one is shipped and a real
+mixed team reports a gap it did not close.
+
+- [ ] 1. Generated `AGENTS.md` — root, plus one per module where the blueprint emits a module
+      `CLAUDE.md`; delivered by `project-bootstrap` and `arch-adopt`, listed in `export`,
+      with a `migrations` entry. Open: which file owns the portable facts (`AGENTS.md`
+      imported by `CLAUDE.md`, or the reverse), and whether Claude Code reads `AGENTS.md`
+      natively. Must say plainly which guarantees hold only under Claude Code
+- [ ] 2. Measure the development skills under Copilot, which also loads `.claude/skills/` —
+      record which work as-is and which break (`context: fork`, agent delegation, `!`
+      injections) before rewriting any
+- [ ] 3. Path-scoped norms — derive `.github/instructions/*.instructions.md` (`applyTo`) from
+      `rules/*.md` `paths`, through the same mechanism as `export.derived_paths`; derived,
+      never a hand-kept second copy
+- [ ] 4. Executor as a Copilot custom agent (`.github/agents/*.agent.md`), derived from
+      `agent_classes`
+- [ ] 5. `guard` wired to Copilot hooks (`.github/hooks/*.json`, `preToolUse`) — needs an input
+      adapter in `ArchHook` for Copilot's payload; territory keyed on `agent_type` and skill
+      phase may have no equivalent
+- Out of scope: porting the generator; the audit trail (built on Claude Code transcripts);
+  pattern-catalog injection at `SubagentStart`
 
 ### Documentation
 
