@@ -256,6 +256,16 @@ próprios listeners. `ArchHook.java compose` lê o arquivo procurando isso
 (`compose.advertised_env_suffixes`); um serviço que não anuncia nada não afirma nada e é
 deixado em paz.
 
+**Todo `${VAR:default}` que aponta para um serviço do compose vale em dois lugares.** O
+default serve o `./mvnw spring-boot:run` no host: precisa ser `localhost` numa porta que o
+serviço **publica**. A variável no `environment:` do `app` serve o container: sem ela,
+`localhost` lá dentro é a própria aplicação. O collector OTLP não publicou porta da 0046 até
+a issue #66, e todo export do host falhou com o `compose` dizendo saudável. Agora a pergunta 5
+do `compose` lê os dois lados, e o gate bloqueia um projeto antigo logo depois do
+`/arch-adopt`. A saída é o prompt da migration `otlp-host-run`. Se outro projeto segura a
+4318, use `OTLP_HTTP_PORT` no `.env` e a mesma porta em `OTLP_ENDPOINT`/`OTLP_METRICS_ENDPOINT`
+no host. Design: `.claude/decisions/0110-otlp-host-first-collector.md`.
+
 **`grep -A2 "^services:" docker-compose.yml` não é a lista de serviços.** Ele lê duas linhas
 e para, perdendo serviços declarados mais abaixo e reportando os filhos de `volumes:` como
 serviços. Toda peça que precisa dessa lista — a injeção e o step 3 do `docker-architect`, o

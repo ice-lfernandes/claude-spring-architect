@@ -13,6 +13,11 @@
 # side, and the collector's config is owned by a different skill — adding a third signal
 # means changing both files in the same change. See lessons-learned-008 and
 # docker-architect/SKILL.md § Boundary with neighboring pieces.
+#
+# The defaults are host-first. `./mvnw spring-boot:run` runs on the host, where
+# `localhost:4318` is the port the collector service publishes. Inside compose, the `app`
+# service overrides both variables with `otel-collector:4318`. `ArchHook.java compose`
+# checks that each pair agrees.
 management:
   tracing:
     sampling:

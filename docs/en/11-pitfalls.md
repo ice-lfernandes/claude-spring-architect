@@ -247,6 +247,16 @@ neither the healthcheck nor Testcontainers sees it — Testcontainers wires its 
 `ArchHook.java compose` reads the file for it (`compose.advertised_env_suffixes`); a service
 that advertises nothing claims nothing and is left alone.
 
+**Every `${VAR:default}` that points at a compose service holds in two places.** The default
+serves `./mvnw spring-boot:run` on the host: it has to be `localhost` on a port the service
+**publishes**. The variable in `app`'s `environment:` serves the container: without it,
+`localhost` in there is the application itself. The OTLP collector published no port from
+0046 until issue #66, and every host-run export failed while `compose` said healthy. Question
+5 of `compose` now reads both sides, and the gate blocks an older project right after
+`/arch-adopt`. The way out is the `otlp-host-run` migration's prompt. If another project
+holds 4318, set `OTLP_HTTP_PORT` in `.env` and use the same port in `OTLP_ENDPOINT` and
+`OTLP_METRICS_ENDPOINT` on the host. Design: `.claude/decisions/0110-otlp-host-first-collector.md`.
+
 **`grep -A2 "^services:" docker-compose.yml` is not the list of services.** It reads two
 lines and stops, dropping services declared further down and reporting the children of
 `volumes:` as services. Every piece that needs that list — `docker-architect`'s injection

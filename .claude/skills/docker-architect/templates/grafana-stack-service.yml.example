@@ -9,10 +9,10 @@
 # in this repo.
 #
 # Only Grafana publishes a host port, and it is variable with a default. Tempo and
-# Prometheus are reached by Grafana over the compose network and have no reason to bind
-# the host; the collector's own 4318 is not published either, for the same reason. That
-# is what keeps two sibling projects generated from the same blueprint from fighting over
-# a port — see lessons-learned-008. Set GRAFANA_PORT in one of them to run both UIs.
+# Prometheus are reached by Grafana and by the collector over the compose network and have
+# no reason to bind the host. Fewer host ports means less for two sibling projects
+# generated from the same blueprint to fight over — see lessons-learned-008. Set
+# GRAFANA_PORT in one of them to run both UIs.
 #
 # Init scripts for the three, written by docker-architect step 6:
 #   docker/init/tempo/tempo-config.yml              ← templates/tempo-config.yml.example

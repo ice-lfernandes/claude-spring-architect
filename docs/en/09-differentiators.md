@@ -97,7 +97,7 @@ Python, zero `.sh`/`.ps1` twins. The eleven modes:
 | `schema` | `PreToolUse`/`PostToolUse`/`Stop` | yes | frontmatter **and body** of skills/agents/rules, `.mcp.json` with a secret scan, hook entries, the export manifest — all against `extensions.json` |
 | `guard` | `UserPromptSubmit`, `PreToolUse` (`Write`/`Edit`, `Bash`, `Skill`/`Agent`), `Stop` | yes | every skill writes only its class's territory, every agent its own; shell writes read from the command; a force push in any spelling refused; a `build`-class skill unreachable in a design run; an approved spec immutable; `sweep` on `Stop` re-checks what the turn wrote on disk |
 | `audit` | 11 lifecycle events | no | execution trail of every skill and agent (generated project only) |
-| `compose` | manual, inside `doctor`, and `compose gate` on `Stop` | the gate, yes | every compose service is `running`, no foreign container on its ports, no `image:` tag disagreeing with `src/test`, no published port advertised only in-network |
+| `compose` | manual, inside `doctor`, and `compose gate` on `Stop` | the gate, yes | every compose service is `running`, no foreign container on its ports, no `image:` tag disagreeing with `src/test`, no published port advertised only in-network, no `${VAR:default}` pointing at a service the host or the `app` container cannot reach |
 | `context` | `SubagentStart` (generated project only) | no | hands the design-pattern catalog to every agent whose class declares `pattern_catalog: true` |
 | `doctor` | manual (`/arch-doctor`) | no | setup diagnosis |
 | `export` | manual (through `/arch-adopt`) | no | writes a target project's `.claude/` from a manifest, with a provenance stamp |

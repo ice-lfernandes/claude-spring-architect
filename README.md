@@ -289,7 +289,7 @@ claude-spring-architect/
         ├── BoundaryTest.java        # a forbidden import, requires exit 2
         ├── InjectionPathTest.java   # a cwd-relative `!`…``, requires exit 2
         ├── ComposeTagTest.java      # compose image tag vs. the one src/test pins
-        ├── ComposeGateTest.java     # a published service no host client can reach blocks Stop
+        ├── ComposeGateTest.java     # a published service no host client can reach blocks Stop — and a placeholder the host or app cannot reach
         ├── SkillTerritoryTest.java  # a skill writing outside its class's territory, requires exit 2
         ├── AgentTerritoryTest.java  # the same for each agent class
         ├── BashGuardTest.java       # force pushes and shell writes outside the phase
@@ -846,7 +846,7 @@ The same file carries every mode, so there is one place to read and one to test:
 | `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
 | `schema` | `PreToolUse` / `PostToolUse` / `Stop` | yes | frontmatter **and body** of skills, agents, rules; `.mcp.json` with a secret scan; hook registrations; the export manifest — all against `schemas/extensions.json` |
 | `guard` | `UserPromptSubmit` (`prompt`), `PreToolUse` (`write`, `bash`, `call`), `Stop` (`sweep`) | yes | every skill and agent writes only its class's territory (allowlist, deny by default) — through the file tools, through the shell write shapes it can read, and re-checked at the end of the turn against what git sees changed; a `build`-class skill is unreachable during a design run; approved specs are frozen; force pushes refused |
-| `compose` | `Stop` (`gate`); manual; folded into `doctor` | `gate` only | every compose service `running`, no foreign container on this project's ports, every published port advertised at a host-resolvable address, no `image:` tag disagreeing with the one `src/test` pins |
+| `compose` | `Stop` (`gate`); manual; folded into `doctor` | `gate` only | every compose service `running`, no foreign container on this project's ports, every published port advertised at a host-resolvable address, no `image:` tag disagreeing with the one `src/test` pins, every `${VAR:default}` pointing at a compose service holding on the host and in the `app` container |
 | `context` | `SubagentStart` (generated project only) | no | hands the design-pattern catalog to each agent whose class declares `pattern_catalog` |
 | `audit` | eleven lifecycle events | no | execution trail of every skill and agent (generated project only) |
 | `doctor` | manual (`/arch-doctor`) | no | diagnoses the setup on this machine |

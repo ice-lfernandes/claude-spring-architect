@@ -97,7 +97,7 @@ Zero Python, zero `.sh`/`.ps1` em paralelo. Os onze modos:
 | `schema` | `PreToolUse`/`PostToolUse`/`Stop` | sim | frontmatter e **corpo** de skills/agents/rules, `.mcp.json` com scan de segredos, entradas de hook, manifesto de export — tudo contra `extensions.json` |
 | `guard` | `UserPromptSubmit`, `PreToolUse` (`Write`/`Edit`, `Bash`, `Skill`/`Agent`), `Stop` | sim | cada skill escreve só o território da classe dela, cada agent o seu; escrita via shell lida do comando; force push recusado em qualquer grafia; classe `build` inalcançável em run de design; spec aprovado é imutável; `sweep` no `Stop` reconfere o que o turno escreveu em disco |
 | `audit` | 11 eventos do ciclo de vida | não | trilha de execução de toda skill e agent (só no projeto gerado) |
-| `compose` | manual, dentro de `doctor`, e `compose gate` no `Stop` | o gate, sim | todo serviço do compose está `running`, nenhum container alheio nas portas, nenhuma tag divergindo de `src/test`, nenhuma porta publicada anunciada só na rede interna |
+| `compose` | manual, dentro de `doctor`, e `compose gate` no `Stop` | o gate, sim | todo serviço do compose está `running`, nenhum container alheio nas portas, nenhuma tag divergindo de `src/test`, nenhuma porta publicada anunciada só na rede interna, nenhum `${VAR:default}` apontando para um serviço que o host ou o container `app` não alcança |
 | `context` | `SubagentStart` (só no projeto gerado) | não | entrega o catálogo de design patterns a todo agent cuja classe declara `pattern_catalog: true` |
 | `doctor` | manual (`/arch-doctor`) | não | diagnóstico do setup |
 | `export` | manual (via `/arch-adopt`) | não | escreve o `.claude/` de um projeto-alvo a partir de manifesto, com stamp de proveniência |

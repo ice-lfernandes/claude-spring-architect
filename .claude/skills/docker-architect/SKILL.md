@@ -210,6 +210,15 @@ this table is where it lives.
    and `OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics`, matching the two
    placeholders the observability fragment declares. Wiring only the tracing one leaves
    metrics pointed at the app container's own `localhost`, which is silent and wrong.
+
+   **Every pair is host-first by default and container-first in `app`.** The default in
+   `application.yml` serves `./mvnw spring-boot:run` on the host, so it names `localhost`
+   and a port the service **publishes**. The `app` service's variable names the compose
+   hostname and the container port. A service the application reaches with no published
+   port leaves the host run with nothing to connect to. The collector shipped like that
+   from 0046 until issue #66, and Kafka once shipped with the same mismatch in its
+   advertised listeners. `ArchHook.java compose` checks both halves of each pair, reading
+   only files.
    Don't invent datasource properties beyond connectivity — sizing and the rest are
    `@.claude/rules/persistence.md`'s and `persistence-architect`'s call, not this
    skill's.
@@ -261,8 +270,10 @@ this table is where it lives.
    step a real run skipped — and say what it
    catches: `java .claude/hooks/ArchHook.java compose` — every service actually
    `running` rather than `created`, no container from another project holding a host
-   port this one publishes, and **every published port advertised at an address the host can
-   resolve**. `docker compose up -d` exits 0 in all three of those failures.
+   port this one publishes, **every published port advertised at an address the host can
+   resolve**, and **every `${VAR:default}` the application points at a compose service
+   holding on both sides**: the default reaches a port that service publishes, and `app`
+   overrides the variable. `docker compose up -d` exits 0 in all four of those failures.
 
    The third one is the only check in the system that sees it, so say what it means when it
    fires: a service that publishes a port to the host is claiming host reachability, and a

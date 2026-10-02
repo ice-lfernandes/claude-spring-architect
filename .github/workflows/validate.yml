@@ -122,7 +122,8 @@ jobs:
         run: java .claude/.ci/SweepTest.java
 
       # The advertised-address half of the gate reads the file, so it blocks on all three
-      # OSes whether or not a Docker daemon is present (0064).
+      # OSes whether or not a Docker daemon is present (0064). Question 5 — a placeholder the
+      # host run or the `app` container cannot reach — reads files the same way (0110).
       - name: compose gate blocks a published service no host client can reach
         run: java .claude/.ci/ComposeGateTest.java
 
