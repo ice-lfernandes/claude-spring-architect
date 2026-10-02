@@ -106,7 +106,7 @@ sequenceDiagram
     Note over CMD,U: Phase 1 · Interview
     CMD->>DM: reads the matrix and pitfalls before asking
     CMD->>U: AskUserQuestion — up to 4 questions per call, 2-3 calls
-    U-->>CMD: answers across the applicable axes (17 total; 11-13 MCP only, 14-16 hook only, 17 answered by the skill itself)
+    U-->>CMD: answers across the applicable axes (17 total, 11-13 MCP only, 14-16 hook only, 17 answered by the skill itself)
     end
 
     rect rgb(235,245,235)
