@@ -126,6 +126,7 @@ a design-time edge, like `project-bootstrap` writing `src/`; the runtime directi
 | Aggregate, value object, invariant, ports of an already-designed use case | skill `domain-modeling` |
 | Table, JPA mapping, migration, index, slow query, datasource properties | skill `persistence-architect` |
 | REST adapter, controller, DTO, status, OpenAPI | skill `rest-api-architect` |
+| Who may call an endpoint — roles, groups, only the owner — Spring Security on the servlet stack, JWT/opaque token/local users/API key, 401/403, CORS, Actuator and Swagger exposure | skill `security-architect` — `32-seguranca.md`, runs after REST and before messaging in `/new-feature` when the use case's `Access` row asks for it; norms in `@.claude/rules/authorization.md`. WebFlux is out of scope |
 | Tests, coverage, installing ArchUnit | skill `test-architect` |
 | Orchestrating a full feature (use case → domain → REST → persistence → tests) | skill `new-feature` — manual only: the user types `/new-feature <description>`, the model can't invoke it. One use case per run |
 | Implementing a spec that is already `approved`, in a later session | the same skill: `/new-feature UC-NNN-<slug>` over an approved spec goes straight to the executor delegation, skipping the design steps and consolidation. It is the only supported door to the pre-flight, the `CHANGELOG.md` writes, the four mandated findings and the `git-publish` chaining |

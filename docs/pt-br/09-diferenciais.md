@@ -137,7 +137,8 @@ Ver [08-audit-usage.md](08-audit-usage.md).
 
 `/new-feature` desenha **um caso de uso por execução** em cinco parciais com dono único
 (`use-case-design` → `domain-modeling` → `rest-api-architect` → `persistence-architect`
-→ `test-architect`, mais `messaging-architect` condicional e `jobs-architect`
+→ `test-architect`, mais `security-architect` condicional — acesso por endpoint,
+mecanismo, filter chain, 401/403, CORS —, `messaging-architect` condicional e `jobs-architect`
 condicional — tecnologia de scheduling, cadência, coordenação entre instâncias, e o
 próprio schedule do relay de outbox), consolida num
 `UC-NNN-spec.md` com ciclo `draft → approved → implemented` (ou `implemented-blocked`),

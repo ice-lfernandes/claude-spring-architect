@@ -1,0 +1,102 @@
+/*
+ * EXEMPLAR — mechanism "users owned by the application": usernames and password hashes live in
+ * this application's database, and callers send HTTP Basic over TLS. Chosen only when no
+ * identity provider exists or is planned (`references/mechanism-decision-matrix.md` § 2).
+ * Issuing this application's own tokens is an authorization server — a separate decision,
+ * not this exemplar.
+ *
+ * PASSWORDS: the delegating encoder stores `{bcrypt}…` today and verifies older encodings
+ * after the default changes. Adaptive and slow on purpose — and HTTP Basic pays one hash per
+ * request, the cost `32-seguranca.md` § 2 writes next to the choice. Never a plain, reversible
+ * or fast-digest encoder (`.claude/rules/authorization.md` § Mechanism).
+ *
+ * THE COMPROMISED-PASSWORD CHECK IS NOT A BEAN HERE: registered as a bean, the framework runs
+ * it on every authentication — with HTTP Basic, on every request, each one a call to the
+ * breach service. The rule asks for it when a password is set or changed, so the use case that
+ * sets passwords calls it, through a port of its own.
+ *
+ * CSRF stays off in `SecurityConfig` only while no browser sends these credentials on its own.
+ * A browser that caches Basic credentials authenticates cross-site requests too: that client
+ * needs CSRF on, and a different mechanism is the better answer.
+ *
+ * WHERE THE USERS COME FROM: an outbound port of the application layer, implemented by the
+ * persistence adapter — `32-seguranca.md` § 7 asks `persistence-architect` for the store. The
+ * security wiring never touches a repository or an entity.
+ */
+
+// --- UserCredentialsRepository.java
+package com.exemplo.minhaapi.application.port.out;
+
+import java.util.Optional;
+import java.util.Set;
+
+/** Read side of the credentials store. Implemented by the persistence adapter. */
+public interface UserCredentialsRepository {
+
+    Optional<UserCredentials> findByUsername(String username);
+
+    /** One user's stored credentials; `roles` are names without prefix (`SUPPORT`). */
+    record UserCredentials(String username, String passwordHash, boolean enabled, Set<String> roles) {}
+}
+
+// --- LocalUsersSecurityConfig.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import com.exemplo.minhaapi.application.port.out.UserCredentialsRepository;
+import com.exemplo.minhaapi.application.port.out.UserCredentialsRepository.UserCredentials;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration(proxyBeanMethods = false)
+public class LocalUsersSecurityConfig {
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    /**
+     * The framework builds the authentication provider from this bean and the encoder above.
+     * The not-found message never reaches the caller: an unknown user and a wrong password both
+     * answer the same 401.
+     */
+    @Bean
+    UserDetailsService userDetailsService(UserCredentialsRepository credentials) {
+        return username -> credentials.findByUsername(username)
+                .map(LocalUsersSecurityConfig::toUserDetails)
+                .orElseThrow(() -> new UsernameNotFoundException("Unknown user"));
+    }
+
+    @Bean
+    AuthenticationMechanism httpBasicMechanism() {
+        return new AuthenticationMechanism() {
+            @Override
+            public void applyTo(
+                    HttpSecurity http,
+                    ProblemDetailAuthenticationEntryPoint entryPoint,
+                    ProblemDetailAccessDeniedHandler accessDeniedHandler) {
+                http.httpBasic(basic -> basic.authenticationEntryPoint(entryPoint));
+            }
+
+            @Override
+            public String challengeScheme() {
+                return "Basic realm=\"api\"";
+            }
+        };
+    }
+
+    private static UserDetails toUserDetails(UserCredentials user) {
+        return User.withUsername(user.username())
+                .password(user.passwordHash())
+                .roles(user.roles().toArray(String[]::new))
+                .disabled(!user.enabled())
+                .build();
+    }
+}

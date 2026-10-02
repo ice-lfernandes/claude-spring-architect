@@ -20,8 +20,8 @@ a column, or a message body is *designed*, before any code exists, cite it by pa
 
 ## Scope
 
-**Personal data at rest and in transit, and nothing else.** Secrets and authentication and
-authorization are separate topics, planned as their own files in
+**Personal data at rest and in transit, and nothing else.** Authentication and authorization
+are `@.claude/rules/authorization.md`; secrets are a separate topic, planned in
 `@.claude/rules/00-index.md`. What is observed is a national identifier serialized in clear
 into a `jsonb` column and published in clear on a broker topic, in a project whose logs
 masked the same field correctly.

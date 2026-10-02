@@ -1,0 +1,69 @@
+/*
+ * EXEMPLAR — the WARN line and the counter for every refused authentication and every denied
+ * authorization, from the framework's own events (`.claude/rules/authorization.md` § Credentials
+ * and logs). The only place a refusal is logged above DEBUG: `SecurityExceptionHandler` writes
+ * the response and nothing else, so a refusal is never logged twice.
+ *
+ * TWO PUBLISHERS, ONE OF THEM OPT-IN:
+ *   - authentication events: Boot already registers the publisher. Failure events are mapped by
+ *     exact exception type — an invalid bearer token arrives as a bad-credentials failure.
+ *   - authorization events: NOT published unless an `AuthorizationEventPublisher` bean exists.
+ *     Without the bean below, every denial is silent. Granted events stay off: one per request
+ *     is noise, not audit.
+ *
+ * WHAT IS LOGGED: the principal's name (never the token or the header), method and path for a
+ * request, the failure category for an authentication. WHAT IS COUNTED: two counters, each with
+ * one bounded tag — never the principal or the path as a tag (`.claude/rules/observability.md`
+ * § Metrics).
+ */
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.AbstractAuthenticationFailureEvent;
+import org.springframework.security.authorization.AuthorizationEventPublisher;
+import org.springframework.security.authorization.SpringAuthorizationEventPublisher;
+import org.springframework.security.authorization.event.AuthorizationDeniedEvent;
+import org.springframework.security.core.Authentication;
+
+@Configuration(proxyBeanMethods = false)
+public class SecurityAuditListener {
+
+    private static final Logger log = LoggerFactory.getLogger(SecurityAuditListener.class);
+
+    private final MeterRegistry meters;
+
+    public SecurityAuditListener(MeterRegistry meters) {
+        this.meters = meters;
+    }
+
+    @Bean
+    static AuthorizationEventPublisher authorizationEventPublisher(ApplicationEventPublisher publisher) {
+        return new SpringAuthorizationEventPublisher(publisher);
+    }
+
+    @EventListener
+    public void onAuthenticationFailure(AbstractAuthenticationFailureEvent event) {
+        String category = event.getException().getClass().getSimpleName();
+        log.warn("Authentication failed: {}", category);
+        meters.counter("security.authentication.failures", "reason", category).increment();
+    }
+
+    @EventListener
+    public void onAuthorizationDenied(AuthorizationDeniedEvent<?> event) {
+        Authentication authentication = event.getAuthentication().get();
+        String principal = authentication == null ? "anonymous" : authentication.getName();
+        String target = event.getObject() instanceof HttpServletRequest request
+                ? request.getMethod() + " " + request.getRequestURI()
+                : "method " + event.getObject();
+        log.warn("Access denied for {} at {}", principal, target);
+        String kind = event.getObject() instanceof HttpServletRequest ? "request" : "method";
+        meters.counter("security.authorization.denied", "kind", kind).increment();
+    }
+}

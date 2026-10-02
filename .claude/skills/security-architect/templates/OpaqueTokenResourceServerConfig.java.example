@@ -1,0 +1,66 @@
+/*
+ * EXEMPLAR — mechanism "resource server, opaque token": the caller sends
+ * `Authorization: Bearer <token>` and this application asks the identity provider's
+ * introspection endpoint whether the token is active, on every request. `32-seguranca.md` § 2.
+ *
+ * WHAT BOOT ALREADY DOES: with `spring.security.oauth2.resourceserver.opaquetoken.introspection-uri`,
+ * `client-id` and `client-secret` set, Boot builds the introspector — no bean here. The client
+ * secret comes from an environment placeholder, never a literal
+ * (`.claude/rules/authorization.md` § Credentials and logs).
+ *
+ * WHAT THIS CLASS ADDS: the authorities. The default conversion maps only `scope` to `SCOPE_`;
+ * roles and groups sit wherever the provider put them, so the introspection attributes go
+ * through the same `ClaimPathAuthoritiesConverter` and `TokenAuthoritiesProperties` the
+ * signed-token mechanism uses — take both from `JwtResourceServerConfig.java.example`, unchanged.
+ *
+ * THE COST THIS MECHANISM CARRIES, written next to the choice in § 2: one network call per
+ * request, and the provider's availability becomes this API's. Caching introspection results
+ * trades that back for the revocation delay that made opaque tokens the choice in the first
+ * place — a recorded decision, with its time-to-live, never a default.
+ */
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.time.Instant;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
+import org.springframework.security.oauth2.core.OAuth2TokenIntrospectionClaimNames;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthentication;
+import org.springframework.security.oauth2.server.resource.introspection.OpaqueTokenAuthenticationConverter;
+
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(TokenAuthoritiesProperties.class)
+public class OpaqueTokenResourceServerConfig {
+
+    @Bean
+    AuthenticationMechanism opaqueTokenResourceServer(TokenAuthoritiesProperties properties) {
+        ClaimPathAuthoritiesConverter authorities = new ClaimPathAuthoritiesConverter(properties);
+        OpaqueTokenAuthenticationConverter converter = (token, principal) -> {
+            Instant issuedAt = principal.getAttribute(OAuth2TokenIntrospectionClaimNames.IAT);
+            Instant expiresAt = principal.getAttribute(OAuth2TokenIntrospectionClaimNames.EXP);
+            OAuth2AccessToken accessToken =
+                    new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, token, issuedAt, expiresAt);
+            return new BearerTokenAuthentication(
+                    principal, accessToken, authorities.fromClaims(principal.getAttributes()));
+        };
+        return new AuthenticationMechanism() {
+            @Override
+            public void applyTo(
+                    HttpSecurity http,
+                    ProblemDetailAuthenticationEntryPoint entryPoint,
+                    ProblemDetailAccessDeniedHandler accessDeniedHandler) {
+                http.oauth2ResourceServer(oauth2 -> oauth2
+                        .opaqueToken(opaque -> opaque.authenticationConverter(converter))
+                        .authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDeniedHandler));
+            }
+
+            @Override
+            public String challengeScheme() {
+                return "Bearer";
+            }
+        };
+    }
+}

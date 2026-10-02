@@ -1,0 +1,95 @@
+/*
+ * EXEMPLAR — how the identity of the caller crosses from the security framework into the use
+ * case, for an ownership row of `32-seguranca.md` § 5. Three pieces, three owners:
+ *
+ *   - `Actor` (application layer) is `10-dominio.md`'s: the command carries it, and it holds no
+ *     framework type. Shown here only so the resolver has something to build.
+ *   - `CurrentActorResolver` (this package) is the only class that reads an `Authentication` to
+ *     produce it. Mechanism-agnostic: the authentication's name is the principal the mechanism
+ *     configured (`sub` for a token, the username, the API client id), and the override is an
+ *     authority, whatever the mechanism.
+ *   - The controller receives the `Authentication` as a method argument, resolves the actor,
+ *     and passes it in the command. The use case then decides "owner, or holds the override,
+ *     else the resource's not-found exception" — `.claude/rules/authorization.md` § Boundary.
+ *
+ * WHY NOT `SecurityContextHolder` IN THE USE CASE: a thread-local read makes the use case
+ * untestable without the framework, and silently anonymous when a job or a listener calls it.
+ * WHY NOT `@AuthenticationPrincipal Jwt` IN THE CONTROLLER: it ties the endpoint to one
+ * mechanism; the resolver keeps the controller identical if § 2 changes.
+ *
+ * The identity value's type (`UUID` here, a `CustomerId` value object built by the use case)
+ * follows `10-dominio.md`. A principal name that is not a valid identity means a misconfigured
+ * provider: the resolver raises an authentication failure (401) instead of guessing.
+ */
+
+// --- Actor.java (application layer — declared by 10-dominio.md)
+package com.exemplo.minhaapi.application.port.in.order;
+
+import java.util.UUID;
+
+/** Who is executing the command. `support` is the override `00-caso-de-uso.md`'s `Access` granted. */
+public record Actor(UUID customerId, boolean support) {}
+
+// --- CurrentActorResolver.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import com.exemplo.minhaapi.application.port.in.order.Actor;
+import java.util.UUID;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
+
+@Component
+public class CurrentActorResolver {
+
+    private static final String SUPPORT_AUTHORITY = "ROLE_" + Roles.SUPPORT;
+
+    public Actor resolve(Authentication authentication) {
+        boolean support = authentication.getAuthorities().stream()
+                .anyMatch(authority -> SUPPORT_AUTHORITY.equals(authority.getAuthority()));
+        return new Actor(customerId(authentication.getName()), support);
+    }
+
+    private static UUID customerId(String principalName) {
+        try {
+            return UUID.fromString(principalName);
+        } catch (IllegalArgumentException e) {
+            throw new BadCredentialsException("Principal is not a customer identifier", e);
+        }
+    }
+}
+
+// --- OrderController.java (usage, in the REST adapter)
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.adapter.in.rest.security.CurrentActorResolver;
+import com.exemplo.minhaapi.application.port.in.order.CancelOrderCommand;
+import com.exemplo.minhaapi.application.port.in.order.CancelOrderUseCase;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class OrderController {
+
+    private final CancelOrderUseCase cancelOrder;
+    private final CurrentActorResolver actors;
+
+    public OrderController(CancelOrderUseCase cancelOrder, CurrentActorResolver actors) {
+        this.cancelOrder = cancelOrder;
+        this.actors = actors;
+    }
+
+    /**
+     * Authenticated in the chain; owner-or-support in the use case. No `@PreAuthorize`: the
+     * rule needs the order, and loading it is the use case's job.
+     */
+    @PostMapping("/api/v1/orders/{orderId}/cancellation")
+    public ResponseEntity<Void> cancel(@PathVariable UUID orderId, Authentication authentication) {
+        cancelOrder.handle(new CancelOrderCommand(orderId, actors.resolve(authentication)));
+        return ResponseEntity.noContent().build();
+    }
+}

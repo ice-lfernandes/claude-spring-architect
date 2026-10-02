@@ -138,9 +138,10 @@ See [08-audit-usage.md](08-audit-usage.md).
 
 `/new-feature` designs **one use case per run** across five partials with a single
 owner each (`use-case-design` → `domain-modeling` → `rest-api-architect` →
-`persistence-architect` → `test-architect`, plus a conditional `messaging-architect`
-and a conditional `jobs-architect` — scheduling technology, cadence, cluster
-coordination, and the outbox relay's own schedule), consolidates them into a
+`persistence-architect` → `test-architect`, plus a conditional `security-architect` —
+access per endpoint, mechanism, filter chain, 401/403, CORS — a conditional
+`messaging-architect`, and a conditional `jobs-architect` — scheduling technology, cadence,
+cluster coordination, and the outbox relay's own schedule), consolidates them into a
 `UC-NNN-spec.md` with a `draft → approved → implemented` (or `implemented-blocked`)
 lifecycle, asks for approval, and only then offers the `java-spring-boot-developer`
 executor — a separate agent, with restricted tools, that only writes under `src/`.

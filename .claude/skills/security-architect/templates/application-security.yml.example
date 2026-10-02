@@ -1,0 +1,57 @@
+# EXEMPLAR — the security properties of `32-seguranca.md` § 9, merged into the project's
+# `application.yml` (one `spring:` root, one `app:` root — never a second one). Keep only the
+# block of the mechanism § 2 chose; the others are here to show the shape.
+#
+# Every secret is an environment placeholder with NO default: a missing variable fails the
+# boot, which is the point — a default secret in a versioned file is a published secret
+# (`.claude/rules/authorization.md` § Credentials and logs). Non-secret values (issuer, audience)
+# may default to the local identity provider of `docker-compose.yml`.
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        # Signed token (JWT). Boot builds the decoder from the issuer's discovery document and
+        # validates signature, expiry, issuer and — with `audiences` — audience. Never declare a
+        # JwtDecoder bean without re-adding the audience check by hand.
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:8180/realms/orders}
+          audiences:
+            - ${OAUTH2_AUDIENCE:orders-api}
+        # Opaque token — instead of `jwt`, never both.
+        # opaquetoken:
+        #   introspection-uri: ${OAUTH2_INTROSPECTION_URI}
+        #   client-id: ${OAUTH2_CLIENT_ID}
+        #   client-secret: ${OAUTH2_CLIENT_SECRET}
+
+app:
+  security:
+    # OpenAPI document and Swagger UI answer without a credential (the rule's default).
+    api-docs-public: true
+    # Authority (without ROLE_) that reads actuator endpoints other than health and info.
+    actuator-role: OPERATOR
+    cors:
+      # Empty → no CORS mapping: no browser on another origin calls this API.
+      allowed-origins: []
+      # allowed-origins:
+      #   - https://app.example.com
+    # Where the provider puts each kind of authority — signed and opaque tokens alike.
+    # Keycloak shown; `references/mechanism-decision-matrix.md` § 3 for the others.
+    token:
+      principal-claim: sub
+      roles-claims:
+        - realm_access.roles
+      groups-claims:
+        - groups
+      scopes-claims:
+        - scope
+    # API-key mechanism only.
+    # api-key:
+    #   header: X-API-Key
+
+management:
+  endpoint:
+    health:
+      # Details only for a caller the chain authorized (the operator role); health stays public.
+      show-details: when-authorized
+      roles: OPERATOR

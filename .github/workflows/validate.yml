@@ -583,7 +583,7 @@ jobs:
           curl -sS --fail --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
             https://start.spring.io/starter.tgz \
             -d type=maven-project -d language=java -d javaVersion=21 \
-            -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka,batch,quartz \
+            -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka,batch,quartz,security,oauth2-resource-server \
             -o /tmp/starter.tgz
           mkdir -p /tmp/ref && tar xzf /tmp/starter.tgz -C /tmp/ref
           # micrometer-tracing-bridge-otel is managed by the Boot BOM: no version here,
@@ -607,7 +607,9 @@ jobs:
           # check than to treat as verified what wasn't verified. `batch` and `quartz` are in
           # the reference project because jobs-architect's exemplars import both (0087);
           # ShedLock, db-scheduler and JobRunr are not Initializr dependencies and stay
-          # unchecked here.
+          # unchecked here. `security` and `oauth2-resource-server` are there because
+          # security-architect's exemplars import both, and test-architect's secured
+          # controller test imports the security test support the `security` entry adds (0112).
           PREFIXES='^(org\.springframework|org\.testcontainers|jakarta|io\.micrometer|org\.junit|org\.assertj|org\.slf4j|org\.hibernate|lombok|org\.quartz)\.'
           IMPORTS=$(grep -rhoE '^ *import (static )?[a-z][a-zA-Z0-9_.]+;' \
                       .claude/skills/*/templates/*.java.example \

@@ -16,6 +16,7 @@ file wins** and the losing value is listed in § Resolved divergences.
 | `00-caso-de-uso.md` | `use-case-design` | ✅ |
 | `10-dominio.md` | `domain-modeling` | ✅ |
 | `30-rest.md` | `rest-api-architect` | ✅ |
+| `32-seguranca.md` | `security-architect` | ✅ |
 | `20-persistencia.md` | `persistence-architect` | ✅ |
 | `25-mensageria.md` | `messaging-architect` | — not applicable (no external delivery) |
 | `35-jobs.md` | `jobs-architect` | — not applicable (no Form B, no scheduled trigger) |
@@ -92,6 +93,25 @@ Detail: `30-rest.md` § 1-5.
 | Idempotency | `Idempotency-Key` required |
 | Pagination | none — no collection |
 | Dependencies | springdoc (version already in `pom.xml`), tracing bridge, validation |
+
+---
+
+## 4.5 Security — conditional, implement right after 4
+
+Detail: `32-seguranca.md` § 1-10. When step 3b was skipped: `none` and the skip row — e.g.
+"authenticated, covered by the chain's deny-by-default".
+
+| Decision | Value |
+|---|---|
+| Mechanism | OAuth2 resource server, signed token — NEW (first secured case) |
+| Access | `POST /api/v1/users` → role `USER_ADMIN`, method security on the controller |
+| Public paths | OpenAPI document and UI; `/actuator/health`, `/actuator/info` — reasons in § 1 |
+| Ownership | none |
+| Failures | no token `401` + `WWW-Authenticate` · without `USER_ADMIN` `403` |
+| Setup | `SecurityConfig`, `JwtResourceServerConfig`, Problem Details handlers, `SecurityExceptionHandler`, `Roles` — all NEW |
+| Dependencies | `spring-boot-starter-security`, `spring-boot-starter-security-oauth2-resource-server` — managed by the Boot parent |
+
+Implemented by the executor's Block S.
 
 ---
 
