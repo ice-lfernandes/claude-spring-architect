@@ -3,7 +3,9 @@
 // CI test: proves the two Checkstyle configs `project-bootstrap` writes into every project
 // parse, and enforce what they claim — `checkstyle.xml.example` over production code,
 // `checkstyle-test.xml.example` over `src/test`. A restricted identifier (`record`,
-// `permits`) must fail both; a clean file must pass both.
+// `permits`) must fail both; a clean file must pass both. The test config also fails a
+// throw-assertion lambda that makes more than one call (testing.md § Names and shape,
+// decision 0113), and passes every one-call shape.
 //
 // Why this test exists: the first version of the `IllegalIdentifierName` module relied on
 // Checkstyle's default `format`, which a documentation page said rejects `record`. On the
@@ -198,6 +200,41 @@ public class CheckstyleConfigTest {
                 }
                 """);
 
+        // testing.md § Names and shape: the lambda of a throw assertion makes exactly one call.
+        // One file per assertion name and per shape the test config must reject, and one file
+        // holding every shape it must let through — a constructor under test, a method
+        // reference, a one-statement block, and a lambda that is not a throw assertion's
+        // (decision 0113).
+        Map<String, Path> throwLambdas = new LinkedHashMap<>();
+        throwLambdas.put("TwoCalls", throwLambda(src, "TwoCalls",
+                "assertThatThrownBy(() -> service.handle(Command.of(1)));"));
+        throwLambdas.put("NewArgument", throwLambda(src, "NewArgument",
+                "assertThatThrownBy(() -> service.handle(new Command(1)));"));
+        throwLambdas.put("QualifiedAssertion", throwLambda(src, "QualifiedAssertion",
+                "Assertions.assertThatThrownBy(() -> service.handle(Command.of(1)));"));
+        throwLambdas.put("IsThrownBy", throwLambda(src, "IsThrownBy",
+                "assertThatExceptionOfType(InvalidEmail.class).isThrownBy(() -> Email.of(raw.trim()));"));
+        throwLambdas.put("BlockOfTwo", throwLambda(src, "BlockOfTwo",
+                "assertThatCode(() -> { service.open(); service.close(); }).doesNotThrowAnyException();"));
+        throwLambdas.put("CatchThrowable", throwLambda(src, "CatchThrowable",
+                "catchThrowable(() -> Money.of(Amount.of(-1)));"));
+        throwLambdas.put("CatchThrowableOfType", throwLambda(src, "CatchThrowableOfType",
+                "catchThrowableOfType(InvalidMoney.class, () -> new Money(Amount.of(-1)));"));
+        throwLambdas.put("CatchException", throwLambda(src, "CatchException",
+                "catchException(() -> service.handle(Command.of(1)));"));
+        throwLambdas.put("ChainedCall", throwLambda(src, "ChainedCall",
+                "assertThrows(NotFound.class, () -> repository.find(id).orElseThrow());"));
+        throwLambdas.put("AssertThrowsExactly", throwLambda(src, "AssertThrowsExactly",
+                "assertThrowsExactly(NotFound.class, () -> service.handle(Command.of(1)));"));
+        Path oneCall = throwLambda(src, "OneCall", """
+                assertThatThrownBy(() -> new Money(-1)).isInstanceOf(InvalidMoney.class);
+                        assertThatThrownBy(() -> service.handle(command)).hasMessage(code.name());
+                        assertThatExceptionOfType(InvalidEmail.class).isThrownBy(() -> Email.of(invalid));
+                        assertThrows(NotFound.class, () -> service.handle(command));
+                        assertThatThrownBy(service::handle);
+                        assertThatCode(() -> { service.handle(command); }).doesNotThrowAnyException();
+                        commands.forEach(c -> { service.handle(c); audit.log(c); });""");
+
         int failures = 0;
         for (Path config : List.of(mainConfig, testConfig)) {
             String name = config.getFileName().toString();
@@ -207,11 +244,18 @@ public class CheckstyleConfigTest {
         }
         String mainName = mainConfig.getFileName().toString();
         for (Map.Entry<String, Path> form : comments.entrySet()) {
-            failures += expectFlagged(jar, mainConfig, form.getValue(), form.getKey(), mainName);
+            failures += expectFlagged(jar, mainConfig, form.getValue(), form.getKey(), mainName,
+                    "code-quality.md § Comments: Javadoc is the only comment.");
         }
         failures += expectClean(jar, mainConfig, allowed, mainName);
         // Main only: test code holds § Comments by review, so the light config must not flag it.
         failures += expectClean(jar, testConfig, comments.get("LineComment"), testConfig.getFileName().toString());
+        String testName = testConfig.getFileName().toString();
+        for (Path file : throwLambdas.values()) {
+            failures += expectFlagged(jar, testConfig, file, "OneCallInThrowLambda", testName,
+                    "testing.md § Names and shape: the lambda of a throw assertion makes exactly one call.");
+        }
+        failures += expectClean(jar, testConfig, oneCall, testName);
 
         if (failures > 0) {
             System.out.println("❌ " + failures + " Checkstyle config assertion(s) failed (Checkstyle " + version + ").");
@@ -219,17 +263,19 @@ public class CheckstyleConfigTest {
         }
         System.out.println("✅ Both Checkstyle configs parse on Checkstyle " + version
                 + ", pass a clean file, and reject `record` and `permits` as names;"
-                + " checkstyle.xml rejects every comment but Javadoc and its two exceptions.");
+                + " checkstyle.xml rejects every comment but Javadoc and its two exceptions;"
+                + " checkstyle-test.xml rejects a throw-assertion lambda with more than one call.");
     }
 
-    static int expectFlagged(Path jar, Path config, Path file, String check, String configName) throws Exception {
+    static int expectFlagged(Path jar, Path config, Path file, String check, String configName, String rule)
+            throws Exception {
         Run run = checkstyle(jar, config, file);
         if (run.exit != 0 && run.out.contains("[" + check + "]")) {
             System.out.println("  ✓ " + configName + " rejects " + file.getFileName() + " with " + check);
             return 0;
         }
         System.out.println("  ✗ " + configName + " should reject " + file.getFileName() + " with " + check
-                + " — exit " + run.exit + ". code-quality.md § Comments: Javadoc is the only comment.");
+                + " — exit " + run.exit + ". " + rule);
         System.out.println(indent(run.out));
         return 1;
     }
@@ -259,6 +305,19 @@ public class CheckstyleConfigTest {
                 + ". A default `format` lets it through: keep the explicit value.");
         System.out.println(indent(run.out));
         return 1;
+    }
+
+    static Path throwLambda(Path dir, String name, String statements) throws IOException {
+        return write(dir.resolve(name + "Test.java"), """
+                package example;
+
+                class %sTest {
+
+                    void run() {
+                        %s
+                    }
+                }
+                """.formatted(name, statements));
     }
 
     record Run(int exit, String out) {}

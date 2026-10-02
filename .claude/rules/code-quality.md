@@ -69,8 +69,10 @@ project's build:
   or `/* */` outside its two exceptions, a `/** */` inside a body, a `TODO`. The numbers
   and the exceptions in that file and in this rule are the same: changing one side
   without the other is a bug. Test code has its own light set,
-  `config/checkstyle/checkstyle-test.xml`: these size limits and the comment check apply
-  to production code only — in test code § Comments is held by review
+  `config/checkstyle/checkstyle-test.xml`, at `verify`: these size limits and the comment
+  check apply to production code only — in test code § Comments is held by review. It
+  holds the restricted identifiers and the one-call lambda of
+  `@.claude/rules/testing.md` § Names and shape
 - **Spotless** (`spotless:check` at `verify`; part of `check` in Gradle) — formatting and
   unused imports, main and test alike
 - **ArchUnit** (`ArchitectureTest.java` in the main module) — boundaries, ISP, `private
