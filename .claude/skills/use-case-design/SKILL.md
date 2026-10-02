@@ -192,6 +192,11 @@ the decision.
 8. **Generate** from `templates/use-case-spec.md.example` into
    `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md`. Create the folder; don't create the
    empty partials.
+
+   **The template is the only source of the file's shape.** An existing
+   `00-caso-de-uso.md` is read in step 4 as a contract — aggregate, names — never as a
+   format exemplar: a spec written by an older version keeps lines the template has since
+   dropped, and copying one revives them.
 9. **Report and stop.** File path, the boundary applied, the backlog entries the split
    produced (if any), and the table of who details each partial. **Don't invoke any
    skill** — see § Handoff.
@@ -214,7 +219,8 @@ docs/use-cases/UC-001-create-user/
 
 While the partials don't exist yet, `00-caso-de-uso.md` stands on its own: the
 component table already names every file to create and who details it. It's an
-incomplete spec, not an invalid one — and the header says so.
+incomplete spec, not an invalid one. Which partials exist is read from the folder, never
+written into this file: a status line here goes stale the moment the next partial lands.
 
 ## Handoff — declarative, never executable
 
