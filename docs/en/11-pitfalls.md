@@ -297,6 +297,15 @@ after the change ships: the first runs the skill's old copy, which does not have
 yet. Until then, writing the line by hand is the immediate fix. Design:
 `.claude/decisions/0093-lessons-learned-016-fact-sources.md`.
 
+**The `tests` Stop hook does not run while a writer subagent works in the background.** An
+agent whose class in `agent_classes` has `executor: true` leaves a marker at `SubagentStart`
+and deletes it at the `SubagentStop` of the same `agent_id`. While the marker exists, the main
+thread's `Stop` prints `⏸ Tests deferred: <agent> still running in background` and exits 0
+without calling Maven. The `Stop` of the turn the agent's notification opens runs the tests. A
+marker older than `tests.writer_agent_max_minutes` is deleted and ignored: an agent killed by
+machine sleep never reaches `SubagentStop`. Design:
+`.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`.
+
 ### Rules and decisions
 
 **A rule without `paths` loads at launch, every session — it is not "citation only".** So

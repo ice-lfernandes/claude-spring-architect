@@ -305,6 +305,15 @@ de `/arch-adopt` depois que a mudança for publicada: a primeira roda a cópia a
 skill, que ainda não tem o step. Até lá, escrever a linha à mão é o jeito imediato de
 resolver. Design: `.claude/decisions/0093-lessons-learned-016-fact-sources.md`.
 
+**O hook `tests` do `Stop` não roda enquanto um subagent escritor trabalha em background.** Um
+agente cuja classe em `agent_classes` tem `executor: true` deixa um marcador no
+`SubagentStart` e o apaga no `SubagentStop` do mesmo `agent_id`. Enquanto o marcador existe, o
+`Stop` da thread principal imprime `⏸ Tests deferred: <agente> still running in background` e
+sai 0, sem chamar o Maven. Quem roda os testes é o `Stop` do turno que a notificação do agente
+abre. Um marcador mais velho que `tests.writer_agent_max_minutes` é apagado e ignorado: um
+agente morto pelo sono da máquina nunca chega ao `SubagentStop`. Design:
+`.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`.
+
 ### Rules e decisions
 
 **Uma rule sem `paths` carrega no launch, em toda sessão — não é "só citação".** Por isso toda

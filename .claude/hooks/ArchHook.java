@@ -11,7 +11,9 @@
 // a person may run the source directly, java ArchHook.java <mode> (JDK 21+).
 //   check   PostToolUse — forbidden imports + incremental compile     (blocks)
 //   format  PostToolUse — spotless on the touched module              (never blocks)
-//   tests   Stop        — tests of the changed modules                (blocks)
+//   tests   Stop        — tests of the changed modules, deferred while a writer
+//                         subagent runs; agent-start/agent-end at SubagentStart/Stop
+//                         keep that marker                              (blocks)
 //   schema  Pre/PostToolUse + Stop — frontmatter, injection paths, skill bodies (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
 //   guard   PreToolUse  — a skill writes only its class's territory, approved specs
@@ -66,7 +68,7 @@ public class ArchHook {
             switch (mode) {
                 case "check"  -> check(filePath(stdin));
                 case "format" -> format(filePath(stdin));
-                case "tests"  -> tests(stdin);
+                case "tests"  -> tests(args.length > 1 ? args[1] : "stop", stdin);
                 case "schema" -> schema(stdin);
                 case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
@@ -155,12 +157,24 @@ public class ArchHook {
     }
 
     // ── tests ────────────────────────────────────────────────────────────────
-    static void tests(String stdin) throws Exception {
+    static void tests(String phase, String stdin) throws Exception {
+        switch (phase) {
+            case "agent-start" -> { testsAgentStart(stdin); return; }
+            case "agent-end"   -> { testsAgentEnd(stdin); return; }
+            default            -> { }
+        }
         // If the Stop hook already blocked before, don't block again: avoids cycles.
         if (Pattern.compile("\"stop_hook_active\"\\s*:\\s*true").matcher(stdin).find()) return;
 
         String mvnw = wrapper();
         if (mvnw == null) return;
+
+        String writer = testsWriterRunning(stdin);
+        if (writer != null) {
+            err("⏸ Tests deferred: " + writer + " still running in background."
+                    + " The Stop of the turn its result opens runs them.");
+            return;
+        }
 
         Proc diff = run(gitCmd(), "diff", "--name-only", "HEAD");
         Proc untracked = run(gitCmd(), "ls-files", "--others", "--exclude-standard");
@@ -185,6 +199,85 @@ public class ArchHook {
             System.exit(2);
         }
         err("✅ Tests green");
+    }
+
+    /**
+     * Records a writer subagent as running, so a main-thread `Stop` that fires while it works
+     * in the background does not test its half-written tree. Registered at `SubagentStart`
+     * (with `agent-end` at `SubagentStop`) in the generated project's settings; writes a
+     * marker per `agent_id` only for an agent whose class in `agent_classes` has
+     * `executor: true`, since only those leave `src/` or a POM mid-edit.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, motivated by axis 16 — `tests` owns
+     * the gate, so it owns the state the gate reads. The closest rejected form wrote the
+     * marker from `context subagent` and cleared it from `audit agent`, which a project can
+     * switch off. Design: .claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md
+     */
+    static void testsAgentStart(String stdin) throws Exception {
+        Object in = Json.parse(stdin);
+        String id = asStr(get(in, "agent_id"));
+        String type = asStr(get(in, "agent_type"));
+        if (id == null || id.isBlank() || type == null) return;
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        String cls = agentClassOf(sch, type);
+        if (cls == null || !Boolean.TRUE.equals(get(sch, "agent_classes", "classes", cls, "executor"))) return;
+        Path dir = testsState(asStr(get(in, "session_id")));
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve(safeName(id)), type + "\n" + System.currentTimeMillis() + "\n",
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Deletes the marker of this `agent_id` only. `SubagentStop` also fires for internal
+     * agents, interleaved with a background one (0041), so a shared counter would be cleared
+     * by the wrong event; an id with no marker deletes nothing.
+     */
+    static void testsAgentEnd(String stdin) throws Exception {
+        Object in = Json.parse(stdin);
+        String id = asStr(get(in, "agent_id"));
+        if (id == null || id.isBlank()) return;
+        Files.deleteIfExists(testsState(asStr(get(in, "session_id"))).resolve(safeName(id)));
+    }
+
+    /**
+     * The agent type of a writer subagent still running in this session, or null. A marker
+     * older than `tests.writer_agent_max_minutes` is deleted and ignored: an agent killed by
+     * machine sleep never reaches `SubagentStop`, and its marker must not switch the gate off
+     * for the rest of the session. No value in `extensions.json` defers nothing.
+     */
+    static String testsWriterRunning(String stdin) throws IOException {
+        Path dir = testsState(asStr(get(Json.parse(stdin), "session_id")));
+        if (!Files.isDirectory(dir)) return null;
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        long capMs = num(get(sch, "tests", "writer_agent_max_minutes")) * 60_000L;
+        long now = System.currentTimeMillis();
+        String running = null;
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.collect(Collectors.toList())) {
+                List<String> lines = Files.readAllLines(f, StandardCharsets.UTF_8);
+                long started = 0;
+                try {
+                    started = lines.size() > 1 ? Long.parseLong(lines.get(1).strip()) : 0;
+                } catch (NumberFormatException e) {
+                    // unreadable marker: treated as expired below
+                }
+                if (started > 0 && now - started < capMs) {
+                    if (running == null) running = lines.get(0).strip();
+                } else {
+                    Files.deleteIfExists(f);
+                }
+            }
+        }
+        return running;
+    }
+
+    static Path testsState(String session) {
+        return Paths.get(System.getProperty("java.io.tmpdir"), "archhook-tests",
+                session == null || session.isBlank() ? "unknown" : safeName(session));
+    }
+
+    static String safeName(String s) {
+        return s.replaceAll("[^A-Za-z0-9_-]", "_");
     }
 
     // ── doctor ───────────────────────────────────────────────────────────────
