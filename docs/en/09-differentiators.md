@@ -1,287 +1,280 @@
-# Differentiators — what this repository does that its neighbors don't
+# Differentiators — what this is, who the neighbors are, and what is actually unique
 
-Primary source: the `.claude/` itself (`hooks/ArchHook.java`, `blueprints/*.yaml`,
-`skills/*/SKILL.md`, `schemas/extensions.json`), `.github/workflows/validate.yml`, and
-`CLAUDE.md` § Invariants. The comparison with other projects was made on 2026-09-24
-from their public READMEs; links at the end.
+Primary source for this repository: the `.claude/` itself (`hooks/ArchHook.java`,
+`blueprints/*.yaml`, `skills/*/SKILL.md`, `schemas/extensions.json`),
+`.github/workflows/validate.yml`, and `CLAUDE.md` § Invariants.
 
-## How the neighboring projects are organized
+The landscape was mapped on **2026-10-02**. For each project, we read its public README
+and repository tree, and took star counts and last-push dates from the GitHub API that
+day. Commercial products are described from their vendors' documentation. A claim we
+could not verify is marked as such. A "—" in the tables means *not found in its public
+README or tree*, not *proven absent*.
 
-There are dozens of "Claude Code + Spring Boot" repositories on GitHub. Almost all of
-them fall into one of three families:
+## What category this is
 
-| Family | What it ships | Examples |
-|---|---|---|
-| **Static template** | A repository with a `pom.xml`, a pinned Spring version, and a `.claude/` with skills and agents. You clone it and adapt. The architecture is whatever came with the template | `piomin/claude-ai-spring-boot` and its forks; `ryu-qqq/claude-spring-standards` (fixed hexagonal, 15 skills, 12 commands, 5 hooks) |
-| **Skills pack** | Knowledge `SKILL.md` files (Spring, JPA, Security, WebFlux) to copy into `.claude/skills/`. They generate no project and verify nothing | `rrezartprebreza/spring-boot-skills`, `a-pavithraa/springboot-skills-marketplace` |
-| **Agents + hooks bundle** | Agents per role (backend, reviewer, security, devops…) plus generic hooks: format on save, block `rm -rf` | `altmemy/claude-code-templates/claude-spring-boot` (7 agents) |
+The best-fitting label is **agent harness, specialized for one stack**. Three terms are
+in use in 2026, and the repository sits where they overlap:
 
-The common trait: **the architecture is prose**. It lives in a `CLAUDE.md` or a skill,
-and what makes the model respect it is the model remembering. Where a hook exists, it
-formats or blocks a dangerous command — it never reads the declared architecture.
-Versions are pinned in the template's `pom.xml`. None of them generates a project; none
-measures what each skill cost.
+- **Agent harness / harness engineering.** This is the *agent = model + harness* framing.
+  The harness has guides, which steer the model before it acts (norms, skills, specs), and
+  sensors, which check what it did (hooks, tests, the build). Here, `rules/`, `skills/`,
+  `blueprints/` and the use-case specs are the guides. `ArchHook`, ArchUnit, the
+  incremental build and CI are the sensors.
+- **Spec-driven development (SDD).** `/new-feature` is *spec-first*: one use case is
+  designed per run, consolidated into a spec, approved, and frozen before code is written.
+- **Project generator.** `/init-project` generates through Spring Initializr, in the
+  tradition of JHipster and Seed4J. Here, though, generation is the first step, not the
+  product.
 
-## The differentiators, largest first
+What it is **not**: a coding assistant (Claude Code is the assistant, and this repository
+brings no model); an agent framework such as LangGraph, CrewAI, or Spring AI (those build
+agents, while this one constrains one); a static template (nothing is cloned and versions
+are not pinned).
 
-### 1 · A generator, not a template
+## The neighbors
 
-`/init-project` clones nothing. It calls the Spring Initializr at run time
-(`curl start.spring.io/starter.tgz`), restructures the result according to the chosen
-blueprint, and copies into the project everything the project will cite: norms,
-development skills, executor agents, the hook, and the schema. Consequences:
+### 1 · Spring and Java on coding agents
 
-- **Versions never come from memory** (`CLAUDE.md` invariant 8). A public template with
-  `spring-boot 3.4.1` pinned is obsolete in weeks; here CI fails if someone writes a
-  version as a fact.
-- **The generated project is self-contained** (invariant 9). Whoever clones
-  `pedidos-api` doesn't have this repository and doesn't need it: `/new-feature`,
-  `/arch-doctor`, `/audit-usage`, and every norm are already inside. `README.md`,
-  `README.pt-br.md`, and a `GENESIS.md` recording the generation itself travel along.
-- **Zero business code** (D21). No `ExampleController` to delete: the first feature is
-  born from a real spec.
-- **And the project updates itself afterwards, without the generator.** `/arch-adopt`
-  installs this `.claude/` into a project never generated here, or pulls a newer version
-  into one that is behind — refusing a dirty worktree, and writing through the `export`
-  mode from a **manifest of data**, not from a prose table a model copies row by row. The
-  `.claude/.arch-provenance.json` stamp holds the hash of every file written, and
-  `/arch-doctor` names the ones edited by hand **before** the next update overwrites them.
-  It is the only creation skill that travels into the project: that is how it updates
-  itself once the plugin that delivered it is gone.
-  See [10-arch-adopt.md](10-arch-adopt.md).
+| Project | ★ (2026-10-02) | What it ships | Closest to us on | What it does not do (as far as we found) |
+|---|---|---|---|---|
+| [loiane/specs-driven-development-spring-angular](https://github.com/loiane/specs-driven-development-spring-angular) | 61 | SDD toolkit for Spring Boot + Angular, on Claude Code, Copilot, and Windsurf. Flow `/spec → /plan → /build → /test → /validate → /review → /ship`, role agents, Maven quality harness (ArchUnit, PIT, JaCoCo, SpotBugs, OWASP), onboarding agent for existing projects | **The closest overall.** Spec pipeline, plus bash hooks that enforce scope: `enforce-files-in-scope.sh` blocks edits outside the active task's files, and `block-impl-without-failing-test.sh` gates implementation on a failing test | No project generation and no selectable architecture. Scope comes from the active task, not from a class per skill. Hooks need bash and `jq`. No per-layer design for security, messaging, or jobs. No update mechanism found |
+| [jabrena/plinth](https://github.com/jabrena/plinth) | 442 | "AI-native Java enterprise SDLC": many skills, agents, and commands, an OpenSpec-based workflow, Jira/GitHub/Azure DevOps integration. Spring Boot, Quarkus, Micronaut; Cursor, Claude Code, Codex, Copilot | Spec pipeline at scale; breadth of Java knowledge | — blueprint-driven generation; — write-territory hooks |
+| [a-pavithraa/springboot-skills-marketplace](https://github.com/a-pavithraa/springboot-skills-marketplace) | 78 | Claude Code / Codex plugin. Its `creating-springboot-projects` skill interviews, uses Spring Initializr, and scaffolds one of several progressive architectures (Layered, Modular Monolith, Tomato, DDD+Hexagonal) | **Closest on generation.** Initializr-based, with an architecture choice | Architectures are prose in one skill, not data a hook reads. — spec pipeline, — enforcement hooks, — export into the project |
+| [jdubois/dr-jskill](https://github.com/jdubois/dr-jskill) | 341 | An Agent Skill by JHipster's creator that generates Spring Boot applications from start.spring.io, with a database, Docker, and a front end | Initializr generation, opinionated defaults | One opinion, no architecture choice. — spec pipeline, — enforcement |
+| [piomin/claude-ai-spring-boot](https://github.com/piomin/claude-ai-spring-boot) | 1,303 | Clonable template: `CLAUDE.md`, agents, skills | The most popular in the niche | Static template, pinned versions. — hooks, — pipeline. Last push 2026-04-29 |
+| [rrezartprebreza/spring-boot-skills](https://github.com/rrezartprebreza/spring-boot-skills) | 292 | Spring Boot convention skills | Spring knowledge | Generates nothing, verifies nothing |
+| [giuseppe-trisciuoglio/developer-kit](https://github.com/giuseppe-trisciuoglio/developer-kit) | 351 | Multi-language plugin marketplace, with a large Java plugin (agents, commands, skills) | Breadth | Library, not a generator or enforcer |
+| [ryu-qqq/claude-spring-standards](https://github.com/ryu-qqq/claude-spring-standards) · [altmemy/claude-code-templates](https://github.com/altmemy/claude-code-templates) | 0 · 25 | Fixed-hexagonal template with skills and hooks · role agents with generic hooks | Template + hooks | One fixed architecture; hooks format or block dangerous commands but do not read the architecture |
 
-### 2 · Architecture is data, and CI proves it
+### 2 · Classic Java generators, now with AI front ends
 
-Seven architectures out of the box — `hexagonal`, `clean-architecture-multi-module`,
-`clean-architecture-single-module`, `layered`, `onion`, `vertical-slice`,
-`modular-monolith` — plus `custom-template` to describe your own. Each one is a YAML
-with modules, `depends_on`, `forbidden_imports`, `packages.map`, `architecture_paths`,
-features, and honest trade-offs (a blueprint with no `trade_offs` is invalid).
-
-The test that proves the design: **adding an architecture touches no skill, agent, or
-command**. The `new blueprint doesn't touch prompts` job in `validate.yml` checks that
-on every push. In the neighboring projects, switching from hexagonal to onion means
-rewriting the prompts.
-
-See [05-blueprints.md](05-blueprints.md).
-
-### 3 · One declaration, three effects
-
-A module's `forbidden_imports` field in the blueprint feeds, with no manual copy:
-
-1. the module's local `CLAUDE.md` — so the model **knows**;
-2. `.claude/forbidden-imports.txt` — so the `check` hook **blocks** the write the moment
-   it happens (`exit 2`, inside Claude Code);
-3. `depends_on` in the POMs — so the **compiler** refuses the import, in `multi-module`.
-
-Later, `test-architect` (setup mode) installs ArchUnit and the JaCoCo gate (80% lines /
-70% branches) through the `archunit-installer` agent, which translates `packages.map`
-into ArchUnit rules. Add Checkstyle in the `validate` phase and a `lombok.config` with
-`flagUsage = ERROR` for `@Data`/`@Setter`. None of these layers depends on the model
-remembering the rule.
-
-### 4 · Enforcement in a single Java file, eleven modes, no shell
-
-`.claude/hooks/ArchHook.java` is the one source; every hook launches the precompiled
-`.claude/hooks/ArchHook.jar` built from it (`java -jar ArchHook.jar <mode>`, ~0.3 s against
-~3.3 s for a source launch), invoked in exec form (`command: java`, `args: [...]`) — no
-shell, no `chmod`, identical on Linux, macOS, and Windows. The jar is committed, and CI
-requires it to be byte for byte what the source compiles to under the pinned JDK. Zero
-Python, zero `.sh`/`.ps1` twins. The eleven modes:
-
-| Mode | Event | Blocks? | What it does |
+| Project | ★ | What it is | Difference |
 |---|---|---|---|
-| `check` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | yes | forbidden imports + incremental `test-compile` of the touched module |
-| `format` | `PostToolUse` Write\|Edit\|MultiEdit\|NotebookEdit | no | `spotless:apply` on the module |
-| `tests` | `Stop` | yes | tests of the modules changed since `HEAD` |
-| `schema` | `PreToolUse`/`PostToolUse`/`Stop` | yes | frontmatter **and body** of skills/agents/rules, `.mcp.json` with a secret scan, hook entries, the export manifest — all against `extensions.json` |
-| `guard` | `UserPromptSubmit`, `PreToolUse` (`Write`/`Edit`, `Bash`, `Skill`/`Agent`), `Stop` | yes | every skill writes only its class's territory, every agent its own; shell writes read from the command; a force push in any spelling refused; a `build`-class skill unreachable in a design run; an approved spec immutable; `sweep` on `Stop` re-checks what the turn wrote on disk |
-| `audit` | 11 lifecycle events | no | execution trail of every skill and agent (generated project only) |
-| `compose` | manual, inside `doctor`, and `compose gate` on `Stop` | the gate, yes | every compose service is `running`, no foreign container on its ports, no `image:` tag disagreeing with `src/test`, no published port advertised only in-network, no `${VAR:default}` pointing at a service the host or the `app` container cannot reach |
-| `context` | `SubagentStart` (generated project only) | no | hands the design-pattern catalog to every agent whose class declares `pattern_catalog: true` |
-| `doctor` | manual (`/arch-doctor`) | no | setup diagnosis |
-| `export` | manual (through `/arch-adopt`) | no | writes a target project's `.claude/` from a manifest, with a provenance stamp |
-| `build` | `PostToolUse` on `ArchHook.java` (this repository only), and by hand | no | rebuilds the jar under the pinned JDK; `build --verify` is CI's byte comparison |
+| [JHipster](https://github.com/jhipster/generator-jhipster) + [jhipster-mcp](https://github.com/jhipster/jhipster-mcp) | 22k | Deterministic, entity-centric generator. The MCP server lets an agent write JDL and drive the CLI | The AI drives a generator. Nothing governs the code the agent writes afterwards |
+| [Seed4J](https://github.com/seed4j/seed4j) (successor of JHipster Lite) | 618 | Modular hexagonal generator that deliberately generates no business code; a community MCP server exposes it | Closest in spirit on "structure, not business code". No agent pipeline or write-time enforcement |
+| [Bootify](https://bootify.io) | commercial | Web generator marketed as an AI-first JHipster alternative, with an MCP server | Not verified beyond its marketing page |
 
-CI runs `doctor`, `build --verify`, and ten tests that inject the violation and require the
-block, on all three operating systems — every one against the jar the hooks launch:
-`BoundaryTest` (forbidden import → `exit 2`), `InjectionPathTest` (cwd-relative injection →
-`exit 2`), `ComposeTagTest` (an `image:` tag disagreeing with the one `src/test` pins →
-reported), `SkillTerritoryTest` and `AgentTerritoryTest` (a write outside the class's
-`write_allow` → `exit 2`), `BashGuardTest` (force push, shell write outside the phase),
-`SweepTest`, `ComposeGateTest`, `SubagentContextTest` and `AuditRenderTest`. The full list
-is in [07-ci-validate.md](07-ci-validate.md). "Cross-platform" is a verified fact, not a
-claim.
+### 3 · Language-agnostic SDD frameworks and harnesses
 
+| Project | ★ | What it is | Difference |
+|---|---|---|---|
+| [GitHub Spec Kit](https://github.com/github/spec-kit) | 140k | `specify` CLI: constitution → specify → plan → tasks → implement, for 30+ coding agents, with an upgrade path | The reference SDD toolkit. Gates are prompt checklists; stack-agnostic |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | 71k | Lightweight SDD built on change proposals and spec deltas, aimed at existing code; `openspec update` | Deliberately avoids rigid phase gates — the opposite of a frozen spec |
+| [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) | 54k | Agile personas (analyst, PM, architect, dev) from PRD to stories | Covers product discovery; enforcement is by prompt |
+| [obra/superpowers](https://github.com/obra/superpowers) | 294k | Skills framework and methodology (brainstorm → plan → TDD) across many harnesses | The largest in the space; methodology, not stack governance |
+| [Spec Kitty](https://github.com/spec-kitty/spec-kitty) | 1.7k | SDD plus a governance "Charter", work-package lanes, review/accept gates, `spec-kitty upgrade` | **Closest on governance** of the workflow; not stack-specialized |
+| [Pilot Shell](https://github.com/maxritter/pilot-shell) | 2.1k | "Context and harness engineering" for Claude Code and Codex: hooks, quality gates, updates | **Closest on enforcement**; not stack-specialized |
+| [rails_ai_agents](https://github.com/ThibautBaissac/rails_ai_agents) | 665 | Rails-specific skills, agents, rules, hooks, plus an SDD kit | The same idea for another stack |
+| [AWS Kiro](https://kiro.dev) | commercial | IDE with specs (requirements → design → tasks), steering files, and event hooks | Closest commercial product. Proprietary IDE, no stack blueprints. Whether its hooks can block a write before it happens was not verified |
+| Factory Spec Mode | commercial | Planning phase is read-only until approved, enforced by the runtime | Similar phase guard, inside a closed product |
 
-See [01-file-types.md § Hook](01-file-types.md#hook).
+Two more things matter for context. [AGENTS.md](https://agents.md) is a context-file format
+supported by most coding agents and stewarded by the Linux Foundation; it is a standard,
+not a competitor. And stars in this space go to simple things: templates and skill packs
+reach hundreds or thousands, while enforcement-heavy toolkits stay small.
 
-### 5 · A deterministic execution trail, per run
+## What is actually unique here
 
-No neighboring project answers "what did this feature cost, and what did it chain".
-Here the hook's `audit` mode writes, at every `Stop`, one Markdown report per skill or
-agent invocation in the generated project — opened by a `/command` or by the model's
-own `Skill`/`Agent` call — with tokens and cost per piece (no double counting), a chain
-tree with duration bars, files touched, permissions requested, tools that failed, rules
-that should have loaded, and `HEAD` before and after. The initial prompt goes in
-redacted (tokens, passwords, and private keys blanked by default in
-`extensions.json`). Two ledgers (`history.jsonl`, `nodes.jsonl`) feed
-`ArchHook.java audit summary`, and the `/audit-usage` skill renders the consolidated
-view.
+No project we found combines all of the following. Each item names the neighbor that comes
+closest, so the claim can be checked.
 
-It's a hook, not a skill, because it has to survive the model forgetting, the session
-dying, and Ctrl+C (D35, D38). Zero tokens are spent producing the report.
+### 1 · Architecture is data, and one declaration has three effects
 
-See [08-audit-usage.md](08-audit-usage.md).
+Seven blueprints (`hexagonal`, `clean-architecture-multi-module`,
+`clean-architecture-single-module`, `layered`, `onion`, `vertical-slice`,
+`modular-monolith`) plus `custom-template`. Each one is a YAML file with modules,
+`depends_on`, `forbidden_imports`, `packages.map`, and mandatory `trade_offs`. A module's
+`forbidden_imports` feeds, with no manual copy:
 
-### 6 · A spec-first pipeline, with boundaries that are hooks
+1. the module's `CLAUDE.md`, so the model **knows**;
+2. `.claude/forbidden-imports.txt`, so the `check` hook **blocks** the write (`exit 2`);
+3. `depends_on` in the POMs, so the **compiler** refuses the import in multi-module layouts.
 
-`/new-feature` designs **one use case per run** across five partials with a single
-owner each (`use-case-design` → `domain-modeling` → `rest-api-architect` →
-`persistence-architect` → `test-architect`, plus a conditional `security-architect` —
-access per endpoint, mechanism, filter chain, 401/403, CORS — a conditional
-`messaging-architect`, and a conditional `jobs-architect` — scheduling technology, cadence,
-cluster coordination, and the outbox relay's own schedule), consolidates them into a
-`UC-NNN-spec.md` with a `draft → approved → implemented` (or `implemented-blocked`)
-lifecycle, asks for approval, and only then offers the `java-spring-boot-developer`
-executor — a separate agent, with restricted tools, that only writes under `src/`.
+Norm globs (`paths`) are rewritten from `packages.map` at generation time, so a norm loads
+for the packages this blueprint actually has. Adding an architecture touches no skill,
+agent, or prompt, and the `new blueprint doesn't touch prompts` CI job checks that on
+every push.
 
-Four boundaries stopped being prose after being violated in real runs:
+*Closest:* a-pavithraa offers an architecture choice, but as prose inside one skill. Seed4J
+generates hexagonal structure deterministically, but nothing reads the architecture once
+an agent starts writing.
 
-- **Design writes only the use case's folder** — territory is an allowlist, deny by
-  default: `guard` refuses `Write`/`Edit` on any path outside the active skill's class
-  `write_allow`; a subagent's write is judged by its own `agent_classes` territory instead,
-  whatever phase its caller left open. The previous denylist (`src/**`)
-  could not see the file that leaked — a design run wrote a service into
-  `docker-compose.yml`, and the file that leaks is never the one somebody listed.
-- **A design run materializes no file at all** — `guard` refuses the *call* itself to a
-  `build`-class skill while the run is open. The missing service is recorded in the
-  partial, with the command that creates it, and materialized afterwards.
-- **An approved spec is immutable** — `guard` freezes the `docs/use-cases/UC-*/` folder
-  whose spec is `approved`, `implemented` or `implemented-blocked`, except for the spec's
-  `status:` line, a checklist toggle, and the folder's `CHANGELOG.md`.
-- **Git only through `git-publish`**, behind two `AskUserQuestion` gates; `git push` is
-  always `ask`, and `guard bash` refuses a force push in every spelling it can read (`-f`,
-  `--force-with-lease`, `+ref`, `git -C … push`, `sh -c "…"`).
+### 2 · Generation through the Initializr, then a self-contained project
 
-See [03-new-feature.md](03-new-feature.md).
+`/init-project` calls `start.spring.io` at run time, restructures the result per blueprint,
+and exports into the project everything the project will cite. Versions never come from
+memory (invariant 8), and CI fails if one is written as a fact. No business code is
+generated. The project does not need this repository afterwards (invariant 9).
 
-### 7 · The `.claude/` has an architecture of its own, and 11 invariants gated in CI
+*Closest:* a-pavithraa and dr-jskill also use the Initializr. Neither exports a harness that
+keeps governing the code afterwards.
 
-The same Clean Architecture applied to Java applies to the AI files: `hooks/` verifies
-`agents/`, which invoke `skills/`, which cite `rules/` + `blueprints/` — leaves that
-cite nobody. Eleven invariants (`CLAUDE.md`), and the `design` job in `validate.yml`
-fails the build when one is violated. The ones no neighbor has:
+### 3 · Write territory as data, enforced by one hook
 
-- **`rules/` is a leaf** — no norm mentions a skill, agent, or command.
-- **Each norm has one owner** — a known phrase in two files under `rules/` is a bug.
-- **A norm carries no code** — boilerplate lives in `skills/*/templates/*.example`.
-- **Frontmatter has a schema** — `extensions.json` owns the fields the runtime
-  recognizes. The runtime ignores an invented field silently, and `claude plugin
-  validate` lets it through; `ArchHook.java schema` does not.
-- **A skill has a class, and the class is data** — each of the 17 skills sits in exactly
-  one of six classes (`design`, `orchestrator`, `build`, `observer`, `meta`, `ops`), and
-  the class declares both the sections its body must carry **and** the paths it may write.
-  `schema` enforces the structure, `guard` the territory. Not standardization by review:
-  the same list of data on both sides.
-- **Exemplars actually compile** — the `exemplar-imports` job downloads a real
-  `starter.tgz` and resolves every `import` of every `.java.example` against the
-  classpath.
-- **No version written as a fact** outside the decision history.
-- **No dependency outside JDK, git, and curl** — a `pip install`/`npm install` under
-  `.claude/` fails CI.
+Every skill sits in exactly one of seven classes (`design`, `orchestrator`, `build`,
+`observer`, `meta`, `ops`, `report`). Every agent sits in one of four (`driver`,
+`executor`, `installer`, `verifier`). The class, in `schemas/extensions.json`, declares the
+paths it may write, and `guard` refuses everything else, deny by default:
 
-See [07-ci-validate.md](07-ci-validate.md).
+- through `Write`/`Edit`;
+- through the shell write shapes it can read (`>`, `tee`, `sed -i`, `sh -c "…"`);
+- and again at `Stop`, against what git sees changed during the turn.
 
-### 8 · A meta-tool that decides the shape of the next extension
+A subagent is judged by its own class, whatever phase its caller left open. A `build`-class
+skill cannot even be called during a design run. Every one of these rules was added after
+a real run broke it. The first: a design run wrote a service into `docker-compose.yml`, a
+file no denylist had named.
 
-`/claude-code-architect-designer` interviews, applies a decision matrix, and picks one
-of eight forms — auto-invocable skill, manual skill, subagent, rule, `CLAUDE.md` section,
-MCP server (shared or per-agent), **hook** (a `settings.json` registration, or a new mode
-in `ArchHook.java`) and **`permissions` rule** — or answers "create nothing" (a CLI
-already solves it, or a mode the hook already has runs the check and only needs
-registering). An agent is only born for one of three reasons (context, tools, model);
-anything that can't justify one becomes a skill. The two forms that execute — hook and
-`permissions` — are written only after approval and **always** with a record under
-`decisions/`: a hook that blocks fires for everyone, including when it is wrong.
+*Closest:* loiane's `enforce-files-in-scope.sh` enforces scope per active task, which is a
+genuinely similar idea. The differences are that territory here is per class and stored as
+data, shell writes and the end-of-turn sweep are covered, and the implementation is one
+Java file tested on three operating systems instead of bash plus `jq`.
 
-Every piece in this repository was born from a symptom observed in a real run,
-recorded under `lessons-learned/` and remediated by a numbered decision under
-`decisions/`. Both directories are versioned (since 2026-09-28) and stay out of
-the generated project: they are the maintainer's history, not a norm.
+### 4 · A spec pipeline with one owner per layer, and a frozen approved spec
 
-See [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md).
+`/new-feature` designs one use case per run: `use-case-design` → `domain-modeling` →
+`rest-api-architect` → `security-architect` (conditional) → `messaging-architect`
+(conditional) → `jobs-architect` (conditional) → `persistence-architect` →
+`test-architect`. Each skill owns one partial and decides the design patterns of its
+layer. The partials are consolidated into `UC-NNN-spec.md`, whose status goes `draft →
+approved → implemented` (or `implemented-blocked`). Once a spec is approved, `guard`
+freezes its folder except for the status line, checklist toggles, and `CHANGELOG.md`. Only
+then does the `java-spring-boot-developer` executor write under `src/`.
 
-### 9 · Cheap context by construction
+*Closest:* loiane and plinth have Spring-aware SDD pipelines, and Spec Kit and OpenSpec are
+the generic references. None of them has dedicated design steps for Spring Security, Kafka,
+and scheduled jobs. None freezes the approved spec with a hook.
 
-- The root `CLAUDE.md` stays under 200 lines: invariants and routing, nothing else.
-- Norms enter through `paths` when a file in their territory is touched. The globs of
-  `api-rest.md`, `persistence.md`, `value-objects.md`, `observability.md`,
-  `messaging.md`, and `scheduling.md` are **rewritten at generation time** from the
-  blueprint's `packages.map` — a glob copied verbatim would leave the norm unloaded,
-  silently.
-- `metadata:` was banned from frontmatter (it costs tokens on every invocation and
-  enforces nothing); contracts live in the body, where they are actual instruction.
-- Design patterns are decided at design time, in the partial of the layer they shape, and
-  the catalog reaches the executor at `SubagentStart` for symptoms found on disk — never as a
-  turn of its own.
+### 5 · Updating the harness inside a project, with provenance and migrations
 
-### 10 · Cross-cutting concerns that arrive solved
+`/arch-adopt` installs this `.claude/` into a project never generated here, or updates one
+that is behind. It refuses a dirty worktree and writes through the `export` mode, from a
+manifest that is data. It stamps `.claude/.arch-provenance.json` with the hash of every
+file written, so `/arch-doctor` can name the files edited by hand **before** the next
+update overwrites them. On an update, it prints the `migrations` notes for convention
+changes the project has not seen; it never runs them.
 
-None is unique on its own; together, no neighbor gathers them:
+*Closest:* Spec Kit, OpenSpec, BMAD, and Spec Kitty all have an upgrade command. We found
+none that detects local edits by hash before overwriting, or that carries notes for code
+an older convention left behind.
+
+### 6 · A deterministic, per-run execution trail
+
+In a generated project, the `audit` hook writes one Markdown report per skill or agent
+invocation. It holds tokens and cost per piece (no double counting), a chain tree with
+durations, files touched, permissions requested, failed tools, and `HEAD` before and
+after. Prompts are redacted. Two ledgers feed `/audit-usage`. Producing the report costs
+zero tokens, and it survives the session dying.
+
+*Closest:* none found among the neighbors above.
+
+### 7 · The harness validates itself
+
+The eleven invariants in `CLAUDE.md` are gated in CI, not just written down:
+
+- `rules/` is a leaf, and each norm has one owner.
+- No code in a norm, and no `commands/`.
+- No hardcoded version, and no dependency outside the Java ecosystem.
+- The export manifest matches the disk.
+- `ArchHook.java schema` validates the frontmatter against the fields the runtime
+  recognizes (the runtime ignores an unknown field without a word), the body sections each
+  class requires, and `.mcp.json` with a secret scan.
+- Every `import` in every `.java.example` exemplar resolves against a classpath from a real
+  `start.spring.io` request.
+
+*Closest:* none found. The neighbors validate the generated code, not their own
+instruction files.
+
+### 8 · Enforcement in one Java file, no shell
+
+`ArchHook.java` holds eleven modes: `check`, `format`, `tests`, `schema`, `guard`, `audit`,
+`compose`, `context`, `doctor`, `export`, `build`. The hooks run the committed, precompiled
+`ArchHook.jar` in exec form: no shell, no `chmod`, the same on Linux, macOS, and Windows.
+CI requires the jar to be byte for byte what the source compiles to under the pinned JDK.
+The tests under `.claude/.ci/` inject each violation and require the block, on all three
+operating systems. The mode table is in the [README](../../README.md#enforcement-one-java-file-no-shell).
+
+*Closest:* every hook-based neighbor we found uses bash scripts.
+
+### 9 · Smaller pieces that add up
+
+None of these is unique on its own. Together, no neighbor gathers them:
 
 | Concern | Where it lives |
 |---|---|
-| `Idempotency-Key` from the first endpoint, via AOP and a shared table | `rest-api-architect` + `persistence-architect` (D40, D44) |
-| Structured logging with sensitive-data masking (`@LogExecution`, `@MaskSensitiveData`) | `commons-logging-installer`, triggered by `/new-feature`'s pre-flight |
-| Observability: OTLP collector with traces **and** metrics pipelines, Jaeger or Grafana + Tempo + Prometheus backend | `docker-architect` |
-| Static analysis: SonarQube or SonarCloud wired into the build, a CI step for an external server, or a local SonarQube container — the token never in a file | `sonarqube-setup` (+ `docker-architect` for the container) |
-| Sonar issues reduced at their source: the analysis runs, each group of issues is traced to the `.claude/` template or norm that produced it, and the finding goes back to the meta-repository as a sanitized issue — no path, package or code of the project | `sonar-lessons` |
-| An issue filed from a generated project is verifiable by construction — no evidence, no issue — and carries nothing of the project; on this side, every claim (diagnosis and proposed fix included) is checked at `HEAD` by an agent that cannot write, before it becomes a comment or a design | `report-issue`, `triage-issue` + `issue-verifier` |
-| A container that "started" but isn't answering, a port held by a sibling project | `ArchHook.java compose` |
-| Kafka producer/consumer with at-least-once, retry, and DLQ | `messaging-architect` + `rules/messaging.md` |
-| Pagination without `Pageable` crossing the application port | `rules/architecture-ddd.md` (D42) |
-| Secrets: `permissions.deny` on `*.env`, `*.pem`, `application-prod.yml`; a scan of `headers`/`env` in `.mcp.json` | `settings.json` + `ArchHook.java schema` |
+| `Idempotency-Key` from the first endpoint, via AOP and a shared table | `rest-api-architect` + `persistence-architect` |
+| Structured logging with sensitive-data masking | `commons-logging-installer`, offered by `/new-feature`'s pre-flight |
+| OTLP collector with traces and metrics; Jaeger or Grafana + Tempo + Prometheus | `docker-architect` |
+| Compose diagnosis: a container "up" but not answering, a port held by a sibling project, a default the host cannot reach | `ArchHook.java compose` |
+| SonarQube or SonarCloud wired in; Sonar issues traced back to the `.claude/` template that caused them | `sonarqube-setup`, `sonar-lessons` |
+| Issues filed from a project only with evidence and stripped of the project's code; every claim checked at `HEAD` before a fix is designed | `report-issue`, `triage-issue` + `issue-verifier` |
+| A meta-tool that decides the form of the next extension (skill, agent, rule, hook, permission, MCP server, or nothing) and records it | `claude-code-architect-designer` + `decisions/` |
+| Secrets: `permissions.deny` on `*.env`, `*.pem`, `application-prod.yml`; a secret scan of `.mcp.json` | `settings.json` + `ArchHook.java schema` |
 
 ## Comparison table
 
-| Capability | claude-spring-architect | Static template | Skills pack | Agents + hooks bundle |
-|---|---|---|---|---|
-| Generates the project via the Initializr, live versions | ✅ | ❌ (clone, pinned version) | ❌ | ❌ |
-| Selectable architecture as data (7 + custom) | ✅ | ❌ (one, fixed) | ❌ | ❌ |
-| Boundary derived from the blueprint and blocked by a hook | ✅ | ❌ | ❌ | ❌ (generic hooks) |
-| Cross-platform hook with no shell, tested on 3 OSes in CI | ✅ | ❌ | — | ❌ (bash) |
-| Execution trail per run, cost per skill/agent | ✅ | ❌ | ❌ | ❌ |
-| Spec-first pipeline with hook-frozen specs | ✅ | ❌ | ❌ | partial (agents per role, no spec) |
-| The `.claude/`'s own invariants verified in CI | ✅ | ❌ | ❌ | ❌ |
-| Frontmatter schema that catches an invented field | ✅ | ❌ | ❌ | ❌ |
-| Each skill's body structure validated by a hook | ✅ | ❌ | ❌ | ❌ |
-| Per-skill write territory, an allowlist blocked in the hook | ✅ | ❌ | ❌ | ❌ |
-| Project installs/updates its `.claude/` from a manifest, with provenance | ✅ | ❌ (clone and merge by hand) | partial (reinstall the pack) | ❌ |
-| Exemplars compiled against a real classpath in CI | ✅ | ❌ | ❌ | ❌ |
-| Generated project self-contained, independent of the generator | ✅ | ✅ (it is the clone) | — | ✅ |
-| Spring/JPA knowledge skills | ✅ (14 norms + 10 design skills) | ✅ | ✅ (sometimes broader) | ✅ |
-| Codex/Cursor support beyond Claude Code | ❌ | partial | ✅ | partial |
+Representatives of each family, as found on 2026-10-02. ✅ yes · ◐ partial · — not found.
+
+| Capability | This repo | loiane SDD | plinth | a-pavithraa | Spec Kit / OpenSpec | Spec Kitty / Pilot Shell |
+|---|---|---|---|---|---|---|
+| Generates the project via the Initializr, live versions | ✅ | — (template) | — | ✅ | — | — |
+| Several architectures to choose from | ✅ 7 + custom, as data | — | — | ◐ as prose | — | — |
+| Architecture boundary blocked at write time | ✅ hook + compiler + ArchUnit | ◐ ArchUnit in the build | — | — | — | — |
+| Multi-phase spec pipeline | ✅ per layer | ✅ | ✅ | — | ✅ | ✅ |
+| Write scope enforced by a hook | ✅ per class, as data | ✅ per task | — | — | — (prompt gates) | ◐ workflow and quality gates |
+| Approved spec frozen by a hook | ✅ | — | — | — | — | ◐ accept gates |
+| Hooks run without a shell, tested on 3 OSes | ✅ Java | — bash + `jq` | — | — | — | — |
+| Per-run cost and chain trail | ✅ | — | — | — | — | — |
+| Validates its own instruction files | ✅ | — | — | — | — | — |
+| Update into an existing project | ✅ with provenance + migration notes | ◐ onboarding | — | ◐ plugin reinstall | ✅ upgrade/update | ✅ upgrade |
+| Runs on agents other than Claude Code | — | ✅ | ✅ | ◐ Codex | ✅ | ◐ |
+| Breadth beyond Spring Boot servlet | — | ◐ + Angular | ✅ Quarkus, Micronaut | — | ✅ any | ✅ any |
 
 ## What is not a differentiator — said honestly
 
-- **Pure Spring knowledge.** Skills packs like `spring-boot-skills` cover Security,
-  WebFlux, and more versions. There is no `rules/authorization.md` here yet (planned in
-  `00-index.md`).
-- **Gradle.** The schema accepts `build.tool: gradle`, but only POM templates exist;
-  the path exercised end to end is Maven.
-- **Cost.** The full pipeline is expensive by design — one real `/new-feature` run cost
-  ~USD 15 for a two-field aggregate. The audit trail exists precisely to measure that,
-  and the cost discipline is in [03-new-feature.md § Cost discipline](03-new-feature.md).
-- **Claude Code only.** Hooks, `paths`, `disable-model-invocation`, and `context: fork`
-  belong to the Claude Code runtime; nothing here runs on Codex or Cursor.
-- **Not affiliated with Anthropic.** "Claude" in the name follows the ecosystem's
-  practice; it doesn't indicate an official product.
+- **Spec-driven development itself.** It is the mainstream category of 2026, with Spec Kit
+  at 140k stars. What is specific here is the per-layer design for Spring and the frozen
+  spec, not the idea of writing a spec first.
+- **Scope-enforcing hooks, as an idea.** loiane's toolkit and Pilot Shell have them. What is
+  specific here is territory as class data, shell coverage, the sweep, and the
+  cross-platform runtime.
+- **Initializr-based generation.** a-pavithraa and dr-jskill do it too.
+- **Breadth of Java knowledge.** plinth and developer-kit cover more frameworks and more
+  topics. This repository goes deep on one stack: Spring Boot on the servlet stack,
+  Maven or Gradle, no WebFlux, no front end.
+- **Portability.** Hooks, `paths`, `disable-model-invocation`, and `context: fork` belong to
+  the Claude Code runtime. Nothing here runs on Codex, Cursor, or Copilot, while most
+  neighbors run on several agents.
+- **Cost.** The full pipeline is expensive by design. One real `/new-feature` run cost about
+  USD 15 for a two-field aggregate. The audit trail exists to measure that; see
+  [03-new-feature.md § Cost discipline](03-new-feature.md).
+- **Adoption.** The rigor has a learning curve, and the project is young and small.
+  Simpler templates and skill packs are far more popular.
+- **Not affiliated with Anthropic.** "Claude" in the name follows the ecosystem's practice.
 
-## Sources for the comparison
+## Sources
 
-- [piomin/claude-ai-spring-boot](https://github.com/piomin/claude-ai-spring-boot)
-- [ryu-qqq/claude-spring-standards](https://github.com/ryu-qqq/claude-spring-standards)
-- [rrezartprebreza/spring-boot-skills](https://github.com/rrezartprebreza/spring-boot-skills)
-- [a-pavithraa/springboot-skills-marketplace](https://github.com/a-pavithraa/springboot-skills-marketplace)
-- [altmemy/claude-code-templates — claude-spring-boot](https://github.com/altmemy/claude-code-templates/tree/main/claude-spring-boot)
+All repositories were checked on 2026-10-02: README, tree, stars, and last push.
+
+- Spring and Java on agents: [loiane/specs-driven-development-spring-angular](https://github.com/loiane/specs-driven-development-spring-angular) ·
+  [jabrena/plinth](https://github.com/jabrena/plinth) ·
+  [a-pavithraa/springboot-skills-marketplace](https://github.com/a-pavithraa/springboot-skills-marketplace) ·
+  [jdubois/dr-jskill](https://github.com/jdubois/dr-jskill) ·
+  [piomin/claude-ai-spring-boot](https://github.com/piomin/claude-ai-spring-boot) ·
+  [rrezartprebreza/spring-boot-skills](https://github.com/rrezartprebreza/spring-boot-skills) ·
+  [giuseppe-trisciuoglio/developer-kit](https://github.com/giuseppe-trisciuoglio/developer-kit) ·
+  [ryu-qqq/claude-spring-standards](https://github.com/ryu-qqq/claude-spring-standards) ·
+  [altmemy/claude-code-templates](https://github.com/altmemy/claude-code-templates)
+- Generators: [jhipster/generator-jhipster](https://github.com/jhipster/generator-jhipster) ·
+  [jhipster/jhipster-mcp](https://github.com/jhipster/jhipster-mcp) ·
+  [seed4j/seed4j](https://github.com/seed4j/seed4j) · [bootify.io](https://bootify.io)
+- SDD and harnesses: [github/spec-kit](https://github.com/github/spec-kit) ·
+  [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) ·
+  [bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) ·
+  [obra/superpowers](https://github.com/obra/superpowers) ·
+  [spec-kitty/spec-kitty](https://github.com/spec-kitty/spec-kitty) ·
+  [maxritter/pilot-shell](https://github.com/maxritter/pilot-shell) ·
+  [ThibautBaissac/rails_ai_agents](https://github.com/ThibautBaissac/rails_ai_agents) ·
+  [kiro.dev](https://kiro.dev) · [agents.md](https://agents.md)
+- Category naming: Birgitta Böckeler's article on spec-driven development tools in the
+  "Exploring Gen AI" series on [martinfowler.com](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html).

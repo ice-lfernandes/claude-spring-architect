@@ -125,7 +125,7 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] README (EN)
 - [x] `docs/` PT-BR (`00-visao-geral`, `01-tipos-de-arquivo`, `02-init-project`, `03-new-feature`, `04-arch-doctor`, `05-blueprints`, `06-claude-code-architect-designer`, `07-ci-validate`, `08-audit-usage`, `09-diferenciais`, `10-arch-adopt`, `11-pitfalls`)
 - [x] `docs/en/` mirror of every PT-BR doc
-- [x] Comparison with neighboring GitHub projects and the list of differentiators (`docs/pt-br/09-diferenciais.md`, README § What makes it different)
+- [x] Comparison with neighboring GitHub projects and the list of differentiators (`docs/pt-br/09-diferenciais.md`, `docs/en/09-differentiators.md`; README § What this is, and what it is not)
 - [x] `blueprints/README.md` + `blueprints/README.pt-br.md` (architecture overview)
 - [x] LICENSE
 - [ ] Worked examples with real output (still a gap noted in phase 6)
