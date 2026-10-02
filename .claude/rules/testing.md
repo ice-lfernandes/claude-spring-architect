@@ -77,9 +77,14 @@ below.
 - Assert the exception **and** its stable code, never just the type. Two different
   rules that throw the same type pass a test that looks only at the type —
   `@.claude/rules/error-handling.md`.
-- The lambda passed to `assertThatThrownBy` makes **exactly one call**: the call under
-  test. Its arguments are built in the arrange block. A builder or factory that throws
-  inside the lambda passes the test for the wrong reason.
+- The lambda of a throw assertion — AssertJ's `assertThatThrownBy`, `isThrownBy`,
+  `assertThatCode`, `catchThrowable`, `catchThrowableOfType`, `catchException`, JUnit's
+  `assertThrows`, `assertThrowsExactly` — makes **exactly one call**, a method or a
+  constructor: the call under test. Its arguments are built in the arrange block, and a
+  chained call (`find(id).orElseThrow()`) is two. A builder or factory that throws inside
+  the lambda passes the test for the wrong reason. `config/checkstyle/checkstyle-test.xml`
+  fails the build on it, check `OneCallInThrowLambda`; its list of names and this one are
+  the same.
 
 ## Assertions
 
