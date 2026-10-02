@@ -1,0 +1,148 @@
+# UC-004 · Security
+
+> Partial of `docs/use-cases/UC-004-cancel-order/`. Owner: `security-architect`.
+> Inherits the endpoints from `30-rest.md` and the actor and ownership invariant from
+> `10-dominio.md` — doesn't redecide them.
+> Contains no code. Form references in `.claude/skills/security-architect/templates/`.
+> Rules applied, never reproduced: `@.claude/rules/authorization.md`,
+> `@.claude/rules/api-rest.md` § Errors.
+
+| Field | Value |
+|---|---|
+| Mother spec | `00-caso-de-uso.md` — `Access`: only the order's owner; a `SUPPORT` agent may cancel any order |
+| Why this partial exists | `Access` names the owner and a role, and the project has no `SecurityFilterChain` yet — first secured case |
+| Stack | servlet (`spring-boot-starter-webmvc` in `pom.xml`) |
+| Wiring package | `infrastructure.config` (blueprint `packages.map`, entry `infrastructure.config`) |
+| Divergences from other partials | none |
+
+## 1 · Access per endpoint
+
+| Method | Path | `operationId` | Rule | Enforced in | Meta-annotation | No credential | Without authority | With authority |
+|---|---|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/orders/{orderId}/cancellation` | `cancelOrder` | owner, or role `SUPPORT` | chain: authenticated · use case: owner or override | — | 401 | 404 (not the owner, not `SUPPORT`) | 204 |
+
+Public rows of the project after this case (each with its reason):
+
+| Path | Reason |
+|---|---|
+| `/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html` | OpenAPI document and UI — public by the project's default; the interview kept it |
+| `/actuator/health`, `/actuator/info` | Liveness and readiness probes of the platform; no details exposed |
+
+## 2 · Mechanism
+
+| Decision | Value | Why |
+|---|---|---|
+| Mechanism | OAuth2 resource server, signed token (JWT) | `references/mechanism-decision-matrix.md` § 2 row 3: the company runs Keycloak and it issues signed tokens |
+| Inherited? | no — first secured case | no security starter in `pom.xml`, no chain on disk, no earlier `32-seguranca.md` |
+| Exemplars | `SecurityConfig.java.example` + `JwtResourceServerConfig.java.example` | — |
+
+Rejected, one line each: **opaque token** — no requirement to revoke before expiry, and it adds
+an introspection call per request. **Users owned by the application** — Keycloak already owns
+the accounts. **API key** — no machine caller in this case.
+
+## 3 · Authorities
+
+| Fact | Value | Source |
+|---|---|---|
+| Roles in the token | `realm_access.roles` → prefix `ROLE_` | asked in this run (decoded sample token) |
+| Groups in the token | not used | asked in this run |
+| Scopes | `scope` → prefix `SCOPE_` (framework default, kept) | — |
+| Audience expected | `orders-api` | asked in this run |
+| Principal name | `sub` | decided — the subject is the stable id; `preferred_username` changes |
+| Role catalog | `Roles.SUPPORT` — NEW, in `infrastructure.config.security` | first role of the project |
+
+## 4 · Project-wide setup
+
+| Component | State | Exemplar | Decision |
+|---|---|---|---|
+| `SecurityConfig` | NEW | `SecurityConfig.java.example` | stateless; CSRF off (bearer token, no cookie authenticates); default headers kept; deny by default; docs and health/info public; other actuator endpoints `ROLE_OPERATOR` |
+| `JwtResourceServerConfig` | NEW | `JwtResourceServerConfig.java.example` | issuer and audience validated; converter of § 3 |
+| `ProblemDetailAuthenticationEntryPoint`, `ProblemDetailAccessDeniedHandler` | NEW | `ProblemDetailSecurityHandlers.java.example` | 401 with `WWW-Authenticate: Bearer`, 403, Problem Details |
+| `SecurityExceptionHandler` | NEW | `SecurityExceptionHandler.java.example` | ordered ahead of `ApiExceptionHandler`'s 500 fallback |
+| `MethodSecurityConfig`, `Roles` | NEW | `MethodSecurityAnnotations.java.example` | method security on; no meta-annotation yet — no expression repeats |
+| `SecurityAuditListener` | NEW | `SecurityAuditListener.java.example` | `security.authentication.failures`, `security.authorization.denied` |
+| `OpenApiSecurityConfig` | NEW | `OpenApiSecurityConfig.java.example` | bearer scheme, required globally |
+| CORS | none | — | no browser client on another origin (asked) |
+
+## 5 · Ownership
+
+| Fact | Value |
+|---|---|
+| Owner field | `Order.customerId` — `10-dominio.md` § 1 |
+| Actor in the command | `CancelOrderCommand.actor` (`Actor(CustomerId id, boolean support)`) — `10-dominio.md` § 4 |
+| Actor source | the token's `sub` → `CustomerId`; `support` = the caller holds `ROLE_SUPPORT` — resolved by the controller, `CurrentActorResolution.java.example` |
+| Not the owner, not support | `OrderNotFoundException` (`ORDER_NOT_FOUND`) — the same the absent order raises; existence not revealed |
+| Override | `SUPPORT` cancels any order; the use case logs the actor id with the cancellation |
+
+## 6 · Failure responses
+
+| Situation | Status | Header | Body |
+|---|---|---|---|
+| no token, malformed, expired, wrong issuer or audience | 401 | `WWW-Authenticate: Bearer` | Problem Details, no reason in `detail` |
+| authenticated, actuator endpoint without `ROLE_OPERATOR` | 403 | — | Problem Details |
+| authenticated, not the owner, not support | 404 | — | `ORDER_NOT_FOUND`, same body as an absent order |
+
+## 7 · Schema requirements
+
+none — the identity provider holds the credentials.
+
+## 8 · Declared dependencies
+
+| Dependency | Version | Why |
+|---|---|---|
+| `org.springframework.boot:spring-boot-starter-security` | (managed by the Boot parent) | filter chain, method security |
+| `org.springframework.boot:spring-boot-starter-security-oauth2-resource-server` | (managed by the Boot parent) | JWT decoding and validation — the Boot 4 name, from the Initializr id `oauth2-resource-server`; the older `spring-boot-starter-oauth2-resource-server` is deprecated |
+
+The test support (`spring-boot-starter-security-test`, plus `spring-boot-starter-security-oauth2-resource-server-test` for a token mechanism) is declared by `40-testes.md` § 5.
+
+## 9 · Configuration
+
+| Property | Value | Secret? |
+|---|---|---|
+| `spring.security.oauth2.resourceserver.jwt.issuer-uri` | `${OAUTH2_ISSUER_URI:http://localhost:8180/realms/orders}` | no |
+| `spring.security.oauth2.resourceserver.jwt.audiences` | `orders-api` | no |
+| `app.security.token.roles-claims` | `realm_access.roles` | no |
+| `app.security.actuator-role` | `OPERATOR` | no |
+
+Full shape in `templates/application-security.yml.example`. The test profile keeps the chain on
+and replaces the decoder with the test support's token builder — never a live provider.
+
+## 10 · Contract test cases
+
+| Endpoint | Case | Expected |
+|---|---|---|
+| `cancelOrder` | no token | 401, `WWW-Authenticate` present |
+| `cancelOrder` | token, the order's owner | 204 |
+| `cancelOrder` | token, another customer | 404 `ORDER_NOT_FOUND` (use case unit test with another actor; controller test with the use case's exception) |
+| `cancelOrder` | token with `ROLE_SUPPORT`, not the owner | 204 |
+| `/actuator/env` | token without `ROLE_OPERATOR` | 403 |
+| `/v3/api-docs` | no token | 200 |
+| UC-002 `getOrder` (impact) | no token · token | 401 · 200 — `OrderControllerTest` updated, see `## Impact on approved use cases` |
+
+## 11 · Deferred and requirements to other partials
+
+none
+
+## Design patterns
+
+none — one converter source, no growing branch over authentication types
+
+One row per pattern this layer adopts, decided through
+`@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use:
+`| Force or symptom | Pattern | Classes and interfaces it creates | "When not" checked |`.
+
+## Impact on approved use cases
+
+| Case | Endpoint | Before | After | Decision |
+|---|---|---|---|---|
+| UC-002 | `GET /api/v1/orders/{orderId}` | public (no chain existed) | authenticated | protected from now on — asked in this run; the owner check for reads is `BL-07` |
+| UC-002 | `OrderControllerTest` | ran with no filter chain | imports `SecurityConfig` and sends a token; a new case asserts 401 with none | listed in § 10 for `test-architect` |
+
+## Implementation order
+
+1. The dependencies of § 8
+2. `Roles`, `ProblemDetailAuthenticationEntryPoint`, `ProblemDetailAccessDeniedHandler`, `SecurityExceptionHandler`
+3. `JwtResourceServerConfig`, then `SecurityConfig`, then `MethodSecurityConfig`, `SecurityAuditListener`, `OpenApiSecurityConfig`
+4. Actor resolution in `OrderController.cancel` — after the REST block wrote the controller
+5. Properties in `application.yml`
+6. Tests — `40-testes.md`

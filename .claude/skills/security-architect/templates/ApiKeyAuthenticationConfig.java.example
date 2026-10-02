@@ -1,0 +1,225 @@
+/*
+ * EXEMPLAR — mechanism "API key", for a machine caller that cannot run an OAuth client-credentials
+ * flow (a partner system with a fixed key, a webhook sender). A machine that CAN gets a token and
+ * goes through the resource-server mechanism instead (`references/mechanism-decision-matrix.md`).
+ *
+ * KEY FORMAT `<keyId>.<secret>`, sent in a header (`X-API-Key` by default, `app.security.api-key.header`),
+ * never in the query string — a URL ends up in access logs. The store keeps the key id, a SHA-256
+ * hash of the secret, the owner (client id), its roles, and created/revoked timestamps; never the
+ * secret. SHA-256 and not an adaptive hash: the secret is 256 random bits issued by this system,
+ * not a human password, so there is nothing for a slow hash to protect — and it runs on every
+ * request. The comparison is constant-time.
+ *
+ * THE FILTER: the framework's generic `AuthenticationFilter` with a converter (header → token)
+ * and a provider (token → authenticated client). Three settings make it an API filter:
+ *   - success handler that does nothing — the default one redirects to a saved request;
+ *   - failure handler that goes to the 401 entry point;
+ *   - built here, not a `@Component`: a filter bean is also registered by Boot in the servlet
+ *     container, and would run twice.
+ * No key in the request → the converter returns null and the filter lets the request through
+ * unauthenticated; the chain's deny-by-default answers 401.
+ *
+ * WHERE THE KEYS COME FROM: an outbound port, implemented by the persistence adapter —
+ * `32-seguranca.md` § 7 asks `persistence-architect` for the store. Issuing and revoking keys is
+ * a use case of its own.
+ */
+
+// --- ApiKeyRepository.java
+package com.exemplo.minhaapi.application.port.out;
+
+import java.util.Optional;
+import java.util.Set;
+
+/** Read side of the API-key store. Implemented by the persistence adapter. */
+public interface ApiKeyRepository {
+
+    /** Active means not revoked. A revoked key is never returned. */
+    Optional<StoredApiKey> findActiveByKeyId(String keyId);
+
+    /** `secretHash` is the hex SHA-256 of the secret; `roles` are names without prefix. */
+    record StoredApiKey(String keyId, String clientId, String secretHash, Set<String> roles) {}
+}
+
+// --- ApiKeyAuthenticationConfig.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import com.exemplo.minhaapi.application.port.out.ApiKeyRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.AuthenticationEntryPointFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationFilter;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+
+@Configuration(proxyBeanMethods = false)
+public class ApiKeyAuthenticationConfig {
+
+    @Bean
+    AuthenticationMechanism apiKeyMechanism(
+            ApiKeyRepository keys, @Value("${app.security.api-key.header:X-API-Key}") String header) {
+        return new AuthenticationMechanism() {
+            @Override
+            public void applyTo(
+                    HttpSecurity http,
+                    ProblemDetailAuthenticationEntryPoint entryPoint,
+                    ProblemDetailAccessDeniedHandler accessDeniedHandler) {
+                AuthenticationFilter filter = new AuthenticationFilter(
+                        new ProviderManager(new ApiKeyAuthenticationProvider(keys)),
+                        new ApiKeyAuthenticationConverter(header));
+                filter.setSuccessHandler((request, response, authentication) -> { });
+                filter.setFailureHandler(new AuthenticationEntryPointFailureHandler(entryPoint));
+                filter.setSecurityContextRepository(new RequestAttributeSecurityContextRepository());
+                http.addFilterBefore(filter, AuthorizationFilter.class);
+            }
+
+            @Override
+            public String challengeScheme() {
+                return "ApiKey header=\"" + header + "\"";
+            }
+        };
+    }
+}
+
+// --- ApiKeyAuthenticationToken.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.util.Collection;
+import java.util.List;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+
+/**
+ * Before authentication: the presented key, no authorities. After: the client id as principal,
+ * the key's roles as authorities, and the credential erased.
+ */
+public final class ApiKeyAuthenticationToken extends AbstractAuthenticationToken {
+
+    private final String principal;
+    private String presentedKey;
+
+    private ApiKeyAuthenticationToken(String principal, String presentedKey, Collection<? extends GrantedAuthority> authorities) {
+        super(authorities);
+        this.principal = principal;
+        this.presentedKey = presentedKey;
+    }
+
+    public static ApiKeyAuthenticationToken unauthenticated(String presentedKey) {
+        return new ApiKeyAuthenticationToken("", presentedKey, List.of());
+    }
+
+    public static ApiKeyAuthenticationToken authenticated(String clientId, Collection<? extends GrantedAuthority> authorities) {
+        ApiKeyAuthenticationToken token = new ApiKeyAuthenticationToken(clientId, "", authorities);
+        token.setAuthenticated(true);
+        return token;
+    }
+
+    @Override
+    public Object getCredentials() {
+        return presentedKey;
+    }
+
+    @Override
+    public Object getPrincipal() {
+        return principal;
+    }
+
+    @Override
+    public void eraseCredentials() {
+        super.eraseCredentials();
+        presentedKey = "";
+    }
+}
+
+// --- ApiKeyAuthenticationConverter.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.authentication.AuthenticationConverter;
+
+/**
+ * Header → unauthenticated token. No header, no token: the request goes on anonymous. The
+ * `null` is the framework's contract for "nothing to authenticate", not a value that leaves
+ * this adapter.
+ */
+public final class ApiKeyAuthenticationConverter implements AuthenticationConverter {
+
+    private final String header;
+
+    public ApiKeyAuthenticationConverter(String header) {
+        this.header = header;
+    }
+
+    @Override
+    public Authentication convert(HttpServletRequest request) {
+        String value = request.getHeader(header);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return ApiKeyAuthenticationToken.unauthenticated(value.trim());
+    }
+}
+
+// --- ApiKeyAuthenticationProvider.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import com.exemplo.minhaapi.application.port.out.ApiKeyRepository;
+import com.exemplo.minhaapi.application.port.out.ApiKeyRepository.StoredApiKey;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Optional;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.AuthorityUtils;
+
+/**
+ * Looks the key up by its id and compares the secret's hash in constant time. Every failure is
+ * the same `BadCredentialsException` — an unknown id, a revoked key and a wrong secret are
+ * indistinguishable to the caller.
+ */
+public final class ApiKeyAuthenticationProvider implements AuthenticationProvider {
+
+    private final ApiKeyRepository keys;
+
+    public ApiKeyAuthenticationProvider(ApiKeyRepository keys) {
+        this.keys = keys;
+    }
+
+    @Override
+    public Authentication authenticate(Authentication authentication) {
+        String presented = String.valueOf(authentication.getCredentials());
+        int separator = presented.indexOf('.');
+        if (separator <= 0 || separator == presented.length() - 1) {
+            throw new BadCredentialsException("Invalid API key");
+        }
+        String keyId = presented.substring(0, separator);
+        byte[] presentedHash = sha256(presented.substring(separator + 1));
+        Optional<StoredApiKey> stored = keys.findActiveByKeyId(keyId);
+        if (stored.isEmpty()
+                || !MessageDigest.isEqual(presentedHash, HexFormat.of().parseHex(stored.get().secretHash()))) {
+            throw new BadCredentialsException("Invalid API key");
+        }
+        String[] roles = stored.get().roles().stream().map(role -> "ROLE_" + role).toArray(String[]::new);
+        return ApiKeyAuthenticationToken.authenticated(
+                stored.get().clientId(), AuthorityUtils.createAuthorityList(roles));
+    }
+
+    @Override
+    public boolean supports(Class<?> authentication) {
+        return ApiKeyAuthenticationToken.class.isAssignableFrom(authentication);
+    }
+
+    private static byte[] sha256(String secret) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is mandatory on every Java platform", e);
+        }
+    }
+}

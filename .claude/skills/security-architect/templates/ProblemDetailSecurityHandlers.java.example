@@ -1,0 +1,74 @@
+/*
+ * EXEMPLAR — the 401 entry point and the 403 access-denied handler of the filter chain.
+ * Neither writes a body: both hand the exception to the MVC exception resolvers, so the body is
+ * written by `SecurityExceptionHandler` with the same message converters, the same Problem
+ * Details shape and the same Jackson configuration as `ApiExceptionHandler`. One owner for the
+ * 401/403 body, whether the refusal came from the filter chain or from method security.
+ *
+ * WHY DELEGATE INSTEAD OF WRITING JSON HERE: the framework has no Problem Details support of
+ * its own — its bearer-token entry point writes a status and a header, no body. Serializing a
+ * `ProblemDetail` by hand in a filter skips the converter that flattens its `properties`, and
+ * the two error paths drift apart on the first field someone adds.
+ *
+ * WHICH RESOLVER: the qualifier names the composite resolver the dispatcher servlet uses. Boot
+ * also registers `DefaultErrorAttributes`, which is a `HandlerExceptionResolver` too —
+ * injecting by type alone fails with two candidates, or picks the wrong one.
+ *
+ * Not a `Filter`, so nothing registers these in the servlet container a second time.
+ */
+
+// --- ProblemDetailAuthenticationEntryPoint.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+
+@Component
+public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    private final HandlerExceptionResolver resolver;
+
+    public ProblemDetailAuthenticationEntryPoint(
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) {
+        this.resolver = resolver;
+    }
+
+    @Override
+    public void commence(
+            HttpServletRequest request, HttpServletResponse response, AuthenticationException exception) {
+        resolver.resolveException(request, response, null, exception);
+    }
+}
+
+// --- ProblemDetailAccessDeniedHandler.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+
+@Component
+public class ProblemDetailAccessDeniedHandler implements AccessDeniedHandler {
+
+    private final HandlerExceptionResolver resolver;
+
+    public ProblemDetailAccessDeniedHandler(
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) {
+        this.resolver = resolver;
+    }
+
+    @Override
+    public void handle(
+            HttpServletRequest request, HttpServletResponse response, AccessDeniedException exception) {
+        resolver.resolveException(request, response, null, exception);
+    }
+}

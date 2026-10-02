@@ -235,7 +235,8 @@ claude-spring-architect/
     │   ├── architecture-ddd.md    #   paths come from the blueprint at generation time
     │   ├── naming.md · code-quality.md · error-handling.md · api-rest.md
     │   ├── lombok.md · value-objects.md · persistence.md · testing.md
-    │   └── observability.md · logging.md · messaging.md · scheduling.md
+    │   ├── observability.md · logging.md · messaging.md · scheduling.md
+    │   └── authorization.md
     ├── blueprints/                # architectures as data
     │   ├── _schema.md             #   contract every blueprint fulfills
     │   ├── README.md              #   pros, cons, when to choose each
@@ -259,6 +260,7 @@ claude-spring-architect/
     │   ├── use-case-design/       #   pipeline 1 — copied
     │   ├── domain-modeling/       #   pipeline 2 — copied
     │   ├── rest-api-architect/    #   pipeline 3 — copied
+    │   ├── security-architect/    #   pipeline 3a, conditional — access per endpoint, mechanism, filter chain, 401/403, CORS — copied
     │   ├── messaging-architect/   #   pipeline 3b, conditional — Kafka producer/consumer — copied
     │   ├── jobs-architect/        #   pipeline 3c, conditional — scheduling tech, cadence, outbox relay's own schedule — copied
     │   ├── persistence-architect/ #   pipeline 4 — copied
@@ -309,7 +311,7 @@ them only as the "why" behind a piece.
 **The generated project is self-contained.** Whoever clones it does not need this
 repository: `/init-project` copies over the norms (`rules/*.md`), the development
 skills (`arch-adopt`, `arch-doctor`, `use-case-design`, `domain-modeling`,
-`rest-api-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
+`rest-api-architect`, `security-architect`, `persistence-architect`, `messaging-architect`, `jobs-architect`,
 `test-architect`, `new-feature`, `gof-design-patterns`, `docker-architect`, `git-publish`,
 `sonarqube-setup`, `sonar-lessons`, `report-issue`, `audit-usage`), the
 executor agents (`java-spring-boot-developer`, `archunit-installer`,
@@ -480,7 +482,7 @@ That's safe, but it gives false greens. To harden them, swap the guard `exit 0` 
      ▼  skill: new-feature — closed input table; anything else is an error
      │
      use-case-design → domain-modeling → rest-api-architect
-        → messaging-architect (conditional) → jobs-architect (conditional)
+        → security-architect (conditional) → messaging-architect (conditional) → jobs-architect (conditional)
         → persistence-architect → test-architect
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
      │  design skills write only their class's territory — docs/ only, never src/,

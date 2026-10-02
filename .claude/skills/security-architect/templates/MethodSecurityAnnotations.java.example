@@ -1,0 +1,125 @@
+/*
+ * EXEMPLAR — method security switched on once, the role and group catalog, and the
+ * meta-annotations that spell each repeated expression exactly once.
+ *
+ * WHY META-ANNOTATIONS: `@PreAuthorize("hasRole('SUPPORT')")` copied on six endpoints is six
+ * strings nobody compiles; a typo in one of them is a role that matches nothing and a 403 for
+ * everyone. `@HasRole(Roles.SUPPORT)` puts the expression in one place and the name in a
+ * constant the compiler checks. The `{value}` placeholder is resolved only because
+ * `AnnotationTemplateExpressionDefaults` is published as a bean — it is still opt-in, and
+ * without it the placeholder reaches the expression parser literally.
+ *
+ * WHERE THEY GO: on the controller **implementation**, beside `@PostMapping` — the `<Resource>Api`
+ * contract interface carries documentation only (`.claude/rules/api-rest.md` § OpenAPI). The
+ * framework would honor them on the interface too; the split is the repository's, by kind.
+ *
+ * WHAT NEVER GOES HERE: an ownership check (`@PreAuthorize("@orders.isOwner(#id, authentication)")`).
+ * It runs a query outside the use case's transaction and hides a business rule in a string —
+ * the use case compares the actor with the owner (`.claude/rules/authorization.md` § Boundary).
+ *
+ * `Roles` and `Groups` hold names without prefix: `hasRole` adds `ROLE_`, and the group
+ * annotation writes `GROUP_` itself, matching the prefixes the claims converter applies.
+ */
+
+// --- MethodSecurityConfig.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.core.annotation.AnnotationTemplateExpressionDefaults;
+
+@Configuration(proxyBeanMethods = false)
+@EnableMethodSecurity
+public class MethodSecurityConfig {
+
+    /** Static: it is read while the method-security infrastructure itself is being built. */
+    @Bean
+    static AnnotationTemplateExpressionDefaults templateExpressionDefaults() {
+        return new AnnotationTemplateExpressionDefaults();
+    }
+}
+
+// --- Roles.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+/** Every role an endpoint names, without the `ROLE_` prefix. One constant per row of `32-seguranca.md` § 3. */
+public final class Roles {
+
+    public static final String SUPPORT = "SUPPORT";
+    public static final String OPERATOR = "OPERATOR";
+
+    private Roles() {}
+}
+
+// --- Groups.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+/** Every group an endpoint names, without the `GROUP_` prefix. */
+public final class Groups {
+
+    public static final String FINANCE_APPROVERS = "FINANCE_APPROVERS";
+
+    private Groups() {}
+}
+
+// --- HasRole.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+/** `@HasRole(Roles.SUPPORT)` — the caller holds that role. */
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@PreAuthorize("hasRole('{value}')")
+public @interface HasRole {
+
+    String value();
+}
+
+// --- InGroup.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+/** `@InGroup(Groups.FINANCE_APPROVERS)` — the caller belongs to that group. */
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@PreAuthorize("hasAuthority('GROUP_{value}')")
+public @interface InGroup {
+
+    String value();
+}
+
+// --- RefundController.java (usage, in the REST adapter)
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import com.exemplo.minhaapi.adapter.in.rest.security.Groups;
+import com.exemplo.minhaapi.adapter.in.rest.security.InGroup;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class RefundController {
+
+    @InGroup(Groups.FINANCE_APPROVERS)
+    @PostMapping("/api/v1/refunds/{refundId}/approval")
+    public ResponseEntity<Void> approve(@PathVariable UUID refundId) {
+        return ResponseEntity.noContent().build();
+    }
+}

@@ -1,0 +1,168 @@
+/*
+ * EXEMPLAR — the project's single servlet filter chain, deny by default, in the shape
+ * `.claude/rules/authorization.md` requires. Mechanism-agnostic: the authentication itself
+ * comes from one `AuthenticationMechanism` bean (`JwtResourceServerConfig`,
+ * `OpaqueTokenResourceServerConfig`, `LocalUsersSecurityConfig` or `ApiKeyAuthenticationConfig`),
+ * so this class does not change when `32-seguranca.md` § 2 picks another mechanism.
+ * Compilable against the Spring Security generation the Boot parent manages — servlet only.
+ *
+ * PACKAGE. The blueprint's `.config` entry plus `.security` (`infrastructure.config.security`
+ * in clean architecture). Hexagonal and onion have no configuration package: there it is a
+ * `security` subpackage of the inbound REST adapter, as below.
+ *
+ * WHAT EACH LINE OF THE CHAIN IS FOR, in order:
+ *   - STATELESS: a bearer-token API creates no HTTP session; the security context lives one
+ *     request.
+ *   - csrf disabled: only because no cookie authenticates a request. The day a cookie does
+ *     (form login, a session), CSRF goes back on — `authorization.md` § Transport hardening.
+ *   - cors: the explicit `UrlBasedCorsConfigurationSource` below, never a wildcard origin.
+ *     An empty origin list registers no CORS mapping at all.
+ *   - headers: the framework defaults (nosniff, frame DENY, HSTS on HTTPS responses, cache
+ *     control). A content security policy is not added here: the Swagger UI needs scripts;
+ *     adding one is a recorded decision.
+ *   - exceptionHandling: both handlers delegate to `SecurityExceptionHandler`, so 401 and 403
+ *     have the same Problem Details body as every other error.
+ *   - authorizeHttpRequests, specific to general: health and info public, every other
+ *     actuator endpoint for the operator role, the OpenAPI paths public unless the project
+ *     turned that off, the endpoints of § 1 that a request rule protects, and
+ *     `anyRequest().authenticated()` last — never `permitAll`.
+ *
+ * WHAT IS NOT HERE: a `@PreAuthorize` rule (method security, on the controller), the owner
+ * check (the use case), a `JwtDecoder` bean (Boot builds it from
+ * `spring.security.oauth2.resourceserver.jwt.*`, and declaring one silently drops the
+ * `audiences` validation Boot adds), and `throws Exception` — `build()` and the DSL methods
+ * no longer declare it.
+ *
+ * WHY `AuthenticationMechanism` AND NOT `Customizer<HttpSecurity>`: a `Customizer<HttpSecurity>`
+ * bean is applied by the framework to every filter chain on its own. Applied here as well, the
+ * mechanism would be configured twice; applied only by the framework, this class could not
+ * hand it the two handlers.
+ *
+ * One `@PreAuthorize` per endpoint row of `32-seguranca.md` § 1 that says "method security";
+ * one `requestMatchers` line here per row that says "chain". Adding a public endpoint means
+ * adding its path to `PUBLIC_ENDPOINTS` together with the reason recorded in § 1.
+ */
+
+// --- SecurityConfig.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.util.List;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(SecurityAccessProperties.class)
+public class SecurityConfig {
+
+    private static final String[] API_DOCS = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
+
+    /** Each path here is a public row of `32-seguranca.md` § 1, with its reason recorded there. */
+    private static final String[] PUBLIC_ENDPOINTS = {};
+
+    @Bean
+    SecurityFilterChain apiSecurityFilterChain(
+            HttpSecurity http,
+            AuthenticationMechanism mechanism,
+            ProblemDetailAuthenticationEntryPoint entryPoint,
+            ProblemDetailAccessDeniedHandler accessDeniedHandler,
+            UrlBasedCorsConfigurationSource corsConfigurationSource,
+            SecurityAccessProperties access) {
+        http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .headers(Customizer.withDefaults())
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+                .authorizeHttpRequests(requests -> {
+                    requests.requestMatchers(EndpointRequest.to("health", "info")).permitAll();
+                    requests.requestMatchers(EndpointRequest.toAnyEndpoint()).hasRole(access.actuatorRole());
+                    if (access.apiDocsPublic()) {
+                        requests.requestMatchers(API_DOCS).permitAll();
+                    }
+                    if (PUBLIC_ENDPOINTS.length > 0) {
+                        requests.requestMatchers(HttpMethod.GET, PUBLIC_ENDPOINTS).permitAll();
+                    }
+                    requests.requestMatchers(HttpMethod.POST, "/api/v1/orders/*/cancellation").authenticated();
+                    requests.anyRequest().authenticated();
+                });
+        mechanism.applyTo(http, entryPoint, accessDeniedHandler);
+        return http.build();
+    }
+
+    /**
+     * Typed as `UrlBasedCorsConfigurationSource` on purpose: it is the type the framework looks
+     * for, and a second `CorsConfigurationSource` bean anywhere disables the lookup. Passed to
+     * the chain explicitly anyway, so the wiring does not depend on that lookup.
+     */
+    @Bean
+    UrlBasedCorsConfigurationSource corsConfigurationSource(SecurityAccessProperties access) {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        if (access.cors().allowedOrigins().isEmpty()) {
+            return source;
+        }
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(access.cors().allowedOrigins());
+        configuration.setAllowedMethods(access.cors().allowedMethods());
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "If-Match"));
+        configuration.setExposedHeaders(List.of("Location", "ETag", "WWW-Authenticate"));
+        configuration.setAllowCredentials(false);
+        configuration.setMaxAge(access.cors().maxAge());
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
+    }
+}
+
+// --- AuthenticationMechanism.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+
+/**
+ * The one way this project's callers prove who they are — `32-seguranca.md` § 2. Exactly one
+ * bean per filter chain. `challengeScheme()` is the scheme a 401 names in `WWW-Authenticate`.
+ */
+public interface AuthenticationMechanism {
+
+    void applyTo(
+            HttpSecurity http,
+            ProblemDetailAuthenticationEntryPoint entryPoint,
+            ProblemDetailAccessDeniedHandler accessDeniedHandler);
+
+    String challengeScheme();
+}
+
+// --- SecurityAccessProperties.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.time.Duration;
+import java.util.List;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+/**
+ * `app.security.*` — the project-wide access facts of `32-seguranca.md` § 4. Defaults are the
+ * rule's defaults: API docs public, operator role for the actuator, no CORS.
+ */
+@ConfigurationProperties("app.security")
+public record SecurityAccessProperties(
+        @DefaultValue("true") boolean apiDocsPublic,
+        @DefaultValue("OPERATOR") String actuatorRole,
+        @DefaultValue Cors cors) {
+
+    /** Browser origins allowed to call `/api/**`. Empty means no browser client on another origin. */
+    public record Cors(
+            @DefaultValue List<String> allowedOrigins,
+            @DefaultValue({"GET", "POST", "PUT", "PATCH", "DELETE"}) List<String> allowedMethods,
+            @DefaultValue("PT30M") Duration maxAge) {}
+}

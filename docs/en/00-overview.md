@@ -32,6 +32,7 @@ flowchart TB
         SK_DOM["skill: domain-modeling"]:::skill
         SK_PERS["skill: persistence-architect"]:::skill
         SK_REST["skill: rest-api-architect"]:::skill
+        SK_SEC["skill: security-architect"]:::skill
         SK_TEST["skill: test-architect"]:::skill
         SK_DOCKER["skill: docker-architect"]:::skill
         SK_MSG["skill: messaging-architect"]:::skill
@@ -53,7 +54,7 @@ flowchart TB
     end
 
     subgraph L3["Norms and data — leaves"]
-        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging, scheduling)"]:::rule
+        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging, scheduling,\nauthorization)"]:::rule
         BLUEPRINTS["blueprints/*/*.yaml\n(_schema.md defines the contract)"]:::blueprint
     end
 
@@ -73,7 +74,7 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs, with guard + audit wired| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR & SK_REPORT
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_SEC & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR & SK_REPORT
     SK_BOOT -.->|Skill tool, step 8.4| SK_SONAR
     SK_ADOPT -.->|Skill tool, when the build file has no scanner| SK_SONAR
     SK_SONAR -.->|Skill tool, no existing server| SK_DOCKER
@@ -81,7 +82,7 @@ flowchart TB
     SK_BOOT -->|copies| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|proposes and writes, after approval| SK_UC & AG_DEV & RULES
     HOOK -.->|context subagent at SubagentStart: the catalog, generated project only| AG_DEV
-    SK_DOM & SK_PERS & SK_REST & SK_MSG & SK_JOBS -.->|read § Design-time use, decide the layer's patterns| SK_PAT
+    SK_DOM & SK_PERS & SK_REST & SK_SEC & SK_MSG & SK_JOBS -.->|read § Design-time use, decide the layer's patterns| SK_PAT
     SK_NF -->|Agent tool, pre-flight, if commons is empty| AG_LOG
     AG_LOG -->|writes| LOGOUT["commons.logging/** + AutoConfiguration.imports"]:::out
     SK_AUDIT -->|Bash, audit summary, no model| HOOK
@@ -90,6 +91,7 @@ flowchart TB
     SK_UC --> SK_DOM
     SK_DOM --> SK_PERS
     SK_DOM --> SK_REST
+    SK_REST -.->|if Access asks for something the filter chain doesn't already give| SK_SEC
     SK_DOM -.->|if the event needs external delivery| SK_MSG
     SK_UC -.->|if the case names a scheduled/job trigger| SK_JOBS
     SK_MSG -.->|if Form B (outbox + relay), or a partial defers a job| SK_JOBS
@@ -97,9 +99,11 @@ flowchart TB
     SK_MSG -.->|records the pending service; never chains| SK_DOCKER
     SK_TEST -.->|records the pending service; never chains| SK_DOCKER
     SK_JOBS --> SK_PERS
+    SK_SEC --> SK_PERS
     SK_PERS --> SK_TEST
     SK_MSG --> SK_TEST
     SK_JOBS --> SK_TEST
+    SK_SEC --> SK_TEST
     SK_REST --> SK_TEST
     SK_NF -->|Agent tool, optional, after consolidating| AG_DEV
     AG_DEV -->|writes| SRC["src/** of the generated project"]:::out
@@ -116,7 +120,7 @@ flowchart TB
     HOOK -->|blocks or warns about| SRC
     HOOK -->|audit: writes, in the generated project| TRAIL[".claude/audit-usage/*.md + history.jsonl + nodes.jsonl"]:::out
 
-    RULES -.->|cited by path, never copied| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_TEST & SK_MSG & SK_JOBS
+    RULES -.->|cited by path, never copied| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_SEC & SK_TEST & SK_MSG & SK_JOBS
     BLUEPRINTS -.->|cited by path| SK_BOOT
 
     classDef hook fill:#5c1a1a,stroke:#ff6b6b,color:#fff,stroke-width:2px

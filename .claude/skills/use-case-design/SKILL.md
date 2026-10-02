@@ -107,12 +107,13 @@ the decision.
    when the case stops being backlog.
 
    Nothing is saved before the answer.
-3. **Interview** with `AskUserQuestion`, four blocks, one per call when earlier
+3. **Interview** with `AskUserQuestion`, five blocks, one per call when earlier
    answers change the next questions:
 
    | Block | Fixes |
    |---|---|
    | Trigger, payload, response | Who initiates, what data comes in, what goes out and in what shape |
+   | Access — **always asked when the trigger is HTTP** | Who may execute it: anyone, any authenticated caller, named roles or groups, only the owner of the resource — and whether someone (a support or admin role) may act on another's resource. The answer is the `Access` row; it is what decides whether `security-architect` runs |
    | Side effects | Writes, external calls, publications — the boundary already counted in step 2, now confirmed |
    | Invariants and errors | Rules the domain guarantees, and the situation each violation produces — described, never named as an exception |
    | Repetition, transaction, concurrency | Does repeating the request create a duplicate (business fact)? Where does the transaction open and close? What business key could collide? |
@@ -127,6 +128,7 @@ the decision.
    | an HTTP status code, a verb, or a path | don't ask — `rest-api-architect` decides |
    | idempotency, `Idempotency-Key`, a key table | don't ask — ask the business fact instead |
    | an exception class name | don't ask — `domain-modeling` decides |
+   | JWT, OAuth2, an API key, a filter, `@PreAuthorize`, 401 or 403 | don't ask — ask who may execute it; `security-architect` decides the mechanism and the enforcement |
    | the shape of a domain field (value object, `enum`, primitive) | don't ask — ask what values the field admits; `domain-modeling` decides the shape |
    | fewer than 2 real options | don't ask — decide and record it in the spec. The runtime rejects the whole batch over a single one-option question (`@CLAUDE.md` § Known pitfalls) |
 

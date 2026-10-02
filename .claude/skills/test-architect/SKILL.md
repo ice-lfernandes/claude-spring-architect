@@ -108,6 +108,16 @@ what's left to cover outside of transport.
    switches (`@.claude/rules/scheduling.md` § Triggers) get one context test proving no
    trigger runs under it.
 
+   **`32-seguranca.md`, when it exists, fixes cases this partial must test — all of § 10.**
+   Every protected endpoint is proven three ways (no credential, without the authority, with
+   it) and every public one with no credential, through the real filter chain
+   (`@.claude/rules/authorization.md` § Tests) — shape in `templates/SecuredControllerTest.java.example`,
+   never filters switched off. Every ownership row gets a use-case unit test with another
+   actor, asserting the not-found outcome. The security test starters go into § 5 when the
+   build does not declare them yet — the ones the Initializr's `security` and
+   `oauth2-resource-server` ids add for the project's Boot version; without them `jwt()` and
+   `@WithMockUser` have no MockMvc integration.
+
 2. **Survey what already exists.**
 
    ```bash
@@ -225,7 +235,7 @@ question nobody asked.
 | Block | Fixes | Shape exemplar |
 |---|---|---|
 | Distribution by level | Each behavior, the level it's tested at, and why | `DomainTest.java.example` |
-| Cases per test class | Class name, each method's name, what it asserts | `UseCaseTest.java.example` · `ControllerTest.java.example` · `PersistenceIT.java.example` |
+| Cases per test class | Class name, each method's name, what it asserts | `UseCaseTest.java.example` · `ControllerTest.java.example` · `SecuredControllerTest.java.example` (when `32-seguranca.md` exists) · `PersistenceIT.java.example` |
 | Data and doubles | Factories, meaningful fields, substituted ports, clock | `TestFixtures.java.example` |
 | Coverage and gaps | Invariants with no test, and what's deliberately left uncovered | `@.claude/rules/testing.md` § Coverage |
 | Test dependencies | Test-scoped libraries the build doesn't declare yet — the executor's only license to add them | `@.claude/rules/testing.md` § Asynchronous effects |
@@ -255,8 +265,9 @@ bypasses as an executor.
 
 **Reads** `docs/use-cases/UC-NNN-<slug>/00-caso-de-uso.md` and `10-dominio.md`
 (mandatory in design mode — stops without the second), `20-persistencia.md`,
-`30-rest.md` and `35-jobs.md` when they exist, `@.claude/rules/scheduling.md` when the last
-one does, `@.claude/rules/testing.md`,
+`30-rest.md`, `32-seguranca.md` and `35-jobs.md` when they exist, `@.claude/rules/scheduling.md`
+when the last one does, `@.claude/rules/authorization.md` § Tests when `32-seguranca.md` does,
+`@.claude/rules/testing.md`,
 `@.claude/rules/error-handling.md`, `@.claude/rules/naming.md`,
 `@.claude/rules/code-quality.md`, `@.claude/rules/architecture-ddd.md`,
 `@.claude/rules/logging.md` (masking test requirement for fields `30-rest.md` marked

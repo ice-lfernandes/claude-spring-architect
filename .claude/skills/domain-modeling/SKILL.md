@@ -153,6 +153,26 @@ mother spec, it also isn't this skill.
    dead code, and the named backlog case is the correct answer in that situation. What this step
    forbids is the third option: a value with no method and no named case, where the gap is
    discovered later by whoever adds a precondition on it.
+4c. **`Access` = the owner makes ownership an invariant of this case.** When
+   `00-caso-de-uso.md`'s `Access` row says only the owner may execute it, the check is a
+   business rule, never a request rule (`@.claude/rules/authorization.md` § Boundary), and this
+   partial carries its three pieces:
+
+   - **the owner field** on the aggregate, typed as the identity value object of whoever owns
+     it (`CustomerId`, `UserId`) — REUSE when it exists;
+   - **the actor in the command** — a value object (`Actor`) holding that identity, plus the
+     override flag or role when `Access` grants one (a support agent acting on any order).
+     Never a framework type: the controller resolves it from the authenticated principal, and
+     `security-architect` names where;
+   - **the invariant** "the actor owns the aggregate, or holds the override", raising the
+     **same not-found exception** the use case raises for an absent aggregate — the response
+     must not reveal that someone else's resource exists. A distinct 403 needs a typed
+     exception `@.claude/rules/error-handling.md` does not have; propose it as a divergence,
+     never invent it.
+
+   A query use case filtered by owner ("my orders") carries the actor the same way, and the
+   outbound port takes it as a parameter — the filter is in the query, not applied after
+   loading everyone's rows.
 
 5. **Map each invariant to its exception.** Typed family from
    `@.claude/rules/error-handling.md` and `errorCode` in `UPPER_SNAKE_CASE`. An invariant
@@ -229,7 +249,8 @@ it), `@.claude/rules/architecture-ddd.md` (Domain and Application sections),
 `@.claude/rules/value-objects.md` (criterion for which field becomes a value object),
 `@.claude/rules/naming.md`, `@.claude/rules/error-handling.md`,
 `@.claude/rules/code-quality.md`, `@.claude/rules/logging.md` (which fields to flag as
-masking candidates), and the active blueprint's `packages.map`.
+masking candidates), `@.claude/rules/authorization.md` § Boundary (only when `Access` is the
+owner — step 4c), and the active blueprint's `packages.map`.
 
 **Writes** `docs/use-cases/UC-NNN-<slug>/10-dominio.md`. Only that file.
 

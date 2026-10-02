@@ -8,6 +8,7 @@
 | Identifier | `UC-001-create-user` |
 | Date | 2026-09-07 |
 | Trigger | user creation, over HTTP — inbound REST adapter. **The exact path and verb belong to `rest-api-architect`, in `30-rest.md`** |
+| Access | only callers with the `USER_ADMIN` role — a business fact. Mechanism, annotation and status belong to `security-architect`, in `32-seguranca.md`. One of: public · authenticated · role or group (named) · owner (and who may override). Required whenever the trigger is HTTP |
 | Side effects | **1** — `INSERT` into `users` |
 | Transaction | opens at the inbound port, closes before the response |
 | Repetition | repeating the request with the same email must **not** create a second user (business fact). The mechanism — `Idempotency-Key` or none — is delegated to `rest-api-architect` |

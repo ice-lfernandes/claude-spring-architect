@@ -1,0 +1,169 @@
+/*
+ * EXEMPLAR — mechanism "resource server, signed token": the caller sends
+ * `Authorization: Bearer <JWT>` issued by an external identity provider, and this application
+ * validates it locally against the provider's key set. `32-seguranca.md` § 2 and § 3.
+ *
+ * WHAT BOOT ALREADY DOES, AND WHY THERE IS NO DECODER BEAN HERE: with
+ * `spring.security.oauth2.resourceserver.jwt.issuer-uri` set, Boot builds the decoder,
+ * discovers the key set, and validates signature, expiry, not-before and issuer; with
+ * `...jwt.audiences` it adds the audience check `.claude/rules/authorization.md` § Mechanism
+ * requires. A `JwtDecoder` bean of our own replaces Boot's — and the audience check goes with
+ * it, in silence. Declare one only when `32-seguranca.md` says why, and then add a
+ * `JwtAudienceValidator` to it by hand.
+ *
+ * WHAT THIS CLASS ADDS: the claims-to-authorities mapping, which providers place in different,
+ * often nested, claims (`references/mechanism-decision-matrix.md` § 3). One converter, one
+ * prefix per kind — roles `ROLE_`, groups `GROUP_`, scopes `SCOPE_` — so `hasRole`,
+ * `hasAuthority('GROUP_…')` and `hasAuthority('SCOPE_…')` never collide. Claim paths are
+ * dotted (`realm_access.roles`), read from `app.security.token.*`, never hard-coded.
+ *
+ * PRINCIPAL NAME: the `sub` claim by default — the stable identifier of the caller, the one
+ * `CurrentActorResolution` turns into the command's actor. A username claim can change.
+ *
+ * The framework also adds a factor authority (`FACTOR_BEARER`) to every authenticated token:
+ * a test asserting the exact authority set must include it.
+ */
+
+// --- JwtResourceServerConfig.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(TokenAuthoritiesProperties.class)
+public class JwtResourceServerConfig {
+
+    @Bean
+    AuthenticationMechanism jwtResourceServer(TokenAuthoritiesProperties properties) {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setPrincipalClaimName(properties.principalClaim());
+        converter.setJwtGrantedAuthoritiesConverter(new ClaimPathAuthoritiesConverter(properties));
+        return new AuthenticationMechanism() {
+            @Override
+            public void applyTo(
+                    HttpSecurity http,
+                    ProblemDetailAuthenticationEntryPoint entryPoint,
+                    ProblemDetailAccessDeniedHandler accessDeniedHandler) {
+                http.oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(converter))
+                        .authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDeniedHandler));
+            }
+
+            @Override
+            public String challengeScheme() {
+                return "Bearer";
+            }
+        };
+    }
+}
+
+// --- TokenAuthoritiesProperties.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.util.List;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+/**
+ * `app.security.token.*` — where this provider puts each kind of authority, in a signed token
+ * or in an introspection response alike. Dotted paths reach
+ * into nested claims (`realm_access.roles`, `resource_access.orders-api.roles`). Defaults fit
+ * a provider that issues flat `roles`, `groups` and `scope` (or `scp`) claims.
+ */
+@ConfigurationProperties("app.security.token")
+public record TokenAuthoritiesProperties(
+        @DefaultValue("sub") String principalClaim,
+        @DefaultValue("roles") List<String> rolesClaims,
+        @DefaultValue("groups") List<String> groupsClaims,
+        @DefaultValue({"scope", "scp"}) List<String> scopesClaims) {}
+
+// --- ClaimPathAuthoritiesConverter.java
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+
+/**
+ * Reads every configured claim path and prefixes each value by its kind. A path that is
+ * absent, or holds something that is neither a list nor a space-separated string, yields no
+ * authority — never an error: a token without groups is a caller without groups.
+ */
+public final class ClaimPathAuthoritiesConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+
+    private final TokenAuthoritiesProperties properties;
+
+    public ClaimPathAuthoritiesConverter(TokenAuthoritiesProperties properties) {
+        this.properties = properties;
+    }
+
+    @Override
+    public Collection<GrantedAuthority> convert(Jwt jwt) {
+        return fromClaims(jwt.getClaims());
+    }
+
+    /** The same mapping over any claim set — the opaque-token mechanism calls it with the introspection attributes. */
+    public Collection<GrantedAuthority> fromClaims(Map<String, Object> claims) {
+        Set<GrantedAuthority> authorities = new LinkedHashSet<>();
+        collect(claims, properties.rolesClaims(), "ROLE_", true, authorities);
+        collect(claims, properties.groupsClaims(), "GROUP_", true, authorities);
+        collect(claims, properties.scopesClaims(), "SCOPE_", false, authorities);
+        return authorities;
+    }
+
+    private static void collect(
+            Map<String, Object> claims, List<String> paths, String prefix, boolean asConstant, Set<GrantedAuthority> into) {
+        for (String path : paths) {
+            values(read(claims, path))
+                    .filter(value -> !value.isBlank())
+                    .map(value -> new SimpleGrantedAuthority(prefix + (asConstant ? normalize(value) : value)))
+                    .forEach(into::add);
+        }
+    }
+
+    private static Object read(Map<String, Object> claims, String path) {
+        Object current = claims;
+        for (String segment : path.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) {
+                return null;
+            }
+            current = map.get(segment);
+        }
+        return current;
+    }
+
+    private static Stream<String> values(Object claim) {
+        if (claim instanceof Collection<?> collection) {
+            return collection.stream().map(String::valueOf);
+        }
+        if (claim instanceof String text) {
+            return Arrays.stream(text.trim().split("\\s+"));
+        }
+        return Stream.empty();
+    }
+
+    /**
+     * Roles and groups become `UPPER_SNAKE_CASE` constants (`.claude/rules/authorization.md` §
+     * Mechanism); a group that arrives as a path (`/finance/approvers`) keeps every segment
+     * (`FINANCE_APPROVERS`), so two subgroups with the same leaf never merge.
+     * Scopes are left as issued: they are case-sensitive.
+     */
+    private static String normalize(String value) {
+        String name = value.startsWith("/") ? value.substring(1) : value;
+        return name.toUpperCase(Locale.ROOT).replace('/', '_').replace('-', '_');
+    }
+}

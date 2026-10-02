@@ -50,6 +50,9 @@ use case number or slug — `use-case-design` does.
 - `docs/use-cases/UC-NNN-<slug>/35-jobs.md` — via `jobs-architect`, only if
   `25-mensageria.md` chose Form B or `00-caso-de-uso.md`'s trigger is a schedule
 - `docs/use-cases/UC-NNN-<slug>/30-rest.md` — via `rest-api-architect`
+- `docs/use-cases/UC-NNN-<slug>/32-seguranca.md` — via `security-architect`, only if
+  `00-caso-de-uso.md`'s `Access` asks for something the project's filter chain does not
+  already give (step 3b)
 - `docs/use-cases/UC-NNN-<slug>/40-testes.md` — via `test-architect`
 
 **Writes outside `docs/`: none.** A run is docs-only, and that is enforced, not promised:
@@ -82,13 +85,16 @@ below. No end of this flow is left without an explicit git instruction.
 1. `use-case-design` — invoked for a new case; skipped on resume when `00-caso-de-uso.md` exists
 2. `domain-modeling` — invoked if `10-dominio.md` is missing (depends on 1)
 3. `rest-api-architect` — invoked if `30-rest.md` is missing (depends on 2)
+3b. `security-architect` — invoked per step 3b's table when `32-seguranca.md` is missing
+   (depends on 1, 2, 3). Skipped when `Access` is public in a project with no filter chain, or
+   authenticated in one whose chain already denies by default
 4. `messaging-architect` — invoked if `10-dominio.md`'s Events block names external
    (Kafka) delivery and `25-mensageria.md` is missing (depends on 2). Skipped entirely
    when the event, if any, stays in-process — not every use case needs it
 5. `jobs-architect` — invoked if `25-mensageria.md` chose Form B or the trigger is a
    schedule, and `35-jobs.md` is missing (depends on 1, 4). Skipped otherwise
-6. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3, 4, 5)
-7. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,4,5,6)
+6. `persistence-architect` — invoked if `20-persistencia.md` is missing (depends on 2, 3, 3b, 4, 5)
+7. `test-architect` — invoked if `40-testes.md` is missing (depends on 2,3,3b,4,5,6)
 
 **Why REST and messaging both run before persistence.** The order follows who generates
 requirements for whom. REST generates schema requirements — `Idempotency-Key` on a
@@ -111,11 +117,20 @@ until `35-jobs.md` § 3 and § 6 exist. Jobs itself needs only the use case and 
 publication form, so it costs nothing to run first
 (`@.claude/decisions/0087-jobs-architect-skill.md`).
 
+Security runs right after REST, for the same two reasons in opposite directions. It needs the
+endpoints `30-rest.md` fixed — access rules written before them protect a guess — and it can
+generate schema requirements: users owned by the application need a credentials store, an
+API key needs a key store, both invisible to persistence until `32-seguranca.md` § 7 exists.
+Ownership is not one of them: it is an invariant `domain-modeling` already modeled from the
+`Access` row (`@.claude/decisions/0112-security-architect-skill.md`).
+
 **Design order isn't implementation order.** Messaging is designed fourth and implemented
 sixth: `UC-NNN-spec.md` keeps messaging as block 6, and the executor's conditional Block M
 still runs between REST and Tests. Jobs is block 7, implemented by the conditional Block J
 right after Block M — a trigger compiles against the inbound port it calls, so it comes last
-among the production blocks. The pipeline orders by who needs whose requirements;
+among the production blocks. Security is block 4.5, implemented by the conditional Block S
+right after Block 3 — its annotations and the actor resolution go on the controllers Block 3
+just wrote. The pipeline orders by who needs whose requirements;
 the spec orders by what compiles against what.
 8. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
    one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
@@ -406,6 +421,30 @@ personal data).
 
 **Output:** "✅ REST ready" or gaps.
 
+### Step 3b: Security (depends on 1, 2, 3, conditional)
+
+Read `00-caso-de-uso.md`'s `Access` row, and whether the project already has a filter chain
+(`grep -rl "SecurityFilterChain" --include='*.java' src/main`). If `32-seguranca.md` is missing,
+**invoke** `/security-architect UC-NNN` when any holds:
+
+| `Access` | Filter chain on disk | Why it runs |
+|---|---|---|
+| a role, a group, a scope, or the owner | any | this case's rules — and the setup when there is none |
+| authenticated | none | first secured case: the project-wide setup |
+| public | present | a `permitAll` needs its recorded reason |
+
+Otherwise skip: public in an unsecured project, or authenticated behind a chain that already
+denies by default — the spec's security block says which. An `00-caso-de-uso.md` with an HTTP
+trigger and no `Access` row (written before the row existed) is not a skip: invoke it, it asks.
+If `32-seguranca.md` exists: read, validate (eleven blocks: access per endpoint, mechanism,
+authorities, project-wide setup, ownership, failure responses, schema requirements, declared
+dependencies, configuration, contract test cases, deferred).
+
+§ 7 is what step 5 reads; § 8 is the only list that entitles the executor to add a security
+starter to `pom.xml`; § 10 is what step 6 turns into tests.
+
+**Output:** "✅ Security ready", "— skipped (<which row>)", or gaps.
+
 ### Step 4: Messaging (depends on 2, conditional)
 
 Read `10-dominio.md`'s Events block. If it names external (Kafka) delivery for the
@@ -441,11 +480,12 @@ add a scheduling dependency to `pom.xml`.
 
 **Output:** "✅ Jobs ready", "— skipped (no scheduled work)", or gaps.
 
-### Step 5: Persistence (depends on 1,2,3,4,4b)
+### Step 5: Persistence (depends on 1,2,3,3b,4,4b)
 
 If `20-persistencia.md` is missing: **invoke** `/persistence-architect UC-NNN`. It reads
 every schema requirement list in the same pass — `30-rest.md` block 4 (the idempotency
-table among them), when step 4 ran `25-mensageria.md` § 6 (the shared outbox table, the
+table among them), when step 3b ran `32-seguranca.md` § 7 (a credentials or API-key store),
+when step 4 ran `25-mensageria.md` § 6 (the shared outbox table, the
 dedupe table), and when step 4b ran `35-jobs.md` § 3 and § 6 (the replica count its claim
 strategy must meet, the scheduling tables, the prune's bounded delete). If it exists: read, validate (seven blocks: schema, mapping, adapter and
 ports, migrations, configuration, declared dependencies, deferred). § 6 is the persistence twin
@@ -455,17 +495,18 @@ and consolidation checks it again, for the paths that never take this step.
 
 **Output:** "✅ Persistence ready" or gaps.
 
-### Step 6: Tests (depends on 1,2,3,4,5)
+### Step 6: Tests (depends on 1,2,3,3b,4,5)
 
 If `40-testes.md` is missing: **invoke** `/test-architect UC-NNN` (design mode).
 If it exists: read, validate (five blocks: pyramid, cases, fixtures, coverage, test dependencies).
+When step 3b ran, every case of `32-seguranca.md` § 10 has a test row — a missing one is a gap.
 
 **Output:** "✅ Tests ready" or gaps.
 
-### Consolidation (after 1,2,3,5,6 ✅ — steps 4 and 4b conditional)
+### Consolidation (after 1,2,3,5,6 ✅ — steps 3b, 4 and 4b conditional)
 
-If all specs that apply exist and validate (messaging only when step 4 wasn't skipped, jobs
-only when step 4b wasn't):
+If all specs that apply exist and validate (security only when step 3b wasn't skipped,
+messaging only when step 4 wasn't, jobs only when step 4b wasn't):
 
 1. **Resolve divergences before consolidating.** The partials are written by different
    skills, and downstream corrects upstream: `30-rest.md` fixes the path and status
@@ -479,7 +520,8 @@ only when step 4b wasn't):
 
    | Fact | Who wins |
    |---|---|
-   | HTTP path, verb, status, body shape | `30-rest.md` |
+   | HTTP path, verb, status, body shape | `30-rest.md` — except the 401 and 403 rows, below |
+   | Who may call each endpoint, the authentication mechanism, the claims-to-authorities mapping, the `permitAll` list and its reasons, the 401 and 403 rows, CORS, OpenAPI and Actuator exposure, where the controller reads the actor from | `32-seguranca.md`. The actor field, the owner field and the ownership invariant stay `10-dominio.md`'s; an owner-only `Access` whose domain partial has no actor is not settled by precedence: **stop and ask** |
    | Table, column, key, index, migration | `20-persistencia.md` — including every table or column another partial *asked for*: the requirement is born in `30-rest.md` block 4 or `25-mensageria.md` § 6, the final form (name, type, nullability, index, migration) is always this one's |
    | Topic, serialization, delivery guarantee, consumer retry and DLQ | `25-mensageria.md` |
    | Outbox table, its columns, the claim query, and the values the columns encode (batch size, backoff, attempt ceiling, retention window, the prune's statement) | `20-persistencia.md` — the whole table is its territory. `25-mensageria.md` declares the **guarantee** those values have to deliver, never the columns; a § 6 row naming columns is reported as a divergence and the guarantee is what carries over |
@@ -521,7 +563,10 @@ only when step 4b wasn't):
      partial that details it. Never copy a partial's tables, SQL, or code: a copied
      consolidation doubled the output of a real run and added nothing the partial lacked
    - Structure: 5 blocks (use case, domain, persistence, REST, tests), plus a 6th
-     (messaging) only when step 4 wasn't skipped, and a 7th (jobs) only when step 4b wasn't
+     (messaging) only when step 4 wasn't skipped, a 7th (jobs) only when step 4b wasn't, and
+     the security block (`## 4.5 Security`) only when step 3b wasn't — when it was, that block
+     reads `none` with the skip row of step 3b, so "covered by deny-by-default" is a recorded
+     fact and not a missing block
    - `## Impact on approved use cases`: every row from the same section of each partial —
      "none" when all are empty
    - `## Design patterns`: every row from the same section of each partial, with the partial
@@ -542,7 +587,8 @@ only when step 4b wasn't):
      on every real call is not a detail the reader should have to find in a test fixture
      (lessons-learned-013 § 5)
    - **A partial that applies must carry its declared-dependency section, or consolidation
-     stops.** `20-persistencia.md` § 6 always; `25-mensageria.md` § 7 whenever step 4 ran;
+     stops.** `20-persistencia.md` § 6 always; `32-seguranca.md` § 8 whenever step 3b ran;
+     `25-mensageria.md` § 7 whenever step 4 ran;
      `35-jobs.md` § 7 whenever step 4b ran; `40-testes.md` § 5 always. The
      value `none` is legitimate and common — most cases need no new dependency — but **absence
      is not `none`**: one says the design skill decided nothing was needed, the other says
@@ -585,7 +631,16 @@ only when step 4b wasn't):
      altered case ever learns it changed — immutability keeps the text and loses the
      history
    - Order: implementation order (depends-on)
-   - Recipient: `java-spring-boot-developer` agent — a spec with § 6 runs the executor's
+   - **Every `permitAll` carries its reason, or consolidation stops.** `32-seguranca.md` § 1
+     lists the public paths of the project after this case, each with a reason; a public row
+     with none, or a first secured case whose `## Impact on approved use cases` does not say
+     what happens to the endpoints earlier cases published without a chain, is not consolidated
+     — deny by default turns them into 401 on the next deploy, and nobody chose that
+     (`@.claude/rules/authorization.md` § Default access)
+   - Recipient: `java-spring-boot-developer` agent — a spec with § 4.5 runs the executor's
+     conditional Block S (steps S1-S3, right after REST), which generates the filter chain, the
+     mechanism wiring, the method-security annotations and the actor resolution from
+     `32-seguranca.md`; a spec with § 6 runs the executor's
      conditional Block M (steps M1-M4, between REST and Tests), which generates the Kafka
      producer/consumer adapters from `25-mensageria.md`; a spec with § 7 runs Block J (steps
      J1-J3, right after Block M), which generates the scheduling wiring and triggers from
@@ -727,7 +782,7 @@ measurable per case.
 Lives at `.claude/skills/new-feature/templates/feature-spec.md.example`; the short path
 uses `templates/feature-spec-short.md.example`.
 
-Structure (5 blocks, implementation order — plus messaging and jobs when they apply):
+Structure (5 blocks, implementation order — plus security, messaging and jobs when they apply):
 - Frontmatter: `status:`
 - Block 1: Use case
 - Block 2: Domain model (aggregate, VOs, invariants, ports, events)
@@ -738,6 +793,9 @@ Structure (5 blocks, implementation order — plus messaging and jobs when they 
 - Block 3.6 (conditional): Jobs (technology, triggers, coordination, replica count) —
   present only when step 4b ran; "none" otherwise. Implemented by the executor's Block J
 - Block 4: REST API (resources, DTOs, errors, pagination, idempotency)
+- Block 4.5 (conditional): Security (mechanism, access per endpoint, `permitAll` list,
+  ownership, setup NEW/REUSE) — present when step 3b ran; otherwise `none` with the skip row.
+  Implemented by the executor's Block S, right after Block 3
 - Block 5: Tests (pyramid, critical cases, coverage, checklist)
 - Impact on approved use cases ("none" when empty)
 - Final section: Resolved divergences (empty when there were none)

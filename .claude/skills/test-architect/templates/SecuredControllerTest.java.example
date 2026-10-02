@@ -1,0 +1,136 @@
+/*
+ * EXEMPLAR — web-slice test of an endpoint behind the project's filter chain, for the cases
+ * `32-seguranca.md` § 10 lists. Same level and suffix as `ControllerTest.java.example` (no `IT`:
+ * no database, no network). Shape owned here; the cases are `security-architect`'s.
+ *
+ * THE REAL CHAIN, NEVER FILTERS OFF: `@WebMvcTest` does not pick up `@Configuration` classes, so
+ * without the `@Import` the slice runs the framework's default chain — a test that passes
+ * against a configuration production never uses. Import the chain, the mechanism, the two
+ * handlers and `SecurityExceptionHandler`'s dependencies. `addFilters = false` is forbidden
+ * (`.claude/rules/authorization.md` § Tests).
+ *
+ * CREDENTIALS FROM THE TEST SUPPORT, NEVER FROM A PROVIDER: `jwt()` builds an authenticated
+ * token without decoding anything; the `JwtDecoder` double only satisfies the resource server's
+ * wiring at startup, since the slice has no issuer to discover. `jwt()` also bypasses the
+ * project's claims converter — its authorities are the ones the test passes. The converter
+ * itself gets a plain unit test (claim paths in, authorities out). For the other mechanisms:
+ * `opaqueToken()`, `httpBasic(user, password)` with a `UserCredentialsRepository` double, or the
+ * API-key header with an `ApiKeyRepository` double.
+ *
+ * THE THREE CASES PER PROTECTED ENDPOINT: no credential → 401 with `WWW-Authenticate`; a
+ * credential without the authority → 403 (or the 404 an ownership row chose); the authority →
+ * the success status. Plus, for an ownership row: the actor the controller passes is the
+ * token's subject — the decision itself is the use case's, proven in its unit test with another
+ * actor.
+ *
+ * DEPENDENCIES: the security test starter (`spring-boot-starter-security-test` in Boot 4, which
+ * brings the MockMvc integration `jwt()` and `@WithMockUser` need) — declared in `40-testes.md`
+ * § 5, never inferred. Do not assert an exact authority set on an authenticated principal: the
+ * framework adds a factor authority (`FACTOR_BEARER`, `FACTOR_PASSWORD`) of its own.
+ */
+package com.exemplo.minhaapi.adapter.in.rest;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.exemplo.minhaapi.adapter.in.rest.security.CurrentActorResolver;
+import com.exemplo.minhaapi.adapter.in.rest.security.JwtResourceServerConfig;
+import com.exemplo.minhaapi.adapter.in.rest.security.MethodSecurityConfig;
+import com.exemplo.minhaapi.adapter.in.rest.security.ProblemDetailAccessDeniedHandler;
+import com.exemplo.minhaapi.adapter.in.rest.security.ProblemDetailAuthenticationEntryPoint;
+import com.exemplo.minhaapi.adapter.in.rest.security.SecurityConfig;
+import com.exemplo.minhaapi.application.port.in.order.CancelOrderCommand;
+import com.exemplo.minhaapi.application.port.in.order.CancelOrderUseCase;
+import com.exemplo.minhaapi.domain.exception.NotFoundException;
+import io.micrometer.tracing.Tracer;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(OrderController.class)
+@Import({
+    SecurityConfig.class,
+    JwtResourceServerConfig.class,
+    MethodSecurityConfig.class,
+    ProblemDetailAuthenticationEntryPoint.class,
+    ProblemDetailAccessDeniedHandler.class,
+    CurrentActorResolver.class
+})
+class OrderControllerSecurityTest {
+
+    private static final String ORDER_ID = "6f1c2b3a-0d4e-4f5a-8b9c-1d2e3f4a5b6c";
+    private static final String OWNER = "0b8f6a2e-3c1d-4e5f-9a7b-2c4d6e8f0a1b";
+
+    @Autowired private MockMvc mockMvc;
+
+    @MockitoBean private CancelOrderUseCase cancelOrder;
+    /** The resource server needs a decoder at startup; `jwt()` never calls it. */
+    @MockitoBean private JwtDecoder jwtDecoder;
+    /** `ApiExceptionHandler` injects it — same reason as in `ControllerTest.java.example`. */
+    @MockitoBean private Tracer tracer;
+
+    @Test
+    @DisplayName("no credential is 401 with the Bearer challenge and a Problem Details body")
+    void rejectsAnonymous() throws Exception {
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancellation", ORDER_ID))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("the owner cancels, and the actor passed is the token's subject")
+    void ownerCancels() throws Exception {
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancellation", ORDER_ID)
+                        .with(jwt().jwt(token -> token.subject(OWNER))))
+                .andExpect(status().isNoContent());
+
+        ArgumentCaptor<CancelOrderCommand> command = ArgumentCaptor.forClass(CancelOrderCommand.class);
+        verify(cancelOrder).handle(command.capture());
+        assertThat(command.getValue().actor().customerId()).isEqualTo(UUID.fromString(OWNER));
+        assertThat(command.getValue().actor().support()).isFalse();
+    }
+
+    @Test
+    @DisplayName("support role travels in the actor as the override")
+    void supportOverrides() throws Exception {
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancellation", ORDER_ID)
+                        .with(jwt().jwt(token -> token.subject(OWNER))
+                                .authorities(new SimpleGrantedAuthority("ROLE_SUPPORT"))))
+                .andExpect(status().isNoContent());
+
+        ArgumentCaptor<CancelOrderCommand> command = ArgumentCaptor.forClass(CancelOrderCommand.class);
+        verify(cancelOrder).handle(command.capture());
+        assertThat(command.getValue().actor().support()).isTrue();
+    }
+
+    /** The use case decided "not the owner"; the response must look exactly like an absent order. */
+    @Test
+    @DisplayName("another customer's order answers 404, like an order that does not exist")
+    void otherCustomerGetsNotFound() throws Exception {
+        willThrow(new NotFoundException("ORDER_NOT_FOUND", "Order doesn't exist"))
+                .given(cancelOrder)
+                .handle(any());
+
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancellation", ORDER_ID)
+                        .with(jwt().jwt(token -> token.subject(UUID.randomUUID().toString()))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("ORDER_NOT_FOUND"));
+    }
+}

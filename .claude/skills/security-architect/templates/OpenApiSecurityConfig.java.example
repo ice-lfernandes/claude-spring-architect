@@ -1,0 +1,34 @@
+/*
+ * EXEMPLAR — the authentication scheme declared in the OpenAPI document, so the published
+ * contract says what the filter chain enforces and the Swagger UI can send a credential.
+ * Declared once, globally required; a public operation opts out on its own `...OpenApiDocs`
+ * composed annotation with an empty `@SecurityRequirements` (`rest-api-architect`'s
+ * `OpenApiDocs.java.example`), so the document and § 1's public rows match.
+ *
+ * ONE SCHEME PER MECHANISM of `32-seguranca.md` § 2:
+ *   - signed or opaque token → `type = HTTP`, `scheme = "bearer"` (`bearerFormat = "JWT"` only
+ *     for signed tokens);
+ *   - users owned by the application → `type = HTTP`, `scheme = "basic"`;
+ *   - API key → `type = APIKEY`, `in = SecuritySchemeIn.HEADER`, `paramName` = the header name.
+ *
+ * A project that already declares an `@OpenAPIDefinition` (title, version) gets the `security`
+ * attribute added to that one: two definitions in one application, and only one is read.
+ *
+ * Documentation only: removing this class opens nothing, and adding it protects nothing. The
+ * chain is the enforcement; this is what the client reads.
+ */
+package com.exemplo.minhaapi.adapter.in.rest.security;
+
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+@OpenAPIDefinition(security = @SecurityRequirement(name = OpenApiSecurityConfig.SCHEME))
+@SecurityScheme(name = OpenApiSecurityConfig.SCHEME, type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
+public class OpenApiSecurityConfig {
+
+    public static final String SCHEME = "bearer-token";
+}
