@@ -1634,6 +1634,8 @@ Decisions in this repository that illustrate the guide's principles well:
 - **Observers don't leave a trail.** `audit` mode records every skill and agent run in
   the *generated* project; `/audit-usage` and `/arch-doctor` sit in the `observer` class,
   which declares `audited: false`, so reading the trail doesn't append to it.
+  `/arch-adopt` is never recorded (its own class override); any other piece can be
+  switched per project in `.claude/audit-usage/audited.json`, which `export` never writes.
 
 ---
 

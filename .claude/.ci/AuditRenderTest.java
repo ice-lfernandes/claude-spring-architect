@@ -5,7 +5,9 @@
 // peak context; each tool error's first line, redacted — writes the matching ledger fields,
 // that `audit summary` aggregates them next to a legacy pt-BR ledger row, that a model with
 // no price is named in the report header and by `doctor` (lessons-learned-018), and that an
-// observer — a piece whose class declares `audited: false` — leaves no report of its own.
+// observer — a piece whose class declares `audited: false` — leaves no report of its own, and
+// that a project's audited.json sets a piece on or off over its class, except arch-adopt,
+// fixed off by its own class override (decision 0111).
 //
 // Why this test exists: every number here is parsed out of a transcript layout that is
 // observed, not documented, and a render that throws exits 0 through `main`'s catch — the
@@ -172,14 +174,58 @@ public class AuditRenderTest {
         check(!publishReport && !Files.exists(trail.resolve(".state/s5.ndjson")),
                 "git-publish opens no run of its own, typed or called by the model");
 
+        // The project's audited.json sets a piece on or off over its class default; arch-adopt's
+        // own class override is fixed, out of the file's reach — 0111.
+        for (String n : new String[] {"arch-adopt", "report-issue"}) {
+            Files.createDirectories(repo.resolve(".claude/skills/" + n));
+            Files.writeString(repo.resolve(".claude/skills/" + n + "/SKILL.md"),
+                    "---\nname: " + n + "\ndescription: fixture\n---\n\nbody\n");
+        }
+        run(hook, repo, "prompt", "{\"session_id\":\"s6\",\"prompt\":\"/arch-adopt\"}");
+        run(hook, repo, "flush", "{\"session_id\":\"s6\"}");
+        check(!reportOf(trail, "arch-adopt"), "arch-adopt is never audited, with no project file");
+
+        Files.writeString(trail.resolve("audited.json"),
+                "{\"skills\":{\"report-issue\":false,\"audit-usage\":true,\"arch-adopt\":true}}");
+        run(hook, repo, "prompt", "{\"session_id\":\"s7\",\"prompt\":\"/report-issue\"}");
+        run(hook, repo, "flush", "{\"session_id\":\"s7\"}");
+        run(hook, repo, "call", "{\"session_id\":\"s8\",\"tool_name\":\"Skill\",\"tool_use_id\":\"t8\","
+                + "\"tool_input\":{\"skill\":\"report-issue\"}}");
+        check(!reportOf(trail, "report-issue") && !Files.exists(trail.resolve(".state/s8.ndjson")),
+                "audited.json `false` takes an audited piece out, typed or called by the model");
+        run(hook, repo, "prompt", "{\"session_id\":\"s9\",\"prompt\":\"/audit-usage\"}");
+        run(hook, repo, "flush", "{\"session_id\":\"s9\"}");
+        check(reportOf(trail, "audit-usage"), "audited.json `true` puts back a piece its class leaves out");
+        run(hook, repo, "prompt", "{\"session_id\":\"s10\",\"prompt\":\"/arch-adopt\"}");
+        run(hook, repo, "flush", "{\"session_id\":\"s10\"}");
+        check(!reportOf(trail, "arch-adopt"), "audited.json cannot turn arch-adopt back on");
+        must(runMode(hook, repo, "doctor"), "`arch-adopt` is fixed by skill_classes.classes.build.overrides",
+                "doctor refuses arch-adopt in audited.json");
+
+        Files.writeString(trail.resolve("audited.json"),
+                "{\"skills\":{\"nope\":false,\"report-issue\":\"no\"},\"redact\":{}}");
+        String bad = runMode(hook, repo, "doctor");
+        must(bad, "`nope` — no .claude/skills/nope/SKILL.md", "doctor names a piece that does not exist");
+        must(bad, "`report-issue` must be true or false", "doctor names a non-boolean value");
+        must(bad, "`redact` — only `skills` and `agents` are allowed", "doctor refuses any other key");
+
+        Files.writeString(trail.resolve("audited.json"), "{\"skills\":{\"report-issue\":false}}");
+        must(runMode(hook, repo, "doctor"), "✅ report-issue off", "doctor lists what the file sets");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " check(s) failed — `audit` is NOT rendering where the run"
                     + " spent, is leaking an unredacted error into the versioned trail, or is recording"
-                    + " an observer its class marks `audited: false`.");
+                    + " a piece its class, its fixed override or the project's audited.json takes out of the trail.");
             System.exit(1);
         }
         System.out.println("✅ audit: tool calls, top turns, peak context and redacted errors rendered;"
                 + " ledgers and summary carry them next to legacy rows.");
+    }
+
+    static boolean reportOf(Path trail, String piece) throws Exception {
+        try (var s = Files.list(trail)) {
+            return s.anyMatch(f -> f.getFileName().toString().endsWith("--" + piece + ".md"));
+        }
     }
 
     static String at(int seconds) { return Instant.now().plusSeconds(seconds).toString(); }

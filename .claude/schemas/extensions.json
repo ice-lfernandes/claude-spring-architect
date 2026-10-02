@@ -142,7 +142,9 @@
   },
 
   "audit": {
-    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup) and `ops` (`git-publish`: its own report would land after its commit). Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md and .claude/decisions/0086-audit-exclusion-owned-by-the-class.md",
+    "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup) and `ops` (`git-publish`: its own report would land after its commit). Three levels decide it, first boolean wins: a piece's own `overrides.<name>.audited` in its class, fixed here and out of the project's reach (`arch-adopt`, never audited); then the project's `project_overrides` file; then the class flag. Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md, .claude/decisions/0086-audit-exclusion-owned-by-the-class.md and .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
+    "$comment_project_overrides": "Resolved inside the trail directory, like pricing.json. The one file of `.claude/` a generated project writes for itself: `export` never names it, so `/arch-adopt` never touches it. Shape: {\"skills\": {\"<name>\": true|false}, \"agents\": {\"<name>\": true|false}} — `false` takes a piece out of the trail with the semantics of `audited: false`, `true` puts back one its class leaves out. Absent file or absent name: the class decides, as before. `doctor` validates it strictly — any other key, a non-boolean, a name with no file, or a piece fixed by its class override fails by name: the file sets which pieces are audited and nothing else. Design: .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
+    "project_overrides": "audited.json",
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
@@ -187,7 +189,7 @@
         }
       },
       "build": {
-        "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and gof-design-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs.",
+        "$comment": "Materializes files outside docs/. No common territory — the class default is empty on purpose and every skill carries its own override, which is the honest shape of a class that holds project-bootstrap and gof-design-patterns at once. Unreachable by a Skill call while a design_phase class is open: a design run's diff stays reviewable as docs. `arch-adopt` carries `audited: false` in its override, the only piece-level flag: never audited, and a project's `audit.project_overrides` file cannot turn it back on. Its whole output is a `git diff` of `.claude/` handed to the user for review — its own report would land in that diff after the export, and its step 1 refuses a dirty tree. Design: .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
         "blocked_during_design": true,
         "allowed_models": ["opus", "sonnet"],
         "write_allow": [],
@@ -196,7 +198,7 @@
         "overrides": {
           "project-bootstrap": { "write_allow": ["**"] },
           "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**"] },
-          "arch-adopt": { "write_allow": [".claude/**", ".gitignore", "CLAUDE.md"] },
+          "arch-adopt": { "write_allow": [".claude/**", ".gitignore", "CLAUDE.md"], "audited": false },
           "gof-design-patterns": { "write_allow": ["src/**", "**/src/**"] },
           "sonarqube-setup": { "write_allow": ["pom.xml", "build.gradle", ".github/workflows/**"] }
         }

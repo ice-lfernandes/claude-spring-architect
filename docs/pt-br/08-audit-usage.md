@@ -71,7 +71,7 @@ Qualquer nome que resolva para `.claude/skills/<n>/SKILL.md` ou
 pré-carregadas via `skills:` no frontmatter de um agent aparecem sob esse agent como
 `preloaded`, sem tokens próprios.
 
-Três exceções, decididas pela classe em `extensions.json` → `skill_classes`, nunca por uma
+Exceções, decididas pela classe em `extensions.json` → `skill_classes`, nunca por uma
 lista: uma classe que declara `audited: false` não abre run próprio para nenhuma skill dela.
 
 - **`observer`** — `audit-usage` e `arch-doctor`. Invocar um deles **fecha** a execução em
@@ -82,6 +82,27 @@ lista: uma classe que declara `audited: false` não abre run próprio para nenhu
   ela faz, então todo publish terminaria com o tree sujo. Digitada como `/git-publish`, fecha
   antes a execução em andamento, e o relatório dessa execução entra no commit. Encadeada
   dentro de outra execução, continua como nó dela, com tokens próprios.
+- **`arch-adopt`** — o único flag por peça: `audited: false` na própria entrada de
+  `skill_classes.build.overrides`; os outros membros de `build` continuam auditados. Toda a
+  saída dele é um `git diff` de `.claude/` entregue para revisão, e o passo 1 recusa tree
+  sujo; um relatório próprio cairia nesse diff depois do export. Fixo upstream — o arquivo
+  do projeto abaixo não religa.
+
+### Por projeto: `.claude/audit-usage/audited.json`
+
+O único arquivo de `.claude/` que um projeto gerado escreve para si. O `export` nunca o nomeia,
+então o `/arch-adopt` nunca mexe nele. Ausente → cada peça segue a classe, como acima.
+
+```json
+{ "skills": { "report-issue": false, "git-publish": true }, "agents": {} }
+```
+
+`false` tira a peça da trilha com a mesma semântica de `audited: false`; `true` devolve uma que
+a classe deixa de fora — religar `git-publish` ou um observer traz de volta o que as exceções
+acima evitam, e é decisão do projeto. Vence o primeiro boolean: o override da própria peça na
+classe (`arch-adopt`), depois este arquivo, depois a classe. O `doctor` valida na linha
+`Audit overrides` e falha pelo nome com qualquer chave além de `skills`/`agents`, valor que não
+seja `true`/`false`, nome sem arquivo no projeto, ou `arch-adopt`. Decisão 0111.
 
 ## Anatomia de um relatório
 

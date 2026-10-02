@@ -293,6 +293,11 @@ including a `custom.template.yaml` built in step 4.
 **Refuses** a dirty worktree, a directory that is not a git repository, and a fetch it
 cannot authenticate. Never prints the value of `source.auth_env`, and never commits.
 
+**Leaves no audit report** — `audited: false` in its own `skill_classes.build.overrides`
+entry, out of reach of the project's `.claude/audit-usage/audited.json`: its output is the
+diff above, and a report of its own would land in it. That file is the project's, and
+`export` never names it, so an update leaves it as it was.
+
 **Travels into the project** — unlike `project-bootstrap` and `init-project`, which only
 serve before the project exists. This one is how a project updates itself once the plugin
 that delivered it is gone, so it is in `export.skills.include`.
