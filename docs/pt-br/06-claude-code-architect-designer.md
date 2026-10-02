@@ -108,7 +108,7 @@ sequenceDiagram
     Note over CMD,U: Fase 1 · Interview
     CMD->>DM: lê matriz e pitfalls antes de perguntar
     CMD->>U: AskUserQuestion — até 4 perguntas por chamada, 2-3 chamadas
-    U-->>CMD: respostas dos eixos aplicáveis (17 no total; 11-13 só para MCP, 14-16 só para hook, 17 respondido pela própria skill)
+    U-->>CMD: respostas dos eixos aplicáveis (17 no total, 11-13 só para MCP, 14-16 só para hook, 17 respondido pela própria skill)
     end
 
     rect rgb(235,245,235)

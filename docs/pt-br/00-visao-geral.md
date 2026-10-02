@@ -94,7 +94,7 @@ flowchart TB
     SK_REST -.->|se Access pede algo que a filter chain ainda não dá| SK_SEC
     SK_DOM -.->|se evento pede entrega externa| SK_MSG
     SK_UC -.->|se o caso nomeia trigger agendado/job| SK_JOBS
-    SK_MSG -.->|se Form B (outbox + relay), ou partial adia um job| SK_JOBS
+    SK_MSG -.->|"se Form B (outbox + relay), ou partial adia um job"| SK_JOBS
     SK_PERS -.->|registra pendência; nunca encadeia| SK_DOCKER
     SK_MSG -.->|registra pendência; nunca encadeia| SK_DOCKER
     SK_TEST -.->|registra pendência; nunca encadeia| SK_DOCKER

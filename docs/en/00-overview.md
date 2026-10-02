@@ -94,7 +94,7 @@ flowchart TB
     SK_REST -.->|if Access asks for something the filter chain doesn't already give| SK_SEC
     SK_DOM -.->|if the event needs external delivery| SK_MSG
     SK_UC -.->|if the case names a scheduled/job trigger| SK_JOBS
-    SK_MSG -.->|if Form B (outbox + relay), or a partial defers a job| SK_JOBS
+    SK_MSG -.->|"if Form B (outbox + relay), or a partial defers a job"| SK_JOBS
     SK_PERS -.->|records the pending service; never chains| SK_DOCKER
     SK_MSG -.->|records the pending service; never chains| SK_DOCKER
     SK_TEST -.->|records the pending service; never chains| SK_DOCKER
