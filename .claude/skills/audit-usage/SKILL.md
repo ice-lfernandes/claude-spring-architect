@@ -153,6 +153,11 @@ Invoking it still **closes** whatever run is open, and that is the useful half: 
 single session a report stays stamped `⏳ in progress` until something ends the run, so
 asking for the report is what finalizes it.
 
+`arch-adopt` is never recorded either — fixed in its own class override. Any other piece
+can be switched per project in `.claude/audit-usage/audited.json` (`{"skills": {"<name>":
+false}, "agents": {}}`), the one file of `.claude/` the project owns and `/arch-adopt` never
+overwrites; `doctor`'s `Audit overrides` line validates it.
+
 Runs on `sonnet` with `effort: low`: `audit summary` already did the sums, and what is
 left is ranking and rendering (`@.claude/decisions/0080-procedural-skills-on-sonnet.md`).
 

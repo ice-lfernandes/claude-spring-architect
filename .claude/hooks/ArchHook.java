@@ -259,6 +259,15 @@ public class ArchHook {
                     + " in pricing.json (models of the last " + AUDIT_RECENT_RUNS + " runs);"
                     + " copy the rates from platform.claude.com/docs/en/about-claude/pricing");
 
+            Map<String, Object> auditSch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+            List<String> ovr = auditSch == null ? null : auditOverrideProblems(auditSch, auditDir);
+            if (ovr != null) {
+                String set = ovr.remove(ovr.size() - 1);
+                report("Audit overrides", ovr.isEmpty(),
+                        set.isEmpty() ? "none set — every piece follows its class" : set,
+                        String.join("; ", ovr));
+            }
+
             // A synthetic touched file that matches a real rule's `paths` — the exact
             // shape that once threw `ArrayIndexOutOfBoundsException` inside rule
             // inference and froze every report from that point on, silently (the
@@ -3663,7 +3672,7 @@ public class ArchHook {
         // feedback loop of a report about reading reports. The close is the useful half:
         // within one session a report is stuck at "in progress" until something ends
         // the run, so asking for it is what finalizes it.
-        if (name != null && isAuditExcluded("skill", name)) {
+        if (name != null && isAuditExcluded(dir, "skill", name)) {
             auditRender(dir, log, in, true);
             return;
         }
@@ -3718,14 +3727,81 @@ public class ArchHook {
      * its class and not in the list would have written a report about reading reports.
      * Same single-owner discipline as `redact` (invariants 2 and 10).
      * Design: decisions/0086-audit-exclusion-owned-by-the-class.md
+     *
+     * Three levels, first boolean wins: the piece's own `overrides.<name>.audited` in its
+     * class (fixed upstream — `arch-adopt` is never audited, whatever the project says),
+     * then the project's `audit.project_overrides` file in the trail directory (the one
+     * thing about `.claude/` a generated project sets for itself, never written by
+     * `export`), then the class flag. Design: decisions/0111-audit-opt-out-owned-by-the-project.md
      */
-    static boolean isAuditExcluded(String kind, String name) {
+    static boolean isAuditExcluded(Path dir, String kind, String name) {
         Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
         if (sch == null || name == null) return false;
         boolean agent = "agent".equals(kind);
+        String group = agent ? "agent_classes" : "skill_classes";
         String cls = agent ? agentClassOf(sch, name) : skillClassOf(sch, name);
-        return cls != null && Boolean.FALSE.equals(
-                get(sch, agent ? "agent_classes" : "skill_classes", "classes", cls, "audited"));
+        if (cls != null && get(sch, group, "classes", cls, "overrides", name, "audited") instanceof Boolean b) {
+            return !b;
+        }
+        if (get(auditProjectOverrides(sch, dir), agent ? "agents" : "skills", name) instanceof Boolean b) {
+            return !b;
+        }
+        return cls != null && Boolean.FALSE.equals(get(sch, group, "classes", cls, "audited"));
+    }
+
+    /** The project's own audited/not-audited map, or null when the project wrote none. */
+    static Object auditProjectOverrides(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "project_overrides"));
+        return file == null ? null : Json.parse(readOrNull(dir.resolve(file)));
+    }
+
+    /**
+     * What `doctor` says about the project's override file: null when there is none, else
+     * the problems (empty when valid) and, as the last element, the summary of what it sets.
+     * Strict on purpose: the file may change only which pieces are audited, and a misspelled
+     * name would otherwise switch nothing, in silence.
+     */
+    static List<String> auditOverrideProblems(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "project_overrides"));
+        if (file == null || !Files.isRegularFile(dir.resolve(file))) return null;
+        List<String> out = new ArrayList<>();
+        Map<String, Object> root = asMap(Json.parse(readOrNull(dir.resolve(file))));
+        if (root == null) {
+            out.add(file + " is not a JSON object");
+            out.add("");
+            return out;
+        }
+        List<String> set = new ArrayList<>();
+        for (Map.Entry<String, Object> e : root.entrySet()) {
+            boolean agent = "agents".equals(e.getKey());
+            if (!agent && !"skills".equals(e.getKey())) {
+                out.add("`" + e.getKey() + "` — only `skills` and `agents` are allowed");
+                continue;
+            }
+            Map<String, Object> pieces = asMap(e.getValue());
+            if (pieces == null) {
+                out.add("`" + e.getKey() + "` must map a name to true or false");
+                continue;
+            }
+            String group = agent ? "agent_classes" : "skill_classes";
+            for (Map.Entry<String, Object> p : pieces.entrySet()) {
+                String n = p.getKey();
+                Path f = ROOT.resolve(agent ? ".claude/agents/" + n + ".md" : ".claude/skills/" + n + "/SKILL.md");
+                String cls = agent ? agentClassOf(sch, n) : skillClassOf(sch, n);
+                if (!(p.getValue() instanceof Boolean on)) {
+                    out.add("`" + n + "` must be true or false");
+                } else if (!Files.isRegularFile(f)) {
+                    out.add("`" + n + "` — no " + ROOT.relativize(f) + " in this project");
+                } else if (cls != null && get(sch, group, "classes", cls, "overrides", n, "audited") != null) {
+                    out.add("`" + n + "` is fixed by " + group + ".classes." + cls + ".overrides." + n
+                            + ".audited — remove it from " + file);
+                } else {
+                    set.add(n + (on ? " on" : " off"));
+                }
+            }
+        }
+        out.add(set.isEmpty() ? "" : String.join(", ", set));
+        return out;
     }
 
     /**
@@ -3771,7 +3847,7 @@ public class ArchHook {
         String inAgent = asStr(get(in, "agent_id"));
 
         if (!Files.isRegularFile(log)) {
-            if (!isAudited(kind, name) || isAuditExcluded(kind, name)) return;
+            if (!isAudited(kind, name) || isAuditExcluded(log.getParent().getParent(), kind, name)) return;
             Object said = Json.parse(readOrNull(promptFile(log)));
             // `turn_t`: the model message that decided to call this piece was written before
             // PreToolUse fired. Its tokens belong to the run, so they are counted from the prompt.

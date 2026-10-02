@@ -71,7 +71,7 @@ Plugin skills (`caveman:*`) and runtime agents (`Explore`, `general-purpose`) fa
 by construction — they have no file. Skills preloaded via `skills:` in an agent's
 frontmatter appear under that agent as `preloaded`, with no tokens of their own.
 
-Three exceptions, decided by class in `extensions.json` → `skill_classes`, never by a list:
+Exceptions, decided by class in `extensions.json` → `skill_classes`, never by a list:
 a class that declares `audited: false` leaves no run of its own for any skill it lists.
 
 - **`observer`** — `audit-usage` and `arch-doctor`. Invoking one **closes** the run in
@@ -82,6 +82,27 @@ a class that declares `audited: false` leaves no run of its own for any skill it
   makes, so every publish would end with a dirty tree. Typed as `/git-publish`, it closes
   the run in progress first, so that run's report goes into the commit. Chained inside
   another run it is still a node of that run, with its own tokens.
+- **`arch-adopt`** — the one piece-level flag: `audited: false` in its own
+  `skill_classes.build.overrides` entry, the other members of `build` stay audited. Its
+  whole output is a `git diff` of `.claude/` handed over for review, and its step 1
+  refuses a dirty tree; a report of its own would land in that diff after the export.
+  Fixed upstream — the project file below cannot turn it back on.
+
+### Per project: `.claude/audit-usage/audited.json`
+
+The one file of `.claude/` a generated project writes for itself. `export` never names it,
+so `/arch-adopt` never touches it. Absent → every piece follows its class, as above.
+
+```json
+{ "skills": { "report-issue": false, "git-publish": true }, "agents": {} }
+```
+
+`false` takes a piece out with the same semantics as `audited: false`; `true` puts back one
+its class leaves out — re-enabling `git-publish` or an observer brings back what the
+exceptions above avoid, and that is the project's call. First boolean wins: the piece's own
+class override (`arch-adopt`), then this file, then the class. `doctor` validates it on its
+`Audit overrides` line and fails by name on any key other than `skills`/`agents`, a value
+that isn't `true`/`false`, a name with no file in the project, or `arch-adopt`. Decision 0111.
 
 ## Anatomy of a report
 

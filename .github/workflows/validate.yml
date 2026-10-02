@@ -136,7 +136,9 @@ jobs:
       # transcript layout, and a render that throws exits 0 — the report just freezes (0041).
       # The error text it quotes lands in a versioned file, so the redaction is checked too (0085).
       # Which pieces it skips is a class flag, `audited: false` — removing it must fail here (0086).
-      - name: audit renders where the run spent, redacts tool errors, skips observer-class pieces
+      # A project's audited.json overrides the class per piece; arch-adopt's own override is fixed
+      # off and out of its reach — dropping either read must fail here (0111).
+      - name: audit renders where the run spent, redacts tool errors, skips what class or project turns off
         run: java .claude/.ci/AuditRenderTest.java
 
   design:
