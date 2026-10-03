@@ -22,6 +22,12 @@ any option was written. One half of finding 2 did not hold.
 | 2b · Post-run work lands on `git-publish` | The audit reports, against the session transcripts | **Refuted.** 0117 took it from the analysis script written for 0117, which never reset on a new prompt; the audit closes the run. `git-publish`'s USD 0.29–0.54 in the reports is its own: 3–6 calls at a context of 250–370k |
 | 3 · `guard bash` misreads `sed -i ''` | `guard bash` on the jar at `HEAD`, with `agent_type: java-spring-boot-developer` | **Confirmed.** `sed -i '' 's/a/b/g' src/test/java/A.java` → exit 2 `s/a/b/g is outside its territory`, and `sed -i '' -e 's/a/b/' …` likewise. `sed -i -e`, `sed -i.bak` and plain `sed -i` passed. Two real executor runs hit it (transcripts `agent-a81e7a2559ab96083`, `agent-ac35af142516b26f7`) |
 
+*Correction (0119):* for implement runs, the close behind 2b's refutation did not come from a
+user prompt. `audit prompt` closed every background `/new-feature` run at the executor's
+`<agent-message>` hand-back, so the `git-publish` after it reached no report at all. That is an
+under-count, not a misattribution. The USD 0.29–0.54 above comes from design-only runs, which
+have no background agent. See @.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md.
+
 ## Interview
 
 | Axis | Answer | Forms it eliminated |

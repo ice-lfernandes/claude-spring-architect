@@ -7,7 +7,8 @@
 // no price is named in the report header and by `doctor` (lessons-learned-018), and that an
 // observer — a piece whose class declares `audited: false` — leaves no report of its own, and
 // that a project's audited.json sets a piece on or off over its class, except arch-adopt,
-// fixed off by its own class override (decision 0111).
+// fixed off by its own class override (decision 0111), and that a prompt the harness injects —
+// a background agent's notice or its hand-back — leaves the run open (decisions 0041, 0119).
 //
 // Why this test exists: every number here is parsed out of a transcript layout that is
 // observed, not documented, and a render that throws exits 0 through `main`'s catch — the
@@ -212,14 +213,37 @@ public class AuditRenderTest {
         Files.writeString(trail.resolve("audited.json"), "{\"skills\":{\"report-issue\":false}}");
         must(runMode(hook, repo, "doctor"), "✅ report-issue off", "doctor lists what the file sets");
 
+        // A background agent's notice and its hand-back are prompts the harness injects, not
+        // user intent: neither closes the run that launched the agent, nor overwrites the
+        // observer file. The next prompt the user types does close it — 0041, 0119.
+        run(hook, repo, "prompt", "{\"session_id\":\"s11\",\"prompt\":\"/demo-skill background\"}");
+        long before = rows(trail);
+        run(hook, repo, "prompt", "{\"session_id\":\"s11\",\"prompt\":\"<agent-message from=\\\"a1\\\">\\n"
+                + "[Subagent hand-back] PROGRESS UPDATE (not final)\\n</agent-message>\"}");
+        check(rows(trail) == before && Files.exists(trail.resolve(".state/s11.ndjson")),
+                "an <agent-message> hand-back leaves the run open (0119)");
+        run(hook, repo, "prompt", "{\"session_id\":\"s11\",\"prompt\":\"<task-notification>\\n"
+                + "<task-id>a1</task-id>\\n<status>completed</status>\\n</task-notification>\"}");
+        check(rows(trail) == before && Files.exists(trail.resolve(".state/s11.ndjson")),
+                "a <task-notification> leaves the run open (0041)");
+        check(!Files.exists(trail.resolve(".state/s11.prompt.json")),
+                "neither harness prompt overwrites the observer file");
+        run(hook, repo, "prompt", "{\"session_id\":\"s11\",\"prompt\":\"thanks, looks good\"}");
+        check(rows(trail) == before + 1, "the user's next prompt closes the run");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " check(s) failed — `audit` is NOT rendering where the run"
                     + " spent, is leaking an unredacted error into the versioned trail, or is recording"
-                    + " a piece its class, its fixed override or the project's audited.json takes out of the trail.");
+                    + " a piece its class, its fixed override or the project's audited.json takes out of the trail,"
+                    + " or is closing a run on a prompt the harness injected.");
             System.exit(1);
         }
         System.out.println("✅ audit: tool calls, top turns, peak context and redacted errors rendered;"
                 + " ledgers and summary carry them next to legacy rows.");
+    }
+
+    static long rows(Path trail) throws Exception {
+        return Files.readAllLines(trail.resolve("history.jsonl")).stream().filter(l -> !l.isBlank()).count();
     }
 
     static boolean reportOf(Path trail, String piece) throws Exception {

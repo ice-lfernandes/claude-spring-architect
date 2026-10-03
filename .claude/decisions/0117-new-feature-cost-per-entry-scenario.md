@@ -32,6 +32,11 @@ not a design run. The executor is USD 14.82 of USD 15.09.
 | Resume a draft (row 2) | 1 unpriced | — | Only the missing partials; same per-skill shape |
 | Short path · security (step 3b) · first-feature pre-flight | 0 | — | Not taken in the demo; no number |
 
+*Note (0119):* the row 3 totals leave out the main thread's tail. The audit closed every
+background implement run at the executor's hand-back, so the `git-publish` after it (two
+confirmations at 250–370k context, about USD 0.3–0.5) is in no report. The executor's own cost
+is complete. @.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md.
+
 ### Inside the executor
 
 Eight `java-spring-boot-developer` transcripts. Cost is ~75–80% cache read: every turn rereads
@@ -253,6 +258,9 @@ shows an executor run above ~USD 5, or a peak context above ~300k. Before writin
    behaves between two groups, when no writer subagent runs.
 2. Measure one implement run with and without the split, on the same spec shape, and compare
    cache reads.
+3. Confirm that the audit no longer closes a run at a background agent's hand-back. Before
+   @.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md, each group's `<agent-message>` would have closed the run, and
+   the report would have held group 1 only.
 
 ### Option 4 — create nothing (score 3)
 

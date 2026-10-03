@@ -136,7 +136,10 @@ from the destination map surveyed in the guardrail, never from a path written he
 **Integration:**
 - Called by `/new-feature` only for an approved spec, when the user answers "Implement now"
 - Receives: complete UC-NNN-spec.md, nothing else
-- Returns: 4 intermediate feedback messages (plus one per conditional block that ran) + final summary
+- Returns: **one** report, delivered once when the run ends — the final summary, with one
+  line per block that ran. Nothing goes to the caller between blocks: the runtime delivers a
+  single report from a background agent and refuses a second, so a progress note sent early is
+  the only report the caller ever gets (`@.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md`)
 - Does **not** invoke `git-publish` itself — stays out of its tool list on purpose, see
   invariant 6 reason 2 (restrict tools). `/new-feature` invokes it after this agent
   reports success
@@ -305,11 +308,11 @@ pattern, with the names `@.claude/rules/naming.md` gives them, using the catalog
 
 **On its own — only a symptom already on disk.** A force the spec names but no row decided is
 not this agent's to settle: the design skills already weighed it and wrote `none`, or missed
-it. Report it as a finding in the block's intermediate feedback, and write the plain version.
+it. Report it as a finding in the block's line of the final report, and write the plain version.
 The one case this agent decides alone is a symptom the design could not see: a new branch on
 a discriminating type an earlier feature already switched on, found while writing. Then a
 catalog row whose "When **not**" column does not apply is adopted, and the block's
-intermediate feedback names the `file:line` that justified it and the pattern chosen, so the
+line in the final report names the `file:line` that justified it and the pattern chosen, so the
 final report lists every pattern the spec did not carry.
 
 **What not to do.** Don't run `/gof-design-patterns` as a separate invocation — its
@@ -341,6 +344,11 @@ other step. Only the code changes; the earlier spec stays as it is.
 Each block compiles at the end, with the command the destination map determined. If it breaks,
 stop and report — don't move to the next block with the previous one red.
 
+**A block ends with its line for the final report, not with a message.** The template under
+each block is what that block contributes to the final summary's `Blocks` section. Send the
+caller nothing when a block ends — no progress note, no hand-back — and go on to the next one.
+The run's one report is the final summary of Block 4, or the failure report of § Failure mode.
+
 ### Block 1: Domain (steps 1-7)
 
 Read § 2 of spec.md, then the partial it cites for the step at hand. Generates:
@@ -362,7 +370,7 @@ Validation: immutable, no null, invariants in the aggregate.
 
 Compilation: `./mvnw -q -pl <domain-module> test-compile` in multi-module, `./mvnw -q test-compile` in single-module ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block 1: Domain complete (steps 1-7)
 - Aggregate: OrderAggregate with 3 invariants
@@ -370,8 +378,6 @@ Compilation: `./mvnw -q -pl <domain-module> test-compile` in multi-module, `./mv
 - Events: 2 (OrderCreated, OrderModified)
 - Ports: 1 input, 2 output
 - Files: 6 classes, 0 errors
-
-Next: Persistence (steps 8-12)
 ```
 
 ### Block 2: Persistence (steps 8-12)
@@ -405,7 +411,7 @@ test compile is the wrong fix.
 
 Compilation: `./mvnw -q -pl <persistence-module> test-compile` in multi-module, `./mvnw -q test-compile` in single-module ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block 2: Persistence complete (steps 8-12)
 - Entity: OrderJpaEntity with @ManyToOne + @OneToMany
@@ -413,8 +419,6 @@ Compilation: `./mvnw -q -pl <persistence-module> test-compile` in multi-module, 
 - Migration: V3__create_orders (order, order_items, constraints)
 - YAML: hibernate.dialect, batch_size=20, fetch_size=50
 - Files: 5 classes + 1 .sql, 0 errors
-
-Next: REST (steps 13-15)
 ```
 
 ### Block 3: REST (steps 13-15)
@@ -455,7 +459,7 @@ making an infrastructure decision in the wrong place.
 
 Compilation: `./mvnw -q -pl <rest-adapter-module> test-compile` in multi-module, `./mvnw -q test-compile` in single-module ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block 3: REST complete (steps 13-15)
 - Controller: 3 endpoints (POST 201, GET 200, PATCH 200)
@@ -464,8 +468,6 @@ Compilation: `./mvnw -q -pl <rest-adapter-module> test-compile` in multi-module,
 - Exception handler: 5 error shapes (422 validation, 404, 409, 400, 500+traceId)
 - Interceptor: Idempotency-Key + If-Match
 - Files: 5 classes, 0 errors
-
-Next: § 4.5 present → Security (S1-S3). Else § 6 present → Messaging (steps M1-M4). Absent → Tests (steps 16-19)
 ```
 
 ### Block S: Security (steps S1-S3, conditional)
@@ -519,15 +521,13 @@ Validation, each item checkable:
 Compilation: `./mvnw -q test-compile` (or `-pl <module that holds the configuration package>`
 in multi-module) ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block S: Security complete (steps S1-S3)
 - Mechanism: resource server, signed token (NEW)
 - Public: /v3/api-docs/**, /swagger-ui/**, /actuator/health, /actuator/info
 - Endpoints: cancelOrder (authenticated in chain; owner or SUPPORT in the use case)
 - Files: 7 classes, 0 errors
-
-Next: Messaging (steps M1-M4) when the spec carries it, else Jobs or Tests
 ```
 
 ### Block M: Messaging (steps M1-M4, conditional)
@@ -628,7 +628,7 @@ Validation — **Form B**, each item checkable and none of them optional:
 Compilation: `./mvnw -q -pl <messaging-adapter-module> test-compile` in multi-module,
 `./mvnw -q test-compile` in single-module ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block M: Messaging complete (steps M1-M4)
 - Producer: OrderConfirmedPublisher — topic orders.order.confirmed, key = orderId
@@ -636,8 +636,6 @@ Compilation: `./mvnw -q -pl <messaging-adapter-module> test-compile` in multi-mo
 - Dedupe: ProcessedEventStore (table modeled in Block 2)
 - Config: acks=all, earliest, DefaultErrorHandler (3 retries → DLQ)
 - Files: 5 classes, 0 errors
-
-Next: Jobs (steps J1-J3) when the spec carries the jobs block, else Tests (steps 16-19)
 ```
 
 ### Block J: Jobs (steps J1-J3, conditional)
@@ -692,15 +690,13 @@ Validation, each item checkable:
 Compilation: `./mvnw -q test-compile` (or `-pl <module that holds the scheduling package>` in
 multi-module) ✅
 
-**Intermediate feedback:**
+**Line in the final report:**
 ```
 ✅ Block J: Jobs complete (steps J1-J3)
 - Technology: @Scheduled + ShedLock (prune only)
 - Jobs: OutboxRelayJob (fixedDelay PT1S, row claim) · OutboxPruneJob (cron 03:30 America/Sao_Paulo, lock)
 - Test profile: app.outbox.enabled=false, app.outbox.prune.enabled=false
 - Files: 6 classes, 0 errors
-
-Next: Tests (steps 16-19)
 ```
 
 ### Block 4: Tests (steps 16-19)
@@ -774,8 +770,12 @@ single line, same green build. It is not a failure state: the code is on disk an
 the value says what `implemented` alone cannot, which is that a `Satisfied by` the spec named is
 not there yet.
 
-**Intermediate feedback + Final summary:**
+**Final summary — the run's one report:**
 ```
+UC-001-order implemented ✅ COMPLETE
+
+🧱 Blocks:
+<the line of each block that ran, in order — 1, 2, 3, then S, M, J when present>
 ✅ Block 4: Tests complete (steps 16-19)
 - Unit: OrderAggregateTest — 8 cases, 100% pass
 - Integration: OrderRepositoryIT — 6 cases, real DB, 100% pass
@@ -784,8 +784,6 @@ not there yet.
 - Files: 8 classes, 28 tests
 
 ═══════════════════════════════════════════════════════════════
-
-UC-001-order implemented ✅ COMPLETE
 
 📊 Summary:
 - Files created: 23 Java classes
@@ -901,8 +899,7 @@ Called by `/new-feature` after approval:
   → "Approve UC-001-spec.md?" > Approve (status: approved)
   → "Implement now?" > Implement now
   → invokes java-spring-boot-developer
-  → (4 intermediate feedback messages)
-  → final summary
+  → one report at the end: the final summary, a line per block
   → status: implemented
   → "Green build. Next: git-publish offers commit + push"
 ```

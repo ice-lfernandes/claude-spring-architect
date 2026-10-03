@@ -113,6 +113,10 @@ On failure: aborts with a clear message
 
 ### 4 intermediate feedbacks
 
+*Superseded (0119):* each block's feedback became its line in the final report. A background
+agent's report is delivered once, and an executor that spent that delivery on Block 1 progress
+lost its final report. See @.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md.
+
 After each block, structured feedback:
 ```
 ✅ Block N: [Name] complete (steps X-Y)
