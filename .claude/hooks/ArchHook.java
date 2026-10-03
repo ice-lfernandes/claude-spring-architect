@@ -3745,15 +3745,18 @@ public class ArchHook {
         String prompt = asStr(get(in, "prompt"));
         if (prompt == null) return;
 
-        // A background agent's result comes back as a synthetic `<task-notification>`
-        // prompt, injected while the run that launched it is still open — not user
-        // intent to end anything. Closing on it is what froze `/test-architect setup`'s
-        // and `/new-feature`'s reports mid-flight: the very next turn (still inside the
-        // agent's own work) reported "success" over a run the agent hadn't finished.
-        // Neither close, nor open, nor overwrite the observer prompt file — let the run
-        // keep absorbing the agent's remaining `file`/`agent_end` events.
+        // The harness injects some prompts of its own while the run that launched a
+        // background agent is still open: the agent's `<task-notification>`, and its report
+        // as an `<agent-message>` hand-back. Neither is user intent to end anything. Closing
+        // on the first froze `/test-architect setup`'s and `/new-feature`'s reports
+        // mid-flight (0041); closing on the second ended every background `/new-feature`
+        // run at the executor's hand-back, so the `git-publish` after it reached no report
+        // (0119). Neither close, nor open, nor overwrite the observer prompt file — let the
+        // run keep absorbing the agent's remaining `file`/`agent_end` events. The shapes are
+        // data, `audit.harness_prompts` in extensions.json (invariant 10).
         // .claude/decisions/0041-audit-background-subagent-tracking.md
-        if (TASK_NOTIFICATION.matcher(prompt).find()) return;
+        // .claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md
+        if (isHarnessPrompt(prompt)) return;
 
         Matcher m = Pattern.compile("^\\s*/([a-z0-9][a-z0-9-]*)(.*)$", Pattern.DOTALL)
                 .matcher(prompt);
@@ -3904,8 +3907,19 @@ public class ArchHook {
      */
     static final Pattern PIECE_NAME = Pattern.compile("[a-z0-9][a-z0-9-]*");
 
-    /** The harness's own synthetic prompt delivering a background agent's result. */
-    static final Pattern TASK_NOTIFICATION = Pattern.compile("^\\s*<task-notification>");
+    /**
+     * True when the prompt is one the harness injected, not one the user typed — a shape in
+     * `audit.harness_prompts` of extensions.json, matched with `find()`. A pattern that does
+     * not compile matches nothing: a bad entry must not stop the hook.
+     */
+    static boolean isHarnessPrompt(String prompt) {
+        for (String p : asStrList(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))),
+                "audit", "harness_prompts"))) {
+            try { if (Pattern.compile(p).matcher(prompt).find()) return true; }
+            catch (Exception ignored) { }
+        }
+        return false;
+    }
 
     static boolean isAuditedSkill(String name) {
         return name != null && PIECE_NAME.matcher(name).matches()
