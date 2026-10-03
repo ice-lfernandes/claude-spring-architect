@@ -72,6 +72,21 @@ public class BashGuardTest {
                 "gh issue create -R o/r --title t --body-file docs/lessons-learned/sonar-001.issue.md",
                 0, "publishing the body file — allowed");
 
+        // java-spring-boot-developer (decision 0117) runs every test build into a log under
+        // $TMPDIR and reads failures from the Surefire/Failsafe reports, so the build output
+        // stays out of its context. The log cannot go to target/: that is outside the
+        // executor's territory. Both halves are pinned. If the guard ever refused the
+        // documented command, every generated project's executor would be blocked at Block 4.
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "L=\\\"${TMPDIR:-/tmp}/uc-build.log\\\"; ./mvnw -q verify > \\\"$L\\\" 2>&1; echo \\\"EXIT=$?\\\"",
+                0, "executor: the documented test run, log under $TMPDIR — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "./mvnw -q verify > /tmp/uc-build.log 2>&1", 0,
+                "executor: log at an absolute path outside the project — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "./mvnw -q verify > target/uc-build.log 2>&1", 2,
+                "executor: log under target/ — blocked, outside its territory");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `guard bash` is NOT"
                     + " enforcing what guard.force_push and guard.bash_write_shapes declare.");
@@ -85,6 +100,16 @@ public class BashGuardTest {
             throws Exception {
         return run(hook, "bash", session,
                 "{\"session_id\":\"%s\",\"tool_input\":{\"command\":\""
+                        + command.replace("%", "%%") + "\"}}",
+                wanted, label);
+    }
+
+    /** A Bash call made by a subagent: judged by that agent's class, not by the open phase. */
+    static int agentBash(Path hook, String session, String agentType, String command,
+                         int wanted, String label) throws Exception {
+        return run(hook, "bash", session,
+                "{\"session_id\":\"%s\",\"agent_id\":\"ci-agent\",\"agent_type\":\""
+                        + agentType + "\",\"tool_input\":{\"command\":\""
                         + command.replace("%", "%%") + "\"}}",
                 wanted, label);
     }

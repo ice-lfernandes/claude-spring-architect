@@ -230,6 +230,56 @@ An interrupted run leaves reusable progress, and the next one resumes where it l
 instead of starting over. Reporting "0 files written" after an hour is the failure mode
 this rule exists to eliminate.
 
+### What enters the context — build output and reads
+
+Every turn of this agent re-reads its whole context. Anything a tool prints stays there
+until the run ends, so the run's cost is turns × context size. In the measured runs this
+agent's cost was 75–80% cache reads. One run spent USD 14.82 at 203 turns, reaching 477k
+tokens of context, with 191k characters of `./mvnw … | tail -250` output and 48k
+characters of files read twice
+(`@.claude/decisions/0117-new-feature-cost-per-entry-scenario.md`).
+
+**Tests run into a log, never into the context.** Use this shape for every test run: Block
+4's `./mvnw verify`, and every focused rerun (`-Dtest=…`). The log lives under `$TMPDIR`,
+not `target/`: `target/` is outside this agent's territory, and `clean` deletes it.
+
+```bash
+L="${TMPDIR:-/tmp}/uc-build.log"; ./mvnw -q verify > "$L" 2>&1; echo "EXIT=$?"
+```
+
+`EXIT=0` → green. Read the totals and coverage the final summary reports from the reports,
+not from the log:
+
+```bash
+grep -h '^Tests run:' $(find . -path '*/target/*-reports/*.txt') | awk -F'[:,]' '{t+=$2;f+=$4;e+=$6;s+=$8} END{print "tests",t,"failures",f,"errors",e,"skipped",s}'
+awk -F, 'FNR>1{lm+=$8;lc+=$9;bm+=$6;bc+=$7} END{printf "lines %.1f%% · branches %.1f%%\n",100*lc/(lm+lc),100*bc/(bm+bc)}' $(find . -path '*/target/site/jacoco/jacoco.csv')
+```
+
+`EXIT≠0` → first the failing tests, from the Surefire and Failsafe reports:
+
+```bash
+grep -h -E -A12 '<<< (FAILURE|ERROR)!' $(find . -path '*/target/*-reports/*.txt' 2>/dev/null) 2>/dev/null | head -80
+```
+
+Nothing printed means the build failed outside a test: a compile error, a Spring context that
+did not start, or the JaCoCo or Checkstyle gate. Read the log's errors:
+
+```bash
+grep -E '^\[ERROR\]|Caused by:' "${TMPDIR:-/tmp}/uc-build.log" | head -60
+```
+
+Those excerpts are the default, not a ceiling. When they do not explain the failure, read
+the one report file or the region of the log that does, with `sed -n` or `Read` and an
+offset. Never pipe a test run through `| tail -N`: it puts the noise into the context
+together with the answer.
+
+**Each file enters the context once.** Read the spec and a partial by section:
+`grep -n '^## ' <file>`, then `Read` with `offset`/`limit`. Never `cat` a file and then
+`Read` it. After an `Edit`, the tool result already confirms the change. Before the next
+`Edit` to the same file, read only the region you will touch: the `format` hook may have
+rewritten the file since, which is what leaves an `old_string` that is no longer there.
+Read a whole file again only when you need all of it.
+
 ---
 
 ## Design patterns — implementing the spec's decisions
@@ -701,7 +751,8 @@ key asserts the domain exception's `errorCode` — not just the type. That's the
 distinguishes an adapter that translates the violation from one that lets it escape
 (`.claude/rules/testing.md` § Names and shape).
 
-Compilation + test: `./mvnw verify` ✅ (JaCoCo check passes)
+Compilation + test: `./mvnw verify` ✅ (JaCoCo check passes) — run into the log, and read
+failures and totals from the reports, as § What enters the context says
 
 **Close the spec — last, and only last.** Two writes, in this order and never the other way
 round:
