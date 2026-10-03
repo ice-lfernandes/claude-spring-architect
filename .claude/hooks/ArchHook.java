@@ -4429,7 +4429,11 @@ public class ArchHook {
         }
         md.append("\n> Agent = the subagent's own transcript. Skill on the main thread = the model's")
           .append(" messages from the call until the next main-thread piece. The rest = root.")
-          .append(" Summed, they close the aggregate below.\n\n");
+          .append(" Summed, they close the aggregate below.")
+          .append(" No runtime event marks where an inline skill ends, so the last skill a run")
+          .append(" chains also carries what its caller does after it, up to the next agent or")
+          .append(" skill: an orchestrator's consolidation, approval questions and pre-flight")
+          .append(" land on that skill's row.\n\n");
 
         md.append("## 📊 Tokens (aggregate)\n\n")
           .append("| Metric | Value |\n|---|---|\n")
@@ -5705,6 +5709,13 @@ public class ArchHook {
      * says — `all` operands, the `tail` after the first (a `sed` script), the `last` one, or the
      * ones carrying an `operand_prefix` (`dd of=`). A `requires_flag_prefix` entry only counts
      * when that flag is present, which is what keeps a read-only `sed` out of it.
+     *
+     * <p>Two operands a `tail` shape must not see. An empty word is skipped: it is the BSD
+     * in-place suffix of `sed -i ''`, and taking it for the script pushed the real script into
+     * the targets. A flag in the shape's `script_flags` (`-e`, `-f`) carries the script as its
+     * value, so that value is consumed with the flag, and with a script supplied that way every
+     * remaining operand is a file — `tail` becomes `all`. Both read `s/a/b/g` as a path and
+     * blocked the executor in two real runs (decision 0118).
      */
     static List<String> bashWriteTargets(Map<String, Object> shapes, String cmd) {
         List<String> out = new ArrayList<>();
@@ -5732,17 +5743,28 @@ public class ArchHook {
                 Map<String, Object> shape = asMap(o);
                 if (shape == null || !head.equals(asStr(shape.get("name")))) continue;
                 String flag = asStr(shape.get("requires_flag_prefix"));
+                List<String> scriptFlags = asStrList(shape.get("script_flags"));
                 List<Tok> operands = new ArrayList<>();
                 boolean flagSeen = flag == null;
-                for (Tok t : words.subList(1, words.size())) {
+                boolean scriptByFlag = false;
+                List<Tok> rest = words.subList(1, words.size());
+                for (int i = 0; i < rest.size(); i++) {
+                    Tok t = rest.get(i);
+                    if (t.text().isEmpty()) continue;
                     if (t.text().startsWith("-") && !t.quoted()) {
                         if (flag != null && t.text().startsWith(flag)) flagSeen = true;
+                        for (String sf : scriptFlags) {
+                            if (t.text().equals(sf)) { scriptByFlag = true; i++; break; }
+                            if (t.text().startsWith(sf + "=")) { scriptByFlag = true; break; }
+                        }
                         continue;
                     }
                     operands.add(t);
                 }
                 if (!flagSeen || operands.isEmpty()) continue;
-                switch (orEmpty(asStr(shape.get("targets")))) {
+                String targets = orEmpty(asStr(shape.get("targets")));
+                if (scriptByFlag && "tail".equals(targets)) targets = "all";
+                switch (targets) {
                     case "all"  -> operands.forEach(t -> addBashTarget(out, markers, t));
                     case "tail" -> operands.subList(1, operands.size())
                                            .forEach(t -> addBashTarget(out, markers, t));

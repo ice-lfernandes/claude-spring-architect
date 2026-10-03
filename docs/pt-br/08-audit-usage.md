@@ -147,6 +147,15 @@ cache read, cache write, faturável, custo estimado, cache hit) · onde o run ga
 permissões adicionadas (diff de `settings.local.json` entre início e fim) · regras
 carregadas · arquivos tocados · retrabalho.
 
+**A última skill encadeada carrega a cauda de quem a chamou.** Um turno da thread principal
+pertence à última peça que começou antes dele, e o runtime não emite evento nenhum quando
+uma skill inline termina. Por isso tudo o que o orquestrador faz depois da última skill, até
+o próximo agent ou skill, entra na linha dela. No `/new-feature`, isso é a consolidação, as
+perguntas de aprovação e o pre-flight, somados ao `test-architect`. No exemplo acima, os
+242,813 tokens do `test-architect` incluem essa cauda. Num run real do UC-007, cerca de
+USD 1,47 dos USD 1,91 atribuídos a ele eram consolidação. O rodapé do relatório diz o mesmo.
+Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
+
 **Onde o run gastou** (`🔎 Where the run spent`) sai dos mesmos transcripts de onde vêm os
 tokens — o principal e o de cada subagent —, então não custa evento de hook nenhum.
 Responde o que os totais de token não respondem: em quais ferramentas uma peça se apoiou,

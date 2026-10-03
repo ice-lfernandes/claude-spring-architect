@@ -60,20 +60,23 @@ approved specs, templates and `src/` in full through `cat` — 60–120k chars i
 alone in four runs. A result over ~30k chars spills to a file and is then `Read` again
 (32–34k-char `Read`s of `tool-results/` seen twice).
 
-### Side findings — no option here, recorded so they are not lost
+### Side findings — handled in 0118
 
-1. **`git-publish`'s `model: sonnet` did not apply.** All six measured `git-publish` segments
-   on the main thread show `claude-opus-5-5` on every message. With Opus 5.5 cache reads
-   priced like Sonnet 5's, the cost effect is small. A frontmatter field that looks like
-   behavior and does nothing is the failure shape invariant 10 exists for, so it goes to
-   triage on its own.
-2. **The audit report misattributes two segments.** "Skill on the main thread = messages from
-   the call until the next main-thread piece" puts consolidation, the approval rework and
-   the executor delegation under `test-architect`: USD 1.91 in UC-007, of which ~USD 1.47 is
-   consolidation. It also puts any work the user does after the run, in the same session,
-   under `git-publish`: lessons-learned writing in four sessions, USD 0.8–2.7. `git-publish`
-   itself is 3–6 calls, about USD 0.2–0.4. Read `/audit-usage` with this in mind until the
-   attribution changes.
+Recorded here when found; checked and treated in
+`@.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
+
+1. **`git-publish`'s `model: sonnet` did not apply.** Confirmed, with a wider cause: a skill's
+   `model`/`effort` applies only when typed as `/name`. Invoked through the `Skill` tool, it
+   keeps the caller's model. The bug is open upstream (anthropics/claude-code#98898).
+   Documented as a runtime pitfall.
+2. **The audit report puts consolidation, approval and delegation under the last chained
+   skill.** In UC-007, that is `test-architect`: USD 1.91, of which ~USD 1.47 is
+   consolidation. Confirmed and documented in the report's footnote. *Correction:* this record
+   first said the audit also put post-run work under `git-publish`. That came from the
+   analysis script written for this record, not from the audit, and it does not hold.
+   `git-publish`'s USD 0.29–0.54 is its own: 3–6 calls at a context of 250–370k.
+3. **`guard bash` read BSD `sed -i ''` as a path and blocked the executor twice.** Fixed in
+   `guard bash`.
 
 ## Interview
 

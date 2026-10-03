@@ -71,6 +71,21 @@ preloaded" tells it to apply something the model never received. That was
 manual skill's content to an agent, inject it at `SubagentStart` (`ArchHook.java context
 subagent`, decision 0077), not through `skills:`.
 
+**A skill's `model` and `effort` apply only when it is typed as `/name`.** When the model
+invokes the skill through the `Skill` tool, the turn stays on the caller's model and effort,
+with no warning. The official docs promise the override on both paths. Measured on Claude
+Code 2.1.280 over 18 invocations:
+- a typed `/arch-doctor` switched to `sonnet-5`;
+- `git-publish`, chained by `/new-feature`, stayed on `opus-5-5` every time.
+
+The design skills run on Opus only because `/new-feature`, which is typed, already pinned
+Opus. Called directly in a Sonnet session, one of them runs on Sonnet. Open bug:
+[anthropics/claude-code#98898](https://github.com/anthropics/claude-code/issues/98898), the
+same as #79664, which was closed as stale. Until it is fixed, do not rely on the `model` of a
+skill that is only ever chained. Before concluding that a pin holds, check `message.model` in
+the transcript. Separately, in auto mode an unsupported `model` is also ignored; that behavior
+is documented. Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
+
 **Everything the model must obey lives in the body of the file**, never in frontmatter.
 `metadata.*` was removed from skills and agents: ownership, `reads`, `handoff` and contracts
 live in the body's `## Contract` section. Do not put `metadata:` back into a `SKILL.md` — it
@@ -208,7 +223,9 @@ Design: `.claude/decisions/0103-issue-filing-and-skeptical-triage.md`.
 it, or with a value outside `skill_classes.classes.<c>.allowed_models` (`design` and `meta`
 only `opus`, `observer` and `ops` only `sonnet`). A skill's `model` holds for the rest of the
 turn, not just the skill — which is why a pinned model alone is not a reason to be an agent,
-and why a lowering pin on a skill fired mid-turn is the case to watch. Design:
+and why a lowering pin on a skill fired mid-turn is the case to watch. **Today that holds only
+for a typed skill:** chained through the `Skill` tool, it runs on its caller's model (Part 1
+§ Skills, #98898). Design:
 `.claude/decisions/0081-skill-model-required-per-class.md`.
 
 ### Use case specs

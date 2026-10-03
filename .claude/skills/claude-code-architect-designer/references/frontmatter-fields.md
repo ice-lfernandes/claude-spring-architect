@@ -41,7 +41,7 @@ Design, exit codes, and commit order:
 | `user-invocable` | `false` = only the model invokes; hidden from the `/` menu |
 | `allowed-tools` | Pre-approves tools **during the turn** that invokes the skill. Bash is scoped per command (`Bash(ls:*)`); bare `Bash` fails `ArchHook.java schema` unless `## Contract` carries the `skill_classes.unfiltered_bash_marker` line with a reason. A `permissions.ask` rule still prompts inside it |
 | `disallowed-tools` | Removes tools from the pool while the skill is active |
-| `model` · `effort` | Model/effort override from the moment the skill fires until the end of that turn. `model` is **required**: `ArchHook.java schema` fails a skill without it, or with a value outside its class's `allowed_models` in `skill_classes` (decision 0081). `effort` stays optional |
+| `model` · `effort` | Model/effort override from the moment the skill fires until the end of that turn — **only when the user types `/name`**. Invoked by the model through the `Skill` tool, the turn stays on the caller's model and effort (runtime bug [#98898](https://github.com/anthropics/claude-code/issues/98898), measured on 2.1.280, decision 0118). `model` is **required**: `ArchHook.java schema` fails a skill without it, or with a value outside its class's `allowed_models` in `skill_classes` (decision 0081). `effort` stays optional |
 | `paths` | Globs that limit automatic activation |
 | `context: fork` | Runs the skill in an isolated subagent |
 | `agent` | Which subagent type to use with `context: fork` |
