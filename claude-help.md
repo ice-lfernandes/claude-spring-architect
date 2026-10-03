@@ -459,7 +459,7 @@ Main fields:
 | `user-invocable` | `false` = only Claude invokes it. Use for background knowledge |
 | `allowed-tools` | Pre-approves tools **during the turn** that invokes the skill |
 | `disallowed-tools` | Removes tools from the pool while the skill is active |
-| `model` / `effort` | Overrides model/effort while the skill is active |
+| `model` / `effort` | Overrides model/effort while the skill is active. ⚠️ Today only when typed as `/name`: invoked through the `Skill` tool, the turn keeps the caller's model and effort ([#98898](https://github.com/anthropics/claude-code/issues/98898)) |
 | `context: fork` | Runs the skill in an isolated subagent |
 | `agent` | Which subagent type to use with `context: fork` |
 | `background` | With `fork`, `false` = wait for the result in the same turn |

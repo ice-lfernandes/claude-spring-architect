@@ -87,6 +87,29 @@ public class BashGuardTest {
                 "./mvnw -q verify > target/uc-build.log 2>&1", 2,
                 "executor: log under target/ — blocked, outside its territory");
 
+        // `sed -i` reads its first operand as the script. BSD/macOS `sed -i ''` puts an empty
+        // suffix there, and `-e`/`-f` carry the script as a flag value: before decision 0118
+        // the script was then judged as a path (`s/a/b/g is outside its territory`), which
+        // blocked the executor twice in real runs. The real target must still be judged.
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i '' 's/a/b/g' src/test/java/A.java", 0,
+                "executor: BSD `sed -i ''` on a file in its territory — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i '' -e 's/a/b/' src/test/java/A.java", 0,
+                "executor: `sed -i '' -e` — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i -e 's/a/b/' -e 's/c/d/' src/test/java/A.java", 0,
+                "executor: two `-e` scripts — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i --expression=s/a/b/ src/test/java/A.java", 0,
+                "executor: `--expression=` — allowed");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i '' 's/a/b/g' docs/notes.md", 2,
+                "executor: BSD `sed -i ''` on a file outside its territory — blocked");
+        failures += agentBash(hook, report, "java-spring-boot-developer",
+                "sed -i -e 's/a/b/' docs/notes.md", 2,
+                "executor: `sed -i -e` on a file outside its territory — blocked");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `guard bash` is NOT"
                     + " enforcing what guard.force_push and guard.bash_write_shapes declare.");

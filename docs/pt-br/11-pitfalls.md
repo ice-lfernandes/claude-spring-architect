@@ -75,6 +75,21 @@ passa a mandar aplicar algo que o modelo nunca recebeu. Foi o caso de `gof-desig
 é injetar no `SubagentStart` (`ArchHook.java context subagent`, decisão 0077), não o
 `skills:`.
 
+**O `model` e o `effort` de uma skill só valem quando ela é digitada como `/nome`.** Quando
+o modelo invoca a skill pela ferramenta `Skill`, o turno continua no modelo e no esforço de
+quem chamou, sem aviso. A documentação oficial promete o override nos dois caminhos. Medido
+no Claude Code 2.1.280 sobre 18 invocações:
+- `/arch-doctor` digitado trocou para `sonnet-5`;
+- o `git-publish` encadeado pelo `/new-feature` ficou em `opus-5-5` todas as vezes.
+
+As skills de design só rodam em Opus porque o `/new-feature`, digitado, já fixou Opus. Chamada
+direto numa sessão em Sonnet, uma delas roda em Sonnet. Bug aberto em
+[anthropics/claude-code#98898](https://github.com/anthropics/claude-code/issues/98898), o
+mesmo da #79664, que foi fechada por inatividade. Até a correção, não conte com o `model` de
+uma skill que só é encadeada. Antes de concluir que um pin vale, confira o `message.model` no
+transcript. À parte disso, em auto mode um `model` não suportado também é ignorado; esse
+comportamento é documentado. Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
+
 **Tudo que o modelo deve obedecer mora no corpo do arquivo**, nunca no frontmatter.
 `metadata.*` foi removido de skills e agents: ownership, `reads`, `handoff` e contratos vivem
 na seção `## Contract` do corpo. Não devolva `metadata:` a um `SKILL.md` — custa tokens em
@@ -215,7 +230,8 @@ issue pública é de terceiros. Só aqui; o projeto gerado não tem essas linhas
 (`design` e `meta` só `opus`, `observer` e `ops` só `sonnet`). O `model` de uma skill vale
 pelo resto do turno, não só pela skill — é por isso que um modelo fixado sozinho não é motivo
 para ser agent, e por isso que uma skill com modelo mais baixo disparada no meio do turno é o
-caso a vigiar. Design: `.claude/decisions/0081-skill-model-required-per-class.md`.
+caso a vigiar. **Hoje isso vale só para a skill digitada:** encadeada pela ferramenta `Skill`,
+ela roda no modelo de quem a chamou (Parte 1 § Skills, #98898). Design: `.claude/decisions/0081-skill-model-required-per-class.md`.
 
 ### Specs de caso de uso
 
