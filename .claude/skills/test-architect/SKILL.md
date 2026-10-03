@@ -177,7 +177,12 @@ what's left to cover outside of transport.
 
 5. **Name each test.** Class and method per the rule's naming conventions, with the
    `IT` suffix on integration ones — without it failsafe doesn't run them and `verify`
-   exits 0 without executing them.
+   exits 0 without executing them. Before naming, group the cases of each class: those
+   that differ only in their input — every malformed value a parser rejects, every
+   route a filter lets through — are one parameterized method, listed once in § 2 with
+   its inputs (`@.claude/rules/testing.md` § Names and shape). Shape:
+   `templates/DomainTest.java.example` for a value object,
+   `templates/IdempotencyKeyInterceptorTest.java.example` for an adapter component.
 
 6. **Fix the data and the doubles.** Which factory, which fields matter in the
    scenario, which port gets substituted and with what value. Fixed clock wherever
@@ -235,7 +240,7 @@ question nobody asked.
 | Block | Fixes | Shape exemplar |
 |---|---|---|
 | Distribution by level | Each behavior, the level it's tested at, and why | `DomainTest.java.example` |
-| Cases per test class | Class name, each method's name, what it asserts | `UseCaseTest.java.example` · `ControllerTest.java.example` · `SecuredControllerTest.java.example` (when `32-seguranca.md` exists) · `PersistenceIT.java.example` |
+| Cases per test class | Class name, each method's name, what it asserts | `UseCaseTest.java.example` · `ControllerTest.java.example` · `SecuredControllerTest.java.example` (when `32-seguranca.md` exists) · `PersistenceIT.java.example` · `IdempotencyKeyInterceptorTest.java.example` (when `30-rest.md` requires `Idempotency-Key`) |
 | Data and doubles | Factories, meaningful fields, substituted ports, clock | `TestFixtures.java.example` |
 | Coverage and gaps | Invariants with no test, and what's deliberately left uncovered | `@.claude/rules/testing.md` § Coverage |
 | Test dependencies | Test-scoped libraries the build doesn't declare yet — the executor's only license to add them | `@.claude/rules/testing.md` § Asynchronous effects |

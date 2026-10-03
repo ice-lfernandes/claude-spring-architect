@@ -107,6 +107,14 @@
       <property name="ignoreAnnotation" value="true"/>
       <property name="ignoreHashCodeMethod" value="true"/>
     </module>
+    <!-- code-quality.md: the string half. Sonar S1192's numbers exactly: flagged on the
+         third occurrence in a file, literals under 5 characters and those inside
+         annotations ignored. Production only, like S1192, which skips test files. -->
+    <module name="MultipleStringLiterals">
+      <property name="id" value="MultipleStringLiterals"/>
+      <property name="allowedDuplicates" value="2"/>
+      <property name="ignoreStringsRegexp" value='^".{0,4}"$'/>
+    </module>
 
     <!-- code-quality.md: guard clause first, no else after return -->
     <module name="AvoidNestedBlocks"/>

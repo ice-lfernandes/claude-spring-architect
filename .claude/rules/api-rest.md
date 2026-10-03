@@ -67,6 +67,11 @@ never replaces.** Wrong status with a pretty body is a bug.
 | `PATCH` applied | 200 | Resulting representation |
 | `DELETE` executed, or resource already nonexistent | 204 | No body |
 
+`Location` is a relative URI (RFC 9110 allows it), built from the same path constant the
+class-level mapping reads — never a second spelling of the path. A relative URI needs no
+forwarded-header configuration behind a proxy; an absolute one built from the request
+leaks the internal host without it.
+
 `DELETE` of a nonexistent resource is 204, not 404: the choice applies to the whole API,
 not to each endpoint. An endpoint that returns 200 where its neighbor returns 204 in the
 same scenario is a contract bug.

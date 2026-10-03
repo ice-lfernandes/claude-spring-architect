@@ -38,6 +38,7 @@ import com.exemplo.minhaapi.application.service.IdempotentExecution;
 import com.exemplo.minhaapi.application.service.IdempotentOutcome;
 import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
 import com.exemplo.minhaapi.domain.exception.NotFoundException;
+import com.exemplo.minhaapi.domain.model.user.User;
 import com.exemplo.minhaapi.test.TestFixtures;
 import io.micrometer.tracing.Tracer;
 import java.time.Clock;
@@ -82,19 +83,23 @@ class UserControllerTest {
                 new IdempotentOutcome.Executed<>(invocation.<Supplier<?>>getArgument(1).get()));
     }
 
-    /** 201 without Location is half a contract. Always assert it. */
+    /**
+     * 201 without Location is half a contract. Assert its value, not only its presence: a
+     * Location that doesn't name the created resource passes `exists()`.
+     */
     @Test
     @DisplayName("creates and returns 201 with Location and the representation")
     void createsUser() throws Exception {
-        given(createUser.handle(any())).willReturn(TestFixtures.user());
+        User user = TestFixtures.user();
+        given(createUser.handle(any())).willReturn(user);
 
         mockMvc.perform(
-                        post("/api/v1/users")
+                        post(UserController.BASE_PATH)
                                 .header("Idempotency-Key", VALID_KEY)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_BODY))
                 .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
+                .andExpect(header().string("Location", UserController.BASE_PATH + "/" + user.id().value()))
                 .andExpect(jsonPath("$.email").value("ana@exemplo.com"));
     }
 
@@ -107,7 +112,7 @@ class UserControllerTest {
                 .handle(any());
 
         mockMvc.perform(
-                        post("/api/v1/users")
+                        post(UserController.BASE_PATH)
                                 .header("Idempotency-Key", VALID_KEY)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_BODY))
@@ -120,7 +125,7 @@ class UserControllerTest {
     @DisplayName("missing required field is 400 with violations and no errorCode")
     void rejectsInvalidBody() throws Exception {
         mockMvc.perform(
-                        post("/api/v1/users")
+                        post(UserController.BASE_PATH)
                                 .header("Idempotency-Key", VALID_KEY)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -134,7 +139,7 @@ class UserControllerTest {
     @DisplayName("missing Idempotency-Key is 400")
     void rejectsMissingIdempotencyKey() throws Exception {
         mockMvc.perform(
-                        post("/api/v1/users")
+                        post(UserController.BASE_PATH)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_BODY))
                 .andExpect(status().isBadRequest());
@@ -147,7 +152,7 @@ class UserControllerTest {
                 .given(listUsers)
                 .byId(any());
 
-        mockMvc.perform(get("/api/v1/users/{userId}", "unknown"))
+        mockMvc.perform(get(UserController.BASE_PATH + "/{userId}", "unknown"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("USER_NOT_FOUND"));
     }
@@ -157,7 +162,7 @@ class UserControllerTest {
     void emptyCollection() throws Exception {
         given(listUsers.handle(0, 20, "createdAt,desc")).willReturn(TestFixtures.emptyPage());
 
-        mockMvc.perform(get("/api/v1/users"))
+        mockMvc.perform(get(UserController.BASE_PATH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.page.totalElements").value(0));
@@ -166,7 +171,7 @@ class UserControllerTest {
     @Test
     @DisplayName("size above the maximum is 400, never silently truncated")
     void sizeAboveMaximum() throws Exception {
-        mockMvc.perform(get("/api/v1/users").param("size", "500"))
+        mockMvc.perform(get(UserController.BASE_PATH).param("size", "500"))
                 .andExpect(status().isBadRequest());
     }
 }

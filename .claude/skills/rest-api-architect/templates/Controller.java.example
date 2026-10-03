@@ -54,8 +54,15 @@ import org.springframework.web.bind.annotation.RestController;
  * and prevents /v1 and /v2 from coexisting (decision P5(g)).
  */
 @RestController
-@RequestMapping(path = "/api/v1/users", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping(path = UserController.BASE_PATH, produces = MediaType.APPLICATION_JSON_VALUE)
 public class UserController implements UserApi {
+
+    /**
+     * The collection's path, written once: the class mapping and every `Location` this
+     * controller answers read it, and the web-slice test asserts against it. A second spelling
+     * of the path drifts from the mapping on the first rename.
+     */
+    public static final String BASE_PATH = "/api/v1/users";
 
     private final CreateUserUseCase createUser;
     private final ListUsersQuery listUsers;
@@ -72,7 +79,8 @@ public class UserController implements UserApi {
      * request header, not from a controller parameter.
      *
      * 201 carries Location + the created representation. Only one of the two is half a
-     * contract. A replay answers the same 201 with the stored body — the aspect
+     * contract. Location is relative, built from `BASE_PATH` (`.claude/rules/api-rest.md`
+     * § Success statuses). A replay answers the same 201 with the stored body — the aspect
      * captures both from this return value.
      */
     @Override
@@ -81,7 +89,7 @@ public class UserController implements UserApi {
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         User user = createUser.handle(UserMapper.toCommand(request));
         UserResponse body = UserMapper.toResponse(user);
-        return ResponseEntity.created(URI.create("/api/v1/users/" + body.id())).body(body);
+        return ResponseEntity.created(URI.create(BASE_PATH + "/" + body.id())).body(body);
     }
 
     /**
