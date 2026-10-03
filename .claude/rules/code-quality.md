@@ -65,7 +65,8 @@ A rule in markdown doesn't enforce anything. What's mechanical lives in the gene
 project's build:
 
 - **Checkstyle** (`config/checkstyle/checkstyle.xml`, `validate` phase) — length,
-  parameters, complexity, nesting, magic numbers, generic `catch`, and § Comments: a `//`
+  parameters, complexity, nesting, magic numbers, a string literal of 5 or more characters
+  repeated 3 or more times in one file (outside annotations), generic `catch`, and § Comments: a `//`
   or `/* */` outside its two exceptions, a `/** */` inside a body, a `TODO`. The numbers
   and the exceptions in that file and in this rule are the same: changing one side
   without the other is a bug. Test code has its own light set,

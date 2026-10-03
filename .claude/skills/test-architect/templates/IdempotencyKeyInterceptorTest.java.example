@@ -1,0 +1,76 @@
+/*
+ * EXEMPLAR — unit test of an inbound adapter component with no Spring context: the
+ * structural half of idempotency (`rest-api-architect/templates/IdempotencyKeyInterceptor.java.example`).
+ * Compilable as-is.
+ *
+ * What it demonstrates: cases that differ only in their input are ONE `@ParameterizedTest`
+ * (`.claude/rules/testing.md` § Names and shape), not one method per bad key. A missing
+ * header, an empty one, a blank one and three malformed ones are the same behavior —
+ * rejected with the same exception — so they are one method and six rows. The accepted key
+ * and the unprotected routes are different behaviors, so they get their own methods.
+ *
+ * No `@WebMvcTest`: the interceptor reads only the request, and `MockHttpServletRequest`
+ * gives it one in microseconds. The 400 body it leads to belongs to the web-slice test.
+ */
+package com.exemplo.minhaapi.adapter.in.rest.idempotent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+
+class IdempotencyKeyInterceptorTest {
+
+    private static final String PROTECTED_PATH = "/api/v1/users";
+    private static final Object HANDLER = new Object();
+
+    private final IdempotencyKeyInterceptor interceptor = new IdempotencyKeyInterceptor();
+    private final MockHttpServletResponse response = new MockHttpServletResponse();
+
+    /** `null` stands for the header being absent; the other rows send it with that value. */
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   ", "not-a-uuid", "12345", "0f2b6c1e-4d3a-4f5b-9c8d"})
+    @DisplayName("rejects a protected POST whose key is missing or not a UUID")
+    void rejectsMissingOrMalformedKey(String key) {
+        MockHttpServletRequest request = request("POST", PROTECTED_PATH, key);
+
+        assertThatThrownBy(() -> interceptor.preHandle(request, response, HANDLER))
+                .isInstanceOf(MissingIdempotencyKeyException.class)
+                .hasMessageContaining(IdempotencyKeyInterceptor.HEADER);
+    }
+
+    @Test
+    @DisplayName("lets a protected POST with a UUID key through")
+    void acceptsUuidKey() {
+        MockHttpServletRequest request =
+                request("POST", PROTECTED_PATH, "0f2b6c1e-4d3a-4f5b-9c8d-7e6f5a4b3c2d");
+
+        assertThat(interceptor.preHandle(request, response, HANDLER)).isTrue();
+    }
+
+    /** A route outside the protected list needs no key: requiring it everywhere puts 400 on harmless calls. */
+    @ParameterizedTest
+    @CsvSource({"GET, /api/v1/users", "POST, /api/v1/orders", "PUT, /api/v1/users"})
+    @DisplayName("lets a request without a key through on a route that doesn't require one")
+    void passesUnprotectedRouteWithoutKey(String method, String path) {
+        MockHttpServletRequest request = request(method, path, null);
+
+        assertThat(interceptor.preHandle(request, response, HANDLER)).isTrue();
+    }
+
+    private static MockHttpServletRequest request(String method, String path, String key) {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+        if (key != null) {
+            request.addHeader(IdempotencyKeyInterceptor.HEADER, key);
+        }
+        return request;
+    }
+}

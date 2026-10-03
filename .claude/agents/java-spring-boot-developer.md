@@ -401,7 +401,10 @@ Validation: identity maps, relations have cascade, no N+1, migration is idempote
 adapter uses `saveAndFlush` wherever it translates a constraint violation — with `save` the
 INSERT only reaches the database on commit, outside the `try`, and the violation escapes
 translation (`.claude/rules/persistence.md` § Boundary). Every entity whose `@Id` has no
-`@GeneratedValue` implements `Persistable` (§ Identity and keys); every column whose SQL
+`@GeneratedValue` extends the project's shared `AssignedIdEntity` — created once, from the
+last block of `.claude/skills/persistence-architect/templates/JpaEntity.java.example`, when
+the first such entity appears — and never implements `Persistable` itself (§ Identity and
+keys); every column whose SQL
 type isn't Hibernate's default inference carries `@JdbcTypeCode`, and no `@Lob` maps a
 `text` column (§ Mapping) — `ddl-auto: validate` only reports these at context startup.
 Every class of the aggregate goes in its own subpackage of the persistence adapter and

@@ -66,8 +66,12 @@ never prints the variable.
    `localhost` → stop: "`docker compose up -d sonarqube`, wait for `UP`, re-run". Any other
    host → stop, naming the host.
 5. `SONAR_TOKEN` set and valid — `curl -sS -u "$SONAR_TOKEN:" <host>/api/authentication/validate`
-   answers `"valid":true`. Unset or invalid → stop, naming the variable. Browse permission
-   is only proven by the first read of step 3, and a 401/403 there stops the same way.
+   answers `"valid":true`. Unset or invalid → stop, naming the variable.
+6. Browse permission — one `component_tree` read with `ps=1`, the call step 3's duplication
+   read makes (`references/sonar-web-api.md` § Preconditions). `403` → stop with the
+   project-analysis-token message below, before step 2 spends minutes on an analysis
+   nothing can read. `404` → the project has never been analyzed: go on, and the first
+   read of step 3 proves Browse instead, stopping the same way on a `403`.
 
 ### 2 · Run the analysis
 
@@ -169,7 +173,7 @@ Run `docker compose up -d sonarqube`, wait for /api/system/status to answer UP, 
 **Token missing, invalid, or unable to read:**
 ```
 ❌ SONAR_TOKEN is not set — export a user token (My Account → Security) and re-run.
-❌ /api/issues/search answered 403 — SONAR_TOKEN can analyze but not browse this project.
+❌ <call> answered 403 — SONAR_TOKEN can analyze but not browse this project.
    A project analysis token cannot read the Web API; use a user token with Browse.
 ```
 

@@ -75,6 +75,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -120,10 +121,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MissingIdempotencyKeyException.class)
     public ProblemDetail handleMissingIdempotencyKey(MissingIdempotencyKeyException e, HttpServletRequest request) {
         log.debug("Missing/malformed Idempotency-Key at {}", request.getRequestURI());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
-        problem.setInstance(URI.create(request.getRequestURI()));
-        problem.setProperty("violations", List.of(new Violation(IdempotencyKeyInterceptor.HEADER, e.getMessage())));
-        return problem;
+        return invalidRequest(request, List.of(new Violation(IdempotencyKeyInterceptor.HEADER, e.getMessage())));
     }
 
     /**
@@ -138,11 +136,20 @@ public class ApiExceptionHandler {
                         .map(ApiExceptionHandler::toViolation)
                         .toList();
         log.debug("Bean validation failed at {}: {}", request.getRequestURI(), violations);
-        ProblemDetail problem =
-                ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
-        problem.setInstance(URI.create(request.getRequestURI()));
-        problem.setProperty("violations", violations);
-        return problem;
+        return invalidRequest(request, violations);
+    }
+
+    /**
+     * A path variable or query parameter that doesn't convert to its declared type — a
+     * malformed UUID, text where a number goes — is structural too. Without this handler it
+     * falls through to {@code handleUnexpected} and answers 500. The parameter name is the
+     * offending "field"; the declared type stays out of the body.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ProblemDetail handleTypeMismatch(
+            MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+        log.debug("Type mismatch for {} at {}", e.getName(), request.getRequestURI());
+        return invalidRequest(request, List.of(new Violation(e.getName(), "has an invalid format")));
     }
 
     /**
@@ -176,6 +183,17 @@ public class ApiExceptionHandler {
                 ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("traceId", traceId);
+        return problem;
+    }
+
+    /**
+     * The one place the structural 400 is built: every handler that reports `violations`
+     * goes through here, so its `detail` and property name are written once.
+     */
+    private static ProblemDetail invalidRequest(HttpServletRequest request, List<Violation> violations) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("violations", violations);
         return problem;
     }
 

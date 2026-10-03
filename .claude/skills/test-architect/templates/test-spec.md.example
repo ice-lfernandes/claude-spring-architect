@@ -35,11 +35,14 @@ application unit test, and what integration adds is the mapping, not the orchest
 
 | Class | Level | Methods |
 |---|---|---|
-| `EmailTest` | Domain | `acceptsValidAddress` · `rejectsAddressWithoutAtSign` · `normalizesToLowercase` |
+| `EmailTest` | Domain | `acceptsValidAddress` · `rejectsInvalidAddress` (parameterized: `"ana"`, `"ana@"`, `"@exemplo.com"`, `""`, `"   "`) · `normalizesToLowercase` |
 | `UserTest` | Domain | `rejectsEmptyName` · `rejectsNameAboveLimit` · `bornWithNoDepartmentWhenNoneGiven` |
 | `CreateUserServiceTest` | Application | `createsUserWhenEmailIsFree` · `rejectsAlreadyRegisteredEmail` |
 | `UserRepositoryJpaAdapterIT` | Integration | `persistsAndRereadsTheSameAggregate` · `rejectsDuplicateEmail` · `doesNotLoadDepartmentWhenNotNeeded` |
 | `UserControllerTest` | Web slice | One method per row of `30-rest.md` § 5's table |
+
+Cases that differ only in their input are one method, listed once with its inputs — never
+one row per input (`rejectsInvalidAddress` above, five rows of one `@ParameterizedTest`).
 
 Each method asserts the exception **and** the stable code, never just the type:
 `rejectsAlreadyRegisteredEmail` asserts `EMAIL_ALREADY_REGISTERED`, not just
@@ -68,7 +71,7 @@ real constructor that validates.
 
 | Invariant from `10-dominio.md` | Test that guarantees it |
 |---|---|
-| Email has a valid format | `EmailTest.rejectsAddressWithoutAtSign` |
+| Email has a valid format | `EmailTest.rejectsInvalidAddress` |
 | Name between 1 and 120 characters | `UserTest.rejectsEmptyName` · `rejectsNameAboveLimit` |
 | Email is unique in the system | `CreateUserServiceTest.rejectsAlreadyRegisteredEmail` + `UserRepositoryJpaAdapterIT.rejectsDuplicateEmail` |
 | Given department must exist | `CreateUserServiceTest` — **still to write** |

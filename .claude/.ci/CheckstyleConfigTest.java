@@ -5,7 +5,8 @@
 // `checkstyle-test.xml.example` over `src/test`. A restricted identifier (`record`,
 // `permits`) must fail both; a clean file must pass both. The test config also fails a
 // throw-assertion lambda that makes more than one call (testing.md § Names and shape,
-// decision 0113), and passes every one-call shape.
+// decision 0113), and passes every one-call shape. The main config fails a string literal
+// repeated past Sonar S1192's threshold, and only the main config (decision 0120).
 //
 // Why this test exists: the first version of the `IllegalIdentifierName` module relied on
 // Checkstyle's default `format`, which a documentation page said rejects `record`. On the
@@ -235,6 +236,68 @@ public class CheckstyleConfigTest {
                         assertThatCode(() -> { service.handle(command); }).doesNotThrowAnyException();
                         commands.forEach(c -> { service.handle(c); audit.log(c); });""");
 
+        // code-quality.md: no magic strings — S1192's numbers. A 5-character literal three times in
+        // one production file is flagged; twice, a 4-character literal, and literals inside
+        // annotations are not. The test config must not flag it: S1192 skips test files
+        // (decision 0120).
+        Path repeatedLiteral = write(src.resolve("RepeatedLiteral.java"), """
+                package example;
+
+                /** Repeats one literal three times. */
+                public final class RepeatedLiteral {
+
+                    private RepeatedLiteral() {
+                    }
+
+                    public static String first() {
+                        return "Invalid request";
+                    }
+
+                    public static String second() {
+                        return "Invalid request";
+                    }
+
+                    public static String third() {
+                        return "Invalid request";
+                    }
+                }
+                """);
+        Path allowedLiterals = write(src.resolve("AllowedLiterals.java"), """
+                package example;
+
+                import java.util.List;
+
+                /** Repetitions S1192 lets through, so the build must too. */
+                public final class AllowedLiterals {
+
+                    private AllowedLiterals() {
+                    }
+
+                    public static List<String> twice() {
+                        return List.of("Invalid request", "Invalid request");
+                    }
+
+                    public static List<String> shortLiteral() {
+                        return List.of("none", "none", "none");
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    public static Object first(Object value) {
+                        return value;
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    public static Object second(Object value) {
+                        return value;
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    public static Object third(Object value) {
+                        return value;
+                    }
+                }
+                """);
+
         int failures = 0;
         for (Path config : List.of(mainConfig, testConfig)) {
             String name = config.getFileName().toString();
@@ -248,6 +311,10 @@ public class CheckstyleConfigTest {
                     "code-quality.md § Comments: Javadoc is the only comment.");
         }
         failures += expectClean(jar, mainConfig, allowed, mainName);
+        failures += expectFlagged(jar, mainConfig, repeatedLiteral, "MultipleStringLiterals", mainName,
+                "code-quality.md: no magic strings — a literal of 5+ characters, 3+ times in one file.");
+        failures += expectClean(jar, mainConfig, allowedLiterals, mainName);
+        failures += expectClean(jar, testConfig, repeatedLiteral, testConfig.getFileName().toString());
         // Main only: test code holds § Comments by review, so the light config must not flag it.
         failures += expectClean(jar, testConfig, comments.get("LineComment"), testConfig.getFileName().toString());
         String testName = testConfig.getFileName().toString();
@@ -263,7 +330,8 @@ public class CheckstyleConfigTest {
         }
         System.out.println("✅ Both Checkstyle configs parse on Checkstyle " + version
                 + ", pass a clean file, and reject `record` and `permits` as names;"
-                + " checkstyle.xml rejects every comment but Javadoc and its two exceptions;"
+                + " checkstyle.xml rejects every comment but Javadoc and its two exceptions,"
+                + " and a literal repeated past S1192's threshold;"
                 + " checkstyle-test.xml rejects a throw-assertion lambda with more than one call.");
     }
 

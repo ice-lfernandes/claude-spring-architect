@@ -17,6 +17,7 @@ the dashboard HTML.
 |---|---|---|
 | `GET /api/system/status` | `status` | `UP` is the only state that serves reads. `STARTING` right after `docker compose up` — wait, don't fail. No auth needed |
 | `GET /api/authentication/validate` | `valid` | `true` with a valid token. Proves authentication, not the Browse permission |
+| `GET /api/measures/component_tree?component=<projectKey>&qualifiers=FIL&metricKeys=ncloc&ps=1` | the status code | Proves Browse before the analysis runs: `200` reads, `403` cannot browse (§ Status codes), `404` never analyzed yet |
 
 ## Waiting for the analysis
 
