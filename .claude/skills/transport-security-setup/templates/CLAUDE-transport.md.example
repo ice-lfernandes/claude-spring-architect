@@ -1,0 +1,15 @@
+<!--
+EXEMPLAR — the paragraph transport-security-setup writes into the root CLAUDE.md, right below the
+`**Bounded context:` paragraph (or below the first heading when there is none). One of the two
+bodies, with its placeholders filled. This template owns the wording; the skill's entry rule
+greps for `**Transport:` to know the project already decided.
+-->
+
+**Transport: topology A — TLS terminates at the edge.** The application holds no key and trusts
+`X-Forwarded-*` only from `TRUSTED_PROXIES`; HSTS is written by the application, never by the
+edge. Norms: `.claude/rules/transport-security.md`. {{localEdge}}
+
+**Transport: topology B — the embedded server terminates TLS{{mtls}}.** Certificate and key are
+mounted at run time from `TLS_CERTIFICATE` / `TLS_PRIVATE_KEY`, served on 8443 and reloaded on
+change; the profiles {{plainProfiles}} run plain HTTP on 8080. Reason: {{reason}}. Norms:
+`.claude/rules/transport-security.md`, `.claude/rules/secrets.md`.

@@ -1,0 +1,90 @@
+/*
+ * EXEMPLAR — the transport proof of topology A and C′. Norm: `.claude/rules/transport-security.md`
+ * § Tests. A real server on a random port: Tomcat's forwarded-header valve runs in the server, so
+ * a mock request never exercises it. Tested to compile and run against Spring Boot 4.1.1: green,
+ * and red by name with `forward-headers-strategy: none` (no HSTS from the trusted proxy) and with
+ * HTTP/2 off (HTTP_1_1).
+ *
+ * Two contexts, one per side of the trust list. The trusted one adds loopback to
+ * `internal-proxies` — standing in for the edge, since the test's requests come from 127.0.0.1;
+ * the other keeps the real `application.yml` value, which leaves loopback out, so the same request
+ * is just a client lying about its scheme.
+ *
+ * h2c: the JDK client asks for HTTP/2 over plain HTTP by `Upgrade: h2c`, which Tomcat accepts on a
+ * GET. An edge that speaks h2c with prior knowledge (Caddy `h2c://`) is proven by
+ * `curl --http2-prior-knowledge`, not here.
+ *
+ * Runs in the integration phase (`*IT`, failsafe).
+ */
+package com.exemplo.minhaapi;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.NestedTestConfiguration;
+import org.springframework.test.context.NestedTestConfiguration.EnclosingConfiguration;
+
+class ForwardedHeadersIT {
+
+    private static final HttpClient CLIENT = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2).build();
+
+    static HttpResponse<Void> getAsForwardedHttps(int port) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/health"))
+                .header("X-Forwarded-Proto", "https")
+                .header("X-Forwarded-For", "203.0.113.7")
+                .GET()
+                .build();
+        return CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
+    }
+
+    @Nested
+    @NestedTestConfiguration(EnclosingConfiguration.OVERRIDE)
+    @SpringBootTest(
+            webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+            properties = "server.tomcat.remoteip.internal-proxies=127.0.0.0/8, ::1/128")
+    @ActiveProfiles("test")
+    class FromTrustedProxy {
+
+        @LocalServerPort
+        int port;
+
+        @Test
+        void requestIsSecureAndHstsIsWritten() throws Exception {
+            HttpResponse<Void> response = getAsForwardedHttps(port);
+
+            assertThat(response.headers().firstValue("Strict-Transport-Security")).isPresent();
+        }
+
+        @Test
+        void speaksH2cBehindTheEdge() throws Exception {
+            HttpResponse<Void> response = getAsForwardedHttps(port);
+
+            assertThat(response.version()).isEqualTo(HttpClient.Version.HTTP_2);
+        }
+    }
+
+    @Nested
+    @NestedTestConfiguration(EnclosingConfiguration.OVERRIDE)
+    @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+    @ActiveProfiles("test")
+    class FromAnyoneElse {
+
+        @LocalServerPort
+        int port;
+
+        @Test
+        void forwardedSchemeIsIgnored() throws Exception {
+            HttpResponse<Void> response = getAsForwardedHttps(port);
+
+            assertThat(response.headers().firstValue("Strict-Transport-Security")).isEmpty();
+        }
+    }
+}

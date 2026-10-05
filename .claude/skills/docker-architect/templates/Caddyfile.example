@@ -1,0 +1,16 @@
+# EXEMPLAR — docker/caddy/Caddyfile, mounted by caddy-edge-service.yml.example. Validated with
+# `caddy validate --adapter caddyfile` on the tag that template pins.
+#
+# Production is the same file with the real domain in place of `localhost` and without
+# `tls internal`: Caddy then obtains and renews a public certificate by ACME on its own.
+
+localhost {
+	tls internal
+
+	# h2c:// is HTTP/2 cleartext with prior knowledge; Tomcat accepts it with
+	# `server.http2.enabled: true` and TLS off.
+	reverse_proxy h2c://app:8080
+
+	# No Strict-Transport-Security here: the application writes it, one writer
+	# (.claude/rules/transport-security.md § HSTS).
+}

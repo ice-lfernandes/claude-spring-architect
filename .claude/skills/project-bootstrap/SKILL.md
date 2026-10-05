@@ -269,6 +269,18 @@ repository.
 
 Nothing to run — what the final report has to be able to say.
 
+### 7.5 · Decide transport security → skill `transport-security-setup`
+
+Invoke `transport-security-setup` via the `Skill` tool, with a one-line context: build tool,
+blueprint id, and "chained from project-bootstrap — skip your Verify". It owns the two questions
+this step asks — where TLS terminates, and the local profile or local edge — and writes the
+transport configuration into `application.yml`, the HSTS filter when no security chain exists,
+the transport IT, and the `**Transport:` paragraph of the root `CLAUDE.md` step 6 wrote; the
+`edge` service or the `Dockerfile` port it hands to `docker-architect`. Before Verify, so step 8
+builds and runs the test it wrote. Same class, territories summed
+(`@.claude/decisions/0092-guard-same-class-chain-sums-territories.md`). Don't write any
+`server.ssl`, `spring.ssl` or `forward-headers-strategy` line here.
+
 ### 8 · Verify → `references/build-<tool>.md` § 8, then `references/verify-and-report.md` § 8
 
 
@@ -322,6 +334,7 @@ Provenance: .claude/.arch-provenance.json — blueprint <id>, ref <ref>, commit 
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
+Transport: <the first line of `transport-security-setup`'s report — topology A edge | B direct | C mutual TLS | C′ mesh> — HTTP/2 on, HSTS by <Spring Security | HstsHeaderFilter>, <ForwardedHeadersIT | TransportSecurityIT>
 SonarQube: <the first line of `sonarqube-setup`'s report — existing server <url> | SonarCloud <org> | local container on http://localhost:9000> — scanner <v>, CI step <added | none>
 MCP: <none — no server designed for this project yet | <n> server(s) copied to .mcp.json, see MCP-SETUP.md>
 Build: <PASSED | FAILED: reason>
@@ -445,7 +458,10 @@ other skill touches these files:
 
 `.gitignore` is deliberately left out — it comes from the Initializr (step 6.5).
 
-**Chains** `sonarqube-setup` in step 8.4 — the `sonar.*` lines of the root build file,
+**Chains** `transport-security-setup` in step 7.5 — the transport lines of `application.yml`,
+the HSTS filter, the transport IT and the `**Transport:` paragraph are that skill's (and, for the
+`edge` service and the `Dockerfile` port, `docker-architect`'s), even though they land in files
+this skill wrote. **Chains** `sonarqube-setup` in step 8.4 — the `sonar.*` lines of the root build file,
 the workflow's analysis step and the `sonarqube` compose service are that skill's (and,
 for the service, `docker-architect`'s), even though they land in files this skill wrote.
 

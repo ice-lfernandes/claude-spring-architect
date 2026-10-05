@@ -191,6 +191,18 @@ was created by step 5 — so the runtime has not listed it yet. Ask the user to 
 `/reload-skills`, then invoke it; on an update it is picked up live. Only schema exit 0
 reaches this step: a broken `.claude/` is reported first.
 
+### 7.5 · Transport security, when the root `CLAUDE.md` has no `**Transport:` paragraph
+
+```bash
+grep -n "^\*\*Transport:" CLAUDE.md 2>/dev/null
+```
+
+Found → skip this step and say "already decided" in the report. Not found → invoke
+`transport-security-setup` through the `Skill` tool; it asks its own questions (where TLS
+terminates, the local profile or local edge), records a configuration written by hand instead of
+rewriting it, and writes outside `.claude/` under its own territory, not this skill's. Same
+`/reload-skills` caveat as step 7 on an install.
+
 ### 8 · Bounded context, when the root `CLAUDE.md` has none
 
 The bounded context is the first segment of every topic name — a project fact, like the
@@ -245,6 +257,7 @@ Warnings ..... <none | the surviving-citation lines, verbatim>
 Schema ....... <exit 0 | the failure>
 Provenance ... <the doctor line>
 SonarQube .... <already configured | configured by sonarqube-setup — <its first line> | pending: run /reload-skills, then /sonarqube-setup>
+Transport .... <already decided | decided by transport-security-setup — <its first line> | pending: run /reload-skills, then /transport-security-setup>
 Bounded ctx .. <already declared | written: <name>>
 Migrations ... <none pending | not applicable — install | <n> below, to paste when you choose>
 
@@ -302,8 +315,9 @@ diff above, and a report of its own would land in it. That file is the project's
 serve before the project exists. This one is how a project updates itself once the plugin
 that delivered it is gone, so it is in `export.skills.include`.
 
-**Chains** `sonarqube-setup` in step 7 when the build file has no scanner — the one
-piece of this procedure that writes outside `.claude/`, and it does so under that skill's
-territory, never this one's.
+**Chains** `sonarqube-setup` in step 7 when the build file has no scanner, and
+`transport-security-setup` in step 7.5 when the root `CLAUDE.md` records no transport decision —
+the two pieces of this procedure that write outside `.claude/`, each under its own territory,
+never this one's.
 
 **Hands off to** `/arch-doctor` for the diagnosis, and to the user for the diff.

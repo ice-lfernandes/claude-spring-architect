@@ -90,7 +90,8 @@ correct.
 - **CORS lists its origins explicitly**, from configuration. Never a wildcard origin with
   credentials allowed; no CORS configuration at all when no browser client calls the API
 - **The framework's default response headers stay on** (HSTS, `nosniff`, frame denial).
-  Disabling one is a recorded decision with its reason
+  Disabling one is a recorded decision with its reason. Whether HSTS is actually written, and
+  by which single component, is `@.claude/rules/transport-security.md` § HSTS
 
 ## Failure responses
 
@@ -108,8 +109,8 @@ correct.
 
 ## Credentials and logs
 
-- No client secret, API key, password or private key literal in a versioned file — a
-  configuration placeholder resolved from the environment
+- Credentials come from the environment, never from a versioned file —
+  `@.claude/rules/secrets.md`
 - Never logged: the `Authorization` header, a token, a password, an API key, an introspection
   response. A denial is logged at `WARN` with the principal's id, method and path; a failed
   authentication with the reason category and the remote address

@@ -41,6 +41,7 @@ flowchart TB
         SK_DOCTOR["skill: arch-doctor"]:::skill
         SK_GIT["skill: git-publish"]:::skill
         SK_SONAR["skill: sonarqube-setup"]:::skill
+        SK_TRANSPORT["skill: transport-security-setup"]:::skill
         SK_ADOPT["skill: arch-adopt\n(installs/updates this .claude/ in a project)"]:::skill
         SK_REPORT["skill: report-issue\n(files an issue here from a project)"]:::skill
         SK_TRIAGE["skill: triage-issue\n(checks an issue at HEAD — stays here)"]:::skill
@@ -55,7 +56,7 @@ flowchart TB
     end
 
     subgraph L3["Norms and data — leaves"]
-        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, http-client, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging, scheduling,\nauthorization)"]:::rule
+        RULES["rules/*.md\n(architecture-ddd, naming, error-handling,\ncode-quality, api-rest, http-client, lombok,\nvalue-objects, persistence, testing,\nobservability, logging, messaging, scheduling,\nauthorization, transport-security, secrets)"]:::rule
         BLUEPRINTS["blueprints/*/*.yaml\n(_schema.md defines the contract)"]:::blueprint
     end
 
@@ -75,10 +76,13 @@ flowchart TB
     SK_BOOT -->|reads and copies into the generated project| RULES
     SK_BOOT -->|installs, with guard + audit wired| SETTINGS
     SK_BOOT -->|copies verbatim| HOOK
-    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_SEC & SK_HTTP & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR & SK_REPORT
+    SK_BOOT -->|copies| SK_UC & SK_DOM & SK_PERS & SK_REST & SK_SEC & SK_HTTP & SK_TEST & SK_DOCKER & SK_MSG & SK_JOBS & SK_DOCTOR & SK_NF & SK_GIT & SK_AUDIT & SK_PAT & SK_ADOPT & SK_SONAR & SK_TRANSPORT & SK_REPORT
+    SK_BOOT -.->|Skill tool, step 7.5| SK_TRANSPORT
     SK_BOOT -.->|Skill tool, step 8.4| SK_SONAR
     SK_ADOPT -.->|Skill tool, when the build file has no scanner| SK_SONAR
+    SK_ADOPT -.->|Skill tool, when root CLAUDE.md has no Transport paragraph| SK_TRANSPORT
     SK_SONAR -.->|Skill tool, no existing server| SK_DOCKER
+    SK_TRANSPORT -.->|Skill tool, edge local or direct topology| SK_DOCKER
     SK_ADOPT -->|writes everything through the export mode| HOOK
     SK_BOOT -->|copies| AG_DEV & AG_ARCH & AG_LOG
     SK_DESIGNER -.->|proposes and writes, after approval| SK_UC & AG_DEV & RULES

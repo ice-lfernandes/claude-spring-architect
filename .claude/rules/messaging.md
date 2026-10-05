@@ -175,9 +175,8 @@ Form B's own boundaries:
 - Manual acknowledgment (`AckMode.MANUAL` or `RECORD`) when the consumer must guarantee the
   use case ran before the offset commits. `AckMode.BATCH`'s auto-commit-before-processing is
   a data-loss window under a crash mid-batch
-- Zero credentials in a versioned `application.yml`. Same as `@.claude/rules/persistence.md`
-  § Configuration — bootstrap servers with SASL/TLS come from the environment in any
-  non-local profile
+- Credentials come from the environment — `@.claude/rules/secrets.md`. Bootstrap servers
+  with SASL/TLS come from the environment in any non-local profile
 
 ## How to verify
 

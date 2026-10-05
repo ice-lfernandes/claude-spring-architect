@@ -286,8 +286,8 @@ proposed fix, before anything is commented or designed. Details:
 | Piece | Count | Where |
 |---|---|---|
 | Architecture blueprints | 7 + a template for your own | `.claude/blueprints/` |
-| Norms, loaded on demand through `paths` | 16 | `.claude/rules/` |
-| Skills (design, orchestration, build, ops, meta…) | 23 | `.claude/skills/` |
+| Norms, loaded on demand through `paths` | 18 | `.claude/rules/` |
+| Skills (design, orchestration, build, ops, meta…) | 24 | `.claude/skills/` |
 | Agents (driver, executor, installer, verifier) | 5 | `.claude/agents/` |
 | Hook modes, in one Java file | 11 | `.claude/hooks/ArchHook.java` |
 | Decision records — why each piece has its form | 100+ | `.claude/decisions/` |
@@ -302,8 +302,9 @@ outbox relay), `persistence-architect`, `test-architect`.
 
 **Cross-cutting concerns that arrive solved:** `Idempotency-Key` through AOP, logging with
 sensitive-data masking, an OTLP collector with Jaeger or Grafana + Tempo + Prometheus,
-SonarQube or SonarCloud setup, compose port-collision and reachability checks, and
-`permissions.deny` on secrets files.
+transport security decided once per project through `transport-security-setup` (edge,
+direct, or mutual TLS, HSTS with exactly one writer), SonarQube or SonarCloud setup,
+compose port-collision and reachability checks, and `permissions.deny` on secrets files.
 
 **What travels into a generated project:** the norms, the development skills, the executor
 agents, the hook and its schema, and the active blueprint. The manifest of what travels is

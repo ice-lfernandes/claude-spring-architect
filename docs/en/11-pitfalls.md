@@ -264,6 +264,13 @@ neither the healthcheck nor Testcontainers sees it — Testcontainers wires its 
 `ArchHook.java compose` reads the file for it (`compose.advertised_env_suffixes`); a service
 that advertises nothing claims nothing and is left alone.
 
+**A healthcheck that calls `localhost` inside the `caddy:2.11.6-alpine` image never turns
+healthy.** Busybox `wget http://localhost:2019` resolves `localhost` IPv6-first, to `::1`,
+and the admin API listens on `127.0.0.1` only — the connection is refused and the
+healthcheck fails even though the proxy is fine. `docker-architect`'s edge service names
+`127.0.0.1` explicitly in its healthcheck, never `localhost`. Design:
+`.claude/decisions/0122-transport-security-setup-and-secrets.md`.
+
 **Every `${VAR:default}` that points at a compose service holds in two places.** The default
 serves `./mvnw spring-boot:run` on the host: it has to be `localhost` on a port the service
 **publishes**. The variable in `app`'s `environment:` serves the container: without it,
@@ -281,6 +288,37 @@ and step 3, `messaging-architect` step 9, `persistence-architect` step 9 — use
 one-liner bounded to the `services:` block. A wrong portrait invites recreating a service
 that already exists.
 
+### Transport security
+
+**An SSL bundle whose file is missing fails the startup even with `server.ssl.enabled:
+false`.** `sslBundleRegistry` loads every bundle eagerly, so disabling TLS in configuration
+does not stop Boot from trying to read the file. Topology B's bundle therefore lives inside
+a YAML document gated by the profile expression `"!local & !docker & (!test | tls)"`, never
+behind a flag that leaves the document active with no file to back it. Design:
+`.claude/decisions/0122-transport-security-setup-and-secrets.md`.
+
+**Behind an edge with no `server.forward-headers-strategy`, HSTS is never written and
+nothing reports it.** The application believes every request arrived over plain HTTP, so the
+header's precondition is never met — a missing security header, not an error anywhere.
+Design: `0122`.
+
+**Spring Security's `HstsHeaderWriter` only writes the header when it is absent — a filter
+left in place once Spring Security arrives silently overrides the chain's own value.**
+That is why `transport-security-setup`'s `HstsHeaderFilter` is
+`@ConditionalOnMissingClass(SecurityFilterChain)` and steps aside the moment the security
+starter is added, instead of both writing the header on the same response. Design: `0122`.
+
+**With topology B, every `@SpringBootTest` must run with `@ActiveProfiles("test")`, or its
+context now starts with TLS on and fails reading `/etc/tls`.** The failure surfaces as a
+missing file deep in the stack trace, not as a clear "wrong profile" message —
+`transport-security-setup` step 5 adds the annotation to every existing `@SpringBootTest`
+it finds without one. Design: `0122`.
+
+**The transport integration tests generate their certificate at run time with the JDK's
+`keytool` — no key file is committed, not even for a test.** A committed "test-only"
+certificate ends up trusted somewhere it should not be (`@.claude/rules/secrets.md`).
+Design: `0122`.
+
 ### Ownership inside a feature run
 
 **`pom.xml` has exactly one writer inside a feature run: the executor, for a dependency the
@@ -295,6 +333,18 @@ written.
 is already there. The `sonarqube` compose service it needs is still `docker-architect`'s,
 and the token is never in any file: the scanner reads `SONAR_TOKEN` from the environment.
 Design: `.claude/decisions/0091-sonarqube-setup-skill.md`.
+
+**Outside a feature run, transport is decided once by `transport-security-setup`, and split
+four ways from there.** The topology, `application.yml`'s TLS lines, the HSTS writer and the
+transport IT are the setup skill's own territory — chained by `project-bootstrap`'s step 7.5
+or by `arch-adopt`'s step 7.5, and skipped on a re-run once the root `CLAUDE.md` already
+carries a `**Transport:` paragraph. The `edge` service, its Caddyfile and the `Dockerfile`'s
+exposed port stay `docker-architect`'s, invoked from inside the setup skill. Outbound TLS —
+a client certificate or a private CA for a call this service makes — is
+`http-client-architect`'s, never the setup skill's. The client-certificate authentication
+mechanism of topology C is deferred to `security-architect`, designed only when a use
+case's access rule names a machine caller. Design:
+`.claude/decisions/0122-transport-security-setup-and-secrets.md`.
 
 **The outbox has three owners, split by question.** `persistence-architect`: the table,
 columns, claim query, batch size, attempt ceiling, retention window and the prune's
