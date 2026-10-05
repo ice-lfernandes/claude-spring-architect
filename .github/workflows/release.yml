@@ -16,7 +16,7 @@ name: release
 #
 # What this does NOT do, on purpose: create a GitHub Release, write release notes, or
 # write to the marketplace repository. The tag message points at the PR, which is where
-# the prose already is. `claude-spring-architect-marketplace` receives a
+# the prose already is. `nerviz-ai/marketplace` receives a
 # `repository_dispatch` and its own `sync.yml` opens a PR there; merging that PR is the
 # decision about what to publish, and it stays a person's.
 on:
@@ -195,7 +195,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MARKETPLACE_DISPATCH_TOKEN }}
           NEW: ${{ steps.next.outputs.new }}
-          MARKETPLACE: ${{ github.repository_owner }}/claude-spring-architect-marketplace
+          MARKETPLACE: ${{ github.repository_owner }}/marketplace
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then

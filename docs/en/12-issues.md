@@ -163,7 +163,7 @@ itself — no table in the conversation, it asks for `/triage-issue <N>` first. 
 
 Body ........ docs/lessons-learned/issue-001.issue.md
 Duplicates .. none open
-Issue ....... https://github.com/ice-lfernandes/claude-spring-architect/issues/52
+Issue ....... https://github.com/nerviz-ai/nerviz/issues/52
 ```
 
 ```

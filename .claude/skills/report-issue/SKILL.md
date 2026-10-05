@@ -1,7 +1,7 @@
 ---
 name: report-issue
 description: >
-  Files an issue on the claude-spring-architect repository from inside a generated project,
+  Files an issue on the Nerviz repository from inside a generated project,
   from a free description or from a lessons-learned file under `docs/lessons-learned/`.
   Picks the repository's own issue form, refuses a report with no evidence a maintainer can
   verify, warns when the project is behind the latest release, searches open duplicates,
@@ -16,7 +16,7 @@ effort: high
 
 # Report Issue
 
-The single door from a generated project to the claude-spring-architect repository. A
+The single door from a generated project to the Nerviz repository. A
 defect in a template, a norm or a hook shows up here first, but its fix belongs upstream:
 fixing it in this project fixes one project, fixing the owner fixes every project generated
 afterwards. This skill writes the report so that the owner can act on it — and so that the
@@ -30,7 +30,7 @@ issue skeptically — each claim is checked against its own code before anything
 claim with no file, no output and no way to reproduce it can only be closed as
 *needs evidence*, so this skill asks for what's missing before it writes anything.
 
-**Privacy rule: the issue carries the trace, never the project.** The claude-spring-architect
+**Privacy rule: the issue carries the trace, never the project.** The Nerviz
 repository is public and this project may not be. The body names Sonar rule keys, counts,
 paths **inside `.claude/`**, commands and hook output only — never a path under `src/`, a
 package, a class name of this project, a code excerpt, the project key, a server URL, a
@@ -64,7 +64,7 @@ what in it identifies the project is the judgment this skill exists for.
 1. **Target** — the slug from `source.git_url` in `.claude/schemas/extensions.json`
    (`https://github.com/<owner>/<repo>.git` → `<owner>/<repo>`).
 2. **Version** — `.claude/.arch-provenance.json` gives `ref`, `commit` and `blueprint`. No
-   stamp → stop: this is not a project generated or adopted from claude-spring-architect, and
+   stamp → stop: this is not a project generated or adopted from Nerviz, and
    the issue would have no version to be verified against.
 3. **Behind?** — `git ls-remote --tags --sort=-v:refname <git_url>` and take the first tag.
    When `ref` is a tag and an older one, say so: the newer release may already carry the fix,
@@ -151,7 +151,7 @@ the next `/sonar-lessons` run, checks to know whether the lesson reached the met
 **No provenance stamp:**
 ```
 ❌ .claude/.arch-provenance.json not found — this project was not generated or adopted from
-claude-spring-architect, so there is no version to report against. Nothing written.
+Nerviz, so there is no version to report against. Nothing written.
 ```
 
 **Form not reachable:**
@@ -219,5 +219,5 @@ project already exported, which is why CI checks that each path cited here exist
 belongs to the meta-repository, pulled back with `/arch-adopt`.
 
 **Not chained** by any skill. Travels into the generated project (`export.skills.include`); in
-the claude-spring-architect repository itself it stops at step 2, which has no provenance
+the Nerviz repository itself it stops at step 2, which has no provenance
 stamp.

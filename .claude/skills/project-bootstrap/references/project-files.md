@@ -73,7 +73,7 @@ for that exact reason.
 ## 6.6 · Write the project's `.claude/`
 
 The generated project lives on its own: nothing inside `<project>/` may depend on
-`claude-spring-architect` existing on the machine of whoever clones it. The root
+Nerviz existing on the machine of whoever clones it. The root
 `CLAUDE.md` cites `.claude/rules/00-index.md`, rules cite each other by path, and
 `settings.json` points at `.claude/hooks/ArchHook.java` — if those files aren't there,
 each citation is a silent dead end and the hooks fail to start.

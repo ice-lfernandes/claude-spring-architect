@@ -168,7 +168,7 @@ Four decisions the file doesn't make obvious:
   a ref the marketplace can pin.
 - **The marketplace is notified, not written.** The last step sends a
   `repository_dispatch` (`source-released`, payload `{ref}`) to
-  `claude-spring-architect-marketplace`, whose own `sync.yml` runs `./sync.sh vX.Y.Z`,
+  `nerviz-ai/marketplace`, whose own `sync.yml` runs `./sync.sh vX.Y.Z`,
   sets the plugin version, calls its `validate.yml` on the branch and opens a PR.
   `GITHUB_TOKEN` cannot reach another repository, so the step reads the
   `MARKETPLACE_DISPATCH_TOKEN` secret (fine-grained PAT, that repository only, Contents:

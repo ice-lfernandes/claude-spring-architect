@@ -165,7 +165,7 @@ Quatro decisões que não são óbvias no arquivo:
   do PR, que é outra árvore sempre que `main` andou por baixo — um conflito semântico em
   `extensions.json` falha ali em vez de virar um ref que o marketplace pode fixar.
 - **O marketplace é avisado, não escrito.** O último step manda um `repository_dispatch`
-  (`source-released`, payload `{ref}`) para `claude-spring-architect-marketplace`, cujo
+  (`source-released`, payload `{ref}`) para `nerviz-ai/marketplace`, cujo
   `sync.yml` roda `./sync.sh vX.Y.Z`, ajusta a versão do plugin, chama o próprio
   `validate.yml` na branch e abre um PR. O `GITHUB_TOKEN` não alcança outro repositório, então
   o step lê o secret `MARKETPLACE_DISPATCH_TOKEN` (PAT fine-grained, só aquele repositório,

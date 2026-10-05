@@ -9,14 +9,14 @@ exemplar ou cite o `.example` irmão é cortado quando o passo 8.5 escreve o arq
 
 # {{projectName}}
 
-Projeto Spring Boot gerado por [claude-spring-architect](https://github.com/ice-lfernandes/claude-spring-architect),
+Projeto Spring Boot gerado por [Nerviz](https://github.com/nerviz-ai/nerviz),
 já preparado para desenvolvimento assistido por IA com Claude Code.
 
 *[English version](README.md)*
 
 ## Origem
 
-Gerado a partir do meta-repo `claude-spring-architect`, com:
+Gerado a partir do meta-repo Nerviz, com:
 
 ```
 {{initCommand}}
@@ -29,7 +29,7 @@ Gerado a partir do meta-repo `claude-spring-architect`, com:
 | Nome do projeto | `{{projectName}}` |
 | Diretório de destino | `{{targetDirectory}}` |
 
-O comando foi executado a partir do repositório `claude-spring-architect`, mas este
+O comando foi executado a partir do repositório Nerviz, mas este
 projeto é autocontido — nada aqui depende do meta-repo existir na máquina de quem clona.
 Veja `CLAUDE.md` para a arquitetura completa; este arquivo só orienta uma primeira
 leitura.

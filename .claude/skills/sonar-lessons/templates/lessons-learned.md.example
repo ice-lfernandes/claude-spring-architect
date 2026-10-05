@@ -12,7 +12,7 @@ file, never by sonar-lessons.
 
 Run date: {{YYYY-MM-DD}}. Analysis: `{{./mvnw -B -q verify sonar:sonar | ./gradlew -q build sonar}}`
 against `{{host}}`, task `{{ceTaskId}}`. Build: {{green | red — see § 1}}.
-Generated from claude-spring-architect `{{stamp.ref}}` (`{{stamp.commit, short}}`), blueprint
+Generated from Nerviz `{{stamp.ref}}` (`{{stamp.commit, short}}`), blueprint
 `{{stamp.blueprint}}`.
 
 Dashboard: `{{host}}/dashboard?id={{projectKey}}`
@@ -109,7 +109,7 @@ answer is "nothing is missing".}}
 |---|---|---|---|
 | 1 | `{{path}}` · `{{path}}` | {{from}}–{{to}} ({{size}}) | {{§}} |
 
-## Appendix C · Change list for claude-spring-architect
+## Appendix C · Change list for Nerviz
 
 | # | File in `.claude/` | Change | Removes |
 |---|---|---|---|

@@ -1,4 +1,4 @@
-# Workflow do `claude-spring-architect`
+# Workflow do Nerviz
 
 English version: [`docs/en/`](en/README.md).
 
@@ -9,7 +9,7 @@ semelhantes não fazem.
 Quem chega pela primeira vez deve começar por
 [09-diferenciais.md](09-diferenciais.md).
 
-`claude-spring-architect` não é uma aplicação Java — é um meta-repositório. O que ele produz são
+Nerviz não é uma aplicação Java — é um meta-repositório. O que ele produz são
 **arquivos de instrução** (skills, rules, agents, hooks) que, juntos, geram projetos
 Spring Boot já preparados para desenvolvimento assistido por IA. Entender como esses
 arquivos se chamam entre si é o pré-requisito para editar qualquer um deles sem quebrar

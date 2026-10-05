@@ -8,7 +8,7 @@ body:
       value: |
         A blueprint is data: adding an architecture must never require editing a skill, an
         agent or a command. The contract every blueprint fulfills is
-        [`.claude/blueprints/_schema.md`](https://github.com/ice-lfernandes/claude-spring-architect/blob/main/.claude/blueprints/_schema.md),
+        [`.claude/blueprints/_schema.md`](https://github.com/nerviz-ai/nerviz/blob/main/.claude/blueprints/_schema.md),
         and the starting point is
         `.claude/blueprints/custom-template/custom.template.yaml`.
 

@@ -6,7 +6,7 @@ description: >
   traces every group of findings to the norm, template or Checkstyle setting in `.claude/`
   that produced it, and writes `docs/lessons-learned/sonar-NNN.md` focused on fixing the
   cause so the next analysis has fewer issues or none. Ends with the `/report-issue` command
-  that files it on the claude-spring-architect repository, where the fix belongs.
+  that files it on the Nerviz repository, where the fix belongs.
   Explicit invocation only.
 disable-model-invocation: true
 allowed-tools: Read, Write, Glob, Grep, Bash(./mvnw:*), Bash(./gradlew:*), Bash(curl:*), Bash(java:*)
@@ -56,7 +56,7 @@ never prints the variable.
 ### 1 · Preconditions — stop on the first that fails
 
 1. Root build file: `pom.xml` → maven, `build.gradle` → gradle. Neither → stop: nothing to
-   analyze (this is also what happens when the skill is typed in the claude-spring-architect
+   analyze (this is also what happens when the skill is typed in the Nerviz
    repository itself).
 2. Scanner declared — `sonar-maven-plugin` / `org.sonarqube` in that file. Absent → stop:
    "run `/sonarqube-setup` first".
@@ -220,5 +220,5 @@ finding is fixed at its owner in the meta-repository, or by `/new-feature` in th
 project — not by this skill.
 
 **Not chained** by any skill. Travels into the generated project
-(`export.skills.include`); in the claude-spring-architect repository itself it stops at
+(`export.skills.include`); in the Nerviz repository itself it stops at
 step 1, which has no build file.
