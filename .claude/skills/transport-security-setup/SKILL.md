@@ -60,8 +60,8 @@ grep -nE "spring-boot-starter-(security|jetty)" pom.xml build.gradle */pom.xml *
 
 - `**Transport:` found → entry rule: report and stop.
 - `pom.xml` at the root → `maven`; `build.gradle` → `gradle`. The main module is the one with
-  `contains_main: true` in the active blueprint (`.claude/blueprints/<id>/<id>.yaml`); its
-  `src/main/resources/application.yml` is the file this skill merges into.
+  `contains_main: true` in the active blueprint; its `src/main/resources/application.yml` is
+  the file this skill merges into.
 - `spring-boot-starter-security` present → the security filter chain owns HSTS, and step 4 is
   skipped. Absent → step 4 writes the filter.
 - `spring-boot-starter-jetty` present → topology B and C are not offered: Jetty does not reload
