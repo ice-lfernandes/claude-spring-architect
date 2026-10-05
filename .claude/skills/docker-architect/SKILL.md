@@ -57,7 +57,9 @@ chained by `project-bootstrap` itself, right after it writes the base pair in it
 step 4.10, once per blueprint feature that's already active and needs a container
 (`persistence-jpa` → Postgres, `observability` → the OTLP collector) — see
 `project-bootstrap/SKILL.md` step 4.10. A third path: chained by `sonarqube-setup` for a
-local `sonarqube` service when the project has no server of its own. That's why it carries no
+local `sonarqube` service when the project has no server of its own; a fourth, by
+`transport-security-setup` for the local `edge` of topology A or the `Dockerfile` port of
+topology B. That's why it carries no
 `disable-model-invocation` — a skill the model can't see is a skill a sibling skill can't
 call.
 
@@ -128,6 +130,11 @@ this table is where it lives.
      the collector exports to `debug` and how to add a UI later. Go straight to step 3.
    - If chained from `sonarqube-setup`: the service is `sonarqube`, already decided by its
      own question (no existing server). No engine question. Go straight to step 3.
+   - If chained from `transport-security-setup`: either the service `edge` — Caddy, plus its
+     `docker/caddy/Caddyfile` from `templates/Caddyfile.example`, already decided by that
+     skill's topology question — or no service at all, only the `Dockerfile`'s `EXPOSE` line
+     gaining 8443 next to 8080. No engine question. For the `edge`, go straight to step 3; for
+     the port, edit that one line and go to the report — no service is merged.
    - If invoked manually with no folder: `AskUserQuestion` — engine (Postgres, MySQL,
      Kafka, other), version/tag, port, whether it needs an init script. Don't ask what a
      given spec already answers.
@@ -300,6 +307,7 @@ this table is where it lives.
 | Jaeger | `templates/jaeger-service.yml.example` | No `otel-collector` in the file yet, a backend is already there, or the project wants metrics too — Jaeger stores traces only |
 | Grafana + Tempo + Prometheus | `templates/grafana-stack-service.yml.example` + three init scripts (`tempo-config`, `prometheus-config`, `grafana-datasources`) | No `otel-collector` yet, a backend is already there, or three containers is too much for what the project needs — Jaeger is the one-container answer |
 | SonarQube (community) | `templates/sonarqube-service.yml.example` | The project already has an external SonarQube server or SonarCloud — `sonarqube-setup` asked, and only its *None* answer chains here. Embedded H2, no database service: local analysis, not a shared server |
+| Caddy (local edge) | `templates/caddy-edge-service.yml.example` + `templates/Caddyfile.example` at `docker/caddy/Caddyfile` | The project's transport is not topology A, or the developer declined a local edge — `transport-security-setup` asked. Terminates TLS with its own local CA and forwards over h2c; never writes `Strict-Transport-Security`, which the application owns (`@.claude/rules/transport-security.md` § HSTS) |
 | H2 | — no service | In-memory, runs inside the JVM; nothing to containerize |
 
 The collector's default exporter is `debug`, which writes to its own stdout and **is not
@@ -332,8 +340,8 @@ and the user invokes `/docker-architect` from a prompt of its own afterwards.
 
 **Writes** `docker-compose.yml` (every service block, including the ones added at
 generation time for an already-active feature), `Dockerfile` (build-stage additions
-only, never the base image or base stages `project-bootstrap` wrote), and `docker/init/**`
-when an init script is needed. No other skill writes a service block into
+and the `EXPOSE` line, never the base image or base stages `project-bootstrap` wrote),
+`docker/init/**` when an init script is needed, and `docker/caddy/Caddyfile` for the local edge. No other skill writes a service block into
 `docker-compose.yml` — not even `project-bootstrap`, which only decides *when* to call
 this skill — this is the single owner.
 

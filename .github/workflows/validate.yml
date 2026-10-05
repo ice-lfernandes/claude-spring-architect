@@ -339,7 +339,11 @@ jobs:
       - name: each norm has a single owner
         run: |
           FAIL=0
-          for term in "Constructor injection" "Zero framework" "RuntimeException"; do
+          # Each term is a phrase only its owning norm may hold: the transport terms belong to
+          # transport-security.md, the placeholder rule to secrets.md, which four norms used to
+          # restate (0122).
+          for term in "Constructor injection" "Zero framework" "RuntimeException" \
+                      "forward-headers-strategy" "reload-on-update" "A placeholder for a secret has no default"; do
             HITS=$(grep -rl "$term" .claude/rules/ || true)
             N=$(echo "$HITS" | grep -c . || true)
             if [ "$N" -gt 1 ]; then
@@ -370,17 +374,24 @@ jobs:
             # cleaned line would stop matching `^  - ` and fire the exit one line too
             # early — only the first glob of each rule was checked.
             GLOBS=$(awk '/^paths:/{f=1;next}
-                         f&&/^  - /{s=$0; gsub(/[" -]/,"",s); print s; next}
+                         f&&/^  - /{s=$0; sub(/^  - /,"",s); gsub(/["[:space:]]/,"",s); print s; next}
                          f{exit}' "$norma")
             [ -z "$GLOBS" ] && continue
-            for glob in $GLOBS; do
+            # One glob per line, read whole: an unquoted `for glob in $GLOBS` would expand
+            # `**/*.yml` against the tree.
+            while IFS= read -r glob; do
               # Layout-independent globs: valid in any blueprint, don't have to
               # match any declared package. `**/src/**/*.java` is the Java-wide glob since
               # decision 0082; `**/*.java` is not allowed through — it also matched
               # ArchHook.java, and a rule reintroducing it fails here as an unknown package.
               # A `.claude/` glob — 00-index.md's — targets this tree, not a package.
+              # The list is data, `export.derived_paths.derived_paths_exempt_globs` in
+              # extensions.json — the same one `schema` reads, so the two checks cannot disagree.
+              # A glob is compared whole and literally (`-F -x` over one glob per line).
+              EXEMPT=$(grep -o '"derived_paths_exempt_globs": \[[^]]*\]' .claude/schemas/extensions.json \
+                        | sed -e 's/^[^[]*\[//' -e 's/\]$//' | tr ',' '\n' | sed -e 's/^ *"//' -e 's/" *$//')
+              if printf '%s\n' "$EXEMPT" | grep -qFx -- "$glob"; then continue; fi
               case "$glob" in
-                '**/src/**/*.java'|'**/src/test/**'|'**/db/migration/**') continue ;;
                 .claude/*) continue ;;
               esac
               # `**/adapter/in/rest/**` → `adapter.in.rest`, which is how packages.map
@@ -394,7 +405,7 @@ jobs:
                 echo "   package doesn't exist, and the failure mode is silent."
                 FAIL=1
               fi
-            done
+            done <<< "$GLOBS"
           done
           [ "$FAIL" -eq 0 ] && echo "✅ Every rule glob has a matching package in a blueprint."
           exit $FAIL
@@ -664,7 +675,8 @@ jobs:
           org.springframework.boot.test.autoconfigure.web.servlet=Boot 3 package; in Boot 4 it's org.springframework.boot.webmvc.test.autoconfigure
           org.testcontainers.containers.PostgreSQLContainer=Testcontainers 1.x package; in 2.x it's org.testcontainers.postgresql
           org.springframework.kafka.support.serializer.JsonSerializer=deprecated for removal since spring-kafka 4.0, and a JSON value serializer double-encodes the outbox relay's text; the wire contract is StringSerializer (decision 0106)
-          org.springframework.kafka.support.serializer.JsonDeserializer=deprecated for removal since spring-kafka 4.0; the wire contract is StringDeserializer plus a StringJacksonJsonMessageConverter bean (decision 0106)"
+          org.springframework.kafka.support.serializer.JsonDeserializer=deprecated for removal since spring-kafka 4.0; the wire contract is StringDeserializer plus a StringJacksonJsonMessageConverter bean (decision 0106)
+          requiresChannel(=deprecated in the Spring Security generation Boot 4 manages; redirectToHttps() replaces it (decision 0122)"
           # `<<<`, not `echo … | while`: a pipeline runs the loop in a subshell, where
           # `FAIL=1` is lost and the only way to fail the step is `exit 1` inside it — which
           # aborts the sweep at the first hit. Six symbols, one reported. Here the loop

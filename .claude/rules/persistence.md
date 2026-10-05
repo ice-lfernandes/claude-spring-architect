@@ -166,7 +166,7 @@ in `@.claude/decisions/0005-persistence-rule-and-design.md`.
   query holds the connection until the pool runs out
 - `spring.jpa.show-sql` stays `false`. SQL is observed via the Hibernate logger, with a
   level configurable per environment
-- Zero credentials in a versioned `application.yml`. They come from the environment
+- Credentials come from the environment — `@.claude/rules/secrets.md`
 
 ## Admitted exception
 

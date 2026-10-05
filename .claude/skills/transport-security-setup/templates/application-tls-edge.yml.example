@@ -1,0 +1,33 @@
+# EXEMPLAR — topology A (edge) and C′ (service mesh): TLS terminates in front of the application,
+# which speaks HTTP/1.1 or h2c behind it and holds no key. Merged into the `application.yml` of the
+# module with `contains_main: true` — into its existing `server:` root, never a second one.
+# Norm: .claude/rules/transport-security.md § Behind an edge, § Protocols.
+# Tested to compile and start with Spring Boot 4.1.1, and end to end behind Caddy 2.11
+# (`caddy-edge-service.yml.example` of docker-architect): HTTP/2 200 with HSTS through the edge.
+#
+# What these lines make true:
+#   - `request.isSecure()`, the scheme and the client address are the ones the client used, so
+#     HSTS is written, a redirect does not loop and absolute URLs start with https://.
+#   - only the edge's network may say so. The default below is the private ranges, which hold
+#     any compose network and most cluster networks; each environment narrows it to the edge's
+#     real addresses through TRUSTED_PROXIES. Loopback is left out on purpose: a request from the
+#     developer's own machine is not a proxy.
+#   - HTTP/2 is on: h2c here, used when the edge speaks h2c upstream (Caddy `h2c://`, Envoy,
+#     Traefik); harmless when it speaks HTTP/1.1.
+
+server:
+  http2:
+    enabled: true
+  # NATIVE: the embedded Tomcat reads X-Forwarded-For / X-Forwarded-Proto / X-Forwarded-Host.
+  # It defaults to NATIVE only on a detected cloud platform and to NONE everywhere else — set it.
+  # FRAMEWORK instead when the edge sends the RFC 7239 `Forwarded` header.
+  forward-headers-strategy: native
+  tomcat:
+    # A redirect issued by Tomcat itself honours the forwarded scheme.
+    redirect-context-root: false
+    remoteip:
+      # CIDR list or regular expression. Never empty: an empty list trusts anyone's X-Forwarded-*.
+      internal-proxies: ${TRUSTED_PROXIES:10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16}
+
+# feature: actuator — the `ssl` indicator has nothing to report here (no bundle), and probes read
+# /actuator/health/readiness and /liveness, never the aggregate.

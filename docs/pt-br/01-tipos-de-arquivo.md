@@ -80,7 +80,7 @@ skill pertence a exatamente uma das sete classes, e a classe declara duas coisas
 |---|---|---|
 | `design` | as 9 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
 | `orchestrator` | `new-feature`; `init-project` | `docs/**` do caso de uso; `init-project` não escreve nada (delega) |
-| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/`, só o build file raiz e `.github/workflows/` |
+| `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup`, `transport-security-setup` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/`, só o build file raiz e `.github/workflows/`, ou o `application*.yml` do módulo principal + o filtro de HSTS + `src/test/**` + o `CLAUDE.md` raiz |
 | `observer` | `arch-doctor`, `audit-usage` | nada |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
 | `ops` | `git-publish`, `triage-issue` | nada — o efeito é `git`, ou um comentário numa issue deste repo, via Bash |

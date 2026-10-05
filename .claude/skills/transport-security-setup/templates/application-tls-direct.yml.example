@@ -1,0 +1,77 @@
+# EXEMPLAR — topology B (direct) and C (mutual TLS): the embedded Tomcat terminates TLS. Merged
+# into the `application.yml` of the module with `contains_main: true`: the first block into the
+# existing roots, the second as a NEW document after `---` at the end of the file.
+# Norm: .claude/rules/transport-security.md § Direct, § Protocols, § Certificates and monitoring.
+# Tested to compile and start with Spring Boot 4.1.1; `TransportSecurityIT.java.example` runs
+# against exactly this shape.
+#
+# WHY A SECOND DOCUMENT. A bundle whose file is missing fails the startup — `sslBundleRegistry`
+# reads every bundle eagerly, even with `server.ssl.enabled: false` (observed). So the bundle
+# itself, not only `server.ssl`, lives in a document that one profile expression activates:
+#   - every profile but `local` and `docker`, which run on the developer's machine, and
+#   - `test` only together with `tls`, which `TransportSecurityIT` adds — every other
+#     `@SpringBootTest` runs with `test` alone (testing.md) and starts plain.
+# Production needs no profile to get TLS: forgetting to activate one leaves it ON, never off.
+# When the interview answered that the local profile does NOT skip HTTPS, the expression is
+# "!docker & (!test | tls)" and the developer points the same two variables at a local pair
+# (mkcert) kept outside the repository. `docker` stays plain either way: the compose `app`
+# mounts no certificate.
+
+server:
+  port: 8080            # plain HTTP in `local`, `docker` and `test` — unchanged from generation
+  http2:
+    enabled: true       # h2 over ALPN in the TLS document, h2c in the plain profiles
+
+# feature: actuator
+management:
+  health:
+    ssl:
+      # WILL_EXPIRE_SOON inside this window. At least twice the renewal interval: an ACME client
+      # renews at a third of the lifetime left, so 21 days covers a 47-day certificate.
+      certificate-validity-warning-threshold: 21d
+  info:
+    ssl:
+      enabled: true
+  # The `ssl` indicator reports OUT_OF_SERVICE for an invalid certificate. It is NOT added to the
+  # readiness group: one expired certificate would pull every replica at once. Alert on the
+  # detailed health; probes read /actuator/health/readiness and /liveness.
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local & !docker & (!test | tls)"
+  ssl:
+    bundle:
+      pem:
+        # Lower case: a bundle name set through an environment variable is lower-cased.
+        webserver:
+          # A renewed file is served without a restart. Tomcat and Netty only — not Jetty.
+          reload-on-update: true
+          keystore:
+            # Mounted at run time (a volume, a platform secret mounted as a DIRECTORY — never
+            # `subPath`, which is never updated). Never in the repository, never in the image.
+            # The defaults are paths, not secrets: a missing file fails the startup by name.
+            certificate: ${TLS_CERTIFICATE:file:/etc/tls/tls.crt}
+            private-key: ${TLS_PRIVATE_KEY:file:/etc/tls/tls.key}   # PKCS#8, "BEGIN PRIVATE KEY"
+            verify-keys: true
+          # Topology C only: the private CA that issues CLIENT certificates, nothing else — never
+          # the JDK's default trust store, which would let any public CA mint a caller.
+          # truststore:
+          #   certificate: ${TLS_CLIENT_CA:file:/etc/tls/client-ca.crt}
+          options:
+            # The bundle's options, not server.ssl.*: with a bundle those are ignored silently.
+            # Ciphers stay the JDK's defaults.
+            enabled-protocols: TLSv1.3,TLSv1.2
+      watch:
+        file:
+          # The renewal client swaps several files; wait for the last one.
+          quiet-period: 10s
+
+server:
+  port: 8443
+  ssl:
+    bundle: webserver
+    # Topology C only. NEED fails the handshake before any application code runs: the caller
+    # sees a TLS error, never a 401 body.
+    # client-auth: need

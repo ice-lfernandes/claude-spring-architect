@@ -18,8 +18,11 @@
  *   - cors: the explicit `UrlBasedCorsConfigurationSource` below, never a wildcard origin.
  *     An empty origin list registers no CORS mapping at all.
  *   - headers: the framework defaults (nosniff, frame DENY, HSTS on HTTPS responses, cache
- *     control). A content security policy is not added here: the Swagger UI needs scripts;
- *     adding one is a recorded decision.
+ *     control). HSTS needs a request the server sees as secure — behind an edge, only with the
+ *     forwarded headers of `.claude/rules/transport-security.md`; this chain becomes its one
+ *     writer, and the `HstsHeaderFilter` a project may have stands aside on its own. A content
+ *     security policy is not added here: the Swagger UI needs scripts; adding one is a recorded
+ *     decision.
  *   - exceptionHandling: both handlers delegate to `SecurityExceptionHandler`, so 401 and 403
  *     have the same Problem Details body as every other error.
  *   - authorizeHttpRequests, specific to general: health and info public, every other

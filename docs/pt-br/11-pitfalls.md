@@ -272,6 +272,13 @@ próprios listeners. `ArchHook.java compose` lê o arquivo procurando isso
 (`compose.advertised_env_suffixes`); um serviço que não anuncia nada não afirma nada e é
 deixado em paz.
 
+**Um healthcheck que chama `localhost` dentro da imagem `caddy:2.11.6-alpine` nunca fica
+saudável.** O `wget http://localhost:2019` do busybox resolve `localhost`
+primeiro em IPv6, para `::1`, e a API de admin escuta só em `127.0.0.1` — a conexão é
+recusada e o healthcheck falha mesmo com o proxy bem. O serviço de borda do
+`docker-architect` nomeia `127.0.0.1` explicitamente no healthcheck, nunca `localhost`.
+Design: `.claude/decisions/0122-transport-security-setup-and-secrets.md`.
+
 **Todo `${VAR:default}` que aponta para um serviço do compose vale em dois lugares.** O
 default serve o `./mvnw spring-boot:run` no host: precisa ser `localhost` numa porta que o
 serviço **publica**. A variável no `environment:` do `app` serve o container: sem ela,
@@ -288,6 +295,39 @@ serviços. Toda peça que precisa dessa lista — a injeção e o step 3 do `doc
 step 9 do `messaging-architect`, o step 9 do `persistence-architect` — usa o one-liner `awk`
 limitado ao bloco `services:`. Um retrato errado convida a recriar um serviço que já existe.
 
+### Segurança de transporte
+
+**Um SSL bundle com arquivo ausente derruba o startup mesmo com `server.ssl.enabled:
+false`.** O `sslBundleRegistry` carrega todo bundle de forma antecipada, então desligar o
+TLS na configuração não impede o Boot de tentar ler o arquivo. Por isso o bundle da
+topologia B vive dentro de um documento YAML ativado pela expressão de profile
+`"!local & !docker & (!test | tls)"`, nunca atrás de uma flag que deixa o documento ativo
+sem arquivo nenhum por trás. Design:
+`.claude/decisions/0122-transport-security-setup-and-secrets.md`.
+
+**Atrás de uma borda sem `server.forward-headers-strategy`, o HSTS nunca é escrito e nada
+reporta isso.** A aplicação acredita que toda requisição chegou em HTTP puro, então a
+precondição do header nunca é satisfeita — um header de segurança ausente, em silêncio,
+não um erro em lugar nenhum. Design: `0122`.
+
+**O `HstsHeaderWriter` do Spring Security só escreve o header quando ele está ausente — um
+filtro que continua depois que o Spring Security chega sobrescreve a cadeia em silêncio.**
+É por isso que o `HstsHeaderFilter` do `transport-security-setup` é
+`@ConditionalOnMissingClass(SecurityFilterChain)` e se afasta no instante em que o starter
+de segurança é adicionado, em vez de os dois escreverem o header na mesma resposta. Design:
+`0122`.
+
+**Com a topologia B, todo `@SpringBootTest` precisa rodar com `@ActiveProfiles("test")`, ou
+o contexto passa a subir com TLS ligado e falha lendo `/etc/tls`.** A falha aparece como um
+arquivo ausente lá no fundo do stack trace, não como uma mensagem clara de "profile
+errado" — o step 5 do `transport-security-setup` adiciona a anotação em todo
+`@SpringBootTest` existente que encontra sem ela. Design: `0122`.
+
+**Os testes de integração de transporte geram o próprio certificado em runtime com o
+`keytool` do JDK — nenhum arquivo de chave é commitado, nem para teste.** Um certificado
+"só para teste" commitado acaba confiável em algum lugar que não deveria
+(`@.claude/rules/secrets.md`). Design: `0122`.
+
 ### Donos dentro de uma rodada de feature
 
 **O `pom.xml` tem exatamente um escritor numa rodada de feature: o executor, para uma
@@ -302,6 +342,19 @@ step 8.4 do `project-bootstrap` ou pelo `arch-adopt` — e para numa segunda exe
 o scanner já está lá. O serviço `sonarqube` do compose continua sendo do `docker-architect`, e
 o token não fica em arquivo nenhum: o scanner lê `SONAR_TOKEN` do ambiente. Design:
 `.claude/decisions/0091-sonarqube-setup-skill.md`.
+
+**Fora de uma rodada de feature, o transporte é decidido uma vez pelo
+`transport-security-setup`, e dali se divide em quatro.** A topologia, as linhas de TLS do
+`application.yml`, o escritor do HSTS e o IT de transporte são território da própria skill
+de setup — encadeada pelo step 7.5 do `project-bootstrap` ou pelo step 7.5 do
+`arch-adopt`, e pulada numa nova execução quando o `CLAUDE.md` raiz já carrega um
+parágrafo `**Transport:`. O serviço `edge`, o Caddyfile dele e a porta exposta do
+`Dockerfile` continuam do `docker-architect`, chamado de dentro da skill de setup. O TLS
+de saída — um certificado de cliente ou uma CA privada para uma chamada que este serviço
+faz — é do `http-client-architect`, nunca da skill de setup. O mecanismo de autenticação
+por certificado de cliente da topologia C fica adiado para o `security-architect`,
+desenhado só quando a regra de acesso de um caso de uso nomeia um chamador máquina.
+Design: `.claude/decisions/0122-transport-security-setup-and-secrets.md`.
 
 **O outbox tem três donos, divididos por pergunta.** `persistence-architect`: a tabela, as
 colunas, a claim query, o batch size, o teto de tentativas, a janela de retenção e o

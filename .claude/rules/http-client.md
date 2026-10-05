@@ -118,8 +118,8 @@ decision someone did not make. This norm makes them.
 
 ## Outbound authentication
 
-- **Every credential comes from the environment or a secret store**, through configuration, never
-  written in a versioned file; a configuration type that holds one never prints it
+- **Every credential comes from the environment**, never from a versioned file —
+  `@.claude/rules/secrets.md`
 - **A token is obtained, cached and renewed by the framework**, per client registration — never
   fetched on each call, never cached by hand
 - A user's token is relayed only to a provider in the same trust domain that accepts that token's
