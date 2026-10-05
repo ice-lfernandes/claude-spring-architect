@@ -7,10 +7,12 @@ name: templates
 #      violations — decision 0097)
 #   2. the Java templates copied as files compile in a fresh Initializr project, and the tests
 #      shipped with them pass (decisions 0096, 0098)
+#   3. the transport templates pass their own integration test once per topology — edge and
+#      direct — in a fresh Initializr project (decision 0122)
 # Design: .claude/decisions/0099-ci-tests-for-verbatim-templates.md
 #
-# Path-filtered on purpose: both jobs download from Maven Central, GitHub and
-# start.spring.io, and the second runs a Maven build. A PR that touches none of the files
+# Path-filtered on purpose: every job downloads from Maven Central, GitHub or
+# start.spring.io, and the last two run a Maven build. A PR that touches none of the files
 # below has nothing for them to prove. This workflow is not a required check — a required
 # check on a path-filtered workflow stays pending forever on the PRs it skips.
 on:
@@ -23,6 +25,8 @@ on:
       - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
       - '.claude/.ci/CheckstyleConfigTest.java'
       - '.claude/.ci/JavaTemplatesTest.java'
+      - '.claude/skills/transport-security-setup/templates/**'
+      - '.claude/.ci/TransportTemplatesTest.java'
       - '.github/workflows/templates.yml'
   pull_request:
     paths:
@@ -31,6 +35,8 @@ on:
       - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
       - '.claude/.ci/CheckstyleConfigTest.java'
       - '.claude/.ci/JavaTemplatesTest.java'
+      - '.claude/skills/transport-security-setup/templates/**'
+      - '.claude/.ci/TransportTemplatesTest.java'
       - '.github/workflows/templates.yml'
   workflow_dispatch:
 
@@ -73,3 +79,21 @@ jobs:
 
       - name: commons templates + AssignedIdEntity in a fresh Initializr project
         run: java .claude/.ci/JavaTemplatesTest.java
+
+  transport-templates:
+    name: transport templates pass their IT per topology
+    runs-on: ubuntu-latest
+    # Two fresh Initializr projects (web, actuator), one Maven test run each.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The TLS case generates its certificate with the runner JDK's keytool; nothing is
+      # checked in (.claude/rules/secrets.md § Key material).
+      - name: edge and direct topologies in a fresh Initializr project
+        run: java .claude/.ci/TransportTemplatesTest.java

@@ -1,0 +1,128 @@
+/*
+ * EXEMPLAR — the transport proof of topology B and C. Norm: `.claude/rules/transport-security.md`
+ * § Tests. A real server on a random port: a mock request never opens a socket, so it can prove
+ * none of this. Tested to compile and run against Spring Boot 4.1.1: green, and red by name with
+ * HTTP/2 off (HTTP_1_1), with `enabled-protocols: TLSv1.3` only (protocol_version alert on the
+ * TLS 1.2 case), and with `HstsHeaderFilter` removed in a project without Spring Security.
+ *
+ * NO KEY IN THE REPOSITORY (`.claude/rules/secrets.md` § Key material). The JDK's own `keytool`
+ * generates a one-day EC certificate for `localhost` into a temporary directory before the
+ * context starts, and the two PEM files the production bundle reads are written from it. The
+ * properties override only the two file paths: everything else is the real `application.yml`,
+ * TLS document included, activated by `tls` next to `test` (`application-tls-direct.yml.example`).
+ *
+ * TLS 1.0 and 1.1 are not tested here: the JDK client refuses them before the server is asked,
+ * so a "refused" assertion would prove the client. That claim belongs to `testssl.sh` against a
+ * deployed instance.
+ *
+ * Runs in the integration phase (`*IT`, failsafe). Uses `/actuator/health` with the actuator
+ * feature; without it, any path works — the assertions read the protocol and the headers, not
+ * the status.
+ */
+package com.exemplo.minhaapi;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+import java.util.Base64;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSession;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles({"test", "tls"})
+class TransportSecurityIT {
+
+    private static final String PASSWORD = "transient";
+
+    @LocalServerPort
+    int port;
+
+    @Autowired
+    SslBundles sslBundles;
+
+    @DynamicPropertySource
+    static void serverCertificate(DynamicPropertyRegistry registry) throws Exception {
+        Path dir = Files.createTempDirectory("tls-it");
+        Path keystore = dir.resolve("server.p12");
+        Process keytool = new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "keytool").toString(),
+                "-genkeypair", "-alias", "server", "-keyalg", "EC", "-groupname", "secp256r1",
+                "-storetype", "PKCS12", "-keystore", keystore.toString(),
+                "-storepass", PASSWORD, "-keypass", PASSWORD, "-validity", "1",
+                "-dname", "CN=localhost", "-ext", "SAN=dns:localhost,ip:127.0.0.1")
+                .redirectErrorStream(true)
+                .start();
+        if (keytool.waitFor() != 0) {
+            throw new IllegalStateException(new String(keytool.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+        }
+        Path certificate = dir.resolve("tls.crt");
+        Path privateKey = dir.resolve("tls.key");
+        writePem(keystore, certificate, privateKey);
+        registry.add("spring.ssl.bundle.pem.webserver.keystore.certificate", () -> "file:" + certificate);
+        registry.add("spring.ssl.bundle.pem.webserver.keystore.private-key", () -> "file:" + privateKey);
+        registry.add("spring.ssl.bundle.pem.test-client.truststore.certificate", () -> "file:" + certificate);
+    }
+
+    @Test
+    void negotiatesHttp2OverTls13AndWritesHsts() throws Exception {
+        HttpResponse<Void> response = client("TLSv1.3").send(get(), HttpResponse.BodyHandlers.discarding());
+
+        assertThat(response.version()).isEqualTo(HttpClient.Version.HTTP_2);
+        assertThat(response.sslSession()).map(SSLSession::getProtocol).contains("TLSv1.3");
+        assertThat(response.headers().firstValue("Strict-Transport-Security"))
+                .hasValueSatisfying(value -> assertThat(value).contains("max-age=31536000"));
+    }
+
+    @Test
+    void acceptsTls12() throws Exception {
+        HttpResponse<Void> response = client("TLSv1.2").send(get(), HttpResponse.BodyHandlers.discarding());
+
+        assertThat(response.sslSession()).map(SSLSession::getProtocol).contains("TLSv1.2");
+    }
+
+    private HttpClient client(String protocol) {
+        SSLParameters parameters = new SSLParameters();
+        parameters.setProtocols(new String[] {protocol});
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .sslContext(sslBundles.getBundle("test-client").createSslContext())
+                .sslParameters(parameters)
+                .build();
+    }
+
+    private HttpRequest get() {
+        return HttpRequest.newBuilder(URI.create("https://localhost:" + port + "/actuator/health")).GET().build();
+    }
+
+    private static void writePem(Path keystore, Path certificate, Path privateKey)
+            throws IOException, GeneralSecurityException {
+        KeyStore store = KeyStore.getInstance("PKCS12");
+        try (var in = Files.newInputStream(keystore)) {
+            store.load(in, PASSWORD.toCharArray());
+        }
+        Files.writeString(certificate, pem("CERTIFICATE", store.getCertificate("server").getEncoded()));
+        Files.writeString(privateKey, pem("PRIVATE KEY", store.getKey("server", PASSWORD.toCharArray()).getEncoded()));
+    }
+
+    private static String pem(String type, byte[] der) {
+        String body = Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII)).encodeToString(der);
+        return "-----BEGIN " + type + "-----\n" + body + "\n-----END " + type + "-----\n";
+    }
+}

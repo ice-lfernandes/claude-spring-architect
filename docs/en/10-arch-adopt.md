@@ -95,8 +95,8 @@ All of it is the `export` block of `@.claude/schemas/extensions.json` — data, 
 | `overwrite` | the project's `settings.json`, from `project-bootstrap`'s template |
 | `optional_copy` | `.mcp.json` and the MCP setup doc, when they exist |
 | `rules` | every norm in `rules/`, with its `paths` globs rewritten for the active blueprint's packages (`derived_paths`) |
-| `skills` | the 14 development skills (`include`); the 3 creation skills stay out (`exclude`) |
-| `agents` | `java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`; `project-initializer` stays out |
+| `skills` | the 20 skills of `include`; the 4 of `exclude` stay out — the 2 creation skills (`init-project`, `project-bootstrap`) and the 2 that work on this repository itself (`claude-code-architect-designer`, `triage-issue`) |
+| `agents` | `java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`; `project-initializer` and `issue-verifier` stay out |
 | `blueprint_copy` | **only the active blueprint**, never the catalog |
 | `ensure_dirs` | `.claude/audit-usage/` — creating the directory is what switches the trail on |
 | `gitignore_lines` | `.claude/audit-usage/.state/` and `docs/lessons-learned/` |
@@ -169,9 +169,11 @@ the 7 official blueprints on every change to the manifest.
 - **Doesn't write business code**, and never touches `src/`.
 - **Doesn't write outside `.claude/` itself — with one exception.** The bounded-context line
   of the root `CLAUDE.md`, in step 8. Beyond that, when the build file has no SonarQube
-  scanner, its last step chains `sonarqube-setup`, which writes the build file and the
-  workflow under its own territory. On an install, run `/reload-skills` first — the skill's
-  directory did not exist when the session started.
+  scanner, step 7 chains `sonarqube-setup`, which writes the build file and the workflow
+  under its own territory; when the root `CLAUDE.md` has no `**Transport:` paragraph,
+  step 7.5 chains `transport-security-setup` the same way, under its own territory. On an
+  install, run `/reload-skills` first for either — the skill's directory did not exist when
+  the session started.
 - **Doesn't commit.** It leaves the tree with the diff ready for review, and says how to
   undo it.
 - **Doesn't ask for a blueprint when the stamp already records one** — on an update, the

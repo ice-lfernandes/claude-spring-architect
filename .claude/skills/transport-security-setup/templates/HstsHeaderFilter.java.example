@@ -1,0 +1,51 @@
+/*
+ * EXEMPLAR — the HSTS writer of a project that has no security filter chain. Norm:
+ * `.claude/rules/transport-security.md` § HSTS. Tested to compile against Spring Boot 4.1.1;
+ * `TransportSecurityIT` and `ForwardedHeadersIT` prove it, and the HSTS case of each goes red with
+ * this class removed.
+ *
+ * ONE WRITER. With Spring Security on the classpath its `HstsHeaderWriter` owns the header, and it
+ * writes only when the header is NOT already present (`containsHeader`, read in its bytecode). A
+ * filter that stayed would run first and silently override whatever the chain configures — so
+ * `@ConditionalOnMissingClass` removes this bean the moment the security starter arrives, with
+ * nobody having to remember to delete it. Leave the class in place when that happens: it is inert.
+ *
+ * SECURE REQUESTS ONLY. Behind an edge `isSecure()` is true only when the forwarded headers are
+ * honoured (`application-tls-edge.yml.example`); HSTS on a plain-HTTP response is ignored by
+ * browsers anyway. Same value as Spring Security's default, so the header does not change when the
+ * owner does. `preload` is a recorded decision, never a default.
+ *
+ * PACKAGE. The blueprint's configuration package plus `.web` (`config.web`,
+ * `infrastructure.config.web`). Hexagonal, onion and custom have none: a `web` subpackage of the
+ * inbound REST adapter, next to where `security-architect` puts the chain.
+ */
+package com.exemplo.minhaapi.config.web;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@ConditionalOnMissingClass("org.springframework.security.web.SecurityFilterChain")
+class HstsHeaderFilter extends OncePerRequestFilter {
+
+    private static final String HEADER = "Strict-Transport-Security";
+    private static final String VALUE = "max-age=31536000 ; includeSubDomains";
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        if (request.isSecure()) {
+            response.setHeader(HEADER, VALUE);
+        }
+        chain.doFilter(request, response);
+    }
+}

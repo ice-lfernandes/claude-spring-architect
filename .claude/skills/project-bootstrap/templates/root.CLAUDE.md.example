@@ -32,7 +32,7 @@ messaging reads this line; nobody decides the prefix inside a use case.
 3. No framework exception crosses the domain boundary.
 4. Every new public class is born with a test. No exception.
 5. Constructor injection — never `@Autowired` on a field.
-6. Secrets never go into versioned configuration files.
+6. Secrets never go into a versioned file — `.claude/rules/secrets.md`.
 
 ## Routing — when X, read Y
 
@@ -61,6 +61,7 @@ copy step isn't updated alongside it.
 | Kafka producer/consumer, publishing or consuming a domain event over a broker | skill `messaging-architect` |
 | Scheduled or background job, cron, a job running twice across replicas, the outbox relay's schedule | skill `jobs-architect` |
 | Adding a service to `docker-compose.yml` (database, broker, observability backend), image tag consistency with Testcontainers | skill `docker-architect` — the single owner of every service block |
+| HTTPS, TLS, certificates, HTTP/2, HSTS, running behind a proxy — where TLS terminates | skill `transport-security-setup` — the decision is the **Transport:** paragraph above; norms in `.claude/rules/transport-security.md`, key material in `.claude/rules/secrets.md` |
 | SonarQube or SonarCloud analysis — scanner plugin, server URL, CI step, a local SonarQube container | skill `sonarqube-setup` — asks whether a server exists; never writes a token, the scanner reads `SONAR_TOKEN` from the environment |
 | Reducing SonarQube issues at their source — run the analysis, trace each group of issues to the `.claude/` template or norm that produced it, report it upstream | skill `sonar-lessons` — manual only (`/sonar-lessons`). Writes `docs/lessons-learned/sonar-NNN.md` and ends with the `/report-issue` command that files it |
 | Reporting a defect or a gap in this `.claude/` upstream, to Nerviz — from a description or a `docs/lessons-learned/` file | skill `report-issue` — manual only (`/report-issue`). Asks for the evidence a maintainer needs to verify it, warns when this project is behind the latest release, opens the issue only after confirmation, carrying no path, package or code of this project |

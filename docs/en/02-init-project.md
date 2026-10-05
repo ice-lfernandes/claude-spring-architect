@@ -85,6 +85,7 @@ sequenceDiagram
 | 6.5 | Generates CI | `.github/workflows/build.yml` |
 | 6.6 | Writes the project's `.claude/` in one command — `ArchHook.java export <project> --blueprint <id>`, driven by the `export` manifest of `extensions.json` | Every rule (package `paths` rewritten from `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (with `guard`, `audit` and `context` wired); the active blueprint; `.claude/audit-usage/` + `pricing.json`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` only if a server was designed for the generated project |
 | 7 | Nothing to run — what the enforcement just installed does, for the final report | — |
+| 7.5 | Decides transport security — chains `transport-security-setup`, which asks where TLS terminates and the local profile or local edge | transport lines in `application.yml`, the HSTS filter when no security chain exists, the transport IT, the `**Transport:` paragraph of the root `CLAUDE.md`; the `edge` service or the `Dockerfile` port, via `docker-architect` |
 | 8 | Verifies | `./mvnw clean verify`, boundary test, `lombok.config` test, autonomy test |
 | 8.4 | Configures SonarQube — chains `sonarqube-setup`, which asks whether a server exists | scanner + `sonar.*` properties in the root build file; CI step for an external server; a `sonarqube` compose service (via `docker-architect`) otherwise |
 | 8.5 | Generates the project README | `README.md` (English) + `README.pt-br.md` |
@@ -133,10 +134,11 @@ Spotless: check bound to the build (verify / check) — formatting and unused im
 Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
-Self-contained: 15 rules + 14 skills + 3 agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
+Self-contained: 19 rules + 20 skills + 3 agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
 Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus
+Transport: topology A edge — HTTP/2 on, HSTS by Spring Security, ForwardedHeadersIT
 MCP: none — no server designed for this project yet
 Build: PASSED
 Docs: README.md (English, default) + README.pt-br.md — origin, blueprint, stack, skills/agents, this report

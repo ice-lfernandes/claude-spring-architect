@@ -97,8 +97,8 @@ Tudo isto é o bloco `export` de `@.claude/schemas/extensions.json` — dado, n�
 | `overwrite` | o `settings.json` do projeto, do template de `project-bootstrap` |
 | `optional_copy` | `.mcp.json` e o doc de setup de MCP, quando existem |
 | `rules` | todas as normas de `rules/`, com os globs de `paths` reescritos para os pacotes do blueprint ativo (`derived_paths`) |
-| `skills` | as 14 skills de desenvolvimento (`include`); as 3 de criação ficam fora (`exclude`) |
-| `agents` | `java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`; `project-initializer` fica fora |
+| `skills` | as 20 skills de `include`; as 4 de `exclude` ficam fora — as 2 de criação (`init-project`, `project-bootstrap`) e as 2 que trabalham sobre este próprio repositório (`claude-code-architect-designer`, `triage-issue`) |
+| `agents` | `java-spring-boot-developer`, `archunit-installer`, `commons-logging-installer`; `project-initializer` e `issue-verifier` ficam fora |
 | `blueprint_copy` | **só o blueprint ativo**, nunca o catálogo |
 | `ensure_dirs` | `.claude/audit-usage/` — criar o diretório é o que liga a trilha |
 | `gitignore_lines` | `.claude/audit-usage/.state/` e `docs/lessons-learned/` |
@@ -170,9 +170,11 @@ oficiais a cada mudança do manifesto.
 - **Não escreve código de negócio**, nem toca `src/`.
 - **Não escreve fora do `.claude/` por conta própria — com uma exceção.** A linha de
   bounded context do `CLAUDE.md` raiz, no step 8. Além disso, quando o build file não tem o
-  scanner do SonarQube, o último step encadeia `sonarqube-setup`, que escreve o build file e
-  o workflow sob o território dela. Numa instalação, rode `/reload-skills` antes — o
-  diretório da skill não existia quando a sessão começou.
+  scanner do SonarQube, o step 7 encadeia `sonarqube-setup`, que escreve o build file e
+  o workflow sob o território dela; quando o `CLAUDE.md` raiz não tem parágrafo
+  `**Transport:`, o step 7.5 encadeia `transport-security-setup` do mesmo jeito, sob o
+  território dela. Numa instalação, rode `/reload-skills` antes para qualquer uma das
+  duas — o diretório da skill não existia quando a sessão começou.
 - **Não comita.** Deixa a árvore com o diff pronto para revisão, e diz como desfazer.
 - **Não pergunta blueprint quando o stamp já registra um** — numa atualização, o
   blueprint ativo é um fato do projeto, não uma pergunta nova.

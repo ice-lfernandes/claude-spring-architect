@@ -140,6 +140,61 @@ public class SkillTerritoryTest {
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
                 2, "the union is still deny-by-default outside it");
 
+        // transport-security-setup (decision 0122): a file-level territory. The configuration, the
+        // one filter class, the tests and the root CLAUDE.md — never another class, never a key
+        // file under resources, never the Dockerfile or compose, which are docker-architect's
+        // and become writable only once it joins.
+        String transport = "ci-territory-transport-" + System.nanoTime();
+        failures += run(hook, "prompt", transport,
+                "{\"session_id\":\"%s\",\"prompt\":\"/transport-security-setup\"}",
+                0, "prompt opens transport-security-setup's phase");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"src/main/resources/application.yml\"}}",
+                0, "application.yml — allowed");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"app/src/main/java/com/x/config/web/HstsHeaderFilter.java\"}}",
+                0, "the HSTS filter, in a module — allowed");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"src/main/java/com/x/config/web/OtherConfig.java\"}}",
+                2, "any other main class — blocked");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"src/main/resources/tls/server.key\"}}",
+                2, "a key file under resources — blocked");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"src/test/java/com/x/TransportSecurityIT.java\"}}",
+                0, "the transport IT — allowed");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"CLAUDE.md\"}}",
+                0, "the Transport paragraph — allowed");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"Dockerfile\"}}",
+                2, "Dockerfile is docker-architect's — blocked");
+
+        failures += run(hook, "call", transport,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"docker-architect\"}}",
+                0, "docker-architect joins the phase");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"Dockerfile\"}}",
+                0, "Dockerfile allowed once docker-architect joined");
+
+        failures += run(hook, "write", transport,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"docker/caddy/Caddyfile\"}}",
+                0, "the Caddyfile — docker-architect's docker/**");
+
         // `report` (decision 0100): the class default is the whole territory, with no
         // override. sonar-lessons runs a full build and publishes outward — the one file it
         // may leave behind is its lessons-learned, never the build file or code.

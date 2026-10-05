@@ -206,6 +206,7 @@ None of these is unique on its own. Together, no neighbor gathers them:
 | Structured logging with sensitive-data masking | `commons-logging-installer`, offered by `/new-feature`'s pre-flight |
 | OTLP collector with traces and metrics; Jaeger or Grafana + Tempo + Prometheus | `docker-architect` |
 | Compose diagnosis: a container "up" but not answering, a port held by a sibling project, a default the host cannot reach | `ArchHook.java compose` |
+| Transport decided once per project, before any endpoint: edge, direct, or mutual TLS, HTTP/2 on, HSTS with exactly one writer | `transport-security-setup` |
 | SonarQube or SonarCloud wired in; Sonar issues traced back to the `.claude/` template that caused them | `sonarqube-setup`, `sonar-lessons` |
 | Issues filed from a project only with evidence and stripped of the project's code; every claim checked at `HEAD` before a fix is designed | `report-issue`, `triage-issue` + `issue-verifier` |
 | A meta-tool that decides the form of the next extension (skill, agent, rule, hook, permission, MCP server, or nothing) and records it | `claude-code-architect-designer` + `decisions/` |

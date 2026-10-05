@@ -202,13 +202,22 @@
         "allowed_models": ["opus", "sonnet"],
         "write_allow": [],
         "required_sections": ["## Procedure"],
-        "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "gof-design-patterns", "sonarqube-setup"],
+        "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "gof-design-patterns", "sonarqube-setup", "transport-security-setup"],
         "overrides": {
           "project-bootstrap": { "write_allow": ["**"] },
-          "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**"] },
+          "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**", "Dockerfile"] },
           "arch-adopt": { "write_allow": [".claude/**", ".gitignore", "CLAUDE.md"], "audited": false },
           "gof-design-patterns": { "write_allow": ["src/**", "**/src/**"] },
-          "sonarqube-setup": { "write_allow": ["pom.xml", "build.gradle", ".github/workflows/**"] }
+          "sonarqube-setup": { "write_allow": ["pom.xml", "build.gradle", ".github/workflows/**"] },
+          "transport-security-setup": {
+            "$comment": "The transport configuration, the HSTS filter and the two transport ITs, and the `**Transport:**` paragraph of the root CLAUDE.md. `src/test/**` whole, not the two IT names: with TLS on by default a `@SpringBootTest` that runs without the `test` profile can no longer start, and the setup adds the profile to each one it finds. Every path twice, rooted and under `**/`, for the multi-module layouts. Design: .claude/decisions/0122-transport-security-setup-and-secrets.md",
+            "write_allow": [
+              "src/main/resources/application*.yml", "**/src/main/resources/application*.yml",
+              "src/main/java/**/HstsHeaderFilter.java", "**/src/main/java/**/HstsHeaderFilter.java",
+              "src/test/**", "**/src/test/**",
+              "CLAUDE.md"
+            ]
+          }
         }
       },
       "observer": {
@@ -569,6 +578,7 @@
         "sonar-lessons",
         "sonarqube-setup",
         "test-architect",
+        "transport-security-setup",
         "use-case-design"
       ],
       "exclude": ["claude-code-architect-designer", "init-project", "project-bootstrap", "triage-issue"]
@@ -583,7 +593,7 @@
 
     "derived_paths": {
       "$comment_exempt": "Globs that are valid in any architecture and so need no derivation: they name no package. A rule whose `paths` holds only these is not expected here. Java is `**/src/**/*.java`, never `**/*.java`, which also matches .claude/hooks/ArchHook.java and loads every Java norm on each read of the hook (0082). One that names a package and is missing from this map would travel with the glob of whichever blueprint happened to be written into the file — gap 8 of lessons-learned-001. `schema` checks both directions.",
-      "derived_paths_exempt_globs": ["**/src/**/*.java", "**/src/test/**", "**/db/migration/**", ".claude/rules/**"],
+      "derived_paths_exempt_globs": ["**/src/**/*.java", "**/src/test/**", "**/db/migration/**", ".claude/rules/**", "**/src/**", "**/src/main/resources/application*.yml", "**/src/main/resources/application*.properties", "**/*.yml", "**/*.yaml", "**/*.properties", "**/Dockerfile*", "docker-compose*.yml", "docker/caddy/**"],
       "$comment": "A rule with a territory auto-loads by `paths`, and a glob naming a package the active blueprint does not use leaves it silently unloaded. The glob is therefore derived from the blueprint's packages.map — the VALUE, not the key, with `.` becoming `/` — and never copied from the original file. `suffix` selects the packages.map entry whose key ends with it; `key` names candidates in order of preference, first hit wins. A selector that matches nothing and is `optional` keeps the master example globs, inert in that architecture — never strips them, since a rule without `paths` loads at launch in every session (.claude/decisions/0082-rules-without-paths-load-at-launch.md); one that matches nothing and is not optional is a failure of the export, not of the project. No defensive union: this blueprint's glob and no other.",
       "api-rest.md": {
         "suffix": [".rest"],

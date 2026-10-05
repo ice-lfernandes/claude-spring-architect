@@ -208,6 +208,7 @@ Nenhuma é única sozinha. Juntas, nenhum vizinho as reúne:
 | Log estruturado com mascaramento de dado sensível | `commons-logging-installer`, oferecido no pre-flight do `/new-feature` |
 | Collector OTLP com traces e métricas; Jaeger ou Grafana + Tempo + Prometheus | `docker-architect` |
 | Diagnóstico de compose: container "de pé" que não responde, porta presa por projeto vizinho, default que o host não alcança | `ArchHook.java compose` |
+| Transporte decidido uma vez por projeto, antes de qualquer endpoint: borda, direto ou mutual TLS, HTTP/2 ligado, HSTS com um único escritor | `transport-security-setup` |
 | SonarQube ou SonarCloud configurado; issues do Sonar rastreadas até o template do `.claude/` que as causou | `sonarqube-setup`, `sonar-lessons` |
 | Issues abertas a partir de um projeto só com evidência e sem nada do código do projeto; cada afirmação conferida no `HEAD` antes de desenhar uma correção | `report-issue`, `triage-issue` + `issue-verifier` |
 | Uma meta-ferramenta que decide a forma da próxima extensão (skill, agent, regra, hook, permissão, servidor MCP, ou nada) e registra a decisão | `claude-code-architect-designer` + `decisions/` |

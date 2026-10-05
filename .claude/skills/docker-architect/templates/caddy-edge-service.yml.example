@@ -1,0 +1,35 @@
+# Shape for the local edge of topology A, appended under docker-compose.yml's `services:`.
+# Merged only when transport-security-setup chose topology A and the developer asked for a local
+# edge. Norm: .claude/rules/transport-security.md § Behind an edge.
+#
+# Caddy terminates TLS with its own local CA (`tls internal` in the Caddyfile): no domain, no ACME,
+# no internet. It forwards to `app` over h2c and sends X-Forwarded-For/-Proto/-Host on its own, so
+# the application's forwarded-header handling and HSTS run locally exactly as behind the
+# production edge — proven end to end: HTTP/2 200 with HSTS through this block. The compose
+# network sits inside the private ranges `application-tls-edge.yml.example` trusts by default.
+# Trust the local CA once: `docker compose exec edge caddy trust`, or import
+# /data/caddy/pki/authorities/local/root.crt into the browser.
+#
+# Tag verified against the registry (hub.docker.com tags API), never inferred. The HTTPS port is a
+# variable with a default: a human opens it, and a sibling project can move it. The admin API
+# answers on 127.0.0.1:2019 inside the container only — `localhost` resolves to ::1 for busybox
+# wget there and is refused (observed); the healthcheck names the IPv4 address.
+  edge:
+    image: caddy:2.11.6-alpine
+    ports:
+      - "${EDGE_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2019/config/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# Named volumes — add under docker-compose.yml's top-level `volumes:`. Holds the local CA:
+# deleting it makes every browser distrust the edge until `caddy trust` runs again.
+volumes:
+  caddy-data:
