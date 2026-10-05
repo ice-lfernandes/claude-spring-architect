@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>Nerviz</title>
+<path d="M14 52V12M50 52V12" stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+<path d="M14 12C30 18 34 46 50 52" stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+<path d="M24 12C36 17 41 31 50 38M14 26C23 31 29 44 38 52" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+</svg>

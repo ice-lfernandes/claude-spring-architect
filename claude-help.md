@@ -1494,7 +1494,7 @@ Custom styles are markdown files in `~/.claude/output-styles/` or
 
 ## 15. How this repository uses all of this
 
-`claude-spring-architect` is a live example of the ecosystem applied to Spring Boot project
+Nerviz is a live example of the ecosystem applied to Spring Boot project
 scaffolding. Mapping between the theory above and the files here:
 
 ```

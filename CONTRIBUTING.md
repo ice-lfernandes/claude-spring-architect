@@ -11,8 +11,8 @@ against. The traps that fail silently — the runtime's and this repository's �
 ## Setup
 
 ```bash
-git clone https://github.com/ice-lfernandes/claude-spring-architect.git
-cd claude-spring-architect
+git clone https://github.com/nerviz-ai/nerviz.git
+cd nerviz
 java .claude/hooks/ArchHook.java doctor
 ```
 
@@ -158,7 +158,7 @@ it needs to, it's a procedure and belongs in a skill.
 
 ## Self-containment (invariant 9)
 
-Whoever clones a generated project does not have `claude-spring-architect`. Everything
+Whoever clones a generated project does not have Nerviz. Everything
 cited from inside a generated project must exist inside it. What travels is **data**: the
 `export` block of `.claude/schemas/extensions.json`, which `ArchHook.java export` reads for
 both `/init-project` and `/arch-adopt`. A new norm, skill or agent is only complete once that
@@ -203,7 +203,7 @@ commit, and it reads the level from § Release bump of the PR description — `m
 the PR is open otherwise, so the decision is made by review and not after the fact.
 
 Right after tagging, `release.yml` sends a `repository_dispatch` to
-[`claude-spring-architect-marketplace`](https://github.com/ice-lfernandes/claude-spring-architect-marketplace),
+[`nerviz-ai/marketplace`](https://github.com/nerviz-ai/marketplace),
 whose `sync.yml` runs `./sync.sh vX.Y.Z`, sets the plugin version, validates the result and
 opens a PR. The dispatch needs the `MARKETPLACE_DISPATCH_TOKEN` secret here — a fine-grained
 PAT scoped to the marketplace with Contents: read and write; without it the step only warns.
@@ -215,9 +215,9 @@ decision, not a consequence of merging.
 ## Reporting instead of contributing
 
 Bugs, feature proposals and blueprint ideas have forms:
-[new issue](https://github.com/ice-lfernandes/claude-spring-architect/issues/new/choose).
+[new issue](https://github.com/nerviz-ai/nerviz/issues/new/choose).
 Questions go to
-[Discussions](https://github.com/ice-lfernandes/claude-spring-architect/discussions).
+[Discussions](https://github.com/nerviz-ai/nerviz/discussions).
 Before proposing a redesign, check
 [`.claude/decisions/`](.claude/decisions/README.md) — it may already record why the
 current shape was chosen.

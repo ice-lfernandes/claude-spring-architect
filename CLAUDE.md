@@ -1,4 +1,4 @@
-# claude-spring-architect
+# Nerviz
 
 Meta-repository: generates Spring Boot projects already prepared for AI-assisted
 development. **It is not a Java application** — it has no `pom.xml`, does not compile,
@@ -71,7 +71,7 @@ a design-time edge, like `project-bootstrap` writing `src/`; the runtime directi
 8. **Java and Spring Boot versions are never written from memory.** They are resolved at
    runtime via Spring Initializr; without network access, ask.
 9. **The generated project is self-contained.** Whoever clones it does not have
-   `claude-spring-architect`. Everything cited from inside the project must exist inside the
+   Nerviz. Everything cited from inside the project must exist inside the
    project: norms, development skills, agents, `ArchHook.java` and
    `schemas/extensions.json`. `ArchHook.java export` writes all of it (step 6.6 of
    `project-bootstrap`), and **what travels is data, in the `export` block of

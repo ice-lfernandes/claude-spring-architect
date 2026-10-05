@@ -163,7 +163,7 @@ commitado ou enviado sem os dois portões de confirmação de `git-publish` — 
 ## O que acontece depois
 
 O projeto gerado é **autocontido** (`CLAUDE.md` § Invariant 9): quem clona
-`pedidos-api` não tem `claude-spring-architect` na máquina. Tudo que o `CLAUDE.md` do projeto
+`pedidos-api` não tem Nerviz na máquina. Tudo que o `CLAUDE.md` do projeto
 cita já foi copiado para dentro dele — rules, skills de desenvolvimento, os três agents
 executores, `ArchHook.java` e o seu `ArchHook.jar`, `extensions.json`. As skills de criação
 (`project-bootstrap`, `init-project`, `claude-code-architect-designer`), o agent

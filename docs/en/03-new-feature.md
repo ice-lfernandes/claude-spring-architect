@@ -262,7 +262,7 @@ awake (`caffeinate -i` on macOS) or running on the main thread, which is resumab
 (`project-bootstrap` step 6.6, which writes skills, agents and hooks through
 `ArchHook.java export`), with the `guard` hook wired. Once `pedidos-api`
 exists, `/new-feature <description>` runs **inside** it, without
-`claude-spring-architect` on the machine.
+Nerviz on the machine.
 
 Every run leaves a report under `.claude/audit-usage/` — active duration, time waiting
 on the user, tokens per chained skill and for the executor, files touched, failures.

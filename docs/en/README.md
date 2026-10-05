@@ -1,4 +1,4 @@
-# `claude-spring-architect` workflow
+# Nerviz workflow
 
 Versão em português: [`docs/pt-br/`](../pt-br/README.md).
 
@@ -8,7 +8,7 @@ run the main commands — `/init-project`, `/new-feature`, `/arch-doctor`,
 repositories don't. A
 first-time reader should start at [09-differentiators.md](09-differentiators.md).
 
-`claude-spring-architect` is not an application — it's a meta-repository. What it produces are
+Nerviz is not an application — it's a meta-repository. What it produces are
 **instruction files** (skills, rules, agents, hooks) that, together, generate Spring
 Boot projects already prepared for AI-assisted development. Understanding how these
 files call each other is the prerequisite for editing any one of them without breaking

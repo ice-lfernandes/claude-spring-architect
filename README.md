@@ -1,14 +1,14 @@
-# Claude Spring Architect
+# Nerviz
 
-[![CI](https://github.com/ice-lfernandes/claude-spring-architect/actions/workflows/validate.yml/badge.svg)](https://github.com/ice-lfernandes/claude-spring-architect/actions/workflows/validate.yml)
+[![CI](https://github.com/nerviz-ai/nerviz/actions/workflows/validate.yml/badge.svg)](https://github.com/nerviz-ai/nerviz/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-orange.svg)](#getting-started)
 [![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757.svg)](https://claude.com/claude-code)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-GA%20latest-6DB33F.svg?logo=spring)](https://start.spring.io)
-[![GitHub stars](https://img.shields.io/github/stars/ice-lfernandes/claude-spring-architect.svg?style=social)](https://github.com/ice-lfernandes/claude-spring-architect/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/ice-lfernandes/claude-spring-architect.svg)](https://github.com/ice-lfernandes/claude-spring-architect/issues)
-[![Last commit](https://img.shields.io/github/last-commit/ice-lfernandes/claude-spring-architect.svg)](https://github.com/ice-lfernandes/claude-spring-architect/commits)
+[![GitHub stars](https://img.shields.io/github/stars/nerviz-ai/nerviz.svg?style=social)](https://github.com/nerviz-ai/nerviz/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/nerviz-ai/nerviz.svg)](https://github.com/nerviz-ai/nerviz/issues)
+[![Last commit](https://img.shields.io/github/last-commit/nerviz-ai/nerviz.svg)](https://github.com/nerviz-ai/nerviz/commits)
 
 **An agent harness for Spring Boot on Claude Code.** It generates the project from an
 architecture declared as data, designs every feature as an approved spec before any code
@@ -19,8 +19,12 @@ Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/pt-br/`](docs
 (português). How it compares with similar projects, with sources:
 [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
 
-Not affiliated with Anthropic. "Claude" in the name follows the ecosystem's naming
-practice; this is not an official product.
+Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
+the engineer-architect whose structures are their own form. Formerly
+`claude-spring-architect`; the old GitHub address redirects here.
+
+Not affiliated with Anthropic, Broadcom or Oracle. Claude Code, Spring and Java are named
+only to describe what Nerviz works with; this is not an official product of any of them.
 
 ---
 
@@ -92,8 +96,8 @@ git init
 git commit --allow-empty -m "chore: initial repository"
 
 # 2. install .claude/ BEFORE starting the session
-git clone --depth 1 https://github.com/ice-lfernandes/claude-spring-architect /tmp/csa
-cp -r /tmp/csa/.claude .
+git clone --depth 1 https://github.com/nerviz-ai/nerviz /tmp/nerviz
+cp -r /tmp/nerviz/.claude .
 
 # 3. confirm the tools (nothing to install)
 java --version && git --version && curl --version | head -1
@@ -391,7 +395,7 @@ The runtime ignores an unknown field without a word, so `ArchHook.java schema` f
 ### Structure
 
 ```
-claude-spring-architect/
+nerviz/
 ├── CLAUDE.md                      # facts about this meta-repo (not the generated project's)
 ├── claude-help.md                 # Claude Code runtime reference the docs cite
 ├── roadmap.md                     # phases and feature checklist
@@ -517,7 +521,7 @@ Blueprints and norms are the most useful contributions. Full guide, per file typ
 - `java .claude/hooks/ArchHook.java doctor` and `schema` both pass locally.
 
 Bugs and proposals have forms:
-[new issue](https://github.com/ice-lfernandes/claude-spring-architect/issues/new/choose).
+[new issue](https://github.com/nerviz-ai/nerviz/issues/new/choose).
 
 ## License
 

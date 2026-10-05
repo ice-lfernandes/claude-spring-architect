@@ -162,7 +162,7 @@ conversa, pede para rodar `/triage-issue <N>` antes. Detalhes em
 
 Body ........ docs/lessons-learned/issue-001.issue.md
 Duplicates .. none open
-Issue ....... https://github.com/ice-lfernandes/claude-spring-architect/issues/52
+Issue ....... https://github.com/nerviz-ai/nerviz/issues/52
 ```
 
 ```

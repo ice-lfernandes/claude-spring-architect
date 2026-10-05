@@ -163,7 +163,7 @@ Nothing gets committed or pushed without `git-publish`'s two confirmation gates 
 ## What happens next
 
 The generated project is **self-contained** (`CLAUDE.md` § Invariant 9): whoever
-clones `pedidos-api` doesn't have `claude-spring-architect` on their machine. Everything the
+clones `pedidos-api` doesn't have Nerviz on their machine. Everything the
 project's `CLAUDE.md` cites has already been copied inside it — rules, development
 skills, the three executor agents, `ArchHook.java` and its `ArchHook.jar`, `extensions.json`.
 The creation skills (`project-bootstrap`, `init-project`, `claude-code-architect-designer`),

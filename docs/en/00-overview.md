@@ -2,7 +2,7 @@
 
 ## What this repository generates
 
-`claude-spring-architect` turns an empty directory into a Spring Boot project with declared
+Nerviz turns an empty directory into a Spring Boot project with declared
 architecture, executable boundaries (hooks), and an already-installed design→code
 pipeline. It doesn't compile anything itself — no `pom.xml`, no Maven tests. The
 product is instruction files.

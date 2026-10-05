@@ -259,7 +259,7 @@ background, `new-feature/SKILL.md` manda oferecer manter a máquina acordada
 `/new-feature` viaja para todo projeto gerado por `/init-project` (passo 6.6 do
 `project-bootstrap`, que escreve skills, agents e hooks via `ArchHook.java export`), com o
 hook `guard` ligado. Com `pedidos-api` existindo,
-`/new-feature <descrição>` roda **dentro** dele, sem `claude-spring-architect` na
+`/new-feature <descrição>` roda **dentro** dele, sem Nerviz na
 máquina.
 
 Toda execução deixa um relatório em `.claude/audit-usage/` — duração ativa, espera pelo

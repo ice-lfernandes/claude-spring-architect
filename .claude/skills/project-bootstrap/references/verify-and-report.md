@@ -31,7 +31,7 @@ If the build fails, **fix it before reporting**. A bootstrap that delivers a red
 isn't finished.
 
 **Autonomy test**, also mandatory: nothing in `<project>/` can cite a path that only
-exists in `claude-spring-architect`.
+exists in Nerviz.
 
 ```bash
 ls .claude/rules/ .claude/skills/ .claude/agents/ .claude/hooks/ArchHook.java .claude/schemas/extensions.json
