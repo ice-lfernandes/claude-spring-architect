@@ -1,6 +1,12 @@
-# Nerviz
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/nerviz-banner-dark.png">
+    <img alt="Nerviz — an agent harness for Spring Boot" src="brand/nerviz-banner-light.png" width="100%">
+  </picture>
+</p>
 
 [![CI](https://github.com/nerviz-ai/nerviz/actions/workflows/validate.yml/badge.svg)](https://github.com/nerviz-ai/nerviz/actions/workflows/validate.yml)
+[![Release](https://img.shields.io/github/v/tag/nerviz-ai/nerviz?sort=semver&label=release&color=2747D9)](https://github.com/nerviz-ai/nerviz/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-orange.svg)](#getting-started)
