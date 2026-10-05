@@ -14,8 +14,8 @@ effort: high
 
 # Project Bootstrap
 
-Turns an empty directory into a Spring Boot project with declared architectural
-boundaries, active hooks, and a green build.
+Turns a new directory next to this repository into a Spring Boot project with declared
+architectural boundaries, active hooks, and a green build.
 
 **Does not write business code.** No example, no seed, no demo aggregate. It emits
 module structure, packages, POMs, configuration, enforcement, rules, and skills — and
@@ -40,9 +40,38 @@ same dependency the target audience already has mandatorily.
 
 ## When NOT to use
 
-`pom.xml` or `build.gradle` already exists at the root. This skill **does not migrate**
-existing projects nor overwrite structure. In that case: stop, report, suggest
-`/new-feature` instead.
+`pom.xml` or `build.gradle` already exists at `<project>` (§ Where the project is born). This
+skill **does not migrate** existing projects nor overwrite structure. In that case: stop,
+report, suggest `/new-feature` from a session opened in that directory instead.
+
+## Where the project is born
+
+The session runs in a clone of this repository, and the project is generated **next to it**:
+
+```
+<project> = <this repository>/../<artifactId>
+```
+
+Resolve it to an absolute path once the interview has settled `artifactId`, before step 3,
+and use that same absolute path in every later step. Never generate into this repository:
+`ArchHook.java export` refuses a destination equal to its source (step 6.6), and the creation
+skills and blueprint catalog would end up beside the project's code.
+
+- **Existing directory.** If `<project>` holds `pom.xml` or `build.gradle`, stop (§ When NOT to
+  use). If it holds anything else, list it and stop: the generation does not merge into a
+  directory it did not create. An empty directory is fine, since the user may have created it to
+  add it to the session.
+- **Missing directory.** Create it with `mkdir -p "<project>"`.
+- **Files.** Every path this skill and its `references/` write as relative, or as
+  `<project>/…`, is written at `<project>/…`, through an absolute path.
+- **Shell.** Run every command in a subshell rooted there: `(cd "<project>" && ./mvnw -q test)`.
+  The session's shell keeps its cwd between calls, and a bare `cd` would move every later
+  injection with it.
+- **Chained skills.** `transport-security-setup` (step 7.5), `sonarqube-setup` (step 8.4) and
+  `git-publish` (at the end, from `project-initializer`) receive `project: <project>` in their
+  one-line context, and pass it on when they chain `docker-architect`. Each of them treats that
+  directory as the project root. Step 4.10 applies `docker-architect`'s merge procedure here,
+  so it follows the two rules above.
 
 ## Preconditions
 
@@ -154,7 +183,7 @@ curl -sS https://start.spring.io/starter.tgz \
   -d packageName=<packageBase> \
   -d javaVersion=21 \
   -d dependencies=<list derived from the features> \
-  | tar -xzf - -C .
+  | tar -xzf - -C "<project>"
 
 # build.tool: gradle — same parameters, only `type` changes. Groovy DSL
 # (`gradle-project`), not Kotlin DSL (`gradle-project-kotlin`): this skill's own
@@ -169,14 +198,14 @@ curl -sS https://start.spring.io/starter.tgz \
   -d packageName=<packageBase> \
   -d javaVersion=21 \
   -d dependencies=<list derived from the features> \
-  | tar -xzf - -C .
+  | tar -xzf - -C "<project>"
 ```
 
 Run **exactly one** of the two, matching the build tool resolved above. Maven's
 `starter.tgz` extracts `pom.xml`, `mvnw`, `mvnw.cmd`, and `.mvn/wrapper/`; Gradle's
 extracts `build.gradle`, `settings.gradle`, `gradlew`, `gradlew.bat`, and
 `gradle/wrapper/`. There's no third case where both sets exist — if a stray `pom.xml` or
-`build.gradle` is left over from a previous attempt in this directory, that's the "already
+`build.gradle` is left over from a previous attempt in `<project>`, that's the "already
 exists" case from § When NOT to use, not something to merge with the tool just generated.
 
 `javaVersion=21` is not a pin from memory — it's this skill's own precondition (JDK
@@ -272,7 +301,7 @@ Nothing to run — what the final report has to be able to say.
 ### 7.5 · Decide transport security → skill `transport-security-setup`
 
 Invoke `transport-security-setup` via the `Skill` tool, with a one-line context: build tool,
-blueprint id, and "chained from project-bootstrap — skip your Verify". It owns the two questions
+blueprint id, `project: <project>`, and "chained from project-bootstrap — skip your Verify". It owns the two questions
 this step asks — where TLS terminates, and the local profile or local edge — and writes the
 transport configuration into `application.yml`, the HSTS filter when no security chain exists,
 the transport IT, and the `**Transport:` paragraph of the root `CLAUDE.md` step 6 wrote; the
@@ -293,8 +322,8 @@ build passes, or when the report says why it failed.
 
 ### 8.4 · Configure SonarQube → skill `sonarqube-setup`
 
-Invoke `sonarqube-setup` via the `Skill` tool, with a one-line context: build tool and
-coordinates. It owns the one question this step asks — an existing server (URL,
+Invoke `sonarqube-setup` via the `Skill` tool, with a one-line context: build tool,
+coordinates, and `project: <project>`. It owns the one question this step asks — an existing server (URL,
 authentication) or a local container — and the scanner in the root build file, the CI
 step for an external server, and, for a local one, the `sonarqube` service it hands to
 `docker-architect`. After Verify, so the build it touches is already known green; before
@@ -420,8 +449,8 @@ only skill with that reach, and it has it because the tree does not exist yet wh
 No rule file is read: § Applicable rules says where each one already lives in a template,
 and step 6.6's copy is `export`'s, not a transcription.
 
-**Writes** (paths relative to the **generated project**, not this repository) — no
-other skill touches these files:
+**Writes** (paths relative to the **generated project**, `<project>` in § Where the project is
+born, never this repository) — no other skill touches these files:
 
 - Exactly one of: `pom.xml` and `*/pom.xml` (`build.tool: maven`), or `settings.gradle`,
   `build.gradle`, and `*/build.gradle` (`build.tool: gradle`) — never both in the same

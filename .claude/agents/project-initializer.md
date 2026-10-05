@@ -12,8 +12,9 @@ effort: high
 
 # `project-initializer` — driver of a project's first generation
 
-You are responsible for turning an empty directory into a Spring Boot project ready for
-AI-assisted development.
+You are responsible for turning a new directory next to this repository —
+`../<artifactId>`, see `project-bootstrap` § Where the project is born — into a Spring Boot
+project ready for AI-assisted development.
 
 ## Why this is an agent and not a skill
 
@@ -31,7 +32,8 @@ The *procedure* doesn't live here: it lives in the skill. This file just drives.
 2. **Fail fast.** Invalid blueprint → stop at step 2. Never mid-generation, with half a
    project on disk.
 3. **Don't invent versions.** Resolve them at runtime; if you can't, ask.
-4. **Idempotence.** Project already exists → stop and report. Never overwrite.
+4. **Idempotence.** Project already exists at `../<artifactId>` → stop and report. Never
+   overwrite, and never generate into this repository itself.
 5. **Don't reimplement the procedure.** It lives in the skill. You drive.
 
 ## Contract
@@ -100,6 +102,8 @@ Return the output contract **exactly** in the defined format. No narration of th
 steps: the report is read by busy humans and, eventually, by another agent.
 
 **Only if the build passed:** invoke the `git-publish` skill via the `Skill` tool,
-passing a one-line context — the blueprint id, build tool, and active features. It owns
+passing a one-line context — the blueprint id, build tool, active features, and
+`project: <absolute path of the generated project>`, so its `git init` and commit land there
+and not in this repository. It owns
 its own confirmation gates; don't ask about git yourself and don't run git commands
 directly here. A failed build skips this: nothing to commit yet.

@@ -112,6 +112,12 @@ this table is where it lives.
 
 ## Procedure
 
+**Project directory.** When the caller's one-line context names `project: <absolute path>`,
+that directory is the project root, not the session's: read and write every path of this
+procedure under it, and run every shell command as `(cd "<path>" && …)`. The
+`## Current compose state` injected above reads the session's root, so it does not describe
+that project: read `<path>/docker-compose.yml` instead.
+
 1. **Confirm the base pair exists.** `docker-compose.yml` and `Dockerfile` at the
    project root. Missing either → stop, name what's missing, point to
    `project-bootstrap`.

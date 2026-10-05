@@ -55,6 +55,13 @@ does, for an approved spec not implemented yet (`docs/use-cases/UC-NNN-<slug>/`,
 `docs/use-cases/BACKLOG.md`) — gate 1 lists and stages **only** those paths. Anything else
 dirty in the tree stays unstaged and is named in the report.
 
+**Input (optional): project directory.** When the invoking context names
+`project: <absolute path>` — `project-initializer` does, because it runs in a session opened
+somewhere else — that directory is the project. Run every command of this procedure as
+`(cd "<path>" && git …)`, `gh repo create` included, so `--source=.` is the project and
+`git init` never lands in the session's own repository. Without it, the project is the
+session's directory.
+
 **Reads:** `git status`, `git remote -v`, `gh auth status`. Nothing in the project files.
 
 **Writes:** `.git/` of the current project, and — only after the second confirmation —
