@@ -50,6 +50,11 @@ Runs on `sonnet` with `effort: low`: one interview with fixed options, then edit
 
 ## Procedure
 
+**Project directory.** When the caller's one-line context names `project: <absolute path>`,
+that directory is the project root, not the session's: read and write every path of this
+procedure under it, and run every shell command as `(cd "<path>" && …)`. When this skill chains
+`docker-architect`, pass `project: <path>` on in its context.
+
 ### 1 · Detect
 
 ```bash

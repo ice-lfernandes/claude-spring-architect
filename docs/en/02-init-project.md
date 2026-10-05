@@ -5,12 +5,27 @@ Primary source: `.claude/skills/init-project/SKILL.md`,
 
 ## What it does
 
-Turns an empty directory into a Spring Boot project with declared architecture,
+Turns a new directory next to the Nerviz clone into a Spring Boot project with declared architecture,
 executable boundaries, and a green build — **with no business code**. No example, seed,
 or demo aggregate: the bootstrap generates structure, and the first feature comes from
 the `/new-feature` pipeline, from a real spec
 (`.claude/decisions/0011-bootstrap-without-business-code.md`, cited in
 `project-bootstrap/SKILL.md`).
+
+## Where the project is born
+
+The session runs in a clone of this repository, and the project is generated next to it, at
+`../<artifactId>` (`project-bootstrap/SKILL.md` § Where the project is born). `/init-project`,
+`project-bootstrap` and the blueprint catalog stay in the clone; the project receives its own
+`.claude/` from `ArchHook.java export`, which refuses to write into the clone itself. Every
+shell command runs as `(cd "<project>" && …)`, and every chained skill — `transport-security-setup`,
+`sonarqube-setup`, `git-publish`, and `docker-architect` through them — receives
+`project: <path>` in its context. Development starts in a new session opened in the
+generated project, the only one that loads its `settings.json` and hooks.
+
+Claude Code asks before writing outside the directory a session was started in. To approve the
+generation once, create the directory and add it to the session before running the command:
+`mkdir ../my-api`, then `/add-dir ../my-api`. An empty directory passes the existence check.
 
 ## Why it's a skill that delegates to an agent
 
@@ -42,10 +57,10 @@ sequenceDiagram
     participant HOOK as ArchHook.java + settings.json
 
     U->>CMD: /init-project [--blueprint hexagonal] [--groupId ...]
-    CMD->>CMD: checks for an existing pom.xml/build.gradle
+    CMD->>CMD: checks ../<artifactId> for an existing pom.xml/build.gradle
     alt project already exists
         CMD-->>U: reports and suggests /new-feature
-    else empty directory
+    else new or empty ../<artifactId>
         CMD->>AG: Agent tool (isolated context, restricted tools, model sonnet)
         AG->>AG: interview via AskUserQuestion (max 4 questions, only what's missing)
         AG->>BOOT: follows the defined procedure

@@ -5,12 +5,28 @@ Fonte primária: `.claude/skills/init-project/SKILL.md`,
 
 ## O que faz
 
-Transforma um diretório vazio em um projeto Spring Boot com arquitetura declarada,
+Transforma um diretório novo, ao lado do clone do Nerviz, em um projeto Spring Boot com arquitetura declarada,
 boundaries executáveis e build verde — **sem código de negócio**. Nenhum exemplo, seed
 ou aggregate de demonstração: o bootstrap gera estrutura, e a primeira feature vem do
 pipeline `/new-feature`, de uma spec real
 (`.claude/decisions/0011-bootstrap-without-business-code.md`, citado em
 `project-bootstrap/SKILL.md`).
+
+## Onde o projeto nasce
+
+A sessão roda num clone deste repositório, e o projeto é gerado ao lado dele, em
+`../<artifactId>` (`project-bootstrap/SKILL.md` § Where the project is born). O `/init-project`,
+o `project-bootstrap` e o catálogo de blueprints ficam no clone; o projeto recebe o próprio
+`.claude/` do `ArchHook.java export`, que se recusa a escrever no próprio clone. Todo comando de
+shell roda como `(cd "<project>" && …)`, e toda skill encadeada — `transport-security-setup`,
+`sonarqube-setup`, `git-publish` e, por meio delas, `docker-architect` — recebe
+`project: <path>` no contexto. O desenvolvimento começa numa sessão nova, aberta no projeto
+gerado, a única que carrega o `settings.json` e os hooks dele.
+
+O Claude Code pede permissão antes de escrever fora do diretório em que a sessão começou. Para
+aprovar a geração de uma vez, criar o diretório e adicioná-lo à sessão antes do comando:
+`mkdir ../my-api` e depois `/add-dir ../my-api`. Um diretório vazio passa na checagem de
+existência.
 
 ## Por que é uma skill que delega para um agent
 
@@ -42,10 +58,10 @@ sequenceDiagram
     participant HOOK as ArchHook.java + settings.json
 
     U->>CMD: /init-project [--blueprint hexagonal] [--groupId ...]
-    CMD->>CMD: checa pom.xml/build.gradle já existente
+    CMD->>CMD: checa pom.xml/build.gradle já existente em ../<artifactId>
     alt projeto já existe
         CMD-->>U: reporta e sugere /new-feature
-    else diretório vazio
+    else ../<artifactId> novo ou vazio
         CMD->>AG: Agent tool (contexto isolado, tools restritos, model sonnet)
         AG->>AG: interview via AskUserQuestion (máx. 4 perguntas, só o que faltar)
         AG->>BOOT: segue o procedimento definido

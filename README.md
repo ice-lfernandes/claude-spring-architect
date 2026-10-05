@@ -93,51 +93,67 @@ no `mvn` on the `PATH` (the wrapper comes inside the Initializr's `starter.tgz`)
 
 ### New project
 
-Order matters. Do these steps **before** opening Claude:
+A project is generated **from a clone of this repository**, not by copying `.claude/` into an
+empty directory. `/init-project` and the blueprint catalog stay here; the project receives
+only what it needs to develop, written by the `export` mode.
 
 ```bash
-# 1. directory + git with an existing HEAD
-mkdir my-api && cd my-api
-git init
-git commit --allow-empty -m "chore: initial repository"
+# 1. clone next to where the projects will live
+cd ~/dev
+git clone --depth 1 https://github.com/nerviz-ai/nerviz
 
-# 2. install .claude/ BEFORE starting the session
-git clone --depth 1 https://github.com/nerviz-ai/nerviz /tmp/nerviz
-cp -r /tmp/nerviz/.claude .
-
-# 3. confirm the tools (nothing to install)
+# 2. confirm the tools (nothing to install); gh is only for the optional push
 java --version && git --version && curl --version | head -1
+gh auth status
 
-# 4. commit the AI layer, separate from the code
-git add .claude
-git commit -m "chore: setup Claude Code"
-
-# 5. only now open the session
+# 3. open the session in the clone
+cd nerviz
 claude
 ```
 
-Then, inside the session:
+Inside that session:
 
 ```
 /arch-doctor                 # confirms enforcement is active on this machine
-/init-project --build maven
+/init-project --blueprint hexagonal --build maven --name my-api
+```
+
+Claude Code asks before writing outside the directory the session started in. To approve the
+generation once, run `mkdir ../my-api` and `/add-dir ../my-api` before `/init-project`; an empty
+directory is accepted.
+
+The project is born next to the clone, at `../<name>` (`~/dev/my-api` above). At the end,
+`git-publish` asks twice: once to run `git init` and make the first commit, once to create the
+GitHub repository and push. One clone generates as many projects as you want: `/clear`
+between them.
+
+Then open a new session **inside the generated project** to develop:
+
+```bash
+cd ../my-api
+claude
+```
+
+```
 /new-feature <what the first use case should do>
 ```
 
 Why this order:
 
-- **`.claude/settings.json` is read once, at session startup.** If you copy it after
-  opening `claude`, the hooks stay inactive until you restart, and everything *looks* like
-  it works.
-- **`git commit --allow-empty` comes first** because the `tests` hook uses `git diff HEAD`.
-  In a repository without commits, `HEAD` does not exist and the hook exits without running
-  a single test.
-- **Committing `.claude/` before generating** keeps the next `git diff HEAD` to generated
-  code only.
+- **The generated project carries its own `.claude/`.** The `export` mode writes the rules,
+  the development skills, the executor agents, the hook, and the active blueprint. It leaves
+  out `init-project`, `project-bootstrap`, and the blueprint catalog, so a project cannot
+  regenerate itself on top of live code. It also refuses to write into this repository.
+- **`.claude/settings.json` is read once, at session startup.** The session opened in the
+  clone runs with this repository's hooks, not the project's. Developing in it means none of
+  the project's hooks fire, and everything *looks* like it works.
+- **Accept the first `git-publish` gate.** The `tests` hook uses `git diff HEAD`. In a
+  repository without commits, `HEAD` does not exist and the hook exits without running a
+  single test.
 
-Do not copy this repository's root `CLAUDE.md` into your project. It describes the
-meta-repository. The project's own `CLAUDE.md` is generated during bootstrap, with the
-resolved versions and the real module list. The full generation sequence is in
+The project's own `CLAUDE.md` is generated during bootstrap, with the resolved versions and
+the real module list. This repository's root `CLAUDE.md` describes the meta-repository and
+does not travel. The full generation sequence is in
 [`docs/en/02-init-project.md`](docs/en/02-init-project.md).
 
 ### Existing project
@@ -154,10 +170,10 @@ changes the project has not seen yet; it never runs them. See
 
 | Symptom | Cause | Check |
 |---|---|---|
-| Hooks never fire | `settings.json` copied with the session already open | Restart: `/exit`, then `claude -c` |
+| Hooks never fire | Developing in the session opened in the clone, or `settings.json` changed with the session already open | Open `claude` inside the generated project; after a change, `/exit`, then `claude -c` |
 | Hooks fail on every OS | `java` not on `PATH` | `/arch-doctor` |
 | A forbidden import is not blocked | `.claude/forbidden-imports.txt` does not exist yet (it is generated during init) | `/arch-doctor` shows the number of active rules |
-| Tests never run on `Stop` | No `HEAD`, or no Maven wrapper | `/arch-doctor` |
+| Tests never run on `Stop` | No `HEAD` (first `git-publish` gate declined), or no Maven wrapper | `/arch-doctor` |
 
 The hooks exit 0 when they cannot verify something. That is safe, but it can give false
 greens, which is why `/arch-doctor` exists. More traps, runtime and repository alike:
