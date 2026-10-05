@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/nerviz-ai/nerviz/security/advisories/new
+    about: Privately, never as an issue. What is in scope and how it is handled is in SECURITY.md.
   - name: Question or usage help
     url: https://github.com/nerviz-ai/nerviz/discussions
     about: Ask how something works before opening an issue. Questions get answered faster here.
