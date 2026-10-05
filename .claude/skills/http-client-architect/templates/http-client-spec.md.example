@@ -1,0 +1,151 @@
+# UC-007 · Outbound HTTP
+
+> Partial of `docs/use-cases/UC-007-capture-payment/`. Owner: `http-client-architect`.
+> Inherits the outbound port and its domain types from `10-dominio.md`, and the external call and
+> its authentication answer from `00-caso-de-uso.md` § External calls — doesn't redecide them.
+> Contains no code. Form references in `.claude/skills/http-client-architect/templates/`.
+> Rules applied, never reproduced: `@.claude/rules/http-client.md`,
+> `@.claude/rules/error-handling.md` § Integration families, `@.claude/rules/api-rest.md` § Errors — 500 family.
+
+| Field | Value |
+|---|---|
+| Mother spec | `00-caso-de-uso.md` — External calls: the payment service provider charges the card; OAuth2 client credentials; supports `Idempotency-Key` |
+| Why this partial exists | `10-dominio.md` § Ports declares `PaymentGatewayPort`, kind `external HTTP` |
+| Adapter package | `adapter.out.http.paymentgateway` (blueprint `packages.map`, entry `adapter.out.http`) |
+| Divergences from other partials | none |
+
+## 1 · Operations
+
+One row per remote operation the port needs. The provider's documentation is the source; its link
+goes in the row.
+
+| Port method | Dependency (group) | Remote call | Idempotent? | Key source | Read timeout | Domain outcomes |
+|---|---|---|---|---|---|---|
+| `charge(PaymentId, Money, IdempotencyKey)` | `payment-gateway` | `POST /v1/charges` ([docs](https://psp.example/docs/charges#create)) | yes — `Idempotency-Key`, honored 24 h by the provider | `Payment.chargeKey`, created with the payment (§ 10) | 3 s (p99.9 measured 1.8 s) | 422 `insufficient-funds` / `card-declined` → `BusinessRuleViolationException` `PAYMENT_DECLINED` |
+| `findStatus(ChargeReference)` | `payment-gateway` | `GET /v1/charges/{id}` | yes — safe | — | 3 s | 404 → `Optional.empty()` |
+
+Every other failure is an integration family through the shared translator
+(`@.claude/rules/error-handling.md` § Integration families): 429/503/connect → unavailable,
+502/504/read timeout/reset → outcome unknown, the rest → bad response.
+
+## 2 · Client
+
+| Dependency | Client | Matrix row | Exemplar |
+|---|---|---|---|
+| `payment-gateway` | HTTP interface (`@HttpExchange`) | `references/client-decision-matrix.md` § 1 row 3: stable contract, servlet stack, no OpenAPI document published | `HttpExchangeAdapter.java.example` |
+
+Rejected, one line each: **OpenAPI Generator** — the provider publishes no OpenAPI document.
+**`RestClient` direct** — no dynamic URL, no streaming, no `Link` pagination. **`WebClient`** —
+nothing streamed. **OpenFeign** — legacy only; nothing in the project uses it.
+
+## 3 · Engine and pool
+
+| Decision | Value | State |
+|---|---|---|
+| Engine | Apache HttpClient 5, pinned by `spring.http.clients.imperative.factory: http-components` | NEW — first outbound call of the project |
+| Pool | 20 per route, 100 total — 40 req/s × 0.25 s p99 ≈ 10 concurrent, doubled | NEW |
+| Lease timeout | 500 ms | NEW |
+| Idle eviction / time-to-live | 30 s / 5 min — the provider's load balancer closes idle connections at 60 s (asked) | NEW |
+| Engine retry | off | NEW |
+| Exemplar | `ApacheHttpClient5Config.java.example` | — |
+
+## 4 · Outbound authentication
+
+| Dependency | Scheme | Where the credential lives | Exemplar |
+|---|---|---|---|
+| `payment-gateway` | OAuth2 client credentials, scopes `charges:write charges:read` | `PAYMENT_GATEWAY_CLIENT_ID`, `PAYMENT_GATEWAY_CLIENT_SECRET` (environment), token URI `PAYMENT_GATEWAY_TOKEN_URI` | `OAuth2ClientCredentialsConfig.java.example` |
+
+Token cached and renewed by the authorized-client manager — never fetched per call. TLS on, no
+redirect followed.
+
+## 5 · Retry and resilience
+
+| Dependency | Retrying layer | Attempts · backoff | Retried on | Breaker | Bulkhead | Fallback |
+|---|---|---|---|---|---|---|
+| `payment-gateway` | the adapter (`@Retryable` + `DependencyRetryPredicate`) — the trigger is an HTTP request, nothing upstream retries | 3 · 200 ms ×2, max 2 s, jitter 100 ms | unavailable without `Retry-After`; outcome unknown (both methods `@IdempotentCall`) | `outbound` config: 50 % of 20 calls, open 30 s | 20, no wait — equals the pool's per-route limit | none — a failed charge is not a success; the 503 reaches the caller |
+
+## 6 · Project-wide setup
+
+| Component | State | Exemplar |
+|---|---|---|
+| `IntegrationException` + `DependencyResponseException`, `DependencyUnavailableException`, `OutcomeUnknownException` | NEW — in `domain.exception` | `IntegrationExceptions.java.example` |
+| `HttpFailureTranslator`, `DependencyRetryPredicate`, `IdempotentCall`, `ResilientHttpCall`, `OutboundHttpConfig` | NEW — in `adapter.out.http.shared` | `HttpFailureTranslator.java.example` |
+| `ApacheHttpClient5Config`, `HttpPoolProperties` | NEW | `ApacheHttpClient5Config.java.example` |
+| `OAuth2ClientCredentialsConfig` | NEW | `OAuth2ClientCredentialsConfig.java.example` |
+| `ApiExceptionHandler` — 502 / 503 + `Retry-After` / 504 handlers | CHANGE | `rest-api-architect/templates/ApiExceptionHandler.java.example` |
+
+## 7 · Configuration
+
+| Property | Value | Secret? |
+|---|---|---|
+| `spring.http.clients.imperative.factory` | `http-components` | no |
+| `spring.http.clients.redirects` | `dont-follow` | no |
+| `spring.http.serviceclient.payment-gateway.base-url` | `${PAYMENT_GATEWAY_BASE_URL:http://localhost:8089}` | no |
+| `spring.http.serviceclient.payment-gateway.connect-timeout` · `read-timeout` | `1s` · `3s` | no |
+| `spring.security.oauth2.client.registration.payment-gateway.*` | client credentials, `${PAYMENT_GATEWAY_CLIENT_ID}`, `${PAYMENT_GATEWAY_CLIENT_SECRET}` | yes — environment, no default |
+| `app.http.pool.*` | § 3 | no |
+| `resilience4j.circuitbreaker.instances.payment-gateway` · `resilience4j.bulkhead.instances.payment-gateway` | § 5 | no |
+
+Full shape in `templates/application-http-client.yml.example`. The test profile points the base
+URL at WireMock and lowers nothing but the read timeout of the class that proves it.
+
+## 8 · Declared dependencies
+
+| Dependency | Version | Why |
+|---|---|---|
+| `org.springframework.boot:spring-boot-starter-restclient` | (managed by the Boot parent) | `RestClient` and HTTP interfaces — Boot 4 no longer brings it with the web starter (Initializr `spring-restclient`) |
+| `org.apache.httpcomponents.client5:httpclient5` | (managed by the Boot parent) | engine, § 3 |
+| `org.springframework.boot:spring-boot-starter-security-oauth2-client` | (managed by the Boot parent) | client credentials, § 4 (Initializr `oauth2-client`) |
+| `io.github.resilience4j:resilience4j-spring-boot4` | the `<release>` of its `maven-metadata.xml`, read at design time and written here — not managed by the Boot parent | breaker and bulkhead, § 5 |
+| `org.springframework.boot:spring-boot-starter-aspectj` | (managed by the Boot parent) | Resilience4j's annotations and aspects |
+
+The test support (`org.wiremock.integrations:wiremock-spring-boot`) is declared by `40-testes.md` § 5.
+
+## 9 · Contract test cases
+
+Through the port, against WireMock — `test-architect`'s `HttpClientAdapterIT.java.example`.
+
+| Port method | Case | Expected |
+|---|---|---|
+| `charge` | 201 | reference mapped; request carried `Idempotency-Key` = the payment's key, and the mapped body |
+| `findStatus` | 200 with an unknown field and status | `ChargeStatus.UNKNOWN` |
+| `findStatus` | 404 | `Optional.empty()` |
+| `charge` | 422 Problem Details `insufficient-funds` | `BusinessRuleViolationException` `PAYMENT_DECLINED`, one attempt |
+| `charge` | 503 | `PAYMENT_GATEWAY_UNAVAILABLE`, exactly 3 attempts |
+| `charge` | 503 + `Retry-After: 30` | one attempt, `retryAfter` = 30 s |
+| `charge` | 400 | `PAYMENT_GATEWAY_BAD_RESPONSE`, one attempt |
+| `findStatus` | delay > read timeout | `PAYMENT_GATEWAY_OUTCOME_UNKNOWN`, 3 attempts |
+| `findStatus` | connection reset | `OutcomeUnknownException` |
+
+## 10 · Requirements to other partials
+
+| To | Requirement | Why |
+|---|---|---|
+| `20-persistencia.md` | `Payment.chargeKey` (UUID, not null, unique) persisted with the payment, before the call | the key must survive a restart; generating it at call time makes every retry a new charge |
+| `35-jobs.md` | a reconciliation pass over payments left `CAPTURE_UNKNOWN`, calling `findStatus` | `OutcomeUnknownException` on `charge` after the retries: the charge may exist |
+| `10-dominio.md` | `CAPTURE_UNKNOWN` state on `Payment`, entered on `OutcomeUnknownException` | already modeled — cited, not redesigned |
+| `32-seguranca.md` | none — the project already has a `SecurityFilterChain`; adding the OAuth2 client starter changes no endpoint | checked: chain on disk |
+
+## 11 · Deferred
+
+none
+
+## Design patterns
+
+| Force or symptom | Pattern | Classes and interfaces it creates | "When not" checked |
+|---|---|---|---|
+| Every provider needs the same failure translation, and none may decide it alone | none — a shared helper, not a pattern; the translator is a plain class composed by each adapter | — | Decorator considered for `ResilientHttpCall` and rejected: one wrapper, no stack to compose |
+
+## Impact on approved use cases
+
+none — first outbound HTTP call of the project.
+
+## Implementation order
+
+1. The dependencies of § 8
+2. The integration families in `domain.exception`
+3. `adapter.out.http.shared`: translator, predicate, `IdempotentCall`, `OutboundHttpConfig`, engine, OAuth2 config
+4. `adapter.out.http.paymentgateway`: DTOs, HTTP interface, client config, mapper, adapter
+5. `ApiExceptionHandler` — the three 5xx handlers
+6. Properties in `application.yml`
+7. Tests — `40-testes.md`

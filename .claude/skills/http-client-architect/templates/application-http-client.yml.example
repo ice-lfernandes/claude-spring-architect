@@ -1,0 +1,122 @@
+# EXEMPLAR — the outbound HTTP properties of `28-cliente-http.md` § 7, merged into the project's
+# `application.yml` (one `spring:` root, one `app:` root, one `resilience4j:` root — never a second
+# one). Keep only the blocks the partial's decisions use; the others are here to show the shape.
+#
+# Every timeout is explicit and every secret is an environment placeholder with NO default: a
+# missing variable fails the boot, which is the point — a default secret in a versioned file is a
+# published secret. Non-secret values (base URLs) may default to the local stub of the profile.
+# Timeouts come from the provider's measured p99.9 (or its published SLA) plus margin, and the
+# partial records the number it was derived from next to each value.
+
+spring:
+  http:
+    clients:
+      # Project-wide defaults for every client Boot builds. A group below overrides them.
+      connect-timeout: 2s
+      read-timeout: 5s
+      # Never follow a redirect from a third party by default (`.claude/rules/http-client.md` § Security).
+      redirects: dont-follow
+      imperative:
+        # Pins the engine. Required: the engine customizer (ApacheHttpClient5Config) is typed to the
+        # Apache builder and is skipped in silence if Boot detects another engine first.
+        factory: http-components
+    serviceclient:
+      # One group per remote system; the key is the group id of `@ImportHttpServices` and the
+      # `dependency` every integration exception carries.
+      payment-gateway:
+        base-url: ${PAYMENT_GATEWAY_BASE_URL:http://localhost:8089}
+        connect-timeout: 1s
+        # p99.9 of POST /v1/charges measured at 1.8s → 3s.
+        read-timeout: 3s
+        apiversion:
+          default-version: "2024-06-01"
+          insert:
+            header: X-Api-Version
+      geocoding:
+        base-url: ${GEOCODING_BASE_URL:http://localhost:8090}
+        read-timeout: 2s
+        # API key in a header: no Java needed (ApiKeyAuthConfig.java.example, shape 1).
+        default-header:
+          X-Api-Key: ${GEOCODING_API_KEY}
+      open-finance:
+        base-url: ${OPEN_FINANCE_BASE_URL}
+        # Mutual TLS: the group presents this bundle's certificate, and only this group.
+        ssl:
+          bundle: open-finance-client
+  ssl:
+    bundle:
+      pem:
+        open-finance-client:
+          keystore:
+            certificate: ${OPEN_FINANCE_CLIENT_CERT_PATH}
+            private-key: ${OPEN_FINANCE_CLIENT_KEY_PATH}
+          truststore:
+            certificate: ${OPEN_FINANCE_CA_PATH}
+  security:
+    oauth2:
+      client:
+        # Client credentials (OAuth2ClientCredentialsConfig.java.example). The registration id is
+        # the value of `@ClientRegistrationId`.
+        registration:
+          payment-gateway:
+            provider: payment-gateway-auth
+            authorization-grant-type: client_credentials
+            client-id: ${PAYMENT_GATEWAY_CLIENT_ID}
+            client-secret: ${PAYMENT_GATEWAY_CLIENT_SECRET}
+            scope: charges:write,charges:read
+        provider:
+          payment-gateway-auth:
+            token-uri: ${PAYMENT_GATEWAY_TOKEN_URI}
+
+app:
+  http:
+    pool:
+      # Little's law per route: 40 req/s × 0.25s p99 ≈ 10 concurrent → 20 with headroom.
+      max-per-route: 20
+      max-total: 100
+      lease-timeout: 500ms
+      # Below the provider load balancer's idle timeout (60s).
+      idle-eviction: 30s
+      time-to-live: 5m
+      validate-after-inactivity: 2s
+    carrier:
+      base-url: ${CARRIER_BASE_URL:http://localhost:8091}
+      connect-timeout: 1s
+      read-timeout: 10s
+      max-pages: 50
+      max-label-bytes: 5242880
+    geocoding:
+      api-key: ${GEOCODING_API_KEY}
+      api-key-parameter: key
+    legacy-erp:
+      username: ${LEGACY_ERP_USERNAME}
+      password: ${LEGACY_ERP_PASSWORD}
+    acquirer:
+      key-id: ${ACQUIRER_KEY_ID}
+      secret: ${ACQUIRER_SIGNING_SECRET}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      outbound:
+        # Counts only integration failures; a business 4xx the adapter mapped to a domain family
+        # never opens the circuit (`.claude/rules/http-client.md` § Resilience).
+        record-exceptions:
+          - com.exemplo.minhaapi.domain.exception.IntegrationException
+        ignore-exceptions:
+          - com.exemplo.minhaapi.domain.exception.DomainException
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+    instances:
+      payment-gateway:
+        base-config: outbound
+  bulkhead:
+    instances:
+      payment-gateway:
+        # Never above the pool's max-per-route: a slot the pool cannot serve only moves the wait.
+        max-concurrent-calls: 20
+        max-wait-duration: 0

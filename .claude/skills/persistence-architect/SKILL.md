@@ -45,8 +45,9 @@ schema that gets revised. An HTTP-triggered case with no `30-rest.md` → run
 `/rest-api-architect` first. A case whose `10-dominio.md` Events block names external
 (Kafka) delivery with no `25-mensageria.md` → run `/messaging-architect` first. And a third,
 under the same logic: a case whose `25-mensageria.md` chose Form B, or whose trigger is a
-schedule, with no `35-jobs.md` → run `/jobs-architect` first. Step 1 states what each list
-contains.
+schedule, with no `35-jobs.md` → run `/jobs-architect` first. And a fourth: a case whose `10-dominio.md` declares a
+port of kind `external HTTP`, with no `28-cliente-http.md` → run `/http-client-architect` first.
+Step 1 states what each list contains.
 
 **Exit rule: it writes only under `docs/`.** It emits `20-persistencia.md`, and the
 migration SQL goes **inside it** as a code block with its target file name and path —
@@ -118,6 +119,13 @@ and go straight to step 6 (diagnosis) — `references/sql-tuning.md`.
 
    A domain partial whose Events block is "none" or in-process means no messaging partial
    exists and none is expected — read nothing, stop for nothing.
+
+   Also read `28-cliente-http.md` whenever `10-dominio.md` declares a port of kind `external HTTP`
+   — missing → stop and tell the caller to run `/http-client-architect` first; in `/new-feature` it
+   exists by now. Its **§ 10 · Requirements to other partials** is this pass's input: the stored
+   idempotency key of an outbound write (unique, not null, written with the operation before the
+   call) and the column behind an unknown-outcome state, named by what they are — the final
+   form is decided here.
 
    Also read `35-jobs.md` whenever `25-mensageria.md` chose Form B or `00-caso-de-uso.md`'s
    trigger is a schedule — missing → stop and tell the caller to run `/jobs-architect` first;
@@ -363,7 +371,9 @@ this pass's input, each mandatory under its own condition: `30-rest.md` for an
 HTTP-triggered case (block 4), and `25-mensageria.md` whenever `10-dominio.md`'s Events
 block names external delivery (§ 6 — the shared outbox table under Form B, a dedupe table
 for a consumer). And `35-jobs.md` under Form B or a scheduled trigger (§ 3 replica count,
-§ 6 tool tables, claim requirement and prune operation). Missing any of them where it's
+§ 6 tool tables, claim requirement and prune operation). And `28-cliente-http.md` whenever `10-dominio.md`
+declares a port of kind `external HTTP` (§ 10 — a stored idempotency key, an unknown-outcome
+column). Missing any of them where it's
 required stops this skill instead of starting a design that a later pass would have to
 revise.
 

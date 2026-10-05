@@ -35,7 +35,7 @@ agentes, este restringe um); um template estático (nada é clonado, nenhuma ver
 
 | Projeto | ★ (2026-10-02) | O que entrega | Mais perto de nós em | O que não faz (até onde achamos) |
 |---|---|---|---|---|
-| [loiane/specs-driven-development-spring-angular](https://github.com/loiane/specs-driven-development-spring-angular) | 61 | Toolkit SDD para Spring Boot + Angular, em Claude Code, Copilot e Windsurf. Fluxo `/spec → /plan → /build → /test → /validate → /review → /ship`, agents por papel, harness Maven de qualidade (ArchUnit, PIT, JaCoCo, SpotBugs, OWASP), agent de onboarding para projeto existente | **O mais próximo no geral.** Pipeline de spec, mais hooks bash que impõem escopo: `enforce-files-in-scope.sh` bloqueia edição fora dos arquivos da tarefa ativa, e `block-impl-without-failing-test.sh` só libera implementação com um teste falhando | Não gera projeto nem oferece arquitetura selecionável. O escopo vem da tarefa ativa, não de uma classe por skill. Hooks exigem bash e `jq`. Sem design por camada para segurança, mensageria ou jobs. Mecanismo de atualização não encontrado |
+| [loiane/specs-driven-development-spring-angular](https://github.com/loiane/specs-driven-development-spring-angular) | 61 | Toolkit SDD para Spring Boot + Angular, em Claude Code, Copilot e Windsurf. Fluxo `/spec → /plan → /build → /test → /validate → /review → /ship`, agents por papel, harness Maven de qualidade (ArchUnit, PIT, JaCoCo, SpotBugs, OWASP), agent de onboarding para projeto existente | **O mais próximo no geral.** Pipeline de spec, mais hooks bash que impõem escopo: `enforce-files-in-scope.sh` bloqueia edição fora dos arquivos da tarefa ativa, e `block-impl-without-failing-test.sh` só libera implementação com um teste falhando | Não gera projeto nem oferece arquitetura selecionável. O escopo vem da tarefa ativa, não de uma classe por skill. Hooks exigem bash e `jq`. Sem design por camada para segurança, clientes HTTP de saída, mensageria ou jobs. Mecanismo de atualização não encontrado |
 | [jabrena/plinth](https://github.com/jabrena/plinth) | 442 | "AI-native Java enterprise SDLC": muitas skills, agents e comandos, workflow baseado em OpenSpec, integração com Jira/GitHub/Azure DevOps. Spring Boot, Quarkus, Micronaut; Cursor, Claude Code, Codex, Copilot | Pipeline de spec em escala; amplitude de conhecimento Java | — geração por blueprint; — hooks de território de escrita |
 | [a-pavithraa/springboot-skills-marketplace](https://github.com/a-pavithraa/springboot-skills-marketplace) | 78 | Plugin para Claude Code / Codex. A skill `creating-springboot-projects` entrevista, usa o Spring Initializr e gera uma de várias arquiteturas progressivas (Layered, Modular Monolith, Tomato, DDD+Hexagonal) | **O mais próximo na geração.** Baseado no Initializr, com escolha de arquitetura | Arquiteturas são prosa dentro de uma skill, não dado que um hook lê. — pipeline de spec, — hooks, — export para o projeto |
 | [jdubois/dr-jskill](https://github.com/jdubois/dr-jskill) | 341 | Agent Skill do criador do JHipster que gera aplicações Spring Boot a partir do start.spring.io, com banco, Docker e front-end | Geração via Initializr, defaults opinativos | Uma opinião só, sem escolha de arquitetura. — pipeline de spec, — enforcement |
@@ -135,16 +135,17 @@ arquivo Java testado em três sistemas operacionais, em vez de bash com `jq`.
 
 O `/new-feature` desenha um caso de uso por execução: `use-case-design` →
 `domain-modeling` → `rest-api-architect` → `security-architect` (condicional) →
-`messaging-architect` (condicional) → `jobs-architect` (condicional) →
-`persistence-architect` → `test-architect`. Cada skill é dona de um parcial e decide os
+`http-client-architect` (condicional) → `messaging-architect` (condicional) →
+`jobs-architect` (condicional) → `persistence-architect` → `test-architect`. Cada skill é
+dona de um parcial e decide os
 design patterns da sua camada. Os parciais são consolidados em `UC-NNN-spec.md`, cujo status
 vai de `draft → approved → implemented` (ou `implemented-blocked`). Depois que a spec é
 aprovada, o `guard` congela a pasta, exceto a linha de status, a marcação de checklists e o
 `CHANGELOG.md`. Só então o executor `java-spring-boot-developer` escreve em `src/`.
 
 *Mais perto:* loiane e plinth têm pipelines SDD cientes de Spring, e Spec Kit e OpenSpec são
-as referências genéricas. Nenhum tem etapas de design dedicadas a Spring Security, Kafka e
-jobs agendados. Nenhum congela a spec aprovada com um hook.
+as referências genéricas. Nenhum tem etapas de design dedicadas a Spring Security, clientes
+HTTP de saída, Kafka e jobs agendados. Nenhum congela a spec aprovada com um hook.
 
 ### 5 · Atualização do harness dentro do projeto, com proveniência e migrações
 

@@ -2,9 +2,9 @@
 
 Fonte primária: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, as skills de design (`use-case-design`,
-`domain-modeling`, `rest-api-architect`, `security-architect`, `messaging-architect`, `jobs-architect`,
-`persistence-architect`, `test-architect`) e o modo `guard` de
-`.claude/hooks/ArchHook.java`.
+`domain-modeling`, `rest-api-architect`, `security-architect`, `http-client-architect`,
+`messaging-architect`, `jobs-architect`, `persistence-architect`, `test-architect`) e o modo
+`guard` de `.claude/hooks/ArchHook.java`.
 
 ## O que faz
 
@@ -84,6 +84,7 @@ sequenceDiagram
     participant DOM as skill: domain-modeling
     participant REST as skill: rest-api-architect
     participant SEC as skill: security-architect
+    participant HTTP as skill: http-client-architect
     participant MSG as skill: messaging-architect
     participant JOBS as skill: jobs-architect
     participant PER as skill: persistence-architect
@@ -104,6 +105,9 @@ sequenceDiagram
         NF->>REST: 30-rest.md (+ requisitos de schema)
         opt Access pede algo que a filter chain ainda não dá
             NF->>SEC: 32-seguranca.md
+        end
+        opt 10-dominio.md declara port do tipo external HTTP
+            NF->>HTTP: 28-cliente-http.md
         end
         opt entrega externa do evento
             NF->>MSG: 25-mensageria.md
@@ -143,9 +147,10 @@ sequenceDiagram
 | 2 | `domain-modeling` | 1 | `10-dominio.md` — dona dos nomes de exceção |
 | 3 | `rest-api-architect` | 1, 2 | `30-rest.md` — inclusive os requisitos de schema que o transporte cria |
 | opcional | `security-architect` | 1, 2, 3, e a linha `Access` de `00-caso-de-uso.md` | `32-seguranca.md` — mecanismo, acesso por endpoint, lista de `permitAll`, ownership, 401/403, exposição de CORS/Actuator/OpenAPI |
+| opcional | `http-client-architect` | 2, quando `10-dominio.md` declara um port do tipo `external HTTP` | `28-cliente-http.md` — client e engine, timeouts, camada de retry e resiliência, autenticação de saída, a tabela de falhas de integração por operação, dependências declaradas e os casos de teste com WireMock |
 | opcional | `messaging-architect` | 2, se houver entrega externa | `25-mensageria.md` |
-| opcional | `jobs-architect` | 1 (trigger agendado), ou Form B da mensageria, ou um job adiado | `35-jobs.md` — tecnologia, trigger/cadência, coordenação entre instâncias, overlap/misfire, propriedade de liga-desliga, métricas de job; dona do schedule do relay de outbox e do job de prune |
-| 4 | `persistence-architect` | 1, 2, 3, segurança e mensageria/jobs quando rodaram | `20-persistencia.md` — SQL da migration dentro; lê `32-seguranca.md` § 7 (tabela de credenciais ou de API key) quando security-architect rodou, e as tabelas de ferramenta de `35-jobs.md` (`shedlock`, `QRTZ_*`, `BATCH_*`) como requisito de schema e a contagem de réplicas para a estratégia de claim do outbox, quando jobs-architect rodou |
+| opcional | `jobs-architect` | 1 (trigger agendado), Form B da mensageria, uma reconciliação que `28-cliente-http.md` § 10 pede, ou um job adiado | `35-jobs.md` — tecnologia, trigger/cadência, coordenação entre instâncias, overlap/misfire, propriedade de liga-desliga, métricas de job; dona do schedule do relay de outbox e do job de prune |
+| 4 | `persistence-architect` | 1, 2, 3, segurança, http-client e mensageria/jobs quando rodaram | `20-persistencia.md` — SQL da migration dentro; lê `32-seguranca.md` § 7 (tabela de credenciais ou de API key) quando security-architect rodou, `28-cliente-http.md` § 10 (chave de idempotência armazenada ou coluna de resultado desconhecido) quando http-client-architect rodou, e as tabelas de ferramenta de `35-jobs.md` (`shedlock`, `QRTZ_*`, `BATCH_*`) como requisito de schema e a contagem de réplicas para a estratégia de claim do outbox, quando jobs-architect rodou |
 | 5 | `test-architect` | 1–4 | `40-testes.md` |
 | — | `new-feature` (consolidação) | todas acima | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | spec `approved` | código e migrations em `src/**` |
@@ -164,7 +169,8 @@ falta no `docker-compose.yml`, registra a pendência na parcial e reporta o coma
 `.claude/decisions/0058-skill-classes-territory-schema.md`.
 
 **Os design patterns também são decididos nessa fase.** `domain-modeling`,
-`persistence-architect`, `rest-api-architect`, `security-architect`, `messaging-architect` e `jobs-architect`
+`persistence-architect`, `rest-api-architect`, `security-architect`, `http-client-architect`,
+`messaging-architect` e `jobs-architect`
 leem `gof-design-patterns` § Design-time use — lida, nunca invocada: é uma skill `build` — e
 escrevem uma seção `## Design patterns` na própria parcial: a linha da spec ou o `file:line`
 que força o padrão, o padrão, as classes e interfaces que ele cria, o "When not" conferido. A
@@ -226,6 +232,7 @@ escreve um spec único em que cada linha cita a fonte — um spec aprovado ou um
 | Fato | Quem vence |
 |---|---|
 | Path, verbo, status HTTP, formato do corpo | `30-rest.md` |
+| Client, engine e pool, timeouts, camada de retry, breaker e bulkhead, autenticação de saída | `28-cliente-http.md` |
 | Tabela, coluna, chave, índice, migration | `20-persistencia.md` |
 | Tópico, serialização, garantia de entrega, retry/DLQ do consumidor | `25-mensageria.md` |
 | Tabela outbox, suas colunas, query de claim, teto de tentativas/backoff e janela de retenção | `20-persistencia.md` — a mensageria **declara** que o caso precisa de outbox e qual garantia o relay tem de honrar, e nunca um nome de coluna. Uma linha de § 6 nomeando colunas é divergência, e uma decisão de coluna que derrubaria a garantia declarada **para** o pipeline em vez de ser resolvida por precedência |

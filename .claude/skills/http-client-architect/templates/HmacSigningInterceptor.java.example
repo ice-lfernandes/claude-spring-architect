@@ -1,0 +1,139 @@
+/*
+ * EXEMPLAR — outbound authentication, HMAC REQUEST SIGNING: the provider shares a secret and expects
+ * each request signed — method, path, a timestamp and the body digest — so a captured request cannot
+ * be altered or replayed later. Common in payment and webhook APIs.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Outbound authentication
+ *
+ * THE PROVIDER'S SPEC WINS. Header names, the canonical string and its separator, the hash, hex or
+ * Base64, seconds or milliseconds — every provider defines its own, and the partial's § 4 copies it
+ * from the provider's documentation, with the link. This exemplar shows the shape, not a standard:
+ * canonical = METHOD \n PATH?QUERY \n TIMESTAMP \n SHA-256(body) hex; signature = HMAC-SHA256 hex.
+ * A provider with an SDK for signing (AWS SigV4) → its SDK's signer, not a hand-made one.
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the signature covers the body bytes actually sent — computed in the interceptor, after
+ *    serialization, never from the domain object;
+ *  - the timestamp comes from an injected `Clock`, so the integration test pins it and asserts the
+ *    exact signature — a `Clock` bean (`Clock.systemUTC()`) declared NEW in the partial's § 6 when the
+ *    project has none;
+ *  - the secret is bound from an environment variable and never logged;
+ *  - attached to one group only.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- shared/HmacSigningInterceptor.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
+
+public class HmacSigningInterceptor implements ClientHttpRequestInterceptor {
+
+    private static final String ALGORITHM = "HmacSHA256";
+
+    private final String keyId;
+    private final SecretKeySpec secret;
+    private final Clock clock;
+
+    public HmacSigningInterceptor(String keyId, String secret, Clock clock) {
+        this.keyId = keyId;
+        this.secret = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM);
+        this.clock = clock;
+    }
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+            throws IOException {
+        String timestamp = Long.toString(clock.instant().getEpochSecond());
+        String target = request.getURI().getRawQuery() == null
+                ? request.getURI().getRawPath()
+                : request.getURI().getRawPath() + "?" + request.getURI().getRawQuery();
+        String canonical = String.join("\n", request.getMethod().name(), target, timestamp, sha256Hex(body));
+        request.getHeaders().set("X-Key-Id", keyId);
+        request.getHeaders().set("X-Timestamp", timestamp);
+        request.getHeaders().set("X-Signature", hmacHex(canonical));
+        return execution.execute(request, body);
+    }
+
+    private String hmacHex(String canonical) throws IOException {
+        try {
+            Mac mac = Mac.getInstance(ALGORITHM);
+            mac.init(secret);
+            return HexFormat.of().formatHex(mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException unavailable) {
+            throw new IOException("HMAC signing unavailable", unavailable);
+        }
+    }
+
+    private static String sha256Hex(byte[] body) throws IOException {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(body));
+        } catch (GeneralSecurityException unavailable) {
+            throw new IOException("SHA-256 unavailable", unavailable);
+        }
+    }
+}
+
+// --- acquirer/AcquirerSigningProperties.java
+package com.exemplo.minhaapi.adapter.out.http.acquirer;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.acquirer")
+record AcquirerSigningProperties(String keyId, String secret) {
+
+    @Override
+    public String toString() {
+        return "AcquirerSigningProperties[keyId=" + keyId + ", secret=***]";
+    }
+}
+
+// --- acquirer/AcquirerClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.acquirer;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.HmacSigningInterceptor;
+import java.time.Clock;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+@Configuration
+@EnableConfigurationProperties(AcquirerSigningProperties.class)
+@ImportHttpServices(group = "acquirer", types = AcquirerHttpService.class)
+class AcquirerClientConfig {
+
+    @Bean
+    RestClientHttpServiceGroupConfigurer acquirerSigning(AcquirerSigningProperties properties, Clock clock) {
+        HmacSigningInterceptor signing = new HmacSigningInterceptor(properties.keyId(), properties.secret(), clock);
+        return groups -> groups.filterByName("acquirer")
+                .forEachClient((group, builder) -> builder.requestInterceptor(signing));
+    }
+}
+
+// --- acquirer/AcquirerHttpService.java
+package com.exemplo.minhaapi.adapter.out.http.acquirer;
+
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.service.annotation.HttpExchange;
+import org.springframework.web.service.annotation.PostExchange;
+
+@HttpExchange("/v1/captures")
+interface AcquirerHttpService {
+
+    @PostExchange
+    String capture(@RequestBody String capture);
+}

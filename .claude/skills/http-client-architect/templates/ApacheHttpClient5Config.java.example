@@ -1,0 +1,80 @@
+/*
+ * EXEMPLAR — the DEFAULT engine under every `RestClient` and HTTP interface of the project: Apache
+ * HttpClient 5 with a pool sized on purpose. One bean, project-wide, written by the first use case
+ * whose `28-cliente-http.md` § 3 declares it NEW; REUSE afterwards, CHANGE when a new dependency
+ * needs a bigger per-route limit.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Engine and pool, § Timeouts
+ *
+ * WHAT THIS EXEMPLAR SHOWS — each line answers a library default that causes incidents:
+ *  - the pool: 25 connections in total and 5 per route by default; a service that talks to one
+ *    host starves at the sixth concurrent call. Sized by Little's law (concurrent calls ≈ request
+ *    rate × p99 latency), per route, from properties;
+ *  - the lease timeout: how long a caller waits for a pooled connection — finite, or a starved pool
+ *    hangs requests instead of failing them (`HttpFailureTranslator` reads its timeout as "not sent");
+ *  - idle eviction and connection time-to-live below the keep-alive of the server or load balancer
+ *    in front of it, or the first request after a quiet period dies on a connection the other side
+ *    already closed (`NoHttpResponseException`); time-to-live also bounds how long a DNS answer is
+ *    reused;
+ *  - the engine's own retry switched off: `@Retryable` on the adapter is the one retrying layer, and
+ *    the engine's default would silently multiply it;
+ *  - connect and read timeouts are NOT here: they come from `spring.http.clients.*` and
+ *    `spring.http.serviceclient.<group>.*` (`application-http-client.yml.example`), which Boot
+ *    applies through `HttpClientSettings` on top of this builder.
+ *
+ * A CUSTOMIZER, NOT A REPLACEMENT: Boot keeps building the engine, and this bean only tunes it — so
+ * the per-group settings, the SSL bundles and the observations Boot wires stay in place. The engine
+ * itself is pinned by `spring.http.clients.imperative.factory: http-components`; without the pin
+ * Boot picks the first engine on the classpath, a new transitive jar changes it in silence, and this
+ * customizer — typed to the Apache builder — stops being applied without an error.
+ *
+ * Dependency: `org.apache.httpcomponents.client5:httpclient5`, version managed by the Boot parent.
+ *
+ * PACKAGE: the `.http` entry of `packages.map`, subpackage `shared`. Each `// --- <File>.java`
+ * block is its own file.
+ */
+
+// --- shared/HttpPoolProperties.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.pool")
+public record HttpPoolProperties(int maxTotal, int maxPerRoute, Duration leaseTimeout,
+                                 Duration idleEviction, Duration timeToLive, Duration validateAfterInactivity) {
+}
+
+// --- shared/ApacheHttpClient5Config.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.core5.util.Timeout;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.http.client.HttpComponentsClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.autoconfigure.ClientHttpRequestFactoryBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(HttpPoolProperties.class)
+public class ApacheHttpClient5Config {
+
+    @Bean
+    ClientHttpRequestFactoryBuilderCustomizer<HttpComponentsClientHttpRequestFactoryBuilder> apacheHttpClientPool(
+            HttpPoolProperties pool) {
+        return builder -> builder
+                .withConnectionManagerCustomizer(manager -> manager
+                        .setMaxConnTotal(pool.maxTotal())
+                        .setMaxConnPerRoute(pool.maxPerRoute()))
+                .withConnectionConfigCustomizer(connection -> connection
+                        .setTimeToLive(TimeValue.of(pool.timeToLive()))
+                        .setValidateAfterInactivity(TimeValue.of(pool.validateAfterInactivity())))
+                .withDefaultRequestConfigCustomizer(request -> request
+                        .setConnectionRequestTimeout(Timeout.of(pool.leaseTimeout())))
+                .withHttpClientCustomizer(client -> client
+                        .disableAutomaticRetries()
+                        .evictExpiredConnections()
+                        .evictIdleConnections(TimeValue.of(pool.idleEviction())));
+    }
+}

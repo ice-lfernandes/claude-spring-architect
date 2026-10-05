@@ -66,6 +66,9 @@ both directions. See § Design patterns.
 - `.claude/rules/authorization.md` — Block S, only when `32-seguranca.md` exists: deny by
   default, no security type in the domain or application, ownership decided in the use case,
   method-security denials kept out of the 500 fallback
+- `.claude/rules/http-client.md`, `.claude/rules/error-handling.md` § Integration families —
+  Block H, only when `28-cliente-http.md` exists: one retrying layer, the retry allowlist, no
+  transport type past the adapter, tolerant remote DTOs, no credential in a versioned file
 - `.claude/rules/messaging.md`, `.claude/rules/observability.md` — Block M, only when
   `25-mensageria.md` exists. `observability.md` is cited here as well as in Block 3 on
   purpose: a Form B relay that dead-letters with nothing but a `log.warn` makes loss silent
@@ -100,6 +103,10 @@ from the destination map surveyed in the guardrail, never from a path written he
   filter chain, mechanism wiring, security handlers, role catalog — Block S only, when the spec
   carries the security block
 - `[application]/**` — application services (use cases)
+- `[http]/**` — outbound HTTP adapters (one subpackage per remote system), their remote DTOs
+  and client configuration, and the `shared` subpackage (failure translator, retry predicate,
+  engine customizer, outbound authentication wiring) — Block H only, when the spec carries the
+  outbound HTTP block. The integration families go to `[domain]` with the domain exceptions
 - `[messaging]/**` — Kafka producer/consumer adapters, payload records — Block M only,
   when the spec carries the messaging block
 - `[scheduling]/**` — scheduling wiring and job triggers — Block J only, when the spec carries
@@ -110,7 +117,7 @@ from the destination map surveyed in the guardrail, never from a path written he
   § Migrations
 - `src/main/resources/` — application-[feature].yml
 - `pom.xml` — **only** a dependency the spec declares as a requirement (the security
-  partial's § 8, the messaging partial's § 7, the jobs partial's § 7, the persistence one's equivalent, or the tests
+  partial's § 8, the outbound HTTP partial's § 8, the messaging partial's § 7, the jobs partial's § 7, the persistence one's equivalent, or the tests
   partial's § 5 — test scope), one `<dependency>` element per row,
   with no version when the Boot parent manages it. Nothing else in the file: not a plugin,
   not a property, not a version bump. Until lessons-learned-013 § 10 no participant in the
@@ -159,7 +166,7 @@ Before writing code:
    consolidated spec carries them. Either absent is normal, not a defect — `new-feature`'s
    messaging or jobs step was skipped (no external delivery, no scheduled work)
 3b. **Declared dependencies present** — each block that applies names its build dependencies or
-   says `none`. Persistence always; messaging and jobs whenever the spec carries their block. **Absent is not
+   says `none`. Persistence always; outbound HTTP, messaging and jobs whenever the spec carries their block. **Absent is not
    `none`:** `none` is a decision, absence is a gap, and the list is the only thing entitling
    this agent to touch `pom.xml`. Missing → spec defect, report and stop. Consolidation gates
    this too; this check is what stops a spec approved before that gate existed from becoming a
@@ -298,7 +305,7 @@ reference, never invoked as a separate turn. This agent stays the single writer 
 (invariant 2), exactly as when it reads a `templates/*.example` exemplar from any of the
 design skills.
 
-**The spec decides; this agent implements.** Before Block 1, and again before Block 3,
+**The spec decides; this agent implements.** Before Block 1, and again before Block H, Block 3,
 Block M and Block J, read the spec's `## Design patterns` rows for the layer that block
 implements. Each row names the pattern, the force that justified it, and the classes it
 creates — those classes are already in the block's components. Shape them after the row's
@@ -422,6 +429,66 @@ Compilation: `./mvnw -q -pl <persistence-module> test-compile` in multi-module, 
 - Migration: V3__create_orders (order, order_items, constraints)
 - YAML: hibernate.dialect, batch_size=20, fetch_size=50
 - Files: 5 classes + 1 .sql, 0 errors
+```
+
+### Block H: Outbound HTTP (steps H1-H3, conditional)
+
+**Runs only when the spec carries the outbound HTTP block** — `grep -m1 -E '^## [0-9.]+ Outbound HTTP' <spec>`,
+and the block is not `none`. No match, or `none` → skip to Block 3. Read the outbound HTTP block of
+spec.md, then `28-cliente-http.md`. It runs right after Block 2 because an adapter compiles against
+the outbound port and the domain types, and nothing upstream compiles against it. § 2 decides the
+client exemplar of each dependency in `.claude/skills/http-client-architect/templates/` — never a
+second client for a provider because a call looked easier with it:
+
+| `28-cliente-http.md` § 2 | Exemplar |
+|---|---|
+| HTTP interface (`@HttpExchange`) | `HttpExchangeAdapter.java.example` |
+| `RestClient` direct | `RestClientAdapter.java.example` |
+| OpenAPI Generator | `OpenApiGeneratedAdapter.java.example` + `openapi-generator-maven.xml.example` (or `-gradle.kts.example`) |
+| `WebClient` (stream) | `WebClientStreamAdapter.java.example` + `ReactorNettyConfig.java.example` |
+| OpenFeign (legacy) | `FeignClientAdapter.java.example` |
+
+- **H1 · Shared setup** — every component § 6 marks NEW or CHANGE: the integration families in
+  `[domain]` (`IntegrationExceptions.java.example`), the `shared` subpackage of `[http]`
+  (`HttpFailureTranslator.java.example` — its engine variant follows § 3), the engine customizer
+  of § 3, the outbound authentication wiring of § 4, and the three 5xx handlers in
+  `ApiExceptionHandler` (`rest-api-architect/templates/ApiExceptionHandler.java.example`) when
+  § 6 marks them. The dependencies of § 8 in `pom.xml` — exactly those rows, versions as the row
+  says, the Resilience4j BOM import where § 8 says so. The OpenAPI Generator plugin and its
+  versioned spec file under `src/main/resources/openapi/` only when § 2 chose it. A REUSE component
+  is not rewritten
+- **H2 · Adapters** — per dependency, its subpackage of `[http]`: remote DTOs (tolerant), the
+  client (interface and group configuration, or the qualified `RestClient`), the mapper, and the
+  adapter implementing the port `10-dominio.md` declared. Per row of § 1: the domain outcomes it
+  names, `@IdempotentCall` exactly on the methods § 1 marks idempotent, `@Retryable` with the
+  shared predicate and § 5's numbers only when § 5 names the adapter as the retrying layer, and
+  `ResilientHttpCall` only when § 5 names a breaker or a bulkhead. The idempotency key comes from
+  the domain value the port receives — never generated here
+- **H3 · Configuration** — the properties of § 7 in `application.yml` (shape in
+  `application-http-client.yml.example`), the engine pinned, every secret as an environment
+  placeholder with no default, never a literal
+
+Rules: `.claude/rules/http-client.md`, `.claude/rules/error-handling.md` § Integration families,
+`.claude/rules/architecture-ddd.md` § Adapters, `.claude/rules/logging.md` (outcome and latency,
+never a payload, a token or a key), `.claude/rules/observability.md` (URI templates).
+
+Validation, each item checkable:
+
+- the greps of `.claude/rules/http-client.md` § How to verify return what that section says;
+- no class outside `[http]` imports a client type (`RestClient`, `WebClient`, `@FeignClient`,
+  `org.apache.hc`), and no port signature carries one;
+- every `@Retryable` names `DependencyRetryPredicate`, and `@EnableResilientMethods` exists once;
+- every adapter method that sends an `Idempotency-Key` takes it from its parameters.
+
+Compilation: `./mvnw -q test-compile` (or `-pl <module that holds [http]>` in multi-module) ✅
+
+**Line in the final report:**
+```
+✅ Block H: Outbound HTTP complete (steps H1-H3)
+- payment-gateway: HTTP interface, Apache HttpClient 5 (NEW), OAuth2 client credentials (NEW)
+- Retry: adapter, 3 attempts; breaker and bulkhead: payment-gateway
+- Shared: integration families, translator, retry predicate (NEW)
+- Files: 11 classes, 0 errors
 ```
 
 ### Block 3: REST (steps 13-15)
@@ -737,6 +804,11 @@ Read § 5 of spec.md, then the partial it cites for the step at hand. Generates:
   (`.claude/skills/test-architect/templates/SecuredControllerTest.java.example`,
   `.claude/rules/authorization.md` § Tests). Existing controller tests the impact section names
   are updated in the same step: they import the chain and send a credential
+- When Block H ran: every case of `28-cliente-http.md` § 9 — through the outbound port against a
+  stub server on a real socket, never `MockRestServiceServer`; the attempt count asserted on the
+  stub, the family and `errorCode` on the exception
+  (`.claude/skills/test-architect/templates/HttpClientAdapterIT.java.example`,
+  `.claude/rules/http-client.md` § Tests)
 - When Block J ran: each job's use case is tested by calling its inbound port — never by
   waiting for a scheduler; the prune's service with a gateway fake that returns full batches
   then a short one; and one context test asserting that, under the test profile, no trigger

@@ -54,6 +54,7 @@ into context on each read of the hook.
 | `scheduling.md` | Jobs on their own clock: trigger as a driving adapter, fixed delay vs rate, cron zone, on/off property off in tests, pool size, coordination across instances and lock bounds, missed runs, bounded passes, last-success metric, retention enforced by a job | `grep` from § How to verify + unit tests through the inbound port |
 | `personal-data.md` | Personal data at rest and in transit: what counts as personal data, payload columns and retention, the minimum a receiver needs, the recorded decision when a value must cross in clear | `grep` from § How to verify + the design record it requires |
 | `authorization.md` | Authentication and authorization at the entry boundary, servlet stack: where each check lives (roles at the boundary, ownership in the use case), deny by default and the public exceptions, one mechanism per kind of caller and what each must validate, stateless/CSRF/CORS/headers, 401 and 403 bodies, credentials kept out of files and logs, the three-way endpoint proof | `grep` from § How to verify + contract tests through the real filter chain |
+| `http-client.md` | Calling another service over HTTP: outbound adapter boundary and tolerant reader, client choice, engine and pool pinned, explicit timeouts, one retrying layer and the retry allowlist, failures mapped by "was the request sent?", resilience, outbound credentials, TLS and SSRF, bounded consumption, URI templates, tests against a real socket | `grep` from § How to verify + integration tests against a stub server |
 
 `personal-data.md` loads on every Java source and every migration, not on one boundary
 package: the field that leaked was decided in a domain event, and its name did not say what
@@ -65,7 +66,7 @@ blueprint's `architecture_paths` and are written into the file that bootstrap co
 the generated project. See `@.claude/blueprints/_schema.md`.
 
 The rules whose territory is a package — `api-rest.md`, `persistence.md`,
-`value-objects.md`, `observability.md`, `messaging.md`, `scheduling.md`, `authorization.md` — have a `paths` here that serves as an example
+`value-objects.md`, `observability.md`, `messaging.md`, `scheduling.md`, `authorization.md`, `http-client.md` — have a `paths` here that serves as an example
 and is **rewritten at generation time** from the active blueprint's `packages.map`. The
 name of the entry-layer package changes from architecture to architecture
 (`adapter/in/rest` in one, `infrastructure/rest` in another), and a glob copied verbatim

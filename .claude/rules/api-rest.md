@@ -135,7 +135,15 @@ Domain types to statuses:
 | `ValidationException` | 400 |
 | `BusinessRuleViolationException` | 422 |
 | `ConflictException` | 409 |
+| `DependencyResponseException` | 502 |
+| `DependencyUnavailableException` | 503, with `Retry-After` from the exception's announced wait when present |
+| `OutcomeUnknownException` | 504 |
 | Unmapped | 500 |
+
+The three integration families (`@.claude/rules/error-handling.md` § Integration families) are
+where the rows of § Errors — 500 family come from: generic `detail`, `traceId`, and `errorCode` like
+every other error coming from the domain package. The `dependency` never appears in the body — which
+system failed is the log's business, not the caller's.
 
 Body fields: the five from RFC 7807 (`type`, `title`, `status`, `detail`, `instance`)
 plus three extensions, and no others:

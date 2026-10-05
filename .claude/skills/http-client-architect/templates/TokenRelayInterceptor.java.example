@@ -1,0 +1,87 @@
+/*
+ * EXEMPLAR — outbound authentication, TOKEN RELAY: the call carries the bearer token of the user
+ * whose request triggered it, so the provider authorizes the USER, not this service. Only for a
+ * provider in the same trust domain that accepts the same token — same issuer, and this token's
+ * audience includes it.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Outbound authentication
+ *
+ * WHEN NOT TO USE IT — the partial decides, and these send it elsewhere:
+ *  - the provider expects a different audience → token exchange (RFC 8693), Spring Security's
+ *    `TokenExchangeOAuth2AuthorizedClientProvider` behind the manager of
+ *    `OAuth2ClientCredentialsConfig.java.example`; relaying a token to an audience it was not issued
+ *    for is how a token leaks its privileges;
+ *  - the call runs on a job, a listener or after the request ended → there is no user token;
+ *    client credentials;
+ *  - the provider is a third party → never; a user's token never leaves the trust domain.
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the token is read from the security context of the CURRENT thread, at call time — never
+ *    captured in a field;
+ *  - no token, no header: the provider's 401 surfaces through the translator as a bad response
+ *    (`DependencyResponseException`), and the missing user is a design error, not a retry;
+ *  - attached to one group only (`filterByName`), never to every outbound call.
+ *
+ * Requires the resource-server side of `security-architect` (the incoming bearer token).
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- shared/BearerTokenRelayInterceptor.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.io.IOException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken;
+
+public class BearerTokenRelayInterceptor implements ClientHttpRequestInterceptor {
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+            throws IOException {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof AbstractOAuth2TokenAuthenticationToken<?> bearer) {
+            request.getHeaders().setBearerAuth(bearer.getToken().getTokenValue());
+        }
+        return execution.execute(request, body);
+    }
+}
+
+// --- inventory/InventoryClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.inventory;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.BearerTokenRelayInterceptor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+@Configuration
+@ImportHttpServices(group = "inventory", types = InventoryHttpService.class)
+class InventoryClientConfig {
+
+    @Bean
+    RestClientHttpServiceGroupConfigurer inventoryTokenRelay() {
+        return groups -> groups.filterByName("inventory")
+                .forEachClient((group, builder) -> builder.requestInterceptor(new BearerTokenRelayInterceptor()));
+    }
+}
+
+// --- inventory/InventoryHttpService.java
+package com.exemplo.minhaapi.adapter.out.http.inventory;
+
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.service.annotation.GetExchange;
+import org.springframework.web.service.annotation.HttpExchange;
+
+@HttpExchange("/v1/stock")
+interface InventoryHttpService {
+
+    @GetExchange("/{sku}")
+    String stockOf(@PathVariable String sku);
+}

@@ -2,9 +2,9 @@
 
 Primary source: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, the design skills (`use-case-design`,
-`domain-modeling`, `rest-api-architect`, `security-architect`, `messaging-architect`, `jobs-architect`,
-`persistence-architect`, `test-architect`), and the `guard` mode of
-`.claude/hooks/ArchHook.java`.
+`domain-modeling`, `rest-api-architect`, `security-architect`, `http-client-architect`,
+`messaging-architect`, `jobs-architect`, `persistence-architect`, `test-architect`), and the
+`guard` mode of `.claude/hooks/ArchHook.java`.
 
 ## What it does
 
@@ -84,6 +84,7 @@ sequenceDiagram
     participant DOM as skill: domain-modeling
     participant REST as skill: rest-api-architect
     participant SEC as skill: security-architect
+    participant HTTP as skill: http-client-architect
     participant MSG as skill: messaging-architect
     participant JOBS as skill: jobs-architect
     participant PER as skill: persistence-architect
@@ -104,6 +105,9 @@ sequenceDiagram
         NF->>REST: 30-rest.md (+ schema requirements)
         opt Access asks for something the filter chain doesn't already give
             NF->>SEC: 32-seguranca.md
+        end
+        opt 10-dominio.md declares a port of kind external HTTP
+            NF->>HTTP: 28-cliente-http.md
         end
         opt external event delivery
             NF->>MSG: 25-mensageria.md
@@ -143,9 +147,10 @@ sequenceDiagram
 | 2 | `domain-modeling` | 1 | `10-dominio.md` — owns exception names |
 | 3 | `rest-api-architect` | 1, 2 | `30-rest.md` — including the schema requirements transport creates |
 | optional | `security-architect` | 1, 2, 3, and `00-caso-de-uso.md`'s `Access` row | `32-seguranca.md` — mechanism, access per endpoint, the `permitAll` list, ownership, 401/403, CORS/Actuator/OpenAPI exposure |
+| optional | `http-client-architect` | 2, when `10-dominio.md` declares a port of kind `external HTTP` | `28-cliente-http.md` — client and engine, timeouts, retrying layer and resilience, outbound authentication, the integration failure table per operation, declared dependencies, and the WireMock test cases |
 | optional | `messaging-architect` | 2, if external delivery | `25-mensageria.md` |
-| optional | `jobs-architect` | 1 (schedule trigger), or messaging's Form B, or a deferred job | `35-jobs.md` — tool, trigger/cadence, cluster coordination, overlap/misfire, gate property, job metrics; owns the outbox relay's schedule and the prune job |
-| 4 | `persistence-architect` | 1, 2, 3, security, and messaging/jobs when they ran | `20-persistencia.md` — migration SQL inside it; reads `32-seguranca.md` § 7 (a credentials or API-key store) when security-architect ran, and `35-jobs.md`'s tool tables (`shedlock`, `QRTZ_*`, `BATCH_*`) as schema requirements and its replica count for the outbox claim strategy, when jobs-architect ran |
+| optional | `jobs-architect` | 1 (schedule trigger), messaging's Form B, a reconciliation pass `28-cliente-http.md` § 10 asks for, or a deferred job | `35-jobs.md` — tool, trigger/cadence, cluster coordination, overlap/misfire, gate property, job metrics; owns the outbox relay's schedule and the prune job |
+| 4 | `persistence-architect` | 1, 2, 3, security, http-client, and messaging/jobs when they ran | `20-persistencia.md` — migration SQL inside it; reads `32-seguranca.md` § 7 (a credentials or API-key store) when security-architect ran, `28-cliente-http.md` § 10 (a stored idempotency key or an unknown-outcome column) when http-client-architect ran, and `35-jobs.md`'s tool tables (`shedlock`, `QRTZ_*`, `BATCH_*`) as schema requirements and its replica count for the outbox claim strategy, when jobs-architect ran |
 | 5 | `test-architect` | 1–4 | `40-testes.md` |
 | — | `new-feature` (consolidation) | all above | `UC-NNN-spec.md` |
 | 6 | `java-spring-boot-developer` (agent) | `approved` spec | code and migrations in `src/**` |
@@ -164,7 +169,8 @@ from `docker-compose.yml`, it records the pending service in the partial and rep
 `.claude/decisions/0058-skill-classes-territory-schema.md`.
 
 **Design patterns are decided inside that phase too.** `domain-modeling`,
-`persistence-architect`, `rest-api-architect`, `security-architect`, `messaging-architect` and `jobs-architect`
+`persistence-architect`, `rest-api-architect`, `security-architect`, `http-client-architect`,
+`messaging-architect` and `jobs-architect`
 each read `gof-design-patterns` § Design-time use — read, never invoked: it is a `build`
 skill — and write a `## Design patterns` section into their own partial: the spec line or
 `file:line` that forces the pattern, the pattern, the classes and interfaces it creates, the
@@ -229,6 +235,7 @@ writes one spec where every row names its source — an approved spec or a rule.
 | Fact | Who wins |
 |---|---|
 | HTTP path, verb, status, body shape | `30-rest.md` |
+| Client, engine and pool, timeouts, retrying layer, breaker and bulkhead, outbound authentication | `28-cliente-http.md` |
 | Table, column, key, index, migration | `20-persistencia.md` |
 | Topic, serialization, delivery guarantee, consumer retry/DLQ | `25-mensageria.md` |
 | The outbox table, its columns, the claim query, attempt ceiling/backoff, and retention window | `20-persistencia.md` — messaging **declares** that the case needs an outbox and which guarantee the relay must honour, and never a column name. A § 6 row naming columns is a divergence, and a column decision that would drop the declared guarantee **stops** the pipeline instead of being settled by precedence |

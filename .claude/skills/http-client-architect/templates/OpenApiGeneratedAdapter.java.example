@@ -1,0 +1,124 @@
+/*
+ * EXEMPLAR — outbound HTTP adapter over interfaces GENERATED from the provider's OpenAPI document
+ * (`openapi-generator-maven.xml.example` / `openapi-generator-gradle.kts.example`). The generated
+ * `QuotesApi` is an ordinary `@HttpExchange` interface: it is registered and configured exactly like
+ * the hand-written one of `HttpExchangeAdapter.java.example`, and every rule of that exemplar holds.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (Boundary, Contract, Failures)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the generated interface and models are imported ONLY by this subpackage; the port and the
+ *    domain never see `generated.model.Quote` — the mapper is the anti-corruption layer, same as for
+ *    a hand-written DTO;
+ *  - the generated interface returns `ResponseEntity<Quote>`; the adapter reads the body and treats
+ *    an empty one as a bad response, never as a null passed inward;
+ *  - an enum value the provider adds later arrives as `UNKNOWN_DEFAULT_OPEN_API` (`enumUnknownDefaultCase`)
+ *    and is mapped to the domain's `UNKNOWN` like any other unrecognized value;
+ *  - what generation does not give you is written by hand, here: the `Idempotency-Key` value,
+ *    retry, failure translation, timeouts — the document describes the API, not how to call it safely.
+ *
+ * Each `// --- <File>.java` block is its own file; `generated.*` is not — it is build output.
+ */
+
+// --- TaxQuotePort.java (declared by domain-modeling, in application/port/out)
+package com.exemplo.minhaapi.application.port.out;
+
+import com.exemplo.minhaapi.domain.model.order.IdempotencyKey;
+import com.exemplo.minhaapi.domain.model.order.Money;
+import com.exemplo.minhaapi.domain.model.order.TaxQuote;
+
+public interface TaxQuotePort {
+
+    TaxQuote quote(Money amount, String region, IdempotencyKey idempotencyKey);
+}
+
+// --- taxservice/TaxServiceClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.taxservice;
+
+import com.exemplo.minhaapi.adapter.out.http.taxservice.generated.api.QuotesApi;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+@Configuration
+@ImportHttpServices(group = "tax-service", types = QuotesApi.class)
+class TaxServiceClientConfig {
+}
+
+// --- taxservice/TaxServiceMapper.java
+package com.exemplo.minhaapi.adapter.out.http.taxservice;
+
+import com.exemplo.minhaapi.adapter.out.http.taxservice.generated.model.Quote;
+import com.exemplo.minhaapi.adapter.out.http.taxservice.generated.model.QuoteRequest;
+import com.exemplo.minhaapi.domain.model.order.Money;
+import com.exemplo.minhaapi.domain.model.order.TaxQuote;
+import com.exemplo.minhaapi.domain.model.order.TaxQuoteStatus;
+import org.springframework.stereotype.Component;
+
+@Component
+class TaxServiceMapper {
+
+    QuoteRequest toRequest(Money amount, String region) {
+        QuoteRequest request = new QuoteRequest();
+        request.setAmount(amount.amount());
+        request.setRegion(region);
+        return request;
+    }
+
+    TaxQuote toDomain(Quote quote) {
+        return new TaxQuote(quote.getId(), quote.getTax(), toStatus(quote.getStatus()));
+    }
+
+    private static TaxQuoteStatus toStatus(Quote.StatusEnum status) {
+        if (status == null) {
+            return TaxQuoteStatus.UNKNOWN;
+        }
+        return switch (status) {
+            case FINAL -> TaxQuoteStatus.FINAL;
+            case PROVISIONAL -> TaxQuoteStatus.PROVISIONAL;
+            default -> TaxQuoteStatus.UNKNOWN;
+        };
+    }
+}
+
+// --- taxservice/TaxServiceAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.taxservice;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.DependencyRetryPredicate;
+import com.exemplo.minhaapi.adapter.out.http.shared.HttpFailureTranslator;
+import com.exemplo.minhaapi.adapter.out.http.shared.IdempotentCall;
+import com.exemplo.minhaapi.adapter.out.http.taxservice.generated.api.QuotesApi;
+import com.exemplo.minhaapi.adapter.out.http.taxservice.generated.model.Quote;
+import com.exemplo.minhaapi.application.port.out.TaxQuotePort;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.model.order.IdempotencyKey;
+import com.exemplo.minhaapi.domain.model.order.Money;
+import com.exemplo.minhaapi.domain.model.order.TaxQuote;
+import org.springframework.resilience.annotation.Retryable;
+import org.springframework.stereotype.Component;
+
+@Component
+class TaxServiceAdapter implements TaxQuotePort {
+
+    private final QuotesApi quotes;
+    private final TaxServiceMapper mapper;
+    private final HttpFailureTranslator failures = new HttpFailureTranslator("tax-service", "TAX_SERVICE");
+
+    TaxServiceAdapter(QuotesApi quotes, TaxServiceMapper mapper) {
+        this.quotes = quotes;
+        this.mapper = mapper;
+    }
+
+    @Override
+    @IdempotentCall
+    @Retryable(predicate = DependencyRetryPredicate.class, maxRetries = 2, delay = 200, multiplier = 2,
+            maxDelay = 2000, jitter = 100)
+    public TaxQuote quote(Money amount, String region, IdempotencyKey idempotencyKey) {
+        Quote quote = failures.call(() ->
+                quotes.createQuote(idempotencyKey.value().toString(), mapper.toRequest(amount, region)).getBody());
+        if (quote == null) {
+            throw new DependencyResponseException("TAX_SERVICE_EMPTY_BODY", "tax-service",
+                    "tax-service answered without a quote", null);
+        }
+        return mapper.toDomain(quote);
+    }
+}

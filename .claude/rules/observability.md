@@ -7,6 +7,8 @@ paths:
   - "**/infrastructure/messaging/**"
   - "**/adapter/in/scheduling/**"
   - "**/infrastructure/scheduling/**"
+  - "**/adapter/out/http/**"
+  - "**/infrastructure/http/**"
 status: active
 ---
 

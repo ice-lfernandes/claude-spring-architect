@@ -91,6 +91,10 @@ packages:
     # into `app` until a project needs build isolation for it, same reasoning as
     # hexagonal's bootstrap-embedded `adapter.in.scheduling` — decision 0087.
     app.scheduling: "app.scheduling"
+    # Outbound HTTP adapters implement a `domain.gateway` Gateway and compile into `app`, the
+    # composition root, for the same reason `app.scheduling` does: no ring module owns them yet,
+    # and `app/**` is already an architecture path — decision 0121.
+    app.http: "app.http"
     commons.logging: "commons.logging"
 
 # Naming convention for this blueprint (specific to onion, not universal — see

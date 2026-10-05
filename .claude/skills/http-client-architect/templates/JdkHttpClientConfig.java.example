@@ -1,0 +1,45 @@
+/*
+ * EXEMPLAR — the ALTERNATIVE engine: the JDK's `java.net.http.HttpClient`, no extra dependency.
+ * Chosen only when `28-cliente-http.md` § 3 records why Apache HttpClient 5 is not wanted (an image
+ * that must not grow, a policy against the dependency) — the decision matrix in
+ * `references/client-decision-matrix.md` § Engine.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Engine and pool, § Timeouts
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the JDK client has NO connect timeout and NO request timeout by default — it waits forever.
+ *    Boot applies `spring.http.clients.connect-timeout` / `read-timeout` (and the per-group ones)
+ *    through `HttpClientSettings`; this exemplar only makes sure nothing else is left at default;
+ *  - its pool has no size limit and is tuned only by system properties: the keep-alive below the
+ *    server's or load balancer's idle timeout is `jdk.httpclient.keepalive.timeout`, set at JVM
+ *    start (`JAVA_TOOL_OPTIONS`), not here — the partial records the value;
+ *  - virtual threads as the executor of the client's own asynchronous work;
+ *  - HTTP/2 only when the provider supports it; `HTTP_1_1` is the safe default.
+ *
+ * VARIANT in `HttpFailureTranslator.java.example`: the connect timeout of this engine is
+ * `java.net.http.HttpConnectTimeoutException`, not Apache's.
+ *
+ * A customizer of the builder Boot creates, typed to the JDK builder: it applies only when
+ * `spring.http.clients.imperative.factory: jdk` pins the engine — without the pin it is skipped in silence.
+ *
+ * PACKAGE: the `.http` entry of `packages.map`, subpackage `shared`.
+ */
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.net.http.HttpClient;
+import java.util.concurrent.Executors;
+import org.springframework.boot.http.client.JdkClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.autoconfigure.ClientHttpRequestFactoryBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class JdkHttpClientConfig {
+
+    @Bean
+    ClientHttpRequestFactoryBuilderCustomizer<JdkClientHttpRequestFactoryBuilder> jdkHttpClient() {
+        return builder -> builder
+                .withExecutor(Executors.newVirtualThreadPerTaskExecutor())
+                .withHttpClientCustomizer(client -> client.version(HttpClient.Version.HTTP_1_1));
+    }
+}

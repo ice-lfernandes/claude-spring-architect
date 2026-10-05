@@ -84,6 +84,9 @@ packages:
     # module gets its own `<module>.internal.adapter.scheduling` later, same pattern as
     # `adapter.rest`/`adapter.persistence`.
     adapter.scheduling: "shared.internal.adapter.scheduling"
+    # Outbound HTTP adapters, same rank as `adapter.persistence` — decision 0121. A real module
+    # gets its own `<module>.internal.adapter.http` later.
+    adapter.http: "shared.internal.adapter.http"
     bootstrap.config: "config"
     # Cross-cutting logging/masking annotations + AOP aspects (rules/logging.md) — not
     # a new bounded-context module. Placed under `shared` itself, one level OUT of

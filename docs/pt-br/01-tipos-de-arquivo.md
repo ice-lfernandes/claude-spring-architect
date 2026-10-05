@@ -20,7 +20,8 @@ comando: `.claude/skills/arch-doctor/SKILL.md` cria `/arch-doctor`.
 **Propósito:** empacotar um procedimento — uma checklist ou um fluxo que, de outra
 forma, seria colado repetidamente no chat. Neste repositório, cada skill de design
 (`use-case-design`, `domain-modeling`, `persistence-architect`, `rest-api-architect`,
-`security-architect`, `messaging-architect`, `jobs-architect`, `test-architect`) é dona de uma única camada da spec de uma feature; `project-bootstrap`
+`security-architect`, `http-client-architect`, `messaging-architect`, `jobs-architect`,
+`test-architect`) é dona de uma única camada da spec de uma feature; `project-bootstrap`
 é dona do procedimento de 8 passos que gera um projeto do zero.
 
 **Quando entra em contexto:** só quando invocada. Ao contrário de um `CLAUDE.md`, o
@@ -77,7 +78,7 @@ skill pertence a exatamente uma das sete classes, e a classe declara duas coisas
 
 | Classe | Skills | Território de escrita |
 |---|---|---|
-| `design` | as 7 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
+| `design` | as 9 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
 | `orchestrator` | `new-feature`; `init-project` | `docs/**` do caso de uso; `init-project` não escreve nada (delega) |
 | `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/`, só o build file raiz e `.github/workflows/` |
 | `observer` | `arch-doctor`, `audit-usage` | nada |
