@@ -13,8 +13,8 @@ it is not a norm and is not loaded by any skill or hook.
 | 3 | Remaining blueprints, all satisfying `_schema.md` | ✅ `hexagonal`, `clean-architecture-multi-module`, `clean-architecture-single-module`, `layered`, `modular-monolith`, `onion`, `vertical-slice` done |
 | 4 | Feature skills (`use-case-design` → `domain-modeling` → `persistence-architect` → `rest-api-architect` → `test-architect`) | ✅ all 5 partials have an owner |
 | 5 | `new-feature` orchestrator + `java-spring-boot-developer` executor | ✅ end-to-end run against `demo-app`, gaps remediated in D24 |
-| 6 | Publication: README, LICENSE, cross-platform CI | ✅ only missing examples with real output |
-| 7 | Post-bootstrap extension skills (`docker-architect`, `messaging-architect`, `jobs-architect`, `git-publish`, `arch-adopt`, `audit-usage`) and meta-tooling (`claude-code-architect-designer`, now also deciding MCP server placement, hooks and `permissions`) | ✅ done; more triggered by real symptoms as they show up |
+| 6 | Publication: README, LICENSE, `SECURITY.md`, cross-platform CI, a tag per merged PR, GitHub Releases from `v0.15.0` | ✅ only missing examples with real output |
+| 7 | Post-bootstrap extension skills (`docker-architect`, `messaging-architect`, `jobs-architect`, `security-architect`, `sonarqube-setup`, `git-publish`, `arch-adopt`, `audit-usage`), the issue loop (`sonar-lessons`, `report-issue`, `triage-issue`) and meta-tooling (`claude-code-architect-designer`, now also deciding MCP server placement, hooks and `permissions`) | ✅ done; more triggered by real symptoms as they show up |
 | 8 | Multi-agent generated project: the project a team uses daily also guides GitHub Copilot (and other `AGENTS.md` readers), from the same sources, in this repository | ⬜ planned — see § Multi-agent portability |
 
 Deliberate order: rules come **before** skills. Writing skills first leads to rules
@@ -51,7 +51,8 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] `scheduling.md` (trigger shape, coordination across instances, bounded passes, job metrics)
 - [x] `personal-data.md` (personal data at rest and in transit)
 - [ ] `secrets.md` (planned — credentials in configuration and versioned files)
-- [ ] `authorization.md` (planned — authn/authz at the entry boundary)
+- [x] `authorization.md` (who may call an endpoint, how the caller authenticates, 401/403,
+      CORS, Actuator and Swagger exposure — servlet stack only; see 0112)
 - [ ] `git-workflow.md` (planned — branches, commit messages, PRs)
 
 ### Feature-design pipeline (`/new-feature`)
@@ -61,6 +62,8 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] `persistence-architect`
 - [x] `rest-api-architect`
 - [x] `test-architect`
+- [x] `security-architect` (optional step after REST, fires when the use case's `Access` row
+      asks for it — `32-seguranca.md`; see 0112)
 - [x] `new-feature` orchestrator + consolidation
 - [x] `messaging-architect` (optional step, fires when an event needs external delivery)
 - [x] `jobs-architect` (optional step — scheduling technology, cadence, coordination, the
@@ -82,6 +85,9 @@ copied inside them — exactly the duplication this design exists to avoid.
       `permissions` rules (Form 8), always with a decision record)
 - [x] `project-initializer` (agent driving `/init-project`; `Skill` tool added to chain
       into `git-publish` after a green build)
+- [x] `triage-issue` (verifies every claim of an issue against `HEAD`, never taking its
+      diagnosis or fix as true; comments and labels only after confirmation; see 0103)
+- [x] `issue-verifier` (read-only agent of class `verifier`, invoked by `triage-issue`)
 
 ### Copied into every generated project
 
@@ -92,6 +98,13 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] `arch-adopt` (installs or updates this `.claude/` in a project, through `export`)
 - [x] `audit-usage` (reads the execution trail back)
 - [x] `git-publish` (see Feature-design pipeline above)
+- [x] `sonarqube-setup` (scanner plugin, project key, server URL, CI step, a local
+      SonarQube container through `docker-architect`; chained by `project-bootstrap` and
+      `arch-adopt`; see 0091)
+- [x] `sonar-lessons` (turns the project's SonarQube analysis into a lessons-learned file
+      that names the template, norm or Checkstyle setting behind each group; see 0100)
+- [x] `report-issue` (files an issue on this repository from a description or a
+      lessons-learned file, behind a confirmation; see 0103)
 - [x] `archunit-installer` (agent, `test-architect`'s setup mode)
 - [x] `commons-logging-installer` (agent, `/new-feature`'s pre-flight)
 - [x] `ArchHook.java` + `ArchHook.jar` + `schemas/extensions.json`
@@ -116,6 +129,11 @@ copied inside them — exactly the duplication this design exists to avoid.
 - [x] CI — invariant 8 (no hardcoded Spring/Java version)
 - [x] CI — invariant 10 (recognized frontmatter fields have a single owner)
 - [x] CI — exemplar imports resolve against a real `start.spring.io` request
+- [x] Secret scan of `.mcp.json` `headers`/`env` (invariant 11, `ArchHook.java schema`)
+- [x] CI (`templates.yml`) — the Checkstyle configs reject what they claim, and the Java
+      templates copied verbatim compile and pass their tests in a fresh Initializr project
+      (see 0099)
+- [x] `release.yml` — every PR declares its bump level, and its merge leaves an annotated tag
 - [ ] CI — invariant 9 (generated project is self-contained) — half automated: `schema` checks the
       `export` manifest against disk and `export-determinism` exports every blueprint; a real
       generated project compiling is still checked by hand
@@ -160,11 +178,14 @@ mixed team reports a gap it did not close.
 ### Documentation
 
 - [x] README (EN)
-- [x] `docs/` PT-BR (`00-visao-geral`, `01-tipos-de-arquivo`, `02-init-project`, `03-new-feature`, `04-arch-doctor`, `05-blueprints`, `06-claude-code-architect-designer`, `07-ci-validate`, `08-audit-usage`, `09-diferenciais`, `10-arch-adopt`, `11-pitfalls`)
+- [x] `docs/` PT-BR (`00-visao-geral`, `01-tipos-de-arquivo`, `02-init-project`, `03-new-feature`, `04-arch-doctor`, `05-blueprints`, `06-claude-code-architect-designer`, `07-ci-validate`, `08-audit-usage`, `09-diferenciais`, `10-arch-adopt`, `11-pitfalls`, `12-issues`)
 - [x] `docs/en/` mirror of every PT-BR doc
 - [x] Comparison with neighboring GitHub projects and the list of differentiators (`docs/pt-br/09-diferenciais.md`, `docs/en/09-differentiators.md`; README § What this is, and what it is not)
 - [x] `blueprints/README.md` + `blueprints/README.pt-br.md` (architecture overview)
 - [x] LICENSE
+- [x] `SECURITY.md` (private vulnerability reporting, linked first in the issue chooser)
+- [x] `CONTRIBUTING.md`
+- [x] GitHub Releases with notes, from `v0.15.0`
 - [ ] Worked examples with real output (still a gap noted in phase 6)
 
 ## Future ideas
