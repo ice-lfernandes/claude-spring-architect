@@ -1,0 +1,53 @@
+/*
+ * EXEMPLAR — outbound authentication, MUTUAL TLS: the provider authenticates this service by its
+ * client certificate (open banking, payment networks, internal zero-trust meshes without a sidecar).
+ * This exemplar USES an SSL bundle; creating the bundle — where the certificate and key come from,
+ * rotation, `reload-on-update` — is transport security's design, not this skill's.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Outbound authentication, § Security
+ *
+ * TWO SHAPES:
+ *  1. HTTP-interface group → no Java. The group names the bundle:
+ *         spring.http.serviceclient.open-finance.ssl.bundle: open-finance-client
+ *     and the bundle is declared under `spring.ssl.bundle.pem.open-finance-client.*`
+ *     (`application-http-client.yml.example`), certificate and key from mounted files or
+ *     environment variables, never from a file in the repository.
+ *  2. `RestClient` direct → the bundle goes into `HttpClientSettings` on the project's engine, below.
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - TLS verification is never relaxed: no trust-all manager, no hostname verifier that returns true
+ *    — a bundle with the provider's CA in its truststore is the answer to a certificate error;
+ *  - the client certificate is presented only to the provider it was issued for: one bundle per
+ *    dependency, never a project-wide `spring.http.clients.ssl.bundle` that would hand it to every
+ *    outbound call.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- openfinance/OpenFinanceClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.openfinance;
+
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
+
+@Configuration
+class OpenFinanceClientConfig {
+
+    static final String CLIENT = "openFinanceRestClient";
+
+    @Bean
+    @Qualifier(CLIENT)
+    RestClient openFinanceRestClient(RestClient.Builder builder, ClientHttpRequestFactoryBuilder<?> engine,
+                                     SslBundles bundles, @Value("${app.http.open-finance.base-url}") String baseUrl) {
+        HttpClientSettings settings = HttpClientSettings.ofSslBundle(bundles.getBundle("open-finance-client"))
+                .withTimeouts(Duration.ofSeconds(2), Duration.ofSeconds(10));
+        return builder.baseUrl(baseUrl).requestFactory(engine.build(settings)).build();
+    }
+}

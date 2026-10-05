@@ -64,6 +64,8 @@ packages:
     infrastructure.messaging: "infrastructure.messaging"
     # Scheduling triggers (a driving adapter calling an input port) — decision 0087.
     infrastructure.scheduling: "infrastructure.scheduling"
+    # Outbound HTTP adapters (one subpackage per remote system, plus `shared`) — decision 0121.
+    infrastructure.http: "infrastructure.http"
     infrastructure.config: "infrastructure.config"
     commons.logging: "commons.logging"
 

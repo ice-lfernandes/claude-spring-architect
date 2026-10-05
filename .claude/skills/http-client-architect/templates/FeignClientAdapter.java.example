@@ -1,0 +1,146 @@
+/*
+ * EXEMPLAR — LEGACY ONLY: an outbound adapter on Spring Cloud OpenFeign, for a project adopted with
+ * Feign clients already in it. Spring Cloud OpenFeign is feature-complete (bug fixes only) and its
+ * own README points to Spring's HTTP Service Clients; new code never chooses it. A use case that
+ * touches a Feign client either keeps it under these rules or migrates it — the partial's § 2 says
+ * which, and the recipe is at the end of this header.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (every section applies to Feign unchanged)
+ *
+ * WHAT THIS EXEMPLAR SHOWS — the Feign-specific defaults that break the norm:
+ *  - Feign's default `Client` is `HttpURLConnection`, with no pool sizing; with `feign-hc5` on the
+ *    classpath and `spring.cloud.openfeign.httpclient.hc5.enabled=true` it runs on Apache HttpClient 5;
+ *  - timeouts per client in `spring.cloud.openfeign.client.config.<name>.connect-timeout` /
+ *    `read-timeout`, never left at Feign's defaults;
+ *  - `Retryer.NEVER_RETRY` stated explicitly: retry belongs to `@Retryable` on the adapter, one layer;
+ *  - transport failures arrive as `RetryableException` and statuses as `FeignException` — both
+ *    translated into the integration families here, the same table `HttpFailureTranslator` applies;
+ *  - `dismiss404` is not used: a 404 is decided per operation in the adapter, not globally.
+ *
+ * MIGRATION RECIPE, Feign → HTTP interface (`HttpExchangeAdapter.java.example`), per client:
+ *  1. `@FeignClient(name = "x")` interface → `@HttpExchange` interface; `@GetMapping`/`@PostMapping`
+ *     → `@GetExchange`/`@PostExchange`; `@RequestParam`, `@PathVariable`, `@RequestHeader`,
+ *     `@RequestBody` stay the same;
+ *  2. registration → `@ImportHttpServices(group = "x", types = …)`;
+ *  3. `spring.cloud.openfeign.client.config.x.*` → `spring.http.serviceclient.x.*` (base URL,
+ *     timeouts, default headers); a `RequestInterceptor` → a `ClientHttpRequestInterceptor` on the
+ *     group (`RestClientHttpServiceGroupConfigurer`);
+ *  4. this adapter's `FeignException` handling → `HttpFailureTranslator`; the port and its tests do
+ *     not change — that is the proof the migration kept behavior;
+ *  5. when the last Feign client is gone: `spring-cloud-starter-openfeign`, `feign-hc5` and
+ *     `@EnableFeignClients` leave the build.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- addresslookup/AddressLookupFeignClient.java
+package com.exemplo.minhaapi.adapter.out.http.addresslookup;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient(name = "address-lookup", configuration = AddressLookupFeignConfig.class)
+interface AddressLookupFeignClient {
+
+    @GetMapping("/v1/postcodes/{postcode}")
+    PostcodeResource byPostcode(@PathVariable("postcode") String postcode);
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record PostcodeResource(String postcode, String street, String city, String state) {
+    }
+}
+
+// --- addresslookup/AddressLookupFeignConfig.java
+package com.exemplo.minhaapi.adapter.out.http.addresslookup;
+
+import feign.Retryer;
+import org.springframework.context.annotation.Bean;
+
+/**
+ * Not a `@Configuration`: a Feign client configuration class that component scanning picks up is
+ * applied to EVERY Feign client of the project.
+ */
+class AddressLookupFeignConfig {
+
+    @Bean
+    Retryer retryer() {
+        return Retryer.NEVER_RETRY;
+    }
+}
+
+// --- addresslookup/AddressLookupAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.addresslookup;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.DependencyRetryPredicate;
+import com.exemplo.minhaapi.adapter.out.http.shared.IdempotentCall;
+import com.exemplo.minhaapi.application.port.out.AddressLookupPort;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
+import com.exemplo.minhaapi.domain.exception.IntegrationException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
+import com.exemplo.minhaapi.domain.model.address.Address;
+import com.exemplo.minhaapi.domain.model.address.Postcode;
+import feign.FeignException;
+import feign.RetryableException;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
+import java.util.Optional;
+import org.springframework.resilience.annotation.Retryable;
+import org.springframework.stereotype.Component;
+
+@Component
+class AddressLookupAdapter implements AddressLookupPort {
+
+    private static final String DEPENDENCY = "address-lookup";
+
+    private final AddressLookupFeignClient client;
+
+    AddressLookupAdapter(AddressLookupFeignClient client) {
+        this.client = client;
+    }
+
+    @Override
+    @IdempotentCall
+    @Retryable(predicate = DependencyRetryPredicate.class, maxRetries = 2, delay = 200, multiplier = 2,
+            maxDelay = 2000, jitter = 100)
+    public Optional<Address> find(Postcode postcode) {
+        try {
+            AddressLookupFeignClient.PostcodeResource found = client.byPostcode(postcode.value());
+            return Optional.of(new Address(found.street(), found.city(), found.state(), postcode));
+        } catch (FeignException.NotFound absent) {
+            return Optional.empty();
+        } catch (FeignException failure) {
+            throw translate(failure);
+        }
+    }
+
+    private static IntegrationException translate(FeignException failure) {
+        if (failure instanceof RetryableException transport && failure.status() < 0) {
+            Throwable cause = transport.getCause();
+            return cause instanceof ConnectException || cause instanceof UnknownHostException
+                    ? new DependencyUnavailableException("ADDRESS_LOOKUP_UNAVAILABLE", DEPENDENCY, "address-lookup could not be reached", failure)
+                    : new OutcomeUnknownException("ADDRESS_LOOKUP_OUTCOME_UNKNOWN", DEPENDENCY, "address-lookup did not answer in time", failure);
+        }
+        int status = failure.status();
+        if (status == 429 || status == 503) {
+            return new DependencyUnavailableException("ADDRESS_LOOKUP_UNAVAILABLE", DEPENDENCY, "address-lookup answered " + status, failure);
+        }
+        if (status == 502 || status == 504) {
+            return new OutcomeUnknownException("ADDRESS_LOOKUP_OUTCOME_UNKNOWN", DEPENDENCY, "address-lookup's gateway answered " + status, failure);
+        }
+        return new DependencyResponseException("ADDRESS_LOOKUP_BAD_RESPONSE", DEPENDENCY, "address-lookup answered " + status, failure);
+    }
+}
+
+// --- shared/FeignClientsConfig.java (once per project, while any Feign client remains)
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableFeignClients(basePackages = "com.exemplo.minhaapi.adapter.out.http")
+public class FeignClientsConfig {
+}

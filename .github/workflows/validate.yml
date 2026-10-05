@@ -591,12 +591,23 @@ jobs:
           curl -sS --fail --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
             https://start.spring.io/starter.tgz \
             -d type=maven-project -d language=java -d javaVersion=21 \
-            -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka,batch,quartz,security,oauth2-resource-server \
+            -d dependencies=web,data-jpa,flyway,validation,actuator,testcontainers,postgresql,lombok,kafka,batch,quartz,security,oauth2-resource-server,spring-restclient,spring-webclient,oauth2-client,cloud-feign \
             -o /tmp/starter.tgz
           mkdir -p /tmp/ref && tar xzf /tmp/starter.tgz -C /tmp/ref
           # micrometer-tracing-bridge-otel is managed by the Boot BOM: no version here,
           # which is what keeps this workflow from pinning a number that ages on its own.
-          sed -i 's|</dependencies>|<dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency></dependencies>|' /tmp/ref/pom.xml
+          # `0,/…/` edits only the first `</dependencies>`, the project's own block. `cloud-feign`
+          # makes the Initializr add a `<dependencyManagement>` with a second one; a plain `s|…|`
+          # also writes the version-less entries there, and a local managed entry with no version
+          # overrides the Boot BOM's — Maven then fails on `'dependencies.dependency.version' … is missing`.
+          sed -i '0,/<\/dependencies>/s|</dependencies>|<dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency></dependencies>|' /tmp/ref/pom.xml
+          # http-client-architect's exemplars (0121): Apache HttpClient 5 is managed by the Boot BOM, no
+          # version. Resilience4j and wiremock-spring-boot are not: their versions are read from Maven
+          # Central's maven-metadata.xml on every run, never written here (invariant 8).
+          R4J=$(curl -sS --fail --retry 3 https://repo1.maven.org/maven2/io/github/resilience4j/resilience4j-spring-boot4/maven-metadata.xml | grep -oE '<release>[^<]+' | sed 's/<release>//')
+          WMSB=$(curl -sS --fail --retry 3 https://repo1.maven.org/maven2/org/wiremock/integrations/wiremock-spring-boot/maven-metadata.xml | grep -oE '<release>[^<]+' | sed 's/<release>//')
+          test -n "$R4J" -a -n "$WMSB"
+          sed -i "0,/<\/dependencies>/s|</dependencies>|<dependency><groupId>org.apache.httpcomponents.client5</groupId><artifactId>httpclient5</artifactId></dependency><dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-spring-boot4</artifactId><version>$R4J</version></dependency><dependency><groupId>org.wiremock.integrations</groupId><artifactId>wiremock-spring-boot</artifactId><version>$WMSB</version><scope>test</scope></dependency></dependencies>|" /tmp/ref/pom.xml
           grep -m1 -A1 '<artifactId>spring-boot-starter-parent' /tmp/ref/pom.xml
 
       - name: build the classpath
@@ -618,7 +629,11 @@ jobs:
           # unchecked here. `security` and `oauth2-resource-server` are there because
           # security-architect's exemplars import both, and test-architect's secured
           # controller test imports the security test support the `security` entry adds (0112).
-          PREFIXES='^(org\.springframework|org\.testcontainers|jakarta|io\.micrometer|org\.junit|org\.assertj|org\.slf4j|org\.hibernate|lombok|org\.quartz)\.'
+          # `spring-restclient`, `spring-webclient`, `oauth2-client` and `cloud-feign`, plus the three
+          # artifacts added to the pom above, are there because http-client-architect's exemplars and
+          # test-architect's HttpClientAdapterIT import them (0121). The OpenAPI Generator plugin is a
+          # build plugin, not an import, and stays unchecked here.
+          PREFIXES='^(org\.springframework|org\.testcontainers|jakarta|io\.micrometer|org\.junit|org\.assertj|org\.slf4j|org\.hibernate|lombok|org\.quartz|org\.apache\.hc|io\.github\.resilience4j|reactor|feign|org\.wiremock|com\.github\.tomakehurst)\.'
           IMPORTS=$(grep -rhoE '^ *import (static )?[a-z][a-zA-Z0-9_.]+;' \
                       .claude/skills/*/templates/*.java.example \
                     | sed -E 's/^ *import (static )?//; s/;$//' | sort -u)

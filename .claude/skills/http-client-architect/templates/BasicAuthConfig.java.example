@@ -1,0 +1,68 @@
+/*
+ * EXEMPLAR — outbound authentication, HTTP BASIC: the provider accepts a username and password per
+ * request (common in older partner APIs and internal appliances). Only over TLS — Basic is the
+ * password in Base64, readable by anyone on the path.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Outbound authentication
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - Spring's own `BasicAuthenticationInterceptor`, never a hand-built `Authorization` header;
+ *  - username and password bound from configuration whose values are environment variables, the
+ *    record's `toString` masking the password;
+ *  - attached to one group only; the base URL of that group must be `https://` — the partial's § 4
+ *    records it and the integration test's base URL is the only `http://` allowed.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- legacyerp/LegacyErpCredentials.java
+package com.exemplo.minhaapi.adapter.out.http.legacyerp;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.legacy-erp")
+record LegacyErpCredentials(String username, String password) {
+
+    @Override
+    public String toString() {
+        return "LegacyErpCredentials[username=" + username + ", password=***]";
+    }
+}
+
+// --- legacyerp/LegacyErpClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.legacyerp;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.support.BasicAuthenticationInterceptor;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+@Configuration
+@EnableConfigurationProperties(LegacyErpCredentials.class)
+@ImportHttpServices(group = "legacy-erp", types = LegacyErpHttpService.class)
+class LegacyErpClientConfig {
+
+    @Bean
+    RestClientHttpServiceGroupConfigurer legacyErpBasicAuth(LegacyErpCredentials credentials) {
+        BasicAuthenticationInterceptor basic =
+                new BasicAuthenticationInterceptor(credentials.username(), credentials.password());
+        return groups -> groups.filterByName("legacy-erp")
+                .forEachClient((group, builder) -> builder.requestInterceptor(basic));
+    }
+}
+
+// --- legacyerp/LegacyErpHttpService.java
+package com.exemplo.minhaapi.adapter.out.http.legacyerp;
+
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.service.annotation.GetExchange;
+import org.springframework.web.service.annotation.HttpExchange;
+
+@HttpExchange("/api/customers")
+interface LegacyErpHttpService {
+
+    @GetExchange("/{code}")
+    String customer(@PathVariable String code);
+}

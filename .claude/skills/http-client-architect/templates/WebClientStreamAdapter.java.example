@@ -1,0 +1,131 @@
+/*
+ * EXEMPLAR — outbound adapter on `WebClient`, in a SERVLET application, for the one case
+ * `RestClient` does not cover: consuming a stream the provider pushes (Server-Sent Events,
+ * NDJSON) item by item. Engine: Reactor Netty, configured by `ReactorNettyConfig.java.example`.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (Client choice, Consumption, Failures)
+ *
+ * SCOPE — this is not reactive application code. A WebFlux application (reactive controllers,
+ * R2DBC, no blocking anywhere) is out of scope for this skill and has no norm in this project yet.
+ * Here the caller is an ordinary thread — a job, a listener, a use case — that consumes a bounded
+ * stream and blocks on its end, never on an event-loop thread. Fan-out of many calls in parallel is
+ * NOT a reason for this client: `RestClient` on virtual threads covers it.
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the `WebClient` comes from Boot's `WebClient.Builder` (observations, `traceparent`);
+ *  - the stream is bounded three ways: a time window (`take(Duration)`), an idle timeout between items, and a
+ *    maximum item count — an endless stream is the default otherwise;
+ *  - each item is handed to the sink as it arrives, never collected into a list;
+ *  - failures are translated with the same families as every other adapter: `WebClientResponseException`
+ *    carries the status, `WebClientRequestException` the transport cause.
+ *
+ * Dependencies: `spring-boot-starter-webclient` (Initializr `spring-webclient`), which brings
+ * Reactor Netty. The servlet stack stays the web server.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- pricefeed/PriceFeedClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.pricefeed;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.reactive.function.client.WebClient;
+
+@Configuration
+class PriceFeedClientConfig {
+
+    static final String CLIENT = "priceFeedWebClient";
+
+    @Bean
+    @Qualifier(CLIENT)
+    WebClient priceFeedWebClient(WebClient.Builder builder, @Value("${app.http.price-feed.base-url}") String baseUrl) {
+        return builder.baseUrl(baseUrl).build();
+    }
+}
+
+// --- pricefeed/PriceTick.java
+package com.exemplo.minhaapi.adapter.out.http.pricefeed;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.math.BigDecimal;
+import java.time.Instant;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+record PriceTick(String symbol, BigDecimal price, Instant at) {
+}
+
+// --- pricefeed/PriceFeedAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.pricefeed;
+
+import com.exemplo.minhaapi.application.port.out.PriceFeedPort;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
+import com.exemplo.minhaapi.domain.model.pricing.Quote;
+import java.net.ConnectException;
+import java.time.Duration;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
+@Component
+class PriceFeedAdapter implements PriceFeedPort {
+
+    private static final ParameterizedTypeReference<ServerSentEvent<PriceTick>> TICK = new ParameterizedTypeReference<>() {
+    };
+    private static final Duration DEADLINE = Duration.ofMinutes(5);
+    private static final Duration IDLE = Duration.ofSeconds(30);
+    private static final long MAX_ITEMS = 100_000;
+
+    private final WebClient client;
+
+    PriceFeedAdapter(@Qualifier(PriceFeedClientConfig.CLIENT) WebClient client) {
+        this.client = client;
+    }
+
+    @Override
+    public void consume(String symbol, Consumer<Quote> sink) {
+        client.get()
+                .uri("/v1/stream/{symbol}", symbol)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .retrieve()
+                .bodyToFlux(TICK)
+                .timeout(IDLE)
+                .take(DEADLINE)
+                .take(MAX_ITEMS)
+                .mapNotNull(ServerSentEvent::data)
+                .doOnNext(tick -> sink.accept(new Quote(tick.symbol(), tick.price(), tick.at())))
+                .onErrorMap(PriceFeedAdapter::translate)
+                .blockLast();
+    }
+
+    /**
+     * Runs inside the chain, so `blockLast` rethrows the integration family as it is. An idle gap
+     * longer than {@code IDLE} is a `TimeoutException`: the stream broke mid-way, outcome unknown.
+     */
+    private static Throwable translate(Throwable failure) {
+        if (failure instanceof WebClientResponseException status) {
+            int code = status.getStatusCode().value();
+            return code == 429 || code == 503
+                    ? new DependencyUnavailableException("PRICE_FEED_UNAVAILABLE", "price-feed", "price-feed answered " + code, status)
+                    : new DependencyResponseException("PRICE_FEED_BAD_RESPONSE", "price-feed", "price-feed answered " + code, status);
+        }
+        if (failure instanceof WebClientRequestException transport && transport.getCause() instanceof ConnectException) {
+            return new DependencyUnavailableException("PRICE_FEED_UNAVAILABLE", "price-feed", "price-feed could not be reached", transport);
+        }
+        if (failure instanceof WebClientRequestException || failure instanceof TimeoutException) {
+            return new OutcomeUnknownException("PRICE_FEED_OUTCOME_UNKNOWN", "price-feed", "price-feed stream broke", failure);
+        }
+        return failure;
+    }
+}

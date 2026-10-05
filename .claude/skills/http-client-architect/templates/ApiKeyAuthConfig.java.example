@@ -1,0 +1,90 @@
+/*
+ * EXEMPLAR — outbound authentication, API KEY: the provider issues a static key and expects it in a
+ * header (preferred) or a query parameter.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Outbound authentication
+ *
+ * TWO SHAPES, first match wins:
+ *  1. Key in a HEADER of an HTTP-interface group → no Java at all. The group property carries it,
+ *     and the value is an environment variable, never a literal:
+ *         spring.http.serviceclient.geocoding.default-header.X-Api-Key: ${GEOCODING_API_KEY}
+ *     (`application-http-client.yml.example`).
+ *  2. Key in a QUERY PARAMETER, or a key read at call time (rotated by a secret store) → the
+ *     interceptor below, attached to one group only.
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the key is bound from configuration whose value is an environment variable; the property
+ *    record never logs it (`toString` overridden) — `.claude/rules/logging.md` keeps secrets out of
+ *    logs, and a record prints every component by default;
+ *  - a key in the query string ends up in the provider's access logs and in our client metrics' URI
+ *    unless the URI is a template: the interceptor appends it AFTER the template was recorded;
+ *  - attached with `filterByName`, so no other provider ever receives it.
+ *
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- geocoding/GeocodingApiKeyProperties.java
+package com.exemplo.minhaapi.adapter.out.http.geocoding;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.geocoding")
+record GeocodingApiKeyProperties(String apiKey, String apiKeyParameter) {
+
+    @Override
+    public String toString() {
+        return "GeocodingApiKeyProperties[apiKey=***, apiKeyParameter=" + apiKeyParameter + "]";
+    }
+}
+
+// --- geocoding/GeocodingClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.geocoding;
+
+import java.net.URI;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.support.HttpRequestWrapper;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+import org.springframework.web.service.registry.ImportHttpServices;
+import org.springframework.web.util.UriComponentsBuilder;
+
+@Configuration
+@EnableConfigurationProperties(GeocodingApiKeyProperties.class)
+@ImportHttpServices(group = "geocoding", types = GeocodingHttpService.class)
+class GeocodingClientConfig {
+
+    @Bean
+    RestClientHttpServiceGroupConfigurer geocodingApiKey(GeocodingApiKeyProperties properties) {
+        ClientHttpRequestInterceptor apiKey = (request, body, execution) -> execution.execute(
+                withQueryParameter(request, properties.apiKeyParameter(), properties.apiKey()), body);
+        return groups -> groups.filterByName("geocoding")
+                .forEachClient((group, builder) -> builder.requestInterceptor(apiKey));
+    }
+
+    private static HttpRequest withQueryParameter(HttpRequest request, String name, String value) {
+        URI uri = UriComponentsBuilder.fromUri(request.getURI()).queryParam(name, value).build(true).toUri();
+        return new HttpRequestWrapper(request) {
+            @Override
+            public URI getURI() {
+                return uri;
+            }
+        };
+    }
+}
+
+// --- geocoding/GeocodingHttpService.java
+package com.exemplo.minhaapi.adapter.out.http.geocoding;
+
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.service.annotation.GetExchange;
+import org.springframework.web.service.annotation.HttpExchange;
+
+@HttpExchange("/v1/geocode")
+interface GeocodingHttpService {
+
+    @GetExchange
+    String geocode(@RequestParam("address") String address);
+}

@@ -17,6 +17,7 @@ file wins** and the losing value is listed in § Resolved divergences.
 | `10-dominio.md` | `domain-modeling` | ✅ |
 | `30-rest.md` | `rest-api-architect` | ✅ |
 | `32-seguranca.md` | `security-architect` | ✅ |
+| `28-cliente-http.md` | `http-client-architect` | — not applicable (no port of kind `external HTTP`) |
 | `20-persistencia.md` | `persistence-architect` | ✅ |
 | `25-mensageria.md` | `messaging-architect` | — not applicable (no external delivery) |
 | `35-jobs.md` | `jobs-architect` | — not applicable (no Form B, no scheduled trigger) |
@@ -64,6 +65,15 @@ materializes it verbatim.
 | Concurrency | `@Version` optimistic lock |
 | Migration | `V3__create_users.sql` — `<N>` re-checked on disk at implementation |
 | Shared tables | `idempotency_keys` — NEW (first creation `POST` of the project) |
+
+---
+
+## 3.3 Outbound HTTP — conditional, implement after 2
+
+none — `10-dominio.md` declares no port of kind `external HTTP`. When present: one line per
+dependency (client, engine, read timeout, retrying layer, authentication scheme), the shared
+setup NEW / REUSE, and the dependencies of `28-cliente-http.md` § 8 — detail in
+`28-cliente-http.md`. Implemented by the executor's Block H, right after Block 2.
 
 ---
 

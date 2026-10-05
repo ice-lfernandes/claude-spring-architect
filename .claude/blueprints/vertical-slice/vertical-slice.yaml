@@ -56,6 +56,7 @@ architecture_paths:
   - "**/domain/**/*.java"
   - "**/features/**/*.java"
   - "**/config/**/*.java"
+  - "**/integration/**/*.java"
 
 # A single element — layout: single-module — rule 5 of `_schema.md`. The slice
 # boundary (this blueprint's actual reason to exist) is not a Maven module at all —
@@ -87,6 +88,10 @@ packages:
     # and one place the scheduling norm's `paths` and grep look at (decision 0087). The
     # trigger calls the slice's handler; the slice keeps the logic.
     bootstrap.scheduling: "config.scheduling"
+    # Outbound HTTP clients are shared by every slice that calls the same remote system, so they do
+    # not live inline in a slice: one `integration` package, one subpackage per remote system plus
+    # `shared`. A slice's handler depends on the client's interface there — decision 0121.
+    integration.http: "integration"
 
 # Naming convention for this blueprint (specific to vertical-slice, not universal —
 # see .claude/rules/architecture-ddd.md for what IS universal, DDD, and
@@ -144,8 +149,11 @@ dependency_rules:
   direction: inward
   forbidden:
     - from: domain
+      to: [features, integration]
+      reason: "The shared kernel does not know about any feature that uses it, nor about the outbound HTTP clients — same universal rule as every other blueprint's domain module, architecture-ddd.md § Domain"
+    - from: integration
       to: [features]
-      reason: "The shared kernel does not know about any feature that uses it — same universal rule as every other blueprint's domain module, architecture-ddd.md § Domain"
+      reason: "An outbound HTTP client is called by slices and never calls back into one — it translates a remote system into the shared kernel's types (decision 0121)"
 
 # Real, compilable exemplars (not templates to swap mechanically).
 # The project base comes from Spring Initializr; these files provide the SHAPE.

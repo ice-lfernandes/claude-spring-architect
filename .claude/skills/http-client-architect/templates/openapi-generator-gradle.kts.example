@@ -1,0 +1,55 @@
+/*
+ * EXEMPLAR — the Gradle (Kotlin DSL) form of `openapi-generator-maven.xml.example`, for a project
+ * built with Gradle. Same options, same reasons — read that exemplar's header; they are not
+ * repeated here. Paired with `OpenApiGeneratedAdapter.java.example`.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ *
+ * VERSION: the plugin version is not managed by the Boot plugin. Resolve it from
+ * https://plugins.gradle.org/m2/org/openapi/generator/org.openapi.generator.gradle.plugin/maven-metadata.xml
+ * at write time and record it in the partial's § 8 — never written from memory.
+ *
+ * The generated directory is added to `main`, and `compileJava` depends on the generation, so a
+ * clean build never compiles against stale or missing interfaces.
+ */
+
+plugins {
+    id("org.openapi.generator") version "RESOLVED-AT-WRITE-TIME"
+}
+
+openApiGenerate {
+    inputSpec.set("$projectDir/src/main/resources/openapi/tax-service.yaml")
+    outputDir.set(layout.buildDirectory.dir("generated/openapi").get().asFile.path)
+    generatorName.set("spring")
+    library.set("spring-http-interface")
+    apiPackage.set("com.exemplo.minhaapi.adapter.out.http.taxservice.generated.api")
+    modelPackage.set("com.exemplo.minhaapi.adapter.out.http.taxservice.generated.model")
+    generateApiTests.set(false)
+    generateModelTests.set(false)
+    generateApiDocumentation.set(false)
+    generateModelDocumentation.set(false)
+    globalProperties.set(mapOf("apis" to "", "models" to ""))
+    configOptions.set(
+        mapOf(
+            "useSpringBoot4" to "true",
+            "useJackson3" to "true",
+            "interfaceOnly" to "true",
+            "skipDefaultInterface" to "true",
+            "useTags" to "true",
+            "openApiNullable" to "false",
+            "enumUnknownDefaultCase" to "true",
+            "useBeanValidation" to "false",
+            "annotationLibrary" to "none",
+            "documentationProvider" to "none",
+        ),
+    )
+}
+
+sourceSets {
+    main {
+        java.srcDir(layout.buildDirectory.dir("generated/openapi/src/main/java"))
+    }
+}
+
+tasks.named("compileJava") {
+    dependsOn(tasks.named("openApiGenerate"))
+}

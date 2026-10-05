@@ -1,0 +1,189 @@
+/*
+ * EXEMPLAR — integration test of an outbound HTTP adapter, for the cases `28-cliente-http.md` § 9
+ * lists. Suffix `IT`: it opens real sockets. Shape owned here; the cases are `http-client-architect`'s.
+ *
+ * A REAL SOCKET, NEVER `MockRestServiceServer`: the mock server replaces the request factory, so it
+ * proves nothing about the engine — not the timeout, not the pool, not a reset connection, not the
+ * bytes on the wire. WireMock listens on a port and the adapter's real client calls it.
+ * `wiremock-spring-boot` starts it per test class and writes its URL into the group's `base-url`
+ * property (`baseUrlProperties`), so the adapter runs with the production wiring and only the address
+ * changes.
+ *
+ * THROUGH THE PORT: the test injects the outbound port, never the HTTP interface or the adapter
+ * class — what it proves is what the use case will get. Exceptions are asserted by family AND
+ * `errorCode`; a `ResourceAccessException` or `HttpServerErrorException` escaping the port is the
+ * defect this test exists to catch.
+ *
+ * THE MANDATORY CASES (`.claude/rules/http-client.md` § Tests), one test each:
+ *   happy path            — the response mapped AND the request verified: header, body, URI
+ *   tolerant reader       — unknown field and unknown enum value do not break the mapping
+ *   404 on a lookup       — `Optional.empty()`
+ *   business rejection    — the provider's 422 Problem Details becomes the domain family
+ *   503                   — exactly the configured number of attempts (`verify(3, …)`)
+ *   503 + Retry-After     — exactly one attempt, the wait carried on the exception
+ *   400                   — exactly one attempt
+ *   delay > read timeout  — the timeout fires; outcome unknown
+ *   connection reset      — outcome unknown, never a client exception
+ * A non-idempotent call (no `@IdempotentCall`) adds: read timeout → exactly one attempt.
+ *
+ * CONTEXT: the project's full context, like every other `IT` — with the
+ * `TestcontainersConfiguration` import when the project has a database. The read timeout is lowered
+ * for this class only, so the timeout case runs in milliseconds; nothing else is overridden.
+ *
+ * DEPENDENCY: `org.wiremock.integrations:wiremock-spring-boot`, test scope. Not managed by the Boot
+ * parent: version resolved from Maven Central's `maven-metadata.xml` at write time and declared in
+ * `40-testes.md` § 5 — never from memory. Its WireMock must match the project's Jetty generation;
+ * the partial records the pair that ran green.
+ */
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.exemplo.minhaapi.application.port.out.PaymentGatewayPort;
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
+import com.exemplo.minhaapi.domain.model.payment.ChargeReference;
+import com.exemplo.minhaapi.domain.model.payment.ChargeStatus;
+import com.exemplo.minhaapi.domain.model.payment.IdempotencyKey;
+import com.exemplo.minhaapi.domain.model.payment.Money;
+import com.exemplo.minhaapi.domain.model.payment.PaymentId;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.http.Fault;
+import java.time.Duration;
+import java.util.Currency;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        properties = "spring.http.serviceclient.payment-gateway.read-timeout=300ms")
+@EnableWireMock(@ConfigureWireMock(name = "payment-gateway",
+        baseUrlProperties = "spring.http.serviceclient.payment-gateway.base-url"))
+class PaymentGatewayAdapterIT {
+
+    private static final PaymentId PAYMENT = new PaymentId(UUID.fromString("0190a3c2-7b1e-7c3a-9f2d-4a5b6c7d8e9f"));
+    private static final IdempotencyKey KEY = new IdempotencyKey(UUID.fromString("0190a3c2-7b1e-7c3a-9f2d-000000000001"));
+    private static final Money AMOUNT = new Money(1999, Currency.getInstance("BRL"));
+    private static final ChargeReference CHARGE = new ChargeReference("ch_123");
+
+    @InjectWireMock("payment-gateway")
+    private WireMockServer gateway;
+
+    @Autowired
+    private PaymentGatewayPort port;
+
+    @Test
+    @DisplayName("charge sends the fixed idempotency key and the mapped body, and maps the reference")
+    void chargeHappyPath() {
+        gateway.stubFor(post("/v1/charges").willReturn(okJson("{\"id\":\"ch_123\",\"status\":\"pending\"}")));
+
+        ChargeReference reference = port.charge(PAYMENT, AMOUNT, KEY);
+
+        assertThat(reference).isEqualTo(CHARGE);
+        gateway.verify(postRequestedFor(urlEqualTo("/v1/charges"))
+                .withHeader("Idempotency-Key", equalTo(KEY.value().toString()))
+                .withRequestBody(equalToJson(
+                        "{\"merchantReference\":\"" + PAYMENT.value() + "\",\"amountMinor\":1999,\"currency\":\"BRL\"}")));
+    }
+
+    @Test
+    @DisplayName("an unknown field and an unknown status do not break the mapping")
+    void tolerantReader() {
+        gateway.stubFor(get("/v1/charges/ch_123")
+                .willReturn(okJson("{\"id\":\"ch_123\",\"status\":\"chargeback_review\",\"riskScore\":12}")));
+
+        assertThat(port.findStatus(CHARGE)).contains(ChargeStatus.UNKNOWN);
+    }
+
+    @Test
+    @DisplayName("a 404 on a lookup is an empty result")
+    void notFoundIsEmpty() {
+        gateway.stubFor(get("/v1/charges/ch_123").willReturn(aResponse().withStatus(404)));
+
+        assertThat(port.findStatus(CHARGE)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the provider's 422 becomes the business rejection, read from the problem type")
+    void businessRejection() {
+        gateway.stubFor(post("/v1/charges").willReturn(aResponse().withStatus(422)
+                .withHeader("Content-Type", "application/problem+json")
+                .withBody("{\"type\":\"https://psp.example/problems/insufficient-funds\",\"status\":422}")));
+
+        assertThatThrownBy(() -> port.charge(PAYMENT, AMOUNT, KEY))
+                .isInstanceOfSatisfying(BusinessRuleViolationException.class, rejected -> {
+                    assertThat(rejected.errorCode()).isEqualTo("PAYMENT_DECLINED");
+                    assertThat(rejected.getMessage()).isEqualTo("https://psp.example/problems/insufficient-funds");
+                });
+        gateway.verify(1, postRequestedFor(urlEqualTo("/v1/charges")));
+    }
+
+    @Test
+    @DisplayName("a 503 is retried exactly the configured number of times, then surfaces as unavailable")
+    void serviceUnavailableIsRetried() {
+        gateway.stubFor(post("/v1/charges").willReturn(aResponse().withStatus(503)));
+
+        assertThatThrownBy(() -> port.charge(PAYMENT, AMOUNT, KEY))
+                .isInstanceOfSatisfying(DependencyUnavailableException.class,
+                        unavailable -> assertThat(unavailable.errorCode()).isEqualTo("PAYMENT_GATEWAY_UNAVAILABLE"));
+        gateway.verify(3, postRequestedFor(urlEqualTo("/v1/charges")));
+    }
+
+    @Test
+    @DisplayName("a 503 with Retry-After is not retried in-process, and carries the wait")
+    void retryAfterIsHonoured() {
+        gateway.stubFor(post("/v1/charges").willReturn(aResponse().withStatus(503).withHeader("Retry-After", "30")));
+
+        assertThatThrownBy(() -> port.charge(PAYMENT, AMOUNT, KEY))
+                .isInstanceOfSatisfying(DependencyUnavailableException.class,
+                        unavailable -> assertThat(unavailable.retryAfter()).contains(Duration.ofSeconds(30)));
+        gateway.verify(1, postRequestedFor(urlEqualTo("/v1/charges")));
+    }
+
+    @Test
+    @DisplayName("a 400 is never retried")
+    void badRequestIsNotRetried() {
+        gateway.stubFor(post("/v1/charges").willReturn(aResponse().withStatus(400)));
+
+        assertThatThrownBy(() -> port.charge(PAYMENT, AMOUNT, KEY))
+                .isInstanceOfSatisfying(DependencyResponseException.class,
+                        bad -> assertThat(bad.errorCode()).isEqualTo("PAYMENT_GATEWAY_BAD_RESPONSE"));
+        gateway.verify(1, postRequestedFor(urlEqualTo("/v1/charges")));
+    }
+
+    @Test
+    @DisplayName("a response slower than the read timeout fires the timeout: outcome unknown")
+    void readTimeoutIsOutcomeUnknown() {
+        gateway.stubFor(get("/v1/charges/ch_123").willReturn(okJson("{\"id\":\"ch_123\"}").withFixedDelay(1_000)));
+
+        assertThatThrownBy(() -> port.findStatus(CHARGE))
+                .isInstanceOfSatisfying(OutcomeUnknownException.class,
+                        unknown -> assertThat(unknown.errorCode()).isEqualTo("PAYMENT_GATEWAY_OUTCOME_UNKNOWN"));
+        gateway.verify(3, getRequestedFor(urlEqualTo("/v1/charges/ch_123")));
+    }
+
+    @Test
+    @DisplayName("a reset connection surfaces as outcome unknown, never as a client exception")
+    void connectionResetIsOutcomeUnknown() {
+        gateway.stubFor(get("/v1/charges/ch_123").willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+
+        assertThatThrownBy(() -> port.findStatus(CHARGE)).isInstanceOf(OutcomeUnknownException.class);
+    }
+}

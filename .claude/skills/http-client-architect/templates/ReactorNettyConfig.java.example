@@ -1,0 +1,64 @@
+/*
+ * EXEMPLAR — the engine under `WebClient` (`WebClientStreamAdapter.java.example`): Reactor Netty
+ * with a connection pool bounded on purpose. Written only when a use case chose `WebClient`; a
+ * project that only uses `RestClient` has no reactive connector to configure.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` § Engine and pool, § Timeouts
+ *
+ * WHAT THIS EXEMPLAR SHOWS — each line answers a default:
+ *  - `maxIdleTime` is unset by default: a pooled connection lives until the other side closes it,
+ *    and the next request on it fails with `PrematureCloseException`. Set it below the idle
+ *    timeout of the server or load balancer in front of the provider;
+ *  - `maxLifeTime` bounds how long a connection — and the DNS answer behind it — is reused;
+ *  - `pendingAcquireTimeout` and `pendingAcquireMaxCount` bound the wait for a pooled connection
+ *    instead of queueing without limit;
+ *  - background eviction removes idle connections even when no request arrives to notice them;
+ *  - connect and read timeouts come from `spring.http.clients.*`, applied by Boot through
+ *    `HttpClientSettings` on top of this builder.
+ *
+ * A customizer of the connector builder Boot creates, typed to Reactor Netty: it applies only when
+ * `spring.http.clients.reactive.connector: reactor` pins the engine — without the pin it is skipped in silence.
+ *
+ * PACKAGE: the `.http` entry of `packages.map`, subpackage `shared`. Each `// --- <File>.java`
+ * block is its own file.
+ */
+
+// --- shared/ReactivePoolProperties.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.reactive-pool")
+public record ReactivePoolProperties(int maxConnections, int pendingAcquireMaxCount, Duration pendingAcquireTimeout,
+                                     Duration maxIdleTime, Duration maxLifeTime, Duration evictionInterval) {
+}
+
+// --- shared/ReactorNettyConfig.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.http.client.autoconfigure.reactive.ClientHttpConnectorBuilderCustomizer;
+import org.springframework.boot.http.client.reactive.ReactorClientHttpConnectorBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
+
+@Configuration
+@EnableConfigurationProperties(ReactivePoolProperties.class)
+public class ReactorNettyConfig {
+
+    @Bean
+    ClientHttpConnectorBuilderCustomizer<ReactorClientHttpConnectorBuilder> reactorNettyPool(ReactivePoolProperties pool) {
+        ConnectionProvider provider = ConnectionProvider.builder("outbound")
+                .maxConnections(pool.maxConnections())
+                .pendingAcquireMaxCount(pool.pendingAcquireMaxCount())
+                .pendingAcquireTimeout(pool.pendingAcquireTimeout())
+                .maxIdleTime(pool.maxIdleTime())
+                .maxLifeTime(pool.maxLifeTime())
+                .evictInBackground(pool.evictionInterval())
+                .build();
+        return builder -> builder.withHttpClientFactory(() -> HttpClient.create(provider));
+    }
+}

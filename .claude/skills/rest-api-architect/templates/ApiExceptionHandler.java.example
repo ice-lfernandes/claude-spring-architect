@@ -56,8 +56,12 @@ package com.exemplo.minhaapi.adapter.in.rest;
 
 import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
 import com.exemplo.minhaapi.domain.exception.ConflictException;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
 import com.exemplo.minhaapi.domain.exception.DomainException;
+import com.exemplo.minhaapi.domain.exception.IntegrationException;
 import com.exemplo.minhaapi.domain.exception.NotFoundException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
 import com.exemplo.minhaapi.domain.exception.ValidationException;
 import com.exemplo.minhaapi.adapter.in.rest.idempotent.IdempotencyKeyInterceptor;
 import com.exemplo.minhaapi.adapter.in.rest.idempotent.MissingIdempotencyKeyException;
@@ -68,8 +72,10 @@ import java.net.URI;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -111,6 +117,33 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ProblemDetail handleConflict(ConflictException e, HttpServletRequest request) {
         return problemDetail(HttpStatus.CONFLICT, e, request);
+    }
+
+    /**
+     * The three integration families (`.claude/rules/error-handling.md` § Integration families):
+     * another system failed, not this request. Present once the project calls something over the
+     * network; until then these three handlers and their imports stay out.
+     */
+    @ExceptionHandler(DependencyResponseException.class)
+    public ProblemDetail handleDependencyResponse(DependencyResponseException e, HttpServletRequest request) {
+        return integrationProblem(HttpStatus.BAD_GATEWAY, e, request);
+    }
+
+    /**
+     * `Retry-After` only when the dependency or the open circuit announced a wait — never an
+     * invented one; the caller then backs off on its own policy.
+     */
+    @ExceptionHandler(DependencyUnavailableException.class)
+    public ResponseEntity<ProblemDetail> handleDependencyUnavailable(
+            DependencyUnavailableException e, HttpServletRequest request) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE);
+        e.retryAfter().ifPresent(wait -> response.header(HttpHeaders.RETRY_AFTER, Long.toString(wait.toSeconds())));
+        return response.body(integrationProblem(HttpStatus.SERVICE_UNAVAILABLE, e, request));
+    }
+
+    @ExceptionHandler(OutcomeUnknownException.class)
+    public ProblemDetail handleOutcomeUnknown(OutcomeUnknownException e, HttpServletRequest request) {
+        return integrationProblem(HttpStatus.GATEWAY_TIMEOUT, e, request);
     }
 
     /**
@@ -202,6 +235,22 @@ public class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, e.getMessage());
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("errorCode", e.errorCode());
+        return problem;
+    }
+
+    /**
+     * A 5xx with a generic `detail`, `errorCode` and `traceId`. Which dependency failed goes to the
+     * log, never to the body: it is an operational fact, and naming a provider to the caller leaks
+     * the architecture.
+     */
+    private ProblemDetail integrationProblem(HttpStatus status, IntegrationException e, HttpServletRequest request) {
+        String traceId = currentTraceId();
+        log.warn("{} from {} at {} [traceId={}]: {}", e.errorCode(), e.dependency(), request.getRequestURI(), traceId,
+                e.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "A dependency failed");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("errorCode", e.errorCode());
+        problem.setProperty("traceId", traceId);
         return problem;
     }
 

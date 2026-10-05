@@ -1,0 +1,273 @@
+/*
+ * EXEMPLAR — outbound HTTP adapter on `RestClient` DIRECTLY, for what an HTTP interface does not
+ * express well: a URL that comes from data (a customer's webhook endpoint), a collection paged by
+ * `Link: rel="next"`, a body streamed to a sink instead of buffered. Two providers, two
+ * subpackages. When none of the three applies, the client is `HttpExchangeAdapter.java.example`.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (Boundary, Consumption, Security, Observability)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the `RestClient` comes from Boot's `RestClient.Builder` (observations, `traceparent`,
+ *    customizers); `RestClient.create()` would have none of them;
+ *  - per-client timeouts through `HttpClientSettings` on the `ClientHttpRequestFactoryBuilder` bean Boot
+ *    exposes — already tuned by `ApacheHttpClient5Config.java.example`, never a second engine;
+ *  - URI templates (`"/v2/shipments/{id}/label", id`), never concatenation: the `uri` tag of
+ *    `http.client.requests` stays one value per route;
+ *  - pagination bounded by a page cap, and a `next` link followed only to the configured host —
+ *    a provider-controlled URL is input like any other;
+ *  - a large body streamed to the caller's sink with a byte cap, the stream closed by `exchange`;
+ *  - a URL taken from data reaches only public addresses (`InetAddressFilter.externalAddresses()`,
+ *    checked after DNS resolution) and never follows a redirect — the SSRF defense of
+ *    `.claude/rules/http-client.md` § Security. A refused address throws `FilteredHostException`,
+ *    which is NOT a `RestClientException`: the translator never sees it, and the adapter turns it
+ *    into the business rejection of the customer's endpoint — never retried.
+ *
+ * Retry, breaker and the failure table are the same as the default adapter's and are not repeated
+ * here; `@Retryable` goes on the port methods exactly as in `HttpExchangeAdapter.java.example`.
+ *
+ * PACKAGE: one subpackage per remote system under the `.http` entry of `packages.map`.
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- carrier/CarrierProperties.java
+package com.exemplo.minhaapi.adapter.out.http.carrier;
+
+import java.net.URI;
+import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("app.http.carrier")
+record CarrierProperties(URI baseUrl, Duration connectTimeout, Duration readTimeout, int maxPages, long maxLabelBytes) {
+}
+
+// --- carrier/CarrierClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.carrier;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
+
+@Configuration
+@EnableConfigurationProperties(CarrierProperties.class)
+class CarrierClientConfig {
+
+    static final String CLIENT = "carrierRestClient";
+
+    @Bean
+    @Qualifier(CLIENT)
+    RestClient carrierRestClient(RestClient.Builder builder, ClientHttpRequestFactoryBuilder<?> engine,
+                                 CarrierProperties properties) {
+        HttpClientSettings settings = HttpClientSettings.defaults()
+                .withTimeouts(properties.connectTimeout(), properties.readTimeout());
+        return builder.baseUrl(properties.baseUrl().toString())
+                .requestFactory(engine.build(settings))
+                .build();
+    }
+}
+
+// --- carrier/ShipmentPageItem.java
+package com.exemplo.minhaapi.adapter.out.http.carrier;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.time.Instant;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+record ShipmentPageItem(String trackingCode, String status, Instant updatedAt) {
+}
+
+// --- carrier/CarrierAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.carrier;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.HttpFailureTranslator;
+import com.exemplo.minhaapi.application.port.out.CarrierTrackingPort;
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.model.shipment.ShipmentId;
+import com.exemplo.minhaapi.domain.model.shipment.TrackingUpdate;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+@Component
+class CarrierAdapter implements CarrierTrackingPort {
+
+    private static final Pattern NEXT_LINK = Pattern.compile("<([^>]+)>\\s*;\\s*rel=\"?next\"?");
+    private static final ParameterizedTypeReference<List<ShipmentPageItem>> PAGE = new ParameterizedTypeReference<>() {
+    };
+
+    private final RestClient client;
+    private final CarrierProperties properties;
+    private final HttpFailureTranslator failures = new HttpFailureTranslator("carrier", "CARRIER");
+
+    CarrierAdapter(@Qualifier(CarrierClientConfig.CLIENT) RestClient client, CarrierProperties properties) {
+        this.client = client;
+        this.properties = properties;
+    }
+
+    @Override
+    public List<TrackingUpdate> updatesSince(Instant since) {
+        return failures.call(() -> {
+            List<TrackingUpdate> updates = new ArrayList<>();
+            ResponseEntity<List<ShipmentPageItem>> page = client.get()
+                    .uri("/v2/shipments?updatedSince={since}", since)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .toEntity(PAGE);
+            for (int pages = 1; ; pages++) {
+                Objects.requireNonNullElse(page.getBody(), List.<ShipmentPageItem>of())
+                        .forEach(item -> updates.add(toUpdate(item)));
+                Optional<URI> next = nextPage(page.getHeaders());
+                if (next.isEmpty()) {
+                    return updates;
+                }
+                if (pages == properties.maxPages()) {
+                    throw new DependencyResponseException("CARRIER_TOO_MANY_PAGES", "carrier",
+                            "carrier returned more than " + properties.maxPages() + " pages", null);
+                }
+                page = client.get().uri(next.get()).accept(MediaType.APPLICATION_JSON).retrieve().toEntity(PAGE);
+            }
+        });
+    }
+
+    @Override
+    public void writeLabel(ShipmentId shipment, OutputStream sink) {
+        failures.call(() -> client.get()
+                .uri("/v2/shipments/{id}/label", shipment.value())
+                .accept(MediaType.APPLICATION_PDF)
+                .exchange((request, response) -> {
+                    if (response.getStatusCode().isError()) {
+                        throw response.createException();
+                    }
+                    copyBounded(response.getBody(), sink, properties.maxLabelBytes());
+                    return null;
+                }));
+    }
+
+    /** The provider names the next page; it is followed only while it stays on the configured host. */
+    private Optional<URI> nextPage(HttpHeaders headers) {
+        String link = headers.getFirst(HttpHeaders.LINK);
+        if (link == null) {
+            return Optional.empty();
+        }
+        Matcher matcher = NEXT_LINK.matcher(link);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        URI next = properties.baseUrl().resolve(matcher.group(1));
+        if (!Objects.equals(next.getHost(), properties.baseUrl().getHost())) {
+            throw new DependencyResponseException("CARRIER_FOREIGN_NEXT_LINK", "carrier",
+                    "carrier pointed the next page at another host", null);
+        }
+        return Optional.of(next);
+    }
+
+    private static void copyBounded(InputStream body, OutputStream sink, long maxBytes) throws IOException {
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        for (int read = body.read(buffer); read != -1; read = body.read(buffer)) {
+            total += read;
+            if (total > maxBytes) {
+                throw new DependencyResponseException("CARRIER_LABEL_TOO_LARGE", "carrier",
+                        "carrier label larger than " + maxBytes + " bytes", null);
+            }
+            sink.write(buffer, 0, read);
+        }
+    }
+
+    private static TrackingUpdate toUpdate(ShipmentPageItem item) {
+        return new TrackingUpdate(item.trackingCode(), item.status() == null ? "UNKNOWN" : item.status(), item.updatedAt());
+    }
+}
+
+// --- webhook/WebhookClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.webhook;
+
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.boot.http.client.HttpRedirects;
+import org.springframework.boot.http.client.InetAddressFilter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
+
+/**
+ * The target URL is a customer's: after DNS resolution it may point at loopback, a private range
+ * or the cloud metadata address. `externalAddresses()` refuses those before a socket opens, and a
+ * redirect is never followed because it would bypass the check. No base URL.
+ */
+@Configuration
+class WebhookClientConfig {
+
+    static final String CLIENT = "webhookRestClient";
+
+    @Bean
+    @Qualifier(CLIENT)
+    RestClient webhookRestClient(RestClient.Builder builder, ClientHttpRequestFactoryBuilder<?> engine) {
+        HttpClientSettings settings = HttpClientSettings.defaults()
+                .withTimeouts(Duration.ofSeconds(2), Duration.ofSeconds(5))
+                .withRedirects(HttpRedirects.DONT_FOLLOW)
+                .withInetAddressFilter(InetAddressFilter.externalAddresses());
+        return builder.requestFactory(engine.build(settings)).build();
+    }
+}
+
+// --- webhook/WebhookDeliveryAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.webhook;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.HttpFailureTranslator;
+import com.exemplo.minhaapi.application.port.out.DeliverWebhookPort;
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.model.webhook.WebhookEndpoint;
+import com.exemplo.minhaapi.domain.model.webhook.WebhookNotification;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.http.client.FilteredHostException;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+@Component
+class WebhookDeliveryAdapter implements DeliverWebhookPort {
+
+    private final RestClient client;
+    private final HttpFailureTranslator failures = new HttpFailureTranslator("webhook", "WEBHOOK");
+
+    WebhookDeliveryAdapter(@Qualifier(WebhookClientConfig.CLIENT) RestClient client) {
+        this.client = client;
+    }
+
+    @Override
+    public void deliver(WebhookEndpoint endpoint, WebhookNotification notification) {
+        try {
+            failures.call(() -> client.post()
+                    .uri(endpoint.uri())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Webhook-Id", notification.id().toString())
+                    .body(notification.payload())
+                    .retrieve()
+                    .toBodilessEntity());
+        } catch (FilteredHostException refused) {
+            throw new BusinessRuleViolationException("WEBHOOK_TARGET_NOT_ALLOWED",
+                    "webhook endpoint resolves to a non-public address", refused);
+        }
+    }
+}

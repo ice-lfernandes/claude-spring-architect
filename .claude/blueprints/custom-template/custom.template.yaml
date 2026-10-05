@@ -43,6 +43,8 @@ packages:
     # `core` directly, never the reverse. Adjust the value to your own inbound-adapter
     # layout if this template grows a real REST/adapter split — decision 0087.
     app.scheduling: "app.scheduling"
+    # Example: outbound HTTP adapters (one subpackage per remote system) — decision 0121.
+    app.http: "app.http"
 
 dependency_rules:
   direction: inward             # inward | explicit

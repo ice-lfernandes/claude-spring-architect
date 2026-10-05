@@ -174,6 +174,26 @@ mother spec, it also isn't this skill.
    outbound port takes it as a parameter — the filter is in the query, not applied after
    loading everyone's rows.
 
+4d. **An external call becomes a port of kind `external HTTP`.** When `00-caso-de-uso.md`'s
+   `External calls` row names a system this case calls over HTTP, the partial carries:
+
+   - **the outbound port**, kind `external HTTP`, in domain types only — named for the
+     capability (`PaymentGatewayPort`, `AddressLookupPort`), never for the client or the vendor's
+     product. Every output port in § 3 names its kind; the orchestrator reads it;
+   - **the domain outcome of each business answer** the row describes — a refusal is a
+     `BusinessRuleViolationException`, an absent remote resource an empty `Optional`, a duplicate a
+     `ConflictException`. A failure of the system itself (down, slow, unreadable) is not modeled
+     here: it is an integration family (`@.claude/rules/error-handling.md` § Integration
+     families), and the port's Javadoc names the ones it may throw;
+   - **the idempotency key** on the aggregate, when the row says the call is a write and the
+     system accepts a key: a value object created with the operation and persisted with it,
+     never generated at call time — REUSE when it exists;
+   - **a state for an unknown result**, when the row says a write's unknown result is
+     reconciled later (`CAPTURE_UNKNOWN`), with the transition out of it — the reconciliation
+     pass that drives it is a requirement for `jobs-architect`, recorded by
+     `http-client-architect`.
+
+   Client, timeouts and retries are not this partial's: `http-client-architect` reads this port.
 5. **Map each invariant to its exception.** Typed family from
    `@.claude/rules/error-handling.md` and `errorCode` in `UPPER_SNAKE_CASE`. An invariant
    without a named exception is an invariant nobody will implement.
@@ -224,7 +244,7 @@ question nobody asked.
 |---|---|---|
 | Aggregate and value objects | Root, fields, types, which VOs exist and why, which fields are sensitive (masking candidates), and — for every state field with more than one value — which method reaches each value or which named backlog case will | `Aggregate.java.example` · `ValueObject.java.example` · `ValueObjectCatalog.java.example` |
 | Invariants | Each rule, where it's enforced, which exception it raises; and the state of the exception family (NEW or REUSE) | `DomainGuards.java.example` · `DomainException.java.example` and the four typed ones · `@.claude/rules/error-handling.md` |
-| Ports | Input (`<Verb><Noun>UseCase`), command, output — complete signatures | `UseCasePort.java.example` · `Command.java.example` |
+| Ports | Input (`<Verb><Noun>UseCase`), command, output — complete signatures, each output port with its kind (`persistence` · `messaging` · `external HTTP`) | `UseCasePort.java.example` · `Command.java.example` |
 | Events | Which event, which payload, which UC consumes it | `DomainEvent.java.example` |
 | Design patterns | Each pattern the domain or application adopts: the spec line or `file:line` that forces it, the classes it creates, the "When not" checked — step 5b | `@.claude/skills/gof-design-patterns/SKILL.md` § Design-time use |
 

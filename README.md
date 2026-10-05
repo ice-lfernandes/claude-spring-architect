@@ -196,8 +196,9 @@ from a real spec.
 /new-feature <feature description>     (or UC-NNN-slug to resume, or empty to list)
      │
      use-case-design → domain-modeling → rest-api-architect
-        → security-architect (conditional) → messaging-architect (conditional)
-        → jobs-architect (conditional) → persistence-architect → test-architect
+        → security-architect (conditional) → http-client-architect (conditional)
+        → messaging-architect (conditional) → jobs-architect (conditional)
+        → persistence-architect → test-architect
      │  one use case per run; a split goes to docs/use-cases/BACKLOG.md
      │  design skills write only docs/ — never src/, never docker-compose.yml, never git
      │  each one decides the design patterns of its own layer, in its partial
@@ -285,18 +286,19 @@ proposed fix, before anything is commented or designed. Details:
 | Piece | Count | Where |
 |---|---|---|
 | Architecture blueprints | 7 + a template for your own | `.claude/blueprints/` |
-| Norms, loaded on demand through `paths` | 15 | `.claude/rules/` |
-| Skills (design, orchestration, build, ops, meta…) | 22 | `.claude/skills/` |
+| Norms, loaded on demand through `paths` | 16 | `.claude/rules/` |
+| Skills (design, orchestration, build, ops, meta…) | 23 | `.claude/skills/` |
 | Agents (driver, executor, installer, verifier) | 5 | `.claude/agents/` |
 | Hook modes, in one Java file | 11 | `.claude/hooks/ArchHook.java` |
 | Decision records — why each piece has its form | 100+ | `.claude/decisions/` |
 
 **Design skills of the `/new-feature` pipeline:** `use-case-design`, `domain-modeling`,
 `rest-api-architect`, `security-architect` (Spring Security on the servlet stack: who may
-call each endpoint, JWT, opaque token, API key, 401/403, CORS), `messaging-architect` (Kafka
-producer and consumer, retry, DLQ), `jobs-architect` (`@Scheduled`, ShedLock, Quartz,
-Spring Batch, db-scheduler, JobRunr; the outbox relay), `persistence-architect`,
-`test-architect`.
+call each endpoint, JWT, opaque token, API key, 401/403, CORS), `http-client-architect`
+(outbound HTTP client and engine, timeouts, retry, circuit breaker, outbound
+authentication), `messaging-architect` (Kafka producer and consumer, retry, DLQ),
+`jobs-architect` (`@Scheduled`, ShedLock, Quartz, Spring Batch, db-scheduler, JobRunr; the
+outbox relay), `persistence-architect`, `test-architect`.
 
 **Cross-cutting concerns that arrive solved:** `Idempotency-Key` through AOP, logging with
 sensitive-data masking, an OTLP collector with Jaeger or Grafana + Tempo + Prometheus,

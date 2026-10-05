@@ -1,0 +1,77 @@
+<!--
+  EXEMPLAR — OpenAPI Generator in the build of the module that holds the outbound HTTP adapter,
+  for a provider that publishes an OpenAPI document. Generates HTTP interfaces (`@HttpExchange`)
+  and their DTOs; nothing else. Paired with `OpenApiGeneratedAdapter.java.example`.
+  Form reference for the executor agent; not a file to copy verbatim.
+  Rules: `.claude/rules/http-client.md` § Contract
+
+  WHAT THIS EXEMPLAR SHOWS — each option answers a generator default:
+   - `library` is `spring-http-interface`: the generator's own default for `spring` is a SERVER
+     (`spring-boot`), and the generic `java` generator defaults to `okhttp-gson`, a second HTTP
+     stack with its own pool and no Boot observations;
+   - `useSpringBoot4` + `useJackson3`: Boot 4 runs Jackson 3; without them the models import the
+     Boot 3 generation;
+   - `interfaceOnly`, no supporting files, no tests, no docs: only the interfaces and models enter
+     the build;
+   - `openApiNullable=false`: no `jackson-databind-nullable` dependency for a client that only reads;
+   - `enumUnknownDefaultCase`: an enum value the provider adds later becomes
+     `UNKNOWN_DEFAULT_OPEN_API` instead of failing deserialization — the tolerant reader;
+   - `annotationLibrary=none` / `documentationProvider=none`: no Swagger annotations in a client;
+   - the generated packages live INSIDE the provider's adapter subpackage (`…http.taxservice.generated`),
+     so the generated DTOs never leak past the adapter — `.claude/rules/http-client.md` § Boundary;
+   - the provider's document is versioned in the repository (`src/main/resources/openapi/`), pinned
+     to the API version the adapter was written against — never fetched from the provider's URL at
+     build time, which would make the build depend on their uptime and their changes.
+
+  VERSION: `openapi-generator.version` is not managed by the Boot parent. Resolve it from
+  https://repo1.maven.org/maven2/org/openapitools/openapi-generator-maven-plugin/maven-metadata.xml
+  at write time and record it in the partial's § 8 — never written from memory (CLAUDE.md invariant 8).
+
+  Generated sources go to `target/generated-sources/openapi` and are added to the compile path by the
+  plugin. Checkstyle and Sonar exclude that directory; generated code is not reviewed, the spec is.
+-->
+<properties>
+    <openapi-generator.version>RESOLVED-AT-WRITE-TIME</openapi-generator.version>
+</properties>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.openapitools</groupId>
+            <artifactId>openapi-generator-maven-plugin</artifactId>
+            <version>${openapi-generator.version}</version>
+            <executions>
+                <execution>
+                    <id>tax-service-client</id>
+                    <goals>
+                        <goal>generate</goal>
+                    </goals>
+                    <configuration>
+                        <inputSpec>${project.basedir}/src/main/resources/openapi/tax-service.yaml</inputSpec>
+                        <generatorName>spring</generatorName>
+                        <library>spring-http-interface</library>
+                        <apiPackage>com.exemplo.minhaapi.adapter.out.http.taxservice.generated.api</apiPackage>
+                        <modelPackage>com.exemplo.minhaapi.adapter.out.http.taxservice.generated.model</modelPackage>
+                        <generateApiTests>false</generateApiTests>
+                        <generateModelTests>false</generateModelTests>
+                        <generateApiDocumentation>false</generateApiDocumentation>
+                        <generateModelDocumentation>false</generateModelDocumentation>
+                        <generateSupportingFiles>false</generateSupportingFiles>
+                        <configOptions>
+                            <useSpringBoot4>true</useSpringBoot4>
+                            <useJackson3>true</useJackson3>
+                            <interfaceOnly>true</interfaceOnly>
+                            <skipDefaultInterface>true</skipDefaultInterface>
+                            <useTags>true</useTags>
+                            <openApiNullable>false</openApiNullable>
+                            <enumUnknownDefaultCase>true</enumUnknownDefaultCase>
+                            <useBeanValidation>false</useBeanValidation>
+                            <annotationLibrary>none</annotationLibrary>
+                            <documentationProvider>none</documentationProvider>
+                        </configOptions>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>

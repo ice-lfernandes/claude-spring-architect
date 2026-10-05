@@ -1,0 +1,208 @@
+/*
+ * EXEMPLAR — outbound HTTP adapter, the DEFAULT client: an HTTP interface (`@HttpExchange`)
+ * registered by `@ImportHttpServices`, configured by `spring.http.serviceclient.<group>.*`, running
+ * on the `RestClient` Boot builds — so metrics, tracing and the engine of
+ * `ApacheHttpClient5Config.java.example` apply without a line here.
+ * Implements the outbound port `domain-modeling` declared (kind `external HTTP`); doesn't invent
+ * its own interface.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (Boundary, Timeouts, Retry, Failures, Contract)
+ *        `.claude/rules/architecture-ddd.md` (Adapters: translate, no business logic)
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - the port speaks domain types only; the HTTP interface, the remote DTOs and the mapper are
+ *    package-private inside the provider's subpackage — the anti-corruption layer;
+ *  - remote DTOs are tolerant readers: unknown fields ignored on the type itself (no reliance on a
+ *    global Jackson setting), an unknown status kept as text and mapped to `UNKNOWN` in the mapper;
+ *  - the `Idempotency-Key` of a POST is a domain value fixed when the operation was created and
+ *    persisted with it — never generated here, or every retry is a new charge;
+ *  - a 404 on a lookup is `Optional.empty()` and a 422 on a charge is the provider's business
+ *    rejection, a domain family read from the Problem Details `type` — both decided per operation in
+ *    the adapter, from the partial's error map; any other failure goes through
+ *    `HttpFailureTranslator` (`HttpFailureTranslator.java.example`);
+ *  - `@Retryable` with the shared predicate, bounded attempts, exponential backoff and jitter;
+ *    `@IdempotentCall` on both methods because the POST carries a fixed key;
+ *  - no timeout, base URL or header in code: `application-http-client.yml.example`.
+ *
+ * WHAT'S NOT HERE: circuit breaker and bulkhead — when § 5 of the partial names them, the
+ * translator call becomes `ResilientHttpCall.call(...)`, nothing else changes. Authentication —
+ * one of the `*Auth*.java.example` / `OAuth2ClientCredentialsConfig.java.example` exemplars, wired
+ * into this group. The trigger that calls the use case is irrelevant here, except for one fact the
+ * partial records: when it is a Kafka listener or a job that already retries, this adapter's
+ * `@Retryable` goes (`.claude/rules/http-client.md` § Retry — one retrying layer).
+ *
+ * PACKAGE: one subpackage per remote system under the `.http` entry of `packages.map` —
+ * `…http.paymentgateway`, `…http.addresslookup` — never a flat package holding every provider.
+ * Each `// --- <File>.java` block is its own file.
+ */
+
+// --- PaymentGatewayPort.java (declared by domain-modeling, in application/port/out)
+package com.exemplo.minhaapi.application.port.out;
+
+import com.exemplo.minhaapi.domain.model.payment.ChargeReference;
+import com.exemplo.minhaapi.domain.model.payment.ChargeStatus;
+import com.exemplo.minhaapi.domain.model.payment.IdempotencyKey;
+import com.exemplo.minhaapi.domain.model.payment.Money;
+import com.exemplo.minhaapi.domain.model.payment.PaymentId;
+import java.util.Optional;
+
+public interface PaymentGatewayPort {
+
+    ChargeReference charge(PaymentId paymentId, Money amount, IdempotencyKey idempotencyKey);
+
+    Optional<ChargeStatus> findStatus(ChargeReference reference);
+}
+
+// --- paymentgateway/CreateChargeRequest.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+record CreateChargeRequest(String merchantReference, long amountMinor, String currency) {
+}
+
+// --- paymentgateway/ChargeResource.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+record ChargeResource(String id, String status) {
+}
+
+// --- paymentgateway/PaymentGatewayHttpService.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.service.annotation.GetExchange;
+import org.springframework.web.service.annotation.HttpExchange;
+import org.springframework.web.service.annotation.PostExchange;
+
+@HttpExchange(url = "/v1/charges", accept = MediaType.APPLICATION_JSON_VALUE)
+interface PaymentGatewayHttpService {
+
+    @PostExchange(contentType = MediaType.APPLICATION_JSON_VALUE)
+    ChargeResource createCharge(@RequestHeader("Idempotency-Key") String idempotencyKey,
+                                @RequestBody CreateChargeRequest request);
+
+    @GetExchange("/{id}")
+    ChargeResource getCharge(@PathVariable String id);
+}
+
+// --- paymentgateway/PaymentGatewayClientConfig.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+/**
+ * The group id is the key of `spring.http.serviceclient.payment-gateway.*` and the `dependency`
+ * every integration exception carries. One group per remote system.
+ */
+@Configuration
+@ImportHttpServices(group = "payment-gateway", types = PaymentGatewayHttpService.class)
+class PaymentGatewayClientConfig {
+}
+
+// --- paymentgateway/PaymentGatewayMapper.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import com.exemplo.minhaapi.domain.model.payment.ChargeReference;
+import com.exemplo.minhaapi.domain.model.payment.ChargeStatus;
+import com.exemplo.minhaapi.domain.model.payment.Money;
+import com.exemplo.minhaapi.domain.model.payment.PaymentId;
+import org.springframework.http.ProblemDetail;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+
+@Component
+class PaymentGatewayMapper {
+
+    CreateChargeRequest toRequest(PaymentId paymentId, Money amount) {
+        return new CreateChargeRequest(paymentId.value().toString(), amount.minorUnits(), amount.currency().getCurrencyCode());
+    }
+
+    ChargeReference toReference(ChargeResource resource) {
+        return new ChargeReference(resource.id());
+    }
+
+    /**
+     * The provider's Problem Details is read by its `type` — a stable URI — never by parsing
+     * `detail`, which is prose for humans and changes without notice.
+     */
+    String declineReason(HttpClientErrorException declined) {
+        ProblemDetail problem = declined.getResponseBodyAs(ProblemDetail.class);
+        return problem == null || problem.getType() == null ? "declined" : problem.getType().toString();
+    }
+
+    /** Tolerant reader: a status this version does not know is `UNKNOWN`, never an exception. */
+    ChargeStatus toStatus(ChargeResource resource) {
+        return switch (resource.status() == null ? "" : resource.status()) {
+            case "pending" -> ChargeStatus.PENDING;
+            case "captured" -> ChargeStatus.CAPTURED;
+            case "declined" -> ChargeStatus.DECLINED;
+            default -> ChargeStatus.UNKNOWN;
+        };
+    }
+}
+
+// --- paymentgateway/PaymentGatewayAdapter.java
+package com.exemplo.minhaapi.adapter.out.http.paymentgateway;
+
+import com.exemplo.minhaapi.adapter.out.http.shared.DependencyRetryPredicate;
+import com.exemplo.minhaapi.adapter.out.http.shared.HttpFailureTranslator;
+import com.exemplo.minhaapi.adapter.out.http.shared.IdempotentCall;
+import com.exemplo.minhaapi.application.port.out.PaymentGatewayPort;
+import com.exemplo.minhaapi.domain.exception.BusinessRuleViolationException;
+import com.exemplo.minhaapi.domain.model.payment.ChargeReference;
+import com.exemplo.minhaapi.domain.model.payment.ChargeStatus;
+import com.exemplo.minhaapi.domain.model.payment.IdempotencyKey;
+import com.exemplo.minhaapi.domain.model.payment.Money;
+import com.exemplo.minhaapi.domain.model.payment.PaymentId;
+import java.util.Optional;
+import org.springframework.resilience.annotation.Retryable;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+
+@Component
+class PaymentGatewayAdapter implements PaymentGatewayPort {
+
+    private final PaymentGatewayHttpService service;
+    private final PaymentGatewayMapper mapper;
+    private final HttpFailureTranslator failures = new HttpFailureTranslator("payment-gateway", "PAYMENT_GATEWAY");
+
+    PaymentGatewayAdapter(PaymentGatewayHttpService service, PaymentGatewayMapper mapper) {
+        this.service = service;
+        this.mapper = mapper;
+    }
+
+    @Override
+    @IdempotentCall
+    @Retryable(predicate = DependencyRetryPredicate.class, maxRetries = 2, delay = 200, multiplier = 2,
+            maxDelay = 2000, jitter = 100)
+    public ChargeReference charge(PaymentId paymentId, Money amount, IdempotencyKey idempotencyKey) {
+        CreateChargeRequest request = mapper.toRequest(paymentId, amount);
+        return failures.call(() -> {
+            try {
+                return mapper.toReference(service.createCharge(idempotencyKey.value().toString(), request));
+            } catch (HttpClientErrorException.UnprocessableContent declined) {
+                throw new BusinessRuleViolationException("PAYMENT_DECLINED", mapper.declineReason(declined), declined);
+            }
+        });
+    }
+
+    @Override
+    @IdempotentCall
+    @Retryable(predicate = DependencyRetryPredicate.class, maxRetries = 2, delay = 200, multiplier = 2,
+            maxDelay = 2000, jitter = 100)
+    public Optional<ChargeStatus> findStatus(ChargeReference reference) {
+        return failures.call(() -> {
+            try {
+                return Optional.of(mapper.toStatus(service.getCharge(reference.value())));
+            } catch (HttpClientErrorException.NotFound absent) {
+                return Optional.empty();
+            }
+        });
+    }
+}

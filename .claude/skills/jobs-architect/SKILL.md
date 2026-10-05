@@ -9,8 +9,8 @@ description: >
   a batch run, a background job, ShedLock, Quartz, Spring Batch, a job running twice across
   replicas, a job that must catch up after downtime, or pruning/retention of a table. Piece of
   the `/new-feature` pipeline: requires `00-caso-de-uso.md` in the given folder plus a
-  schedule trigger, a Form B outbox in `25-mensageria.md`, or a deferred scheduled job — and
-  stops without one of them.
+  schedule trigger, a Form B outbox in `25-mensageria.md`, a reconciliation pass asked by
+  `28-cliente-http.md`, or a deferred scheduled job — and stops without one of them.
 argument-hint: "[path of the UC-NNN-<slug> folder]"
 allowed-tools: Read, Write, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(grep:*), Bash(sort:*), Bash(awk:*)
 model: opus
@@ -45,6 +45,7 @@ to.
 |---|---|---|
 | `00-caso-de-uso.md` | The trigger is a schedule, a recurring run, a batch, or a background job | That job, calling the inbound port `10-dominio.md` declared — so `10-dominio.md` is required too |
 | `25-mensageria.md` | § 2 chose **Form B** (transactional outbox + relay) | The relay's schedule and the prune job — once per project, reused by every later case |
+| `28-cliente-http.md` | § 10 asks for a reconciliation pass over writes whose outcome is unknown | That pass, calling the inbound port that reads the provider and settles the state — `10-dominio.md` is required too |
 | Any partial's `Deferred` block | A row names a scheduled job as the missing piece | That job |
 
 None holds → stop and say so: a use case triggered by a request or a message has no schedule to

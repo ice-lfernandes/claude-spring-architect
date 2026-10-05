@@ -1,0 +1,94 @@
+/*
+ * EXEMPLAR — the three integration families of `.claude/rules/error-handling.md` § Integration
+ * families, under their own abstract root. Package `domain.exception` from `packages.map`, next to
+ * `DomainException`: transport-agnostic, no framework type, so an outbound port can declare them
+ * and a use case can catch them without importing anything from an adapter.
+ * Compiles as-is — not pseudo-code.
+ *
+ * WHY A SECOND ROOT, NOT A FIFTH DOMAIN FAMILY: none of these says the input or the state is
+ * wrong. They say another system did not answer usefully, and each maps to its own 5xx row of
+ * `.claude/rules/api-rest.md` § Errors — 500 family:
+ *   DependencyResponseException    → 502  the dependency answered; the answer is unusable
+ *   DependencyUnavailableException → 503  the request was never processed (no connection, 503,
+ *                                         429, circuit open, bulkhead full) — safe to retry
+ *   OutcomeUnknownException        → 504  the request may have been processed (read timeout,
+ *                                         connection lost after sending, a gateway 502/504) —
+ *                                         retried only when the call is idempotent
+ *
+ * `dependency` is the name of the remote system — the same id as its `spring.http.serviceclient`
+ * group — so the log, the metric and the 5xx line all say which provider failed.
+ * `retryAfter` is the one piece of family state the norm admits: the provider's `Retry-After`, or
+ * the open circuit's wait, so the 503 the API answers can carry it.
+ *
+ * WRITTEN ONCE, by the first use case whose `28-cliente-http.md` declares them NEW. Each
+ * `// --- <File>.java` block is its own file in `domain.exception`.
+ */
+
+// --- IntegrationException.java
+package com.exemplo.minhaapi.domain.exception;
+
+public abstract class IntegrationException extends RuntimeException {
+
+    private final String errorCode;
+    private final String dependency;
+
+    protected IntegrationException(String errorCode, String dependency, String message, Throwable cause) {
+        super(message, cause);
+        this.errorCode = errorCode;
+        this.dependency = dependency;
+    }
+
+    public String errorCode() {
+        return errorCode;
+    }
+
+    public String dependency() {
+        return dependency;
+    }
+}
+
+// --- DependencyResponseException.java
+package com.exemplo.minhaapi.domain.exception;
+
+public class DependencyResponseException extends IntegrationException {
+
+    public DependencyResponseException(String errorCode, String dependency, String message, Throwable cause) {
+        super(errorCode, dependency, message, cause);
+    }
+}
+
+// --- DependencyUnavailableException.java
+package com.exemplo.minhaapi.domain.exception;
+
+import java.time.Duration;
+import java.util.Optional;
+
+public class DependencyUnavailableException extends IntegrationException {
+
+    private final Duration retryAfter;
+
+    public DependencyUnavailableException(String errorCode, String dependency, String message, Throwable cause) {
+        this(errorCode, dependency, message, null, cause);
+    }
+
+    public DependencyUnavailableException(
+            String errorCode, String dependency, String message, Duration retryAfter, Throwable cause) {
+        super(errorCode, dependency, message, cause);
+        this.retryAfter = retryAfter;
+    }
+
+    /** The wait the provider or the open circuit announced; empty when none was announced. */
+    public Optional<Duration> retryAfter() {
+        return Optional.ofNullable(retryAfter);
+    }
+}
+
+// --- OutcomeUnknownException.java
+package com.exemplo.minhaapi.domain.exception;
+
+public class OutcomeUnknownException extends IntegrationException {
+
+    public OutcomeUnknownException(String errorCode, String dependency, String message, Throwable cause) {
+        super(errorCode, dependency, message, cause);
+    }
+}

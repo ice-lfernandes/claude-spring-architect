@@ -1,0 +1,268 @@
+/*
+ * EXEMPLAR — the project-wide pieces every outbound HTTP adapter shares: the translation of a
+ * transport or status failure into the integration families, the retry allowlist, and the
+ * composition with a circuit breaker and a bulkhead. Written once, by the first use case whose
+ * `28-cliente-http.md` § 6 declares them NEW; REUSE afterwards.
+ * Form reference for the executor agent; not a file to copy verbatim.
+ * Rules: `.claude/rules/http-client.md` (Failures, Retry, Resilience)
+ *        `.claude/rules/error-handling.md` § Integration families
+ *
+ * WHAT THIS EXEMPLAR SHOWS:
+ *  - one translation table, so no adapter decides on its own that a 503 is a 500 of ours;
+ *  - "was the request sent?" decides between 503 and 504: a refused connection, an unknown host,
+ *    a connect timeout or a pool lease timeout never left this process, so retrying is safe even
+ *    for a POST; a read timeout, a reset after sending or a gateway 502/504 may have been
+ *    processed, so only an idempotent call retries it;
+ *  - `@IdempotentCall` marks, on the adapter method, the calls that may be repeated — a GET, a PUT,
+ *    or a POST carrying a fixed `Idempotency-Key`. The predicate reads the mark; nothing infers it;
+ *  - a provider `Retry-After` (429/503) or an open circuit is never retried in-process: the wait is
+ *    surfaced on the exception and reaches our caller as the 503's `Retry-After`;
+ *  - the breaker wraps the TRANSLATED call, so it only ever sees integration families, and the
+ *    business 4xx an adapter maps to a domain family (404, 409, 422) pass through untouched — the
+ *    `ignore-exceptions` of `application-http-client.yml.example` keeps them out of the failure rate.
+ *
+ * VARIANT — engine. `isNotSent` below names two Apache HttpClient 5 types: the connect timeout,
+ * which extends `SocketTimeoutException` and would otherwise read as "maybe processed", and the pool
+ * lease timeout (`ConnectionRequestTimeoutException`, an `InterruptedIOException`), which would read
+ * the same way although no byte left the process. With the JDK engine (`JdkHttpClientConfig.java.example`)
+ * replace both checks with `java.net.http.HttpConnectTimeoutException` and drop the `org.apache.hc`
+ * imports; the rest holds.
+ *
+ * PACKAGE: the `.http` entry of the active blueprint's `packages.map`, subpackage `shared` —
+ * never inside one provider's subpackage. Each `// --- <File>.java` block is its own file.
+ */
+
+// --- shared/IdempotentCall.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Marks an adapter method whose remote call may be repeated without a second effect: a safe or
+ * idempotent verb, or a POST whose `Idempotency-Key` is fixed per operation. Only a marked method
+ * retries an {@link com.exemplo.minhaapi.domain.exception.OutcomeUnknownException}.
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface IdempotentCall {
+}
+
+// --- shared/DependencyRetryPredicate.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
+import java.lang.reflect.Method;
+import org.springframework.resilience.retry.MethodRetryPredicate;
+
+/**
+ * The retry allowlist of `.claude/rules/http-client.md` § Retry, in one place. `@Retryable`
+ * without a predicate retries every exception — a 400, a deserialization error, a business
+ * rejection — which is the default this class exists against.
+ */
+public class DependencyRetryPredicate implements MethodRetryPredicate {
+
+    @Override
+    public boolean shouldRetry(Method method, Throwable failure) {
+        if (failure instanceof DependencyUnavailableException unavailable) {
+            return unavailable.retryAfter().isEmpty();
+        }
+        if (failure instanceof OutcomeUnknownException) {
+            return method.isAnnotationPresent(IdempotentCall.class);
+        }
+        return false;
+    }
+}
+
+// --- shared/HttpFailureTranslator.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import com.exemplo.minhaapi.domain.exception.DependencyResponseException;
+import com.exemplo.minhaapi.domain.exception.DependencyUnavailableException;
+import com.exemplo.minhaapi.domain.exception.IntegrationException;
+import com.exemplo.minhaapi.domain.exception.OutcomeUnknownException;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.UnknownHostException;
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.function.Supplier;
+import javax.net.ssl.SSLException;
+import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
+
+/**
+ * Turns what the HTTP client throws into the three integration families. One instance per
+ * dependency: `dependency` is its `spring.http.serviceclient` group id, `codePrefix` the
+ * `UPPER_SNAKE_CASE` stem of every `errorCode` it raises (`PAYMENT_GATEWAY_UNAVAILABLE`).
+ */
+public final class HttpFailureTranslator {
+
+    private final String dependency;
+    private final String codePrefix;
+
+    public HttpFailureTranslator(String dependency, String codePrefix) {
+        this.dependency = dependency;
+        this.codePrefix = codePrefix;
+    }
+
+    /**
+     * Runs the call and translates a client failure. A domain exception the adapter raised
+     * inside the call (a 404 mapped to `Optional.empty()`, a 409 mapped to a conflict) is not a
+     * `RestClientException` and passes through.
+     */
+    public <T> T call(Supplier<T> remoteCall) {
+        try {
+            return remoteCall.get();
+        } catch (RestClientException failure) {
+            throw translate(failure);
+        }
+    }
+
+    public IntegrationException translate(RestClientException failure) {
+        if (failure instanceof RestClientResponseException response) {
+            return fromStatus(response);
+        }
+        if (failure instanceof ResourceAccessException transport) {
+            return fromTransport(transport);
+        }
+        return new DependencyResponseException(code("BAD_RESPONSE"), dependency,
+                dependency + " answered with a body that could not be read", failure);
+    }
+
+    public DependencyUnavailableException rejected(RuntimeException rejection, Duration retryAfter) {
+        return new DependencyUnavailableException(code("UNAVAILABLE"), dependency,
+                dependency + " calls are suspended", retryAfter, rejection);
+    }
+
+    public DependencyUnavailableException rejected(RuntimeException rejection) {
+        return new DependencyUnavailableException(code("UNAVAILABLE"), dependency,
+                dependency + " has no free slot", rejection);
+    }
+
+    private IntegrationException fromStatus(RestClientResponseException response) {
+        int status = response.getStatusCode().value();
+        if (status == 429 || status == 503) {
+            return new DependencyUnavailableException(code("UNAVAILABLE"), dependency,
+                    dependency + " answered " + status, retryAfter(response.getResponseHeaders()), response);
+        }
+        if (status == 502 || status == 504) {
+            return new OutcomeUnknownException(code("OUTCOME_UNKNOWN"), dependency,
+                    dependency + "'s gateway answered " + status, response);
+        }
+        return new DependencyResponseException(code("BAD_RESPONSE"), dependency,
+                dependency + " answered " + status, response);
+    }
+
+    private IntegrationException fromTransport(ResourceAccessException transport) {
+        Throwable cause = transport.getCause();
+        if (cause instanceof SSLException) {
+            return new DependencyResponseException(code("TLS_FAILURE"), dependency,
+                    "TLS handshake with " + dependency + " failed", transport);
+        }
+        if (isNotSent(cause)) {
+            return new DependencyUnavailableException(code("UNAVAILABLE"), dependency,
+                    dependency + " could not be reached", transport);
+        }
+        return new OutcomeUnknownException(code("OUTCOME_UNKNOWN"), dependency,
+                dependency + " did not answer in time", transport);
+    }
+
+    private static boolean isNotSent(Throwable cause) {
+        return cause instanceof ConnectException
+                || cause instanceof UnknownHostException
+                || cause instanceof NoRouteToHostException
+                || cause instanceof ConnectTimeoutException
+                || cause instanceof ConnectionRequestTimeoutException;
+    }
+
+    /** `Retry-After` in delay-seconds or HTTP-date form (RFC 9110 § 10.2.3); empty when absent or unreadable. */
+    private static Duration retryAfter(HttpHeaders headers) {
+        String value = headers == null ? null : headers.getFirst(HttpHeaders.RETRY_AFTER);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        if (value.chars().allMatch(Character::isDigit)) {
+            return Duration.ofSeconds(Long.parseLong(value));
+        }
+        try {
+            Duration until = Duration.between(ZonedDateTime.now(),
+                    ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME));
+            return until.isNegative() ? Duration.ZERO : until;
+        } catch (DateTimeParseException unreadable) {
+            return null;
+        }
+    }
+
+    private String code(String suffix) {
+        return codePrefix + "_" + suffix;
+    }
+}
+
+// --- shared/ResilientHttpCall.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import java.time.Duration;
+import java.util.function.Supplier;
+
+/**
+ * Bulkhead, then circuit breaker, then translation — used only when `28-cliente-http.md` § 5
+ * names a breaker or a bulkhead for this dependency. Without either, the adapter calls
+ * {@link HttpFailureTranslator#call(Supplier)} directly. Both instances come from the
+ * Resilience4j registries, configured by name in `application-http-client.yml`.
+ */
+public final class ResilientHttpCall {
+
+    private final HttpFailureTranslator translator;
+    private final CircuitBreaker breaker;
+    private final Bulkhead bulkhead;
+
+    public ResilientHttpCall(HttpFailureTranslator translator, CircuitBreaker breaker, Bulkhead bulkhead) {
+        this.translator = translator;
+        this.breaker = breaker;
+        this.bulkhead = bulkhead;
+    }
+
+    public <T> T call(Supplier<T> remoteCall) {
+        Supplier<T> translated = () -> translator.call(remoteCall);
+        try {
+            return bulkhead.executeSupplier(() -> breaker.executeSupplier(translated));
+        } catch (CallNotPermittedException open) {
+            throw translator.rejected(open, openWait());
+        } catch (BulkheadFullException full) {
+            throw translator.rejected(full);
+        }
+    }
+
+    private Duration openWait() {
+        return Duration.ofMillis(breaker.getCircuitBreakerConfig().getWaitIntervalFunctionInOpenState().apply(1));
+    }
+}
+
+// --- shared/OutboundHttpConfig.java
+package com.exemplo.minhaapi.adapter.out.http.shared;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.resilience.annotation.EnableResilientMethods;
+
+/**
+ * Boot does not switch `@Retryable` on by itself: without this annotation every `@Retryable` in
+ * the project is inert, and the first 503 fails the request with no retry and no error saying why.
+ */
+@Configuration
+@EnableResilientMethods
+public class OutboundHttpConfig {
+}
