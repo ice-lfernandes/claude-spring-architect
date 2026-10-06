@@ -33,15 +33,16 @@ jobs:
         run: ./gradlew --no-daemon build
 
       # `.claude/rules/testing.md` § Database in integration tests: the
-      # `@EnabledIf(dockerAvailable)` guard is allowed locally, not in CI. Without this
-      # check the guard turns into a universal skip and `build` goes green without having
-      # touched the database — the silent degradation the rule forbids.
+      # `@EnabledIf(dockerAvailable)` guard is allowed locally, not in CI. A class the guard
+      # turns off is reported as skipped, not as zero tests, so any skipped IT fails here.
+      # Otherwise `build` goes green without having touched the database, which is the
+      # silent degradation the rule forbids.
       #
-      # Keyed off *IT.java source presence, not off the report alone: a freshly
-      # bootstrapped project (see decisions/0011) has zero business code and therefore
-      # zero *IT sources — that state must pass, not fail. Once the first *IT lands,
-      # the check gains teeth: sources without a report, or a report with zero tests,
-      # both fail the build.
+      # Keyed off *IT.java source presence: a freshly bootstrapped project (see
+      # decisions/0011) has zero *IT sources, and that state must pass. The counts come from
+      # every XML under integrationTest/, whatever the class name ends with. Tests in
+      # @Nested classes are reported as `<Outer>$<Nested>`, never under the *IT name (see
+      # decisions/0127).
       - name: integration tests actually ran
         run: |
           IT_SOURCES=$(find . -path '*/src/test/java/*IT.java' -print -quit)
@@ -49,16 +50,30 @@ jobs:
             echo "ℹ️  No *IT.java sources yet — nothing to verify."
             exit 0
           fi
-          REPORTS=$(find . -path '*/build/test-results/integrationTest/*IT.xml' -print -quit)
+          REPORTS=$(find . -path '*/build/test-results/integrationTest/*.xml')
           if [ -z "$REPORTS" ]; then
-            echo "❌ *IT.java sources exist but no integrationTest report. Either the task"
-            echo "   isn't wired up, or the Docker guard skipped them all. In CI that's a failure."
+            echo "❌ *IT.java sources exist but no integrationTest report. The task isn't wired"
+            echo "   up in the build. In CI that's a failure."
             exit 1
           fi
-          if grep -rlE 'tests="0"' --include='*IT.xml' . ; then
-            echo "❌ An IT ran with 0 tests — Docker guard active in CI."; exit 1
+          attr() { grep -o '<testsuite [^>]*>' "$2" | head -1 | sed -n "s:.* $1=\"\([0-9]*\)\".*:\1:p"; }
+          TOTAL=0; SKIPPED=0
+          while IFS= read -r f; do
+            t=$(attr tests "$f"); s=$(attr skipped "$f")
+            TOTAL=$((TOTAL + ${t:-0})); SKIPPED=$((SKIPPED + ${s:-0}))
+          done <<< "$REPORTS"
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "❌ $SKIPPED integration test(s) skipped in CI. The Docker guard, @Disabled or an"
+            echo "   assumption turned them off, and a skipped IT proves nothing. Skipped in:"
+            find . -path '*/build/test-results/integrationTest/TEST-*.xml' \
+              -exec grep -lE '<testsuite [^>]*skipped="[1-9]' {} + \
+              | sed 's:.*/TEST-::; s:\.xml$::; s:^:     :' || true
+            exit 1
           fi
-          echo "✅ Integration tests ran against a real container."
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "❌ *IT.java sources exist but integrationTest ran no test."; exit 1
+          fi
+          echo "✅ $TOTAL integration test(s) ran, none skipped."
 
   boundaries:
     name: architectural boundaries
