@@ -146,7 +146,9 @@ Two facts cross that line, one in each direction, and each has one owner:
 
 3. **Interview — only what step 2 did not settle.** `AskUserQuestion`, at most 4 questions per
    call and **never fewer than 2 real options** per question; an axis with one sensible answer
-   is decided and recorded, not asked (`@CLAUDE.md` § Known pitfalls).
+   is decided and recorded, not asked (`@CLAUDE.md` § Known pitfalls). **Never more than 4
+   options either:** an axis with more values — *Kind* has five — offers the four the specs
+   leave plausible, and the fifth is typed under Other.
 
    | Axis | Decides | Skip when |
    |---|---|---|

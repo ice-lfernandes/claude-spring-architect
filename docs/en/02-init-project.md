@@ -119,13 +119,14 @@ bootstrap that delivers a red build isn't finished.
 
 Since `--blueprint`, `--groupId`, `--name`, and `--bounded-context` are already in the
 arguments, `/init-project` doesn't ask about them again — it only interviews what's missing,
-in the main session and before delegating: build (already given, also skipped), **features**
-(REST, JPA+Flyway, Kafka, SQS, OpenAPI, Testcontainers, Actuator), TLS and Sonar (the questions
-of `transport-security-setup` and `sonarqube-setup`). The agent asks nothing. Suppose the user answers: REST,
-JPA+Flyway, OpenAPI, Testcontainers, Actuator (no Kafka/SQS).
+in the main session and before delegating: build (already given, also skipped), **features**,
+TLS and Sonar (the questions of `transport-security-setup` and `sonarqube-setup`), at most four
+questions per call. The agent asks nothing. Features are asked only where the blueprint sets
+them `false`: `hexagonal` already turns on REST, JPA+Flyway, OpenAPI, Testcontainers and
+Actuator, so the one question offers Kafka and SQS. Suppose the user checks neither.
 
-The **bounded context** (`--bounded-context`) is a field of the same coordinates question,
-defaulting to the artifactId. It is a project fact, not a per-use-case answer: it is the
+The **bounded context** (`--bounded-context`) is its own question, defaulting to the
+artifactId. It is a project fact, not a per-use-case answer: it is the
 first segment of every Kafka topic name, and choosing it inside one use case would give a
 system two namespaces. That is why it is asked once here and written into the generated
 project's root `CLAUDE.md`, even when there is no messaging.
