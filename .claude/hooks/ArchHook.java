@@ -5747,7 +5747,7 @@ public class ArchHook {
     // Phases (args[1]):
     //   prompt   UserPromptSubmit         a prompt ends any phase; `/<skill>` opens one
     //   call     PreToolUse Skill|Agent   a skill opens the phase; a `blocked_during_design`
-    //                                     class is refused
+    //                                     class is refused; a classed agent's call is skipped
     //   write    PreToolUse Write|Edit    blocks (exit 2) what the three boundaries forbid
     //
     // The phase is one file per session in the OS temp dir — never in the project, so it
@@ -5759,7 +5759,7 @@ public class ArchHook {
     // open means no restriction — a person editing a file by hand is not a skill overstepping.
     //
     // A write carrying an `agent_type` is judged by that AGENT's class instead, and the phase
-    // is not consulted at all. That is why nothing closes the phase on an Agent call any more:
+    // is not consulted at all — nor is it by a `Skill` call carrying one (decision 0126). That is why nothing closes the phase on an Agent call any more:
     // the main thread's territory is not the subagent's business, and deleting the phase
     // silently unrestricted the caller for the rest of the turn. It also retires the ordering
     // race of lessons-learned-006 § 1 for every classed agent — there is nothing left to
@@ -5840,7 +5840,19 @@ public class ArchHook {
         }
     }
 
+    /**
+     * Judges a `Skill` call against the open phase: refuses a `blocked_during_design` callee,
+     * then joins or replaces the phase. A call carrying the `agent_type` of a classed agent is
+     * skipped whole, because that agent's writes are judged by its own `write_allow` and never
+     * by the phase. Refusing the call would protect nothing, and opening the callee's phase
+     * would overwrite the main thread's phase (issue #99: `project-initializer` chaining
+     * `transport-security-setup` under `/init-project`). Invoked on `PreToolUse`
+     * `Skill|Agent|Task`. The rejected alternative was dropping `design_phase` from
+     * `orchestrator`, which would let `/new-feature` reach `build` skills again. Design:
+     * .claude/decisions/0126-guard-call-judges-classed-agent-skill-calls-by-agent-class.md
+     */
     static void guardCall(Map<String, Object> sch, Path state, Object in) throws IOException {
+        if (agentClassOf(sch, asStr(get(in, "agent_type"))) != null) return;
         String tool = asStr(get(in, "tool_name"));
         if ("Skill".equals(tool)) {
             String skill = asStr(get(in, "tool_input", "skill"));
