@@ -35,6 +35,17 @@ One `/init-project` run, sped up about 5×. What it produced is public:
 read from the session transcripts into its
 [`GENESIS.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/GENESIS.md).
 
+The generated project, opened as is: it starts against the compose Postgres, and
+`mvn clean verify` passes with tests, Spotless, Checkstyle and JaCoCo.
+
+<p align="center">
+  <img alt="bank-app starting in the IDE: Flyway validates the schema and Tomcat starts on port 8080" src="docs/assets/bank-app-run.gif" width="100%">
+</p>
+
+<p align="center">
+  <img alt="mvn clean verify on bank-app: 3 tests, 0 Checkstyle violations, BUILD SUCCESS" src="docs/assets/bank-app-verify.gif" width="100%">
+</p>
+
 Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
 the engineer-architect whose structures are their own form. Formerly
 `claude-spring-architect`; the old GitHub address redirects here.
