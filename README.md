@@ -31,8 +31,8 @@ Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/pt-br/`](docs
 
 One `/init-project` run, sped up about 5×. What it produced is public:
 [`nerviz-ai/bank-app`](https://github.com/nerviz-ai/bank-app), a
-`clean-architecture-single-module` project with a green build. The run took 20 minutes and cost
-USD 6.38, figures read from the session transcripts into its
+`clean-architecture-single-module` project with a green build. The run took 20 minutes, a figure
+read from the session transcripts into its
 [`GENESIS.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/GENESIS.md).
 
 Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
