@@ -188,9 +188,10 @@ greens, which is why `/arch-doctor` exists. More traps, runtime and repository a
 ```
 /init-project
      │
-     ▼  agent: project-initializer (isolated context, model: sonnet)
+     ├─ 1. INTERVIEW, in the main session — blueprint · coordinates · build · features · TLS · Sonar
      │
-     ├─ 1. INTERVIEW — blueprint · coordinates · build · features
+     ▼  agent: project-initializer (isolated context, model: sonnet, asks nothing)
+     │
      ├─ 2. VALIDATES blueprint — 6-rule checklist            [fails fast]
      ├─ 3. BASE via Spring Initializr (curl)                 [GA versions, nothing hardcoded]
      ├─ 4. RESTRUCTURES into modules per the blueprint       [exemplars give the shape]
@@ -200,6 +201,7 @@ greens, which is why `/arch-doctor` exists. More traps, runtime and repository a
      ├─ 7. INSTALLS hooks (ArchHook.jar + extensions.json + settings.json), opens the audit trail
      ├─ 8. VERIFIES build + smoke + tested boundary block; writes README + GENESIS.md
      ├─ 9. REPORT in the fixed output contract
+     ├─ 10. GENESIS.md figures from the session transcripts — Started, Finished, tokens, cost
      └─ if the build is green: OFFERS git-publish — two independent confirmations
 ```
 

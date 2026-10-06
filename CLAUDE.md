@@ -19,12 +19,14 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Create a project from a blueprint | `/init-project` |
 | Design a new extension of this `.claude/` | `/claude-code-architect-designer` |
 | Run the hook by hand | `java .claude/hooks/ArchHook.java doctor` |
+| Check one file against the architectural boundary by hand — exit 2 on a forbidden import, 1 when the path is no `.java` file, never a read of stdin | `java .claude/hooks/ArchHook.java check <path>` |
 | Check every compose service is up, no foreign container holds its ports, every published port is advertised at a host-resolvable address, and every `${VAR:default}` pointing at a service holds on the host and in the `app` container | `java .claude/hooks/ArchHook.java compose` |
 | Check which paths a shell command would write, and whether the guard admits them — and whether it is a force push, which it blocks | `echo '{"tool_input":{"command":"…"}}' \| java .claude/hooks/ArchHook.java guard bash` |
 | Sweep what the current turn wrote and no tool-time guard admitted against the open phase's territory and the frozen folders — the audit trail excepted | `echo '{}' \| java .claude/hooks/ArchHook.java guard sweep` |
 | The compose check as a gate — silent while healthy, exit 2 otherwise | `echo '{}' \| java .claude/hooks/ArchHook.java compose gate` |
 | Show what an agent receives at `SubagentStart` — the pattern catalog, or nothing | `echo '{"agent_type":"java-spring-boot-developer"}' \| java .claude/hooks/ArchHook.java context subagent` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
+| Fill a generated project's `GENESIS.md` — Started, Finished, tokens and cost — from this session's transcripts; `/init-project` runs it, once | `java .claude/hooks/ArchHook.java audit genesis <project> <session-id>` |
 | Write a target project's `.claude/` from this one, transformed for a blueprint | `java .claude/hooks/ArchHook.java export <dest> --blueprint <id> [--dry-run]` |
 | Validate frontmatter of all extension files (a skill named after a native command, a rule without `paths`), `.mcp.json`, every hook registration in `settings.json` and in `project-bootstrap`'s template, every `` !`…` `` injection's paths, and the `export` manifest against what is on disk | `java .claude/hooks/ArchHook.java schema` |
 | Rebuild `.claude/hooks/ArchHook.jar` — what every hook launches — from the source, under the JDK `hook_build.javac_feature` pins | `java .claude/hooks/ArchHook.java build` |

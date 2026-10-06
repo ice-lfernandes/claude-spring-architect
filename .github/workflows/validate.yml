@@ -74,7 +74,9 @@ jobs:
 
       # Every test below spawns `java -jar .claude/hooks/ArchHook.jar`, the exact command the
       # registrations run — the step above is what makes that the same thing as the source.
-      - name: hook blocks forbidden import
+      # Both shapes: the stdin payload the hook sends, and `check <path>` — what the bootstrap's
+      # boundary probe types — which once read stdin first and hung, then passed in silence (0123).
+      - name: hook blocks forbidden import, from the payload and from argv
         run: java .claude/.ci/BoundaryTest.java
 
       # Issue #60: `moduleOf` never looked at the root POM, so `format`, `check` and `tests`
@@ -148,6 +150,12 @@ jobs:
       # off and out of its reach — dropping either read must fail here (0111).
       - name: audit renders where the run spent, redacts tool errors, skips what class or project turns off
         run: java .claude/.ci/AuditRenderTest.java
+
+      # GENESIS's Started, Finished, tokens and cost come only from `audit genesis` reading the
+      # transcripts — a start once landed after the finish, written by the model (0123). A sum
+      # that counts turns from before `/init-project`, or a second run overwriting, must fail here.
+      - name: audit genesis fills GENESIS from the transcripts, once
+        run: java .claude/.ci/GenesisTest.java
 
   design:
     name: design invariants
@@ -267,6 +275,12 @@ jobs:
       # copies it. Reads its patterns from checkstyle.xml.example, so the two never disagree (0108).
       - name: exemplar bodies carry no comment but Javadoc
         run: java .claude/.ci/TemplateCommentsTest.java
+
+      # An XML exemplar is copied in its own order, declaration included. logback-spring.xml's
+      # `<?xml … ?>` once sat below its EXEMPLAR comment — a fatal parse error that turned every
+      # Spring-context test red in the generated project, patched by hand there (0123).
+      - name: XML exemplars are well-formed
+        run: java .claude/.ci/XmlTemplatesTest.java
 
       - name: blueprint-declared templates exist on disk
         run: |

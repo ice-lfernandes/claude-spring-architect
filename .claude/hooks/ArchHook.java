@@ -32,6 +32,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.regex.*;
 import java.util.stream.*;
@@ -57,7 +58,12 @@ public class ArchHook {
         // is here and not in extensions.json on purpose: it is the dispatch itself, the
         // same place the mode names already live.
         String stdin = switch (mode) {
-            case "check", "format", "tests", "schema", "audit", "guard", "context" -> readAll(System.in);
+            // `check <path>` is the form a person, or the bootstrap's boundary probe, types: the
+            // path is in argv and stdin is never read, so an open stdin cannot hang it
+            // (lessons-learned-020 § 3). `audit genesis` is addressed the same way.
+            case "check" -> args.length > 1 ? "" : readAll(System.in);
+            case "audit" -> args.length > 1 && "genesis".equals(args[1]) ? "" : readAll(System.in);
+            case "format", "tests", "schema", "guard", "context" -> readAll(System.in);
             // `compose gate` is the hook-invoked half of `compose` and needs the payload for
             // `stop_hook_active`. The bare `compose` a person types stays out of the list, which
             // is the hang lessons-learned-011 § 2 found.
@@ -66,11 +72,12 @@ public class ArchHook {
         };
         try {
             switch (mode) {
-                case "check"  -> check(filePath(stdin));
+                case "check"  -> { if (args.length > 1) checkPath(args[1]); else check(filePath(stdin)); }
                 case "format" -> format(filePath(stdin));
                 case "tests"  -> tests(args.length > 1 ? args[1] : "stop", stdin);
                 case "schema" -> schema(stdin);
-                case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
+                case "audit"  -> { if (args.length > 1 && "genesis".equals(args[1])) auditGenesis(args);
+                                   else audit(args.length > 1 ? args[1] : "flush", stdin); }
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
                 case "compose" -> compose(args.length > 1 ? args[1] : "report", stdin);
                 case "context" -> context(args.length > 1 ? args[1] : "subagent", stdin);
@@ -88,6 +95,24 @@ public class ArchHook {
     }
 
     // ── check ────────────────────────────────────────────────────────────────
+    /**
+     * {@code check <path>} — the same check for a file named in argv, the form a person and the
+     * bootstrap's boundary probe type. The payload form passes in silence on anything it cannot
+     * check, which is right for a hook on every edit and wrong for a command typed to prove
+     * something: here a missing or non-Java file exits 1 and a clean one says so. Invoked by
+     * nothing in {@code settings.json}; the hook stays on the stdin form. A relative path resolves
+     * against {@link #ROOT}, the same root the module lookup uses.
+     */
+    static void checkPath(String arg) throws Exception {
+        Path abs = ROOT.resolve(arg).normalize();
+        if (!arg.endsWith(".java") || !Files.isRegularFile(abs)) {
+            err("❌ check: " + abs + " is not an existing .java file — nothing was checked.");
+            System.exit(1);
+        }
+        check(abs.toString());
+        System.out.println("✅ check: no boundary violation in " + relative(abs));
+    }
+
     static void check(String file) throws Exception {
         if (file == null || !file.endsWith(".java")) return;
         Path abs = Paths.get(file);
@@ -5009,6 +5034,112 @@ public class ArchHook {
         List<String> missing = auditUnpriced(dir, u.byModel.keySet());
         if (missing == null) return "— (no `" + AUDIT_DIR + "/pricing.json`)";
         return "— (no price for `" + String.join("`, `", missing) + "` in `" + AUDIT_DIR + "/pricing.json`)";
+    }
+
+    /**
+     * {@code audit genesis <project> <session-id>} — fills the four figures of a freshly generated
+     * project's GENESIS record from this session's transcripts: Started (the `/init-project`
+     * message), Finished (now), the tokens and their cost. Form 7c, run by `/init-project` through
+     * Bash after its agent returns and before `git-publish`; no event invokes it, and it writes
+     * nothing in this repository, whose trail stays off. A number the model wrote would be memory
+     * — a start recovered from a directory's birth time once landed after the finish, in local
+     * time with a literal `Z` (lessons-learned-020 § 4) — so the agent leaves the placeholders and
+     * this reads the runtime's own record; the rejected alternative, the agent pricing its own
+     * transcript, sees neither the main session nor its own last turns. Every turn of the main
+     * transcript and of each subagent transcript from Started on is counted, deduplicated by
+     * message id like every audit report, and priced from the project's `pricing.json` — never a
+     * partial sum. Names in `audit.genesis` of extensions.json (invariant 10). Exit 1, saying
+     * why, on anything it cannot fill; it never overwrites a filled record.
+     */
+    static void auditGenesis(String[] args) throws Exception {
+        if (args.length < 4) {
+            err("Usage: ArchHook audit genesis <project> <session-id>");
+            System.exit(1);
+        }
+        Map<String, Object> cfg = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "audit", "genesis"));
+        if (cfg == null) {
+            err("❌ audit genesis: no `audit.genesis` block in " + ROOT.resolve(SCHEMA_FILE));
+            System.exit(1);
+        }
+        Map<String, Object> ph = asMap(cfg.get("placeholders"));
+        String pStart = asStr(get(ph, "started")), pEnd = asStr(get(ph, "finished")),
+               pTokens = asStr(get(ph, "tokens")), pCost = asStr(get(ph, "cost"));
+        Path project = Paths.get(args[2]).toAbsolutePath().normalize();
+        Path genesis = project.resolve(asStr(cfg.get("file")));
+        String body = readOrNull(genesis);
+        if (body == null) {
+            err("❌ audit genesis: " + genesis + " does not exist — step 8.6 of project-bootstrap writes it.");
+            System.exit(1);
+        }
+        if (!body.contains(pStart) || !body.contains(pEnd) || !body.contains(pTokens) || !body.contains(pCost)) {
+            err("❌ audit genesis: " + genesis + " has no " + pStart + ", " + pEnd + ", " + pTokens + " or "
+                    + pCost + " left — already filled, or written without them. Nothing was changed.");
+            System.exit(1);
+        }
+
+        String session = args[3];
+        String cfgDir = System.getenv("CLAUDE_CONFIG_DIR");
+        Path projects = (cfgDir != null && !cfgDir.isBlank() ? Paths.get(cfgDir)
+                : Paths.get(System.getProperty("user.home"), ".claude")).resolve("projects");
+        Path transcript = null;
+        if (Files.isDirectory(projects)) {
+            try (Stream<Path> s = Files.list(projects)) {
+                transcript = s.map(d -> d.resolve(session + ".jsonl")).filter(Files::isRegularFile)
+                        .findFirst().orElse(null);
+            }
+        }
+        if (transcript == null) {
+            err("❌ audit genesis: no " + session + ".jsonl under " + projects + " — pass this session's id.");
+            System.exit(1);
+        }
+
+        String tag = "<command-name>/" + asStr(cfg.get("command")) + "</command-name>";
+        long start = 0;
+        for (String line : Files.readAllLines(transcript, StandardCharsets.UTF_8)) {
+            if (!line.contains(tag)) continue;
+            Object e = Json.parse(line);
+            // The typed command is a user message whose content is a plain string. A tool result
+            // is a user message too, with a list of blocks — and one that echoes a file citing
+            // the tag would otherwise move Started to whenever that file was read.
+            if ("user".equals(asStr(get(e, "type"))) && get(e, "message", "content") instanceof String c
+                    && c.contains(tag)) {
+                start = Math.max(start, epochMs(asStr(get(e, "timestamp"))));
+            }
+        }
+        if (start == 0) {
+            err("❌ audit genesis: no " + tag + " message in " + transcript + " — nothing to measure from.");
+            System.exit(1);
+        }
+        long end = System.currentTimeMillis();
+        if (end < start) {
+            err("❌ audit genesis: Finished would precede Started (" + Instant.ofEpochMilli(start) + ") — check the clock.");
+            System.exit(1);
+        }
+
+        List<Path> all = new ArrayList<>(List.of(transcript));
+        all.addAll(subagentTranscripts(transcript.toString()).values());
+        Usage u = new Usage();
+        int requests = 0;
+        for (Path p : all) {
+            for (Turn t : usageTurns(p)) {
+                if (t.model() == null || t.t() < start) continue;
+                u.add(t.model(), t.u());
+                requests++;
+            }
+        }
+        Path auditDir = project.resolve(AUDIT_DIR);
+        String cost = auditCostCell(auditDir, u).replace("**", "");
+        String tokens = String.format(Locale.ROOT,
+                "%,d input · %,d output · %,d cache read · %,d cache write — %d requests, %s",
+                u.in(), u.out(), u.cacheRead(), u.cacheWrite(), requests, orDash(u.model()));
+        String iso0 = Instant.ofEpochMilli(start).truncatedTo(ChronoUnit.SECONDS).toString();
+        String iso1 = Instant.ofEpochMilli(end).truncatedTo(ChronoUnit.SECONDS).toString();
+        Files.writeString(genesis, body.replace(pStart, iso0).replace(pEnd, iso1)
+                .replace(pTokens, tokens).replace(pCost, cost), StandardCharsets.UTF_8);
+        System.out.println("✅ GENESIS filled — " + genesis);
+        System.out.println("   Started " + iso0 + " · Finished " + iso1);
+        System.out.println("   Tokens  " + tokens);
+        System.out.println("   Cost    " + cost);
     }
 
     static String money(Path dir, Double amount) {

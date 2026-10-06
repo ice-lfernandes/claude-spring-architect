@@ -6,7 +6,9 @@ live session opens with this project as its root, and this run happens before th
 possible (`@.claude/lessons-learned/lessons-learned-004.md` Gap 1). The header saying so stays in the
 real file — it's the only thing telling a later `/audit-usage` reader this entry has no
 per-tool-call granularity behind it. Everything else in this top comment is cut when
-step 8.6 writes the real file.
+step 8.6 writes the real file. `{{startIso}}`, `{{endIso}}`, `{{tokens}}` and `{{cost}}`
+are NOT resolved by step 8.6: they stay literal, and `/init-project` replaces them with
+`ArchHook.java audit genesis` once the agent has returned.
 -->
 
 # 🌱 Genesis — the `/init-project` run that created this project
@@ -14,10 +16,12 @@ step 8.6 writes the real file.
 This is **not** a report from `ArchHook.java audit`. That hook's trail only starts once
 a live Claude Code session opens with this project as its root — the run that created
 the project happened before any such session could exist here. This entry is a one-time,
-meta-repo-side reconstruction from the data that run already had in hand: no
-per-tool-call timeline, no cost breakdown, no ranked stages — that granularity was never
-captured, because no hook was watching yet. Every report that follows this one in this
-directory *is* hook-produced, and looks different.
+meta-repo-side reconstruction: no per-tool-call timeline, no per-piece breakdown, no ranked
+stages — that granularity was never captured, because no hook was watching yet. Started,
+Finished, tokens and cost are the exception: `ArchHook.java audit genesis` read them from
+that session's transcripts, the main session's and its subagents', and priced them from
+`pricing.json` — the whole run, from the `/init-project` message to the moment it ran. Every
+report that follows this one in this directory *is* hook-produced, and looks different.
 
 | | |
 |---|---|
@@ -27,6 +31,8 @@ directory *is* hook-produced, and looks different.
 | Build tool | {{buildTool}} |
 | Started | {{startIso}} |
 | Finished | {{endIso}} |
+| Tokens | {{tokens}} |
+| Cost | {{cost}} |
 | Build | {{buildStatus}} |
 
 ## Output contract

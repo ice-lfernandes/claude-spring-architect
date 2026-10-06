@@ -68,7 +68,7 @@ skills and blueprint catalog would end up beside the project's code.
   The session's shell keeps its cwd between calls, and a bare `cd` would move every later
   injection with it.
 - **Chained skills.** `transport-security-setup` (step 7.5), `sonarqube-setup` (step 8.4) and
-  `git-publish` (at the end, from `project-initializer`) receive `project: <project>` in their
+  `git-publish` (at the end, from `/init-project`) receive `project: <project>` in their
   one-line context, and pass it on when they chain `docker-architect`. Each of them treats that
   directory as the project root. Step 4.10 applies `docker-architect`'s merge procedure here,
   so it follows the two rules above.
@@ -111,7 +111,7 @@ what you think you know — the version you have in memory is stale by construct
 
 **This skill generates exactly one build system per project — Maven or Gradle, never
 both.** `build.tool` in the blueprint YAML picks it, and it's overridable once at
-initialization (step 1's interview); once resolved, every later step branches on that
+initialization (`/init-project`'s interview); once resolved, every later step branches on that
 single value and only ever touches that tool's exemplars. Writing a `pom.xml` and a
 `build.gradle` side by side (or vice versa) in the same generated project is a bug in
 this procedure, not a harmless extra — Maven and Gradle disagree about which one is
@@ -132,19 +132,25 @@ existing.
 
 ## Procedure
 
+**Independent calls go in one response.** Every turn re-reads the whole context, so a step's
+exemplars are parallel `Read`s and its files — every `package-info.java` of step 4.7 — parallel
+`Write`s, in one response each. Never a shell loop or heredoc instead: `guard bash` may not read
+its paths, and one bad heredoc corrupts every file it writes
+(`@.claude/lessons-learned/lessons-learned-020.md` § 7).
+
 ### 1 · Select the blueprint
 
-List `.claude/blueprints/*/*.yaml` dynamically (never a fixed list in the prompt) —
-each architecture lives at `.claude/blueprints/<id>/<id>.yaml`; folders without a
-`.yaml` (architecture not yet written) don't appear in the list. If the user hasn't
-indicated which one, show `references/blueprint-selection.md` with each one's
-`when_to_choose` and `trade_offs`, and ask. **Never assume** the architecture: it's the
-most expensive decision to reverse in the whole project.
+The blueprint, the build tool and every other answer come from `/init-project`'s interview,
+run in the main session before the agent that runs this skill starts — that agent runs in the
+background and cannot ask (`@.claude/decisions/0123-lessons-learned-020-init-project-run.md`).
+This skill never asks. A missing answer stops it: report `blocked: missing <field>`.
+**Never assume** the architecture: it's the most expensive decision to reverse in the whole
+project. Check the given `id` against `.claude/blueprints/*/*.yaml`, listed dynamically —
+each architecture lives at `.claude/blueprints/<id>/<id>.yaml`.
 
-The blueprint's `build.tool` (`maven` or `gradle`) is a default, not a lock-in — if the
-user hasn't said which build tool they want, confirm the blueprint's default with them
-here, once, same interview. Don't ask again later: step 2 resolves the final value and
-every step from step 3 on assumes it's already settled.
+The blueprint's `build.tool` (`maven` or `gradle`) is a default, not a lock-in — the answer
+the interview passed wins. Step 2 resolves the final value and every step from step 3 on
+assumes it's already settled.
 
 ### 2 · Validate the blueprint
 
@@ -163,7 +169,7 @@ Don't invent defaults for `dependency_rules` — it's the backbone of the enforc
 
 **Resolve the effective build tool now, before step 3.** `build.tool` in the blueprint
 is the default; `@.claude/blueprints/_schema.md` documents it as "Overridable at
-initialization" — if the user asked for the other tool during step 1's interview, that
+initialization" — if the user asked for the other tool in `/init-project`'s interview, that
 override wins. Whatever the final value — `maven` or `gradle` — every step from here on
 branches on it once and stays with that choice. Never generate both.
 

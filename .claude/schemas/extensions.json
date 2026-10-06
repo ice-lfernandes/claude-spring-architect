@@ -147,6 +147,12 @@
     "project_overrides": "audited.json",
     "$comment_harness_prompts": "Prompts the harness injects on its own while a background agent's run is open — matched with find(), each one a regex. Not user intent: `audit prompt` neither closes, nor opens, nor overwrites the observer file on them, so the run keeps absorbing the agent's remaining events. `<task-notification>` is the agent's completion notice (decision 0041); `<agent-message` is its report, delivered through the runtime's one-shot hand-back (decision 0119). Both are undocumented runtime formats: a renamed shape closes runs early again, in silence — AuditRenderTest pins both.",
     "harness_prompts": ["^\\s*<task-notification>", "^\\s*<agent-message\\b"],
+    "$comment_genesis": "Read by `audit genesis <project> <session-id>`, which `/init-project` runs after `project-initializer` returns and before `git-publish`. `file` is the generated project's genesis record, relative to its root; `command` the skill whose `<command-name>` message marks Started in this session's transcript; `placeholders` the four literals step 8.6 of project-bootstrap leaves in the file and this mode replaces — Started, Finished (the moment it runs), the tokens of the main transcript and every subagent transcript from Started on, and their cost from the project's pricing.json. The model never writes those four values. Design: .claude/decisions/0123-lessons-learned-020-init-project-run.md",
+    "genesis": {
+      "file": ".claude/audit-usage/GENESIS.md",
+      "command": "init-project",
+      "placeholders": {"started": "{{startIso}}", "finished": "{{endIso}}", "tokens": "{{tokens}}", "cost": "{{cost}}"}
+    },
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
@@ -270,7 +276,7 @@
     "why_section": "(?m)^##\\s+Why\\b",
     "classes": {
       "driver": {
-        "$comment": "Interviews the user and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude. `pattern_catalog: false`: it writes through project-bootstrap's templates, it designs no Java of its own.",
+        "$comment": "Receives the interview's answers from `/init-project` — which runs it in the main session, since a background agent has no AskUserQuestion (decision 0123) — and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude. `pattern_catalog: false`: it writes through project-bootstrap's templates, it designs no Java of its own.",
         "executor": true,
         "pattern_catalog": false,
         "write_allow": ["**"],
