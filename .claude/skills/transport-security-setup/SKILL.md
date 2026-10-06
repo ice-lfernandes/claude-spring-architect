@@ -141,6 +141,20 @@ grep -rL '@ActiveProfiles("test")' $(grep -rl "@SpringBootTest" --include='*.jav
 Add `@ActiveProfiles("test")` to each file listed. The generator's own `*ApplicationTests` is
 usually the only one.
 
+**A datasource in the context.** When the project has a Testcontainers configuration —
+
+```bash
+grep -rl "class TestcontainersConfiguration" --include='*.java' src/test/ */src/test/ 2>/dev/null
+```
+
+— every `@SpringBootTest` class of the test you write carries
+`@Import(TestcontainersConfiguration.class)`. In `ForwardedHeadersIT` that means **each nested
+class**: `@NestedTestConfiguration(OVERRIDE)` drops the enclosing class's configuration, an import
+included. Without it, a project with JPA or Flyway starts the context against `localhost:5432` —
+connection refused on a clean machine, or another project's database where one is running
+(lessons-learned-020 § 2). The exemplars don't carry the import: they are compiled in CI against a
+project with no datasource, where the class does not exist.
+
 ### 6 · Container — through `docker-architect`
 
 Invoke `docker-architect` through the `Skill` tool with a one-line context, and only in these two

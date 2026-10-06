@@ -14,6 +14,10 @@
  * GET. An edge that speaks h2c with prior knowledge (Caddy `h2c://`) is proven by
  * `curl --http2-prior-knowledge`, not here.
  *
+ * DATASOURCE. With a Testcontainers configuration in the project, each nested class also carries
+ * `@Import(TestcontainersConfiguration.class)`: `OVERRIDE` drops the enclosing class's import
+ * along with the rest. Not shown here, because CI compiles this file in a project without one.
+ *
  * Runs in the integration phase (`*IT`, failsafe).
  */
 package com.exemplo.minhaapi;

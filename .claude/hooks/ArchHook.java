@@ -32,6 +32,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.regex.*;
 import java.util.stream.*;
@@ -57,7 +58,12 @@ public class ArchHook {
         // is here and not in extensions.json on purpose: it is the dispatch itself, the
         // same place the mode names already live.
         String stdin = switch (mode) {
-            case "check", "format", "tests", "schema", "audit", "guard", "context" -> readAll(System.in);
+            // `check <path>` is the form a person, or the bootstrap's boundary probe, types: the
+            // path is in argv and stdin is never read, so an open stdin cannot hang it
+            // (lessons-learned-020 § 3). `audit genesis` is addressed the same way.
+            case "check" -> args.length > 1 ? "" : readAll(System.in);
+            case "audit" -> args.length > 1 && "genesis".equals(args[1]) ? "" : readAll(System.in);
+            case "format", "tests", "schema", "guard", "context" -> readAll(System.in);
             // `compose gate` is the hook-invoked half of `compose` and needs the payload for
             // `stop_hook_active`. The bare `compose` a person types stays out of the list, which
             // is the hang lessons-learned-011 § 2 found.
@@ -66,11 +72,12 @@ public class ArchHook {
         };
         try {
             switch (mode) {
-                case "check"  -> check(filePath(stdin));
+                case "check"  -> { if (args.length > 1) checkPath(args[1]); else check(filePath(stdin)); }
                 case "format" -> format(filePath(stdin));
                 case "tests"  -> tests(args.length > 1 ? args[1] : "stop", stdin);
                 case "schema" -> schema(stdin);
-                case "audit"  -> audit(args.length > 1 ? args[1] : "flush", stdin);
+                case "audit"  -> { if (args.length > 1 && "genesis".equals(args[1])) auditGenesis(args);
+                                   else audit(args.length > 1 ? args[1] : "flush", stdin); }
                 case "guard"  -> guard(args.length > 1 ? args[1] : "write", stdin);
                 case "compose" -> compose(args.length > 1 ? args[1] : "report", stdin);
                 case "context" -> context(args.length > 1 ? args[1] : "subagent", stdin);
@@ -88,6 +95,24 @@ public class ArchHook {
     }
 
     // ── check ────────────────────────────────────────────────────────────────
+    /**
+     * {@code check <path>} — the same check for a file named in argv, the form a person and the
+     * bootstrap's boundary probe type. The payload form passes in silence on anything it cannot
+     * check, which is right for a hook on every edit and wrong for a command typed to prove
+     * something: here a missing or non-Java file exits 1 and a clean one says so. Invoked by
+     * nothing in {@code settings.json}; the hook stays on the stdin form. A relative path resolves
+     * against {@link #ROOT}, the same root the module lookup uses.
+     */
+    static void checkPath(String arg) throws Exception {
+        Path abs = ROOT.resolve(arg).normalize();
+        if (!arg.endsWith(".java") || !Files.isRegularFile(abs)) {
+            err("❌ check: " + abs + " is not an existing .java file — nothing was checked.");
+            System.exit(1);
+        }
+        check(abs.toString());
+        System.out.println("✅ check: no boundary violation in " + relative(abs));
+    }
+
     static void check(String file) throws Exception {
         if (file == null || !file.endsWith(".java")) return;
         Path abs = Paths.get(file);
@@ -427,6 +452,7 @@ public class ArchHook {
         ComposeReport comp = composeReport();
         report("Compose", comp.ok(), comp.summary(), comp.summary());
         for (String d : comp.detail()) err("    " + d);
+        for (String cw : comp.warnings()) err("    ⚠️  " + cw);
 
         boolean git = false;
         try { git = run("git", "rev-parse", "HEAD").exit == 0; } catch (Exception ignored) { }
@@ -860,6 +886,9 @@ public class ArchHook {
     //      the host, and `app` setting VAR, for the run in the container? The collector
     //      published nothing from 0046 to issue #66, so every host-run export failed, and
     //      projects older than 0046 never set the metrics endpoint on `app`.
+    //      Its login half — the database, the user and whether a password exists, compared
+    //      with the database service the datasource reaches — is a warning, never a block:
+    //      lessons-learned-021, decision 0124.
     //
     // Questions 3 to 5 need no Docker at all — they read files — and they are here because
     // this mode already owns `docker-compose.yml`. Two skills used to promise the match in
@@ -884,7 +913,11 @@ public class ArchHook {
     /** Seconds each `docker` call gets before it is given up on. See {@link #runTimed}. */
     static final int DOCKER_TIMEOUT = 10;
 
-    record ComposeReport(boolean ok, String summary, List<String> detail) {}
+    /**
+     * {@code warnings} never change {@code ok}: they are printed by the report form and by
+     * {@code doctor}, and the gate never reads them. Decision 0124.
+     */
+    record ComposeReport(boolean ok, String summary, List<String> detail, List<String> warnings) {}
 
     static void compose(String sub, String stdin) {
         if ("gate".equals(sub)) { composeGate(stdin); return; }
@@ -893,8 +926,12 @@ public class ArchHook {
         err("  Project root ...... " + ROOT);
         report("Compose", r.ok(), r.summary(), r.summary());
         for (String d : r.detail()) err("    " + d);
+        for (String w : r.warnings()) err("    ⚠️  " + w);
         err("");
-        err(r.ok() ? "✅ Compose healthy." : "⚠️  See the marked lines above.");
+        err(!r.ok() ? "⚠️  See the marked lines above."
+                : r.warnings().isEmpty() ? "✅ Compose healthy."
+                : "✅ Compose healthy, with " + r.warnings().size()
+                        + " warning(s) above that do not block.");
     }
 
     /**
@@ -938,7 +975,7 @@ public class ArchHook {
                 .map(ROOT::resolve).filter(Files::isRegularFile).findFirst().orElse(null);
         if (file == null) {
             return new ComposeReport(true, "no compose file — nothing to check (optional)",
-                    List.of());
+                    List.of(), List.of());
         }
 
         Map<String, Set<String>> declared = composeHostPorts(readOrNull(file));
@@ -948,20 +985,21 @@ public class ArchHook {
         List<String> tagIssues = new ArrayList<>(imageTagMismatches(file));
         tagIssues.addAll(advertisedAddressIssues(file, declared));
         tagIssues.addAll(placeholderIssues(file, declared));
+        List<String> warnings = datasourceLoginWarnings(file, declared);
 
         Proc ps;
         try {
             ps = runTimed(DOCKER_TIMEOUT, "docker", "compose", "ps", "-a", "--format", "json");
         } catch (Exception e) {
-            return withTags(tagIssues,
+            return withTags(tagIssues, warnings,
                     "docker not on PATH — service state not checked (optional)");
         }
         if (ps.exit() == -1) {
-            return withTags(tagIssues, "`docker compose ps` did not answer in "
+            return withTags(tagIssues, warnings, "`docker compose ps` did not answer in "
                     + DOCKER_TIMEOUT + "s (daemon starting?) — not checked");
         }
         if (ps.exit() != 0) {
-            return withTags(tagIssues,
+            return withTags(tagIssues, warnings,
                     "`docker compose ps` failed (daemon down?) — not checked");
         }
 
@@ -1024,7 +1062,7 @@ public class ArchHook {
                         + " published ports advertised to the host, placeholders hold on host"
                         + " and container"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";
-        return new ComposeReport(ok, summary, detail);
+        return new ComposeReport(ok, summary, detail, warnings);
     }
 
     /**
@@ -1032,11 +1070,11 @@ public class ArchHook {
      * advertised-address check read files only, so they still count — and still fail the
      * report, however unreachable the daemon is.
      */
-    static ComposeReport withTags(List<String> fileIssues, String summary) {
-        if (fileIssues.isEmpty()) return new ComposeReport(true, summary, List.of());
+    static ComposeReport withTags(List<String> fileIssues, List<String> warnings, String summary) {
+        if (fileIssues.isEmpty()) return new ComposeReport(true, summary, List.of(), warnings);
         return new ComposeReport(false,
                 fileIssues.size() + " problem(s) read from the compose file; " + summary,
-                fileIssues);
+                fileIssues, warnings);
     }
 
     /** Accepts both shapes `docker compose ps --format json` emits: an array, or one object per line. */
@@ -1182,7 +1220,7 @@ public class ArchHook {
                 String key = e.getKey();
                 if (suffixes.stream().noneMatch(key::endsWith)) continue;
                 boolean reachable = false;
-                for (String entry : e.getValue().split(",")) {
+                for (String entry : composeDefaults(e.getValue()).split(",")) {
                     String addr = entry.strip();
                     int scheme = addr.indexOf("://");
                     if (scheme >= 0) addr = addr.substring(scheme + 3);
@@ -1306,6 +1344,217 @@ public class ArchHook {
             }
         }
         return new ArrayList<>(new LinkedHashSet<>(out));
+    }
+
+    /**
+     * Question 5, login half: the datasource reaches a database service, so does it log in?
+     * The host-and-port half above passed {@code jdbc:postgresql://localhost:5432/bankingapp}
+     * against a {@code postgres} service that created {@code appdb} for user {@code app}: the
+     * socket opened and the login failed, and {@code compose} said "placeholders hold on host
+     * and container" — lessons-learned-021 § 3, the 0110 shape again.
+     *
+     * <p>For each side that reaches a database service — the default in the base
+     * {@code application.yml} (the run on the host) and the value {@code app} sets (the run in
+     * the container) — it compares the database in the JDBC URL and the user with the
+     * service's own environment, every {@code ${VAR:default}} read as its default. The
+     * password is never compared and never printed: only whether the service requires one
+     * and the application side has none (absent, empty, or an empty default).
+     *
+     * <p>Why this is a warning and not a block, unlike the rest of question 5: a project may
+     * declare a database service on the port its datasource uses while the developer connects
+     * to another database there on purpose, and a block on every {@code Stop} would stop a
+     * legitimate setup. The templates are aligned by construction, so what this catches is
+     * drift. Which properties pair with which service variables, per engine image, is data —
+     * {@code compose.datasource_pairs} (invariant 10). Invoked through {@code composeReport()}
+     * by {@code compose} and {@code doctor}; {@code compose gate} on {@code Stop} never reads
+     * it. Design: {@code .claude/decisions/0124-datasource-defaults-one-convention-checked-by-compose.md}.
+     */
+    static List<String> datasourceLoginWarnings(Path composeFile, Map<String, Set<String>> ports) {
+        Map<String, Object> cfg = asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))),
+                "compose"));
+        if (cfg == null) return List.of();
+        Map<String, Object> pairs = asMap(cfg.get("datasource_pairs"));
+        List<String> hosts = asStrList(cfg.get("host_addresses"));
+        List<String> globs = asStrList(cfg.get("app_config_globs"));
+        String appKey = asStr(cfg.get("app_service_key"));
+        if (pairs == null || hosts.isEmpty() || globs.isEmpty() || appKey == null) return List.of();
+        String urlProp = asStr(pairs.get("url_property"));
+        String userProp = asStr(pairs.get("username_property"));
+        String pwdProp = asStr(pairs.get("password_property"));
+        List<Object> engines = asList(pairs.get("engines"));
+        if (urlProp == null || userProp == null || pwdProp == null || engines == null) return List.of();
+
+        // The base file only: the host run has no profile active, and a profile file is what
+        // a container usually layers on top.
+        Map<String, String> props = new LinkedHashMap<>();
+        String configFile = null;
+        for (Path f : projectFiles(rel -> matchesAny(globs, rel)
+                && rel.matches("(.*/)?application\\.ya?ml"))) {
+            String content = readOrNull(f);
+            if (content == null) continue;
+            Map<String, String> read = yamlScalars(content);
+            if (configFile == null && read.containsKey(urlProp)) configFile = relative(f);
+            read.forEach(props::putIfAbsent);
+        }
+        String rawUrl = props.get(urlProp);
+        if (rawUrl == null) return List.of();
+        String rawUser = props.get(userProp), rawPwd = props.get(pwdProp);
+
+        String yaml = readOrNull(composeFile);
+        Map<String, String> images = composeImages(yaml);
+        Map<String, Map<String, String>> env = composeServiceEnv(yaml);
+        Map<String, Set<String>> keys = composeServiceKeys(yaml);
+        Set<String> apps = keys.entrySet().stream().filter(e -> e.getValue().contains(appKey))
+                .map(Map.Entry::getKey).collect(Collectors.toCollection(LinkedHashSet::new));
+        String compose = relative(composeFile);
+        List<String> out = new ArrayList<>();
+
+        // Host side: the defaults of the base file.
+        String hostUrl = springDefault(rawUrl);
+        String hostSvc = null;
+        for (String[] hp : hostPorts(hostUrl)) {
+            if (!hosts.contains(hp[0])) continue;
+            hostSvc = ports.entrySet().stream()
+                    .filter(e -> !apps.contains(e.getKey()) && e.getValue().contains(hp[1]))
+                    .map(Map.Entry::getKey).findFirst().orElse(null);
+            if (hostSvc != null) break;
+        }
+        if (hostSvc != null) {
+            String pwd = rawPwd == null ? null : springDefault(rawPwd);
+            boolean hasPwd = rawPwd != null && (pwd == null || !pwd.isEmpty());
+            loginCompare(out, engines, images, env, hostSvc, compose,
+                    "the host run (defaults in " + configFile + ")",
+                    hostUrl, springDefault(rawUser), hasPwd);
+        }
+
+        // Container side: what each application service sets, by placeholder name or by the
+        // relaxed-binding form of the property; the file's default where it sets nothing.
+        for (String app : apps) {
+            Map<String, String> appEnv = env.getOrDefault(app, Map.of());
+            String url = composeDefaults(appSet(appEnv, rawUrl, urlProp));
+            if (url == null) continue;
+            String svc = null;
+            for (String[] hp : hostPorts(url)) {
+                if (images.containsKey(hp[0]) && !apps.contains(hp[0])) { svc = hp[0]; break; }
+            }
+            if (svc == null) continue;
+            String user = appSet(appEnv, rawUser, userProp);
+            user = user != null ? composeDefaults(user) : springDefault(rawUser);
+            String setPwd = appSet(appEnv, rawPwd, pwdProp);
+            String filePwd = rawPwd == null ? null : springDefault(rawPwd);
+            boolean hasPwd = setPwd != null || (filePwd != null && !filePwd.isEmpty());
+            loginCompare(out, engines, images, env, svc, compose, "service `" + app + "`",
+                    url, user, hasPwd);
+        }
+        return new ArrayList<>(new LinkedHashSet<>(out));
+    }
+
+    /** One side of the login comparison against one database service. Never prints a password. */
+    static void loginCompare(List<String> out, List<Object> engines, Map<String, String> images,
+                             Map<String, Map<String, String>> env, String svc, String compose,
+                             String side, String url, String user, boolean hasPwd) {
+        String[] img = images.containsKey(svc) ? splitImage(images.get(svc)) : null;
+        if (img == null) return;
+        String repo = img[0].substring(img[0].lastIndexOf('/') + 1);
+        Map<String, Object> engine = null;
+        for (Object o : engines) {
+            Map<String, Object> e = asMap(o);
+            if (e != null && asStrList(e.get("images")).contains(repo)) { engine = e; break; }
+        }
+        if (engine == null) return;
+        Map<String, String> svcEnv = env.getOrDefault(svc, Map.of());
+
+        String dbKey = asStr(engine.get("database_env"));
+        String svcDb = dbKey == null ? null : composeDefaults(svcEnv.get(dbKey));
+        Matcher path = Pattern.compile("^jdbc:[a-z0-9]+://[^/]+/([^?;/]+)").matcher(url == null ? "" : url);
+        String appDb = path.find() ? path.group(1) : null;
+        if (appDb != null && svcDb != null && !svcDb.contains("${") && !appDb.equals(svcDb)) {
+            out.add("login: " + side + " connects to database `" + appDb + "`, but service `" + svc
+                    + "` creates `" + svcDb + "` (`" + dbKey + "` in " + compose + ") — the socket"
+                    + " opens and the login fails  →  read one variable on both sides (`DB_NAME`,"
+                    + " the same default in the JDBC URL and in `" + dbKey + "`)");
+        }
+
+        String userKey = asStr(engine.get("username_env"));
+        String svcUser = userKey == null ? null : composeDefaults(svcEnv.get(userKey));
+        if (user != null && svcUser != null && !svcUser.contains("${") && !user.contains("${")
+                && !user.equals(svcUser)) {
+            out.add("login: " + side + " logs in as `" + user + "`, but service `" + svc
+                    + "` creates user `" + svcUser + "` (`" + userKey + "` in " + compose + ")  →"
+                    + "  read one variable on both sides (`DB_USERNAME`, the same default in"
+                    + " `spring.datasource.username` and in `" + userKey + "`)");
+        }
+
+        String pwdKey = asStr(engine.get("password_env"));
+        String svcPwd = pwdKey == null ? null : svcEnv.get(pwdKey);
+        if (svcPwd != null && !svcPwd.isBlank() && !hasPwd) {
+            out.add("login: service `" + svc + "` requires a password (`" + pwdKey + "` in "
+                    + compose + "), and " + side + " has none — absent, empty, or an empty"
+                    + " default  →  read it from `DB_PASSWORD` with no default, kept in the"
+                    + " untracked `.env`");
+        }
+    }
+
+    /**
+     * What an application service sets for a property: the variable its placeholder names,
+     * else the relaxed-binding form of the property. Null when it sets neither.
+     */
+    static String appSet(Map<String, String> appEnv, String raw, String property) {
+        Matcher m = Pattern.compile("^\\$\\{([^:}]+)").matcher(raw == null ? "" : raw);
+        if (m.find() && appEnv.containsKey(m.group(1).strip())) return appEnv.get(m.group(1).strip());
+        return appEnv.get(envForm(property));
+    }
+
+    /**
+     * A Spring value read as its defaults: {@code ${A:${B:x}}} is {@code x}, {@code ${A:}} is
+     * empty. Null when a placeholder has no default — the value comes from the environment
+     * and there is nothing in the file to compare.
+     */
+    static String springDefault(String raw) {
+        if (raw == null) return null;
+        Pattern inner = Pattern.compile("\\$\\{([^:{}]+)(?::([^{}]*))?}");
+        String s = raw;
+        for (int guard = 0; guard < 16; guard++) {
+            Matcher m = inner.matcher(s);
+            if (!m.find()) return s;
+            if (m.group(2) == null) return null;
+            s = s.substring(0, m.start()) + m.group(2) + s.substring(m.end());
+        }
+        return null;
+    }
+
+    /**
+     * Compose interpolation read as its defaults: {@code ${VAR:-x}} and {@code ${VAR-x}} are
+     * {@code x}. A {@code ${VAR}} or {@code ${VAR:?message}} has no default and stays as it is.
+     */
+    static String composeDefaults(String s) {
+        if (s == null) return null;
+        return Pattern.compile("\\$\\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]*)}").matcher(s)
+                .replaceAll(m -> Matcher.quoteReplacement(m.group(1)));
+    }
+
+    /**
+     * Every scalar of a YAML config file by its dotted property, first occurrence wins.
+     * Same indentation walk as {@link #placeholdersIn}: no YAML library, one value per line.
+     */
+    static Map<String, String> yamlScalars(String content) {
+        Map<String, String> out = new LinkedHashMap<>();
+        Deque<Map.Entry<Integer, String>> path = new ArrayDeque<>();
+        Pattern key = Pattern.compile("^([A-Za-z0-9_.\\-\"']+)\\s*:(\\s+(.*))?$");
+        for (String raw : content.split("\r?\n", -1)) {
+            String body = raw.strip();
+            if (body.isEmpty() || body.startsWith("#") || body.equals("---")) continue;
+            int indent = raw.length() - raw.stripLeading().length();
+            Matcher k = key.matcher(body);
+            if (!k.find()) continue;
+            while (!path.isEmpty() && path.peekLast().getKey() >= indent) path.removeLast();
+            path.addLast(Map.entry(indent, k.group(1).replace("\"", "").replace("'", "")));
+            String value = k.group(3) == null ? "" : k.group(3).replaceAll("\\s+#.*$", "").strip();
+            if (value.isEmpty()) continue;
+            String property = path.stream().map(Map.Entry::getValue).collect(Collectors.joining("."));
+            out.putIfAbsent(property, unquote(value));
+        }
+        return out;
     }
 
     /**
@@ -5009,6 +5258,112 @@ public class ArchHook {
         List<String> missing = auditUnpriced(dir, u.byModel.keySet());
         if (missing == null) return "— (no `" + AUDIT_DIR + "/pricing.json`)";
         return "— (no price for `" + String.join("`, `", missing) + "` in `" + AUDIT_DIR + "/pricing.json`)";
+    }
+
+    /**
+     * {@code audit genesis <project> <session-id>} — fills the four figures of a freshly generated
+     * project's GENESIS record from this session's transcripts: Started (the `/init-project`
+     * message), Finished (now), the tokens and their cost. Form 7c, run by `/init-project` through
+     * Bash after its agent returns and before `git-publish`; no event invokes it, and it writes
+     * nothing in this repository, whose trail stays off. A number the model wrote would be memory
+     * — a start recovered from a directory's birth time once landed after the finish, in local
+     * time with a literal `Z` (lessons-learned-020 § 4) — so the agent leaves the placeholders and
+     * this reads the runtime's own record; the rejected alternative, the agent pricing its own
+     * transcript, sees neither the main session nor its own last turns. Every turn of the main
+     * transcript and of each subagent transcript from Started on is counted, deduplicated by
+     * message id like every audit report, and priced from the project's `pricing.json` — never a
+     * partial sum. Names in `audit.genesis` of extensions.json (invariant 10). Exit 1, saying
+     * why, on anything it cannot fill; it never overwrites a filled record.
+     */
+    static void auditGenesis(String[] args) throws Exception {
+        if (args.length < 4) {
+            err("Usage: ArchHook audit genesis <project> <session-id>");
+            System.exit(1);
+        }
+        Map<String, Object> cfg = asMap(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "audit", "genesis"));
+        if (cfg == null) {
+            err("❌ audit genesis: no `audit.genesis` block in " + ROOT.resolve(SCHEMA_FILE));
+            System.exit(1);
+        }
+        Map<String, Object> ph = asMap(cfg.get("placeholders"));
+        String pStart = asStr(get(ph, "started")), pEnd = asStr(get(ph, "finished")),
+               pTokens = asStr(get(ph, "tokens")), pCost = asStr(get(ph, "cost"));
+        Path project = Paths.get(args[2]).toAbsolutePath().normalize();
+        Path genesis = project.resolve(asStr(cfg.get("file")));
+        String body = readOrNull(genesis);
+        if (body == null) {
+            err("❌ audit genesis: " + genesis + " does not exist — step 8.6 of project-bootstrap writes it.");
+            System.exit(1);
+        }
+        if (!body.contains(pStart) || !body.contains(pEnd) || !body.contains(pTokens) || !body.contains(pCost)) {
+            err("❌ audit genesis: " + genesis + " has no " + pStart + ", " + pEnd + ", " + pTokens + " or "
+                    + pCost + " left — already filled, or written without them. Nothing was changed.");
+            System.exit(1);
+        }
+
+        String session = args[3];
+        String cfgDir = System.getenv("CLAUDE_CONFIG_DIR");
+        Path projects = (cfgDir != null && !cfgDir.isBlank() ? Paths.get(cfgDir)
+                : Paths.get(System.getProperty("user.home"), ".claude")).resolve("projects");
+        Path transcript = null;
+        if (Files.isDirectory(projects)) {
+            try (Stream<Path> s = Files.list(projects)) {
+                transcript = s.map(d -> d.resolve(session + ".jsonl")).filter(Files::isRegularFile)
+                        .findFirst().orElse(null);
+            }
+        }
+        if (transcript == null) {
+            err("❌ audit genesis: no " + session + ".jsonl under " + projects + " — pass this session's id.");
+            System.exit(1);
+        }
+
+        String tag = "<command-name>/" + asStr(cfg.get("command")) + "</command-name>";
+        long start = 0;
+        for (String line : Files.readAllLines(transcript, StandardCharsets.UTF_8)) {
+            if (!line.contains(tag)) continue;
+            Object e = Json.parse(line);
+            // The typed command is a user message whose content is a plain string. A tool result
+            // is a user message too, with a list of blocks — and one that echoes a file citing
+            // the tag would otherwise move Started to whenever that file was read.
+            if ("user".equals(asStr(get(e, "type"))) && get(e, "message", "content") instanceof String c
+                    && c.contains(tag)) {
+                start = Math.max(start, epochMs(asStr(get(e, "timestamp"))));
+            }
+        }
+        if (start == 0) {
+            err("❌ audit genesis: no " + tag + " message in " + transcript + " — nothing to measure from.");
+            System.exit(1);
+        }
+        long end = System.currentTimeMillis();
+        if (end < start) {
+            err("❌ audit genesis: Finished would precede Started (" + Instant.ofEpochMilli(start) + ") — check the clock.");
+            System.exit(1);
+        }
+
+        List<Path> all = new ArrayList<>(List.of(transcript));
+        all.addAll(subagentTranscripts(transcript.toString()).values());
+        Usage u = new Usage();
+        int requests = 0;
+        for (Path p : all) {
+            for (Turn t : usageTurns(p)) {
+                if (t.model() == null || t.t() < start) continue;
+                u.add(t.model(), t.u());
+                requests++;
+            }
+        }
+        Path auditDir = project.resolve(AUDIT_DIR);
+        String cost = auditCostCell(auditDir, u).replace("**", "");
+        String tokens = String.format(Locale.ROOT,
+                "%,d input · %,d output · %,d cache read · %,d cache write — %d requests, %s",
+                u.in(), u.out(), u.cacheRead(), u.cacheWrite(), requests, orDash(u.model()));
+        String iso0 = Instant.ofEpochMilli(start).truncatedTo(ChronoUnit.SECONDS).toString();
+        String iso1 = Instant.ofEpochMilli(end).truncatedTo(ChronoUnit.SECONDS).toString();
+        Files.writeString(genesis, body.replace(pStart, iso0).replace(pEnd, iso1)
+                .replace(pTokens, tokens).replace(pCost, cost), StandardCharsets.UTF_8);
+        System.out.println("✅ GENESIS filled — " + genesis);
+        System.out.println("   Started " + iso0 + " · Finished " + iso1);
+        System.out.println("   Tokens  " + tokens);
+        System.out.println("   Cost    " + cost);
     }
 
     static String money(Path dir, Double amount) {

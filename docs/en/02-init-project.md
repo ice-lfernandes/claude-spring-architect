@@ -61,8 +61,9 @@ sequenceDiagram
     alt project already exists
         CMD-->>U: reports and suggests /new-feature
     else new or empty ../<artifactId>
-        CMD->>AG: Agent tool (isolated context, restricted tools, model sonnet)
-        AG->>AG: interview via AskUserQuestion (max 4 questions, only what's missing)
+        CMD->>U: whole interview via AskUserQuestion (blueprint, build, features, coordinates, TLS, Sonar — only what's missing)
+        U-->>CMD: answers
+        CMD->>AG: Agent tool with every answer (isolated context, restricted tools, no AskUserQuestion, model sonnet)
         AG->>BOOT: follows the defined procedure
         BOOT->>BP: dynamically lists .claude/blueprints/*/*.yaml
         BOOT->>BOOT: validates the blueprint (6 rules — CLAUDE.md § _schema.md)
@@ -74,11 +75,12 @@ sequenceDiagram
         HOOK->>RULES: reads every rule, writes it into <project>/.claude/rules/
         BOOT->>BOOT: ./mvnw clean verify + boundary test + lombok.config test
         BOOT-->>AG: build PASSED or FAILED
-        opt build PASSED
-            AG->>AG: Skill tool → git-publish (scaffold summary as context)
-        end
         AG-->>CMD: report in the fixed format (§ Output contract)
         CMD-->>U: report, without rewriting it
+        CMD->>HOOK: ArchHook.java audit genesis <project> <session> — Started, Finished, tokens and cost into GENESIS.md
+        opt project created
+            CMD->>CMD: Skill tool → git-publish (project: <path>)
+        end
     end
 ```
 
@@ -104,7 +106,7 @@ sequenceDiagram
 | 8 | Verifies | `./mvnw clean verify`, boundary test, `lombok.config` test, autonomy test |
 | 8.4 | Configures SonarQube — chains `sonarqube-setup`, which asks whether a server exists | scanner + `sonar.*` properties in the root build file; CI step for an external server; a `sonarqube` compose service (via `docker-architect`) otherwise |
 | 8.5 | Generates the project README | `README.md` (English) + `README.pt-br.md` |
-| 8.6 | Writes the trail's genesis record | `.claude/audit-usage/GENESIS.md` |
+| 8.6 | Writes the trail's genesis record, with Started, Finished, tokens and cost left as placeholders `/init-project` fills afterwards with `audit genesis` | `.claude/audit-usage/GENESIS.md` |
 
 Step 8 is the only quality gate: if the build fails, **fix it before reporting** — a
 bootstrap that delivers a red build isn't finished.
@@ -116,9 +118,10 @@ bootstrap that delivers a red build isn't finished.
 ```
 
 Since `--blueprint`, `--groupId`, `--name`, and `--bounded-context` are already in the
-arguments, `project-initializer` doesn't ask about them again — it only interviews what's
-missing: build (already given, also skipped) and **features** (REST, JPA+Flyway,
-Kafka, SQS, OpenAPI, Testcontainers, Actuator). Suppose the user answers: REST,
+arguments, `/init-project` doesn't ask about them again — it only interviews what's missing,
+in the main session and before delegating: build (already given, also skipped), **features**
+(REST, JPA+Flyway, Kafka, SQS, OpenAPI, Testcontainers, Actuator), TLS and Sonar (the questions
+of `transport-security-setup` and `sonarqube-setup`). The agent asks nothing. Suppose the user answers: REST,
 JPA+Flyway, OpenAPI, Testcontainers, Actuator (no Kafka/SQS).
 
 The **bounded context** (`--bounded-context`) is a field of the same coordinates question,
@@ -166,8 +169,9 @@ Next steps:
      depends_on (in the build) — only if layout: multi-module.
 ```
 
-Since the build passed, `project-initializer` already invoked `git-publish` (via the
-`Skill` tool, with the scaffold summary as context) right before writing this report.
+Since the build passed, `/init-project` runs `ArchHook.java audit genesis`, which fills
+`GENESIS.md`'s Started, Finished, tokens and cost from the session's transcripts, and only then
+chains `git-publish` — the first commit already carries the filled record.
 Nothing gets committed or pushed without `git-publish`'s two confirmation gates — see
 [03-new-feature.md § Operational note](03-new-feature.md) and
 `@.claude/decisions/0034-git-publish-skill.md`.

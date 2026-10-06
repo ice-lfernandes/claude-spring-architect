@@ -147,6 +147,12 @@
     "project_overrides": "audited.json",
     "$comment_harness_prompts": "Prompts the harness injects on its own while a background agent's run is open — matched with find(), each one a regex. Not user intent: `audit prompt` neither closes, nor opens, nor overwrites the observer file on them, so the run keeps absorbing the agent's remaining events. `<task-notification>` is the agent's completion notice (decision 0041); `<agent-message` is its report, delivered through the runtime's one-shot hand-back (decision 0119). Both are undocumented runtime formats: a renamed shape closes runs early again, in silence — AuditRenderTest pins both.",
     "harness_prompts": ["^\\s*<task-notification>", "^\\s*<agent-message\\b"],
+    "$comment_genesis": "Read by `audit genesis <project> <session-id>`, which `/init-project` runs after `project-initializer` returns and before `git-publish`. `file` is the generated project's genesis record, relative to its root; `command` the skill whose `<command-name>` message marks Started in this session's transcript; `placeholders` the four literals step 8.6 of project-bootstrap leaves in the file and this mode replaces — Started, Finished (the moment it runs), the tokens of the main transcript and every subagent transcript from Started on, and their cost from the project's pricing.json. The model never writes those four values. Design: .claude/decisions/0123-lessons-learned-020-init-project-run.md",
+    "genesis": {
+      "file": ".claude/audit-usage/GENESIS.md",
+      "command": "init-project",
+      "placeholders": {"started": "{{startIso}}", "finished": "{{endIso}}", "tokens": "{{tokens}}", "cost": "{{cost}}"}
+    },
     "redact": {
       "patterns": [
         "(?i)((?:authorization|token|api[_-]?key|secret|password|passwd|pwd)\\s*[:=]\\s*)\\S+",
@@ -205,7 +211,7 @@
         "skills": ["project-bootstrap", "docker-architect", "arch-adopt", "gof-design-patterns", "sonarqube-setup", "transport-security-setup"],
         "overrides": {
           "project-bootstrap": { "write_allow": ["**"] },
-          "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**", "Dockerfile"] },
+          "docker-architect": { "write_allow": ["docker-compose*.yml", "docker/**", "Dockerfile", ".env", ".env.example", ".gitignore", ".dockerignore"] },
           "arch-adopt": { "write_allow": [".claude/**", ".gitignore", "CLAUDE.md"], "audited": false },
           "gof-design-patterns": { "write_allow": ["src/**", "**/src/**"] },
           "sonarqube-setup": { "write_allow": ["pom.xml", "build.gradle", ".github/workflows/**"] },
@@ -270,7 +276,7 @@
     "why_section": "(?m)^##\\s+Why\\b",
     "classes": {
       "driver": {
-        "$comment": "Interviews the user and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude. `pattern_catalog: false`: it writes through project-bootstrap's templates, it designs no Java of its own.",
+        "$comment": "Receives the interview's answers from `/init-project` — which runs it in the main session, since a background agent has no AskUserQuestion (decision 0123) — and delegates the procedure to a skill; writes the whole tree of a project that does not exist yet, which is why its territory is everything and `init-project`'s own is empty on purpose. No `effort`: the reason this class exists is `model: opus`, and an effort level on top of it was never the decision. Does not travel — export.agents.exclude. `pattern_catalog: false`: it writes through project-bootstrap's templates, it designs no Java of its own.",
         "executor": true,
         "pattern_catalog": false,
         "write_allow": ["**"],
@@ -359,7 +365,27 @@
       "**/src/main/resources/application*.yml",
       "**/src/main/resources/application*.yaml"
     ],
-    "app_service_key": "build"
+    "app_service_key": "build",
+    "datasource_pairs": {
+      "$comment": "Login half of question 5 of `compose`, a WARNING that never blocks: `compose` and `doctor` print it, `compose gate` never reads it. When the datasource URL reaches a compose service whose image repository (last path segment, tag dropped) is in an engine's `images`, the database in the JDBC URL is compared with `database_env` and the user with `username_env`, every `${VAR:default}` / `${VAR:-default}` read as its default, on the host run (base `application.yml`) and in the application service. The password is never compared or printed: only whether the service sets `password_env` and the application side has none. A new engine is a new entry here, never a condition in the Java (invariant 10). Generated `application.yml` defaulted to `bankingapp`/`bankingapp`/empty while the `postgres` service created `appdb`/`app`/`app`, and question 5 reported the pair healthy because host and port matched: lessons-learned-021. Design: .claude/decisions/0124-datasource-defaults-one-convention-checked-by-compose.md",
+      "url_property": "spring.datasource.url",
+      "username_property": "spring.datasource.username",
+      "password_property": "spring.datasource.password",
+      "engines": [
+        {
+          "images": ["postgres"],
+          "database_env": "POSTGRES_DB",
+          "username_env": "POSTGRES_USER",
+          "password_env": "POSTGRES_PASSWORD"
+        },
+        {
+          "images": ["mysql"],
+          "database_env": "MYSQL_DATABASE",
+          "username_env": "MYSQL_USER",
+          "password_env": "MYSQL_PASSWORD"
+        }
+      ]
+    }
   },
 
   "guard": {
@@ -475,6 +501,12 @@
         "blueprints": ["clean-architecture-single-module", "clean-architecture-multi-module", "hexagonal", "modular-monolith", "layered", "vertical-slice", "onion"],
         "note": "claude-spring-architect is now Nerviz, at github.com/nerviz-ai/nerviz. The old address github.com/ice-lfernandes/claude-spring-architect redirects there, so updates keep working, and this update already points the source block of .claude/schemas/extensions.json at the new address. Files outside .claude/ that the bootstrap wrote once still carry the old name and link: the root README.md (and README.pt-br.md, if present) and the root CLAUDE.md, in its report-issue routing row. Nothing breaks if they stay; the prompt only renames.",
         "prompt": "Rename claude-spring-architect to Nerviz in this project's files outside .claude/. First, search README.md, README.pt-br.md and CLAUDE.md at the project root for claude-spring-architect and ice-lfernandes. If there is no match, tell me so and stop. Otherwise show me every matching line and wait for my go-ahead. Then replace each link https://github.com/ice-lfernandes/claude-spring-architect with https://github.com/nerviz-ai/nerviz, and each remaining claude-spring-architect, with or without backticks, with Nerviz. Change nothing else in those files, and do not touch .claude/."
+      },
+      {
+        "id": "datasource-env-convention",
+        "blueprints": ["clean-architecture-single-module", "clean-architecture-multi-module", "hexagonal", "modular-monolith", "layered", "vertical-slice", "onion"],
+        "note": "The datasource now uses one set of variables from end to end: DB_NAME, DB_USERNAME, DB_PASSWORD and DB_PORT, read by application.yml and by the database service in docker-compose.yml alike, with the same defaults on both sides. The database and user default to the artifact name (\"-\" becomes \"_\"). The password has no default anywhere: it lives in an untracked .env that docker compose reads and application.yml imports (spring.config.import: optional:file:.env[.properties]). Every database and Kafka host port is a variable. Projects generated before this change default application.yml to one database and user while the postgres service creates appdb/app/app, so the run on the host fails to log in even with the container healthy, and the compose password default contradicts .claude/rules/secrets.md. `java .claude/hooks/ArchHook.java compose` and /arch-doctor now print that disagreement as a warning. It never blocks, and nothing breaks if you keep the old wiring and it works for you.",
+        "prompt": "Bring this project's datasource wiring to the convention in .claude/skills/docker-architect/SKILL.md steps 4.5 and 5, .claude/skills/docker-architect/templates/postgres-service.yml.example (or mysql-service.yml.example) and .claude/skills/docker-architect/templates/env.example.example. First, if docker-compose.yml has no postgres or mysql service, say so and stop. Pick ONE database name and ONE user: the ones the running database already has, if its volume holds data you want to keep (docker exec <container> env shows only what the container was started with, so list the databases and roles from inside the database); otherwise the artifact name with - replaced by _. In docker-compose.yml: the database service reads POSTGRES_DB: ${DB_NAME:-<name>}, POSTGRES_USER: ${DB_USERNAME:-<user>}, POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env} (MYSQL_* likewise, MYSQL_ROOT_PASSWORD from DB_ROOT_PASSWORD), publishes \"${DB_PORT:-<port>}:<port>\", and its healthcheck reads $${POSTGRES_USER} and $${POSTGRES_DB}. The app service sets DB_URL (compose hostname, ${DB_NAME:-<name>}), DB_USERNAME and DB_PASSWORD by those names, replacing any SPRING_DATASOURCE_* entry. If Kafka is there, its host ports become ${KAFKA_PORT:-9092} and ${KAFKA_EXTERNAL_PORT:-29092}, the EXTERNAL advertised listener reads the same variable, and spring.kafka.bootstrap-servers defaults to localhost:${KAFKA_EXTERNAL_PORT:29092}. In application.yml: spring.config.import: optional:file:.env[.properties] (multi-module: optional:file:../.env[.properties],optional:file:.env[.properties]), url ${DB_URL:jdbc:postgresql://localhost:${DB_PORT:<port>}/${DB_NAME:<name>}}, username ${DB_USERNAME:<user>}, password ${DB_PASSWORD} with no default. Rename any ${DB_USER} to ${DB_USERNAME}. Create .env.example with the keys and empty values, and add .env to .gitignore and .dockerignore. Write .env only if it does not exist: DB_PASSWORD is the password the database volume already uses when you keep the data (ask me for it, never guess it, never print it), or a random one otherwise. Never read .env back into the conversation. If you changed the name, user or password of a database whose volume already holds data, tell me that the image applies them only to an empty volume and that docker compose down -v applies them by deleting the data, and do not run it. Then run java .claude/hooks/ArchHook.java compose, show me its output, and run the build's verify goal."
       }
     ]
   },

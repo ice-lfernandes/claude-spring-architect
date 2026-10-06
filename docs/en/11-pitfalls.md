@@ -281,6 +281,25 @@ serves `./mvnw spring-boot:run` on the host: it has to be `localhost` on a port 
 holds 4318, set `OTLP_HTTP_PORT` in `.env` and use the same port in `OTLP_ENDPOINT` and
 `OTLP_METRICS_ENDPOINT` on the host. Design: `.claude/decisions/0110-otlp-host-first-collector.md`.
 
+**A socket that opens is not a login that works.** Question 5 compares host and port, so
+`jdbc:postgresql://localhost:5432/bankingapp` passed against a `postgres` service that
+created `appdb` for user `app`, and the host run died on login with `compose` saying
+healthy (lessons-learned-021). The datasource and the database service now read one set of
+variables — `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_PORT` — with the artifact name as the
+default on both sides, and the password only from the untracked `.env` that compose reads
+and `application.yml` imports. `compose` and `doctor` print a disagreement in database or user,
+or a missing password where the service requires one, as a **warning**: the gate never
+blocks on it, since a project can point its datasource at another database on purpose. It
+never prints a password value. Projects generated earlier get the
+`datasource-env-convention` migration's prompt from `/arch-adopt`. Design:
+`.claude/decisions/0124-datasource-defaults-one-convention-checked-by-compose.md`.
+
+**The database image applies `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` only to an empty
+volume.** After the first start the named volume keeps the old database and user, while
+`docker exec … env` shows the new values — so the check people reach for lies. Only
+`docker compose down -v` applies them, and it deletes the data. Nothing checks this; the
+service templates and the generated root `CLAUDE.md` say it.
+
 **`grep -A2 "^services:" docker-compose.yml` is not the list of services.** It reads two
 lines and stops, dropping services declared further down and reporting the children of
 `volumes:` as services. Every piece that needs that list — `docker-architect`'s injection

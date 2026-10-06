@@ -15,6 +15,10 @@
  * so a "refused" assertion would prove the client. That claim belongs to `testssl.sh` against a
  * deployed instance.
  *
+ * DATASOURCE. With a Testcontainers configuration in the project, the class also carries
+ * `@Import(TestcontainersConfiguration.class)`, or a project with JPA or Flyway starts against
+ * `localhost:5432`. Not shown here, because CI compiles this file in a project without one.
+ *
  * Runs in the integration phase (`*IT`, failsafe). Uses `/actuator/health` with the actuator
  * feature; without it, any path works — the assertions read the protocol and the headers, not
  * the status.

@@ -8,10 +8,20 @@ both tools share. `templates/…` paths are relative to the skill folder
 
 Boundary test, mandatory before reporting success: temporarily write
 `<domain-module>/src/main/java/<domain-package>/ArchHookProbe.java` with an
-`import org.springframework.stereotype.Component;`, confirm the hook blocks the write,
-and delete the file if one was left. If it doesn't block, `forbidden-imports.txt` is
-wrong. The probe is the only business class this procedure ever writes, and it exists
-only for the duration of the test.
+`import org.springframework.stereotype.Component;`, then run the project's own hook on it:
+
+```bash
+(cd "<project>" && java -jar .claude/hooks/ArchHook.jar check <domain-module>/src/main/java/<domain-package>/ArchHookProbe.java)
+```
+
+Exit 2 with `❌ Architectural boundary violation` is the pass. Delete the probe either way. The
+write itself is never blocked here: this session's hooks are this repository's, and the
+project's `settings.json` only loads in a session opened inside it — the command above is what
+proves the boundary, with the jar its hooks will run. Exit 0 with `✅ check: no boundary
+violation` means `forbidden-imports.txt` is wrong; exit 1 means the path is wrong. Never the
+stdin form here, and never replay the regex by hand: a ✓ in the report is a run of this command.
+The probe is the only business class this procedure ever writes, and it exists only for the
+duration of the test.
 
 `lombok.config` test, for the same reason and the same way: temporarily put a
 `@Setter` with a field on the `@SpringBootApplication` class — the only one that
@@ -121,14 +131,19 @@ Write `<project>/.claude/audit-usage/GENESIS.md` from
 every other exemplar here. `{{initCommand}}`, `{{blueprint.id}}`,
 `{{blueprint.oneLineDescription}}`, `{{groupId}}`, `{{artifactId}}`, `{{buildTool}}`, and
 `{{outputContractBlock}}` resolve exactly as documented for the same placeholders in
-step 8.5 — same values, second destination. `{{startIso}}` is this run's own start
-timestamp (interview's first question, step 1); `{{endIso}}` is now, at the moment this
-step runs; `{{buildStatus}}` is step 8's own `PASSED`/`FAILED` verdict, restated, never
-re-derived.
+step 8.5 — same values, second destination. `{{buildStatus}}` is step 8's own
+`PASSED`/`FAILED` verdict, restated, never re-derived.
+
+**`{{startIso}}`, `{{endIso}}`, `{{tokens}}` and `{{cost}}` stay in the file, literally.**
+`/init-project` fills them after this agent returns, with `ArchHook.java audit genesis`, from
+this session's transcripts and the project's `pricing.json`. Never a value of your own — not
+from `date`, not from a directory's birth time, not an estimate: a start recovered that way once
+landed after the finish (`@.claude/lessons-learned/lessons-learned-020.md` § 4).
 
 **Never overclaim fidelity.** This file names itself a reconstruction, not a hook
-report, and stays that way — no invented per-tool-call timeline, no cost, no ranked
-stages, none of the fields `ArchHook.java audit`'s own reports carry. A later
+report, and stays that way — no invented per-tool-call timeline, no ranked stages, none of
+the per-piece fields `ArchHook.java audit`'s own reports carry. The run's total tokens and cost
+are measured, not invented, and come only from `audit genesis`. A later
 `/audit-usage` reader must be able to tell this entry apart from every report that
 follows it in the same directory. Written once; a second `/init-project` run never
 overwrites it (idempotence — § Preconditions already stops before this step if the

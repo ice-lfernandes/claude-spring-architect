@@ -15,6 +15,9 @@
 // running", which blocks too — so the fixed case asserts on the advertised-address line, not
 // just on exit 2, and the host-advertised variant asserts only that the line is absent.
 //
+// The login half of question 5 (decision 0124) is the opposite contract: a warning in the
+// report form (`compose`), absent from the gate, never printing a password value.
+//
 // Question 5 (decision 0110, issue #66) has the same shape and gets the same treatment: the
 // OTLP collector published no host port, so `./mvnw spring-boot:run` failed every export
 // while the gate stayed silent, and projects older than 0046 never set the metrics endpoint
@@ -126,13 +129,105 @@ public class ComposeGateTest {
                 HOST_RUN + "|" + CONTAINER, "{}", -1, false,
                 "Kafka host-first default on its EXTERNAL port — quiet");
 
+        // Decision 0124 made both Kafka host ports variables. The advertised address then holds
+        // `${KAFKA_EXTERNAL_PORT:-29092}`, and splitting it at its last `:` read the `:-` inside
+        // the interpolation — a correct broker reported as unreachable.
+        String kafkaVarYml = """
+                spring:
+                  kafka:
+                    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_EXTERNAL_PORT:29092}}
+                """;
+        String kafkaVar = """
+                  kafka:
+                    image: apache/kafka:3.8.0
+                    ports:
+                      - "${KAFKA_PORT:-9092}:9092"
+                      - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
+                    environment:
+                      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT:-29092}
+                """;
+        failures += expect(hook, withApp("      KAFKA_BOOTSTRAP_SERVERS: kafka:9092\n", kafkaVar),
+                kafkaVarYml, UNREACHABLE + "|" + HOST_RUN + "|" + CONTAINER, "{}", -1, false,
+                "Kafka on variable host ports, advertised through the same variable — quiet");
+
+        // The login half of question 5 (decision 0124, lessons-learned-021): a WARNING in the
+        // report form, never a block and never a gate line. Generated application.yml defaulted
+        // to `bankingapp`/`bankingapp`/empty while the service created `appdb`/`app`, and the
+        // host-and-port half passed it. The password literal below must never reach the output.
+        String oldYml = """
+                spring:
+                  datasource:
+                    url: ${DB_URL:jdbc:postgresql://localhost:5432/bankingapp}
+                    username: ${DB_USERNAME:bankingapp}
+                    password: ${DB_PASSWORD:}
+                """;
+        String oldPostgres = """
+                  postgres:
+                    image: postgres:16-alpine
+                    environment:
+                      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+                      POSTGRES_USER: ${POSTGRES_USER:-app}
+                      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-s3cr3t-ci}
+                    ports:
+                      - "5432:5432"
+                """;
+        String oldApp = withApp("""
+                      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
+                      DB_USERNAME: ${POSTGRES_USER:-app}
+                      DB_PASSWORD: ${POSTGRES_PASSWORD:-s3cr3t-ci}
+                """, oldPostgres);
+        failures += expectReport(hook, oldApp, oldYml, "connects to database `bankingapp`", true,
+                "host run defaults to another database than the service creates — warned");
+        failures += expectReport(hook, oldApp, oldYml, "logs in as `bankingapp`", true,
+                "host run defaults to another user than the service creates — warned");
+        failures += expectReport(hook, oldApp, oldYml, "requires a password", true,
+                "service requires a password, host run has an empty default — warned");
+        failures += expectReport(hook, oldApp, oldYml, "s3cr3t-ci", false,
+                "the password value never reaches the output");
+        failures += expectReport(hook, oldApp, oldYml, "service `app` connects|service `app` logs in"
+                        + "|and service `app` has none", false,
+                "the container side, wired to the service's own values — no warning");
+        failures += expect(hook, oldApp, oldYml, "login:", "{}", -1, false,
+                "a login warning never reaches the gate");
+
+        String newYml = """
+                spring:
+                  config:
+                    import: optional:file:.env[.properties]
+                  datasource:
+                    url: ${DB_URL:jdbc:postgresql://localhost:${DB_PORT:5432}/${DB_NAME:banking_app}}
+                    username: ${DB_USERNAME:banking_app}
+                    password: ${DB_PASSWORD}
+                """;
+        String newPostgres = """
+                  postgres:
+                    image: postgres:16-alpine
+                    environment:
+                      POSTGRES_DB: ${DB_NAME:-banking_app}
+                      POSTGRES_USER: ${DB_USERNAME:-banking_app}
+                      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+                    ports:
+                      - "${DB_PORT:-5432}:5432"
+                """;
+        String newApp = withApp("""
+                      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-banking_app}
+                      DB_USERNAME: ${DB_USERNAME:-banking_app}
+                      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+                """, newPostgres);
+        failures += expectReport(hook, newApp, newYml, "login:|" + HOST_RUN + "|" + CONTAINER, false,
+                "one DB_* convention on both sides, variable port — no warning, no placeholder line");
+        failures += expectReport(hook, newApp.replace("postgres:5432/${DB_NAME:-banking_app}",
+                        "postgres:5432/other"), newYml, "service `app` connects to database `other`",
+                true, "app service points at another database than the service creates — warned");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — `compose gate` did not"
                     + " block or stay quiet where it should.");
             System.exit(1);
         }
         System.out.println("✅ compose gate: unreachable published service blocked without Docker,"
-                + " host and container sides of each placeholder checked, silent with nothing to check.");
+                + " host and container sides of each placeholder checked, a datasource login that"
+                + " disagrees with its service warned and never blocked, silent with nothing to check.");
     }
 
     /** A compose file with a built `app` service carrying {@code env}, then {@code others}. */
@@ -148,6 +243,18 @@ public class ComposeGateTest {
      */
     static int expect(Path hook, String compose, String appYml, String needle, String stdin,
                       int wanted, boolean wantLine, String label) throws Exception {
+        return run(hook, new String[] {"compose", "gate"}, compose, appYml, needle, stdin, wanted,
+                wantLine, label);
+    }
+
+    /** The report form, `compose` alone: where warnings are printed. It never exits non-zero. */
+    static int expectReport(Path hook, String compose, String appYml, String needle,
+                            boolean wantLine, String label) throws Exception {
+        return run(hook, new String[] {"compose"}, compose, appYml, needle, "", -1, wantLine, label);
+    }
+
+    static int run(Path hook, String[] mode, String compose, String appYml, String needle,
+                   String stdin, int wanted, boolean wantLine, String label) throws Exception {
         Path tmp = Files.createTempDirectory("archhook-gate-ci");
         Path schemas = tmp.resolve(".claude/schemas");
         Files.createDirectories(schemas);
@@ -159,9 +266,10 @@ public class ComposeGateTest {
             Files.writeString(res.resolve("application.yml"), appYml);
         }
 
-        ProcessBuilder pb = new ProcessBuilder(
-                ProcessHandle.current().info().command().orElse("java"),
-                "-jar", hook.toString(), "compose", "gate").directory(tmp.toFile());
+        java.util.List<String> cmd = new java.util.ArrayList<>(java.util.List.of(
+                ProcessHandle.current().info().command().orElse("java"), "-jar", hook.toString()));
+        cmd.addAll(java.util.List.of(mode));
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(tmp.toFile());
         pb.environment().put("CLAUDE_PROJECT_DIR", tmp.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();

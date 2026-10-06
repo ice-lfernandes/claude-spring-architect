@@ -8,10 +8,22 @@ spring:
     name: minha-api
 
   # feature: persistence-jpa
+  # The untracked `.env` at the project root: docker compose reads it for the services, and
+  # this import hands the host run (the IDE, `./mvnw spring-boot:run`) the same values, so
+  # `DB_PASSWORD` lives in one place and never in this file (`.claude/rules/secrets.md`).
+  # Optional, so a deployment that sets real environment variables needs no file; those win
+  # over it anyway. Multi-module: the run's working directory is the module, so the list is
+  # `optional:file:../.env[.properties],optional:file:.env[.properties]` there.
+  config:
+    import: optional:file:.env[.properties]
+  # One set of variables with the compose service, same names and same defaults:
+  # `minha_api` is the artifact name with `-` replaced by `_`, the literal
+  # docker-architect's service template carries too. `ArchHook.java compose` warns when the
+  # two disagree.
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/minhaapi}
-    username: ${DB_USERNAME:minhaapi}
-    password: ${DB_PASSWORD:}
+    url: ${DB_URL:jdbc:postgresql://localhost:${DB_PORT:5432}/${DB_NAME:minha_api}}
+    username: ${DB_USERNAME:minha_api}
+    password: ${DB_PASSWORD}
   jpa:
     open-in-view: false
     hibernate:

@@ -84,6 +84,17 @@ of truth for its topic and is cited, never copied.
 - **Git goes through `git-publish` only**, behind its two confirmations. Never approve a
   broad `git *` permission mid-task.
 - **`/clear` between two `/new-feature` runs.** One use case per run, in a clean context.
+{{#if features.persistence-jpa}}
+- **Local values live in the untracked `.env`** — `DB_PASSWORD` and any host port moved off
+  its default. docker compose reads it for the services, and `application.yml` imports it for
+  the run on the host. A fresh clone copies `.env.example` to `.env` first; without it,
+  `docker compose up` stops and names the missing variable. Never commit `.env`, never read
+  it back into the conversation.
+- **The database image applies `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` only once**, when its
+  volume is empty. Changing them later changes what `docker exec … env` shows and nothing
+  else: the old database and user stay. `docker compose down -v` applies the new values, and
+  deletes the data.
+{{/if}}
 
 ## Module structure
 

@@ -62,8 +62,9 @@ sequenceDiagram
     alt projeto já existe
         CMD-->>U: reporta e sugere /new-feature
     else ../<artifactId> novo ou vazio
-        CMD->>AG: Agent tool (contexto isolado, tools restritos, model sonnet)
-        AG->>AG: interview via AskUserQuestion (máx. 4 perguntas, só o que faltar)
+        CMD->>U: entrevista inteira via AskUserQuestion (blueprint, build, features, coordenadas, TLS, Sonar — só o que faltar)
+        U-->>CMD: respostas
+        CMD->>AG: Agent tool com todas as respostas (contexto isolado, tools restritos, sem AskUserQuestion, model sonnet)
         AG->>BOOT: segue o procedimento definido
         BOOT->>BP: lista .claude/blueprints/*/*.yaml dinamicamente
         BOOT->>BOOT: valida blueprint (6 regras — CLAUDE.md § _schema.md)
@@ -75,11 +76,12 @@ sequenceDiagram
         HOOK->>RULES: lê todas as rules, escreve em <projeto>/.claude/rules/
         BOOT->>BOOT: ./mvnw clean verify + teste de boundary + teste de lombok.config
         BOOT-->>AG: build PASSED ou FAILED
-        opt build PASSED
-            AG->>AG: Skill tool → git-publish (resumo do scaffold como contexto)
-        end
         AG-->>CMD: relatório no formato fixo (§ Output contract)
         CMD-->>U: relatório, sem reescrever
+        CMD->>HOOK: ArchHook.java audit genesis <projeto> <sessão> — Started, Finished, tokens e custo no GENESIS.md
+        opt projeto criado
+            CMD->>CMD: Skill tool → git-publish (project: <caminho>)
+        end
     end
 ```
 
@@ -105,7 +107,7 @@ sequenceDiagram
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
 | 8.4 | Configura o SonarQube — encadeia `sonarqube-setup`, que pergunta se já existe servidor | scanner + properties `sonar.*` no build file raiz; step de CI para servidor externo; serviço `sonarqube` no compose (via `docker-architect`) caso contrário |
 | 8.5 | Gera o README do projeto | `README.md` (inglês) + `README.pt-br.md` |
-| 8.6 | Grava o registro de gênese da trilha | `.claude/audit-usage/GENESIS.md` |
+| 8.6 | Grava o registro de gênese da trilha, com Started, Finished, tokens e custo como placeholders que o `/init-project` preenche depois com `audit genesis` | `.claude/audit-usage/GENESIS.md` |
 
 O passo 8 é o único portão de qualidade: se o build falhar, **corrige antes de
 reportar** — um bootstrap que entrega build vermelho não está terminado.
@@ -117,9 +119,11 @@ reportar** — um bootstrap que entrega build vermelho não está terminado.
 ```
 
 Como `--blueprint`, `--groupId`, `--name` e `--bounded-context` já vieram nos argumentos,
-`project-initializer` não pergunta de novo sobre eles — só entrevista o que falta: build
-(já veio, também pula) e **features** (REST, JPA+Flyway, Kafka, SQS, OpenAPI,
-Testcontainers, Actuator). Suponha que o usuário responde: REST, JPA+Flyway, OpenAPI,
+o `/init-project` não pergunta de novo sobre eles — só entrevista o que falta, na sessão
+principal e antes de delegar: build (já veio, também pula), **features**, TLS e Sonar
+(as perguntas de `transport-security-setup` e `sonarqube-setup`). O agent não pergunta nada.
+As features oferecidas: REST, JPA+Flyway, Kafka, SQS, OpenAPI,
+Testcontainers, Actuator. Suponha que o usuário responde: REST, JPA+Flyway, OpenAPI,
 Testcontainers, Actuator (sem Kafka/SQS).
 
 O **contexto delimitado** (`--bounded-context`) é um campo da mesma pergunta das
@@ -167,8 +171,9 @@ Next steps:
      depends_on (in the build) — only if layout: multi-module.
 ```
 
-Como o build passou, `project-initializer` já invocou `git-publish` (via `Skill` tool,
-com o resumo do scaffold como contexto) logo antes de escrever esse relatório. Nada é
+Como o build passou, o `/init-project` roda `ArchHook.java audit genesis`, que preenche
+Started, Finished, tokens e custo do `GENESIS.md` a partir das transcrições da sessão, e só
+depois encadeia `git-publish` — o primeiro commit já leva o registro preenchido. Nada é
 commitado ou enviado sem os dois portões de confirmação de `git-publish` — ver
 [03-new-feature.md § Nota operacional](03-new-feature.md) e
 `@.claude/decisions/0034-git-publish-skill.md`.

@@ -9,8 +9,10 @@
 
 spring:
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USER}
+    # Same variable names as the compose service (DB_NAME, DB_USERNAME, DB_PASSWORD, DB_PORT)
+    # and the defaults project-bootstrap already wrote — keep them, don't rename them.
+    url: ${DB_URL:jdbc:postgresql://localhost:${DB_PORT:5432}/${DB_NAME:minha_api}}
+    username: ${DB_USERNAME:minha_api}
     password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 10          # SIZE — a pool bigger than what the database accepts just moves the queue

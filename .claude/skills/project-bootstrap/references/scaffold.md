@@ -240,8 +240,15 @@ that second category — a made-up aggregate competing with a real spec — not 
      `docker-architect/SKILL.md` step 6. **Skip its step 2.5**: generation stays
      non-interactive, so the collector is born exporting to `debug` and no
      visualization backend is chosen here. Naming that gap is step 8's job (`verify-and-report.md`).
+   - For `postgres`, also apply `docker-architect/SKILL.md` step 4.5: `{{DB_NAME}}` is the
+     artifact with `-` replaced by `_` — the same literal step 3 wrote into
+     `application.yml`'s datasource defaults (`${DB_NAME:<it>}`, `${DB_USERNAME:<it>}`) —
+     and `.env` (random `DB_PASSWORD`), `.env.example`, and the `.env` line of `.gitignore`
+     and `.dockerignore`. Two literals derived twice drift; one literal, written by the
+     same run into both files, cannot (`lessons-learned-021.md`).
    - Wire the `app` service's environment for each service added, same as
-     `docker-architect/SKILL.md` step 5 — `SPRING_DATASOURCE_URL` pointing at
+     `docker-architect/SKILL.md` step 5 — `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` (the
+     names `application.yml` reads, never `SPRING_DATASOURCE_*`) pointing at
      `postgres`'s compose hostname, and **both** OTLP variables pointing at
      `otel-collector`'s: `OTLP_ENDPOINT` (`/v1/traces`) and `OTLP_METRICS_ENDPOINT`
      (`/v1/metrics`). Two, not one: the observability fragment declares a placeholder

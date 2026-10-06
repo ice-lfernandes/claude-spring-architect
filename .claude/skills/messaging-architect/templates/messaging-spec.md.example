@@ -100,7 +100,7 @@ re-discussed here — `@.claude/rules/messaging.md` § Configuration.
 | `spring.kafka.consumer.group-id` | `inventory-service` | One stable id per logical consumer |
 | `spring.kafka.consumer.auto-offset-reset` | `earliest` | Losing an unprocessed order-confirmed event is worse than reprocessing one |
 | `spring.kafka.listener.ack-mode` | `manual` | Offset commits only after `reserve()` returns |
-| `spring.kafka.bootstrap-servers` | `${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}` | Default has to be the address the HOST resolves — `./mvnw spring-boot:run` runs there. The compose `app` service overrides it with the internal listener, and the port matches the EXTERNAL listener `docker-architect` publishes |
+| `spring.kafka.bootstrap-servers` | `${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_EXTERNAL_PORT:29092}}` | Default has to be the address the HOST resolves — `./mvnw spring-boot:run` runs there. The compose `app` service overrides it with the internal listener, and the port matches the EXTERNAL listener `docker-architect` publishes |
 
 Full shape in `templates/application-kafka.yml.example`.
 
