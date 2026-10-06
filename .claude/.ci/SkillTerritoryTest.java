@@ -245,13 +245,43 @@ public class SkillTerritoryTest {
                         + "\"tool_input\":{\"skill\":\"sonar-lessons\"}}",
                 2, "report-class Skill call refused mid-design");
 
+        // A classed agent's Skill call is judged by the agent's class, not the caller's phase
+        // (decision 0126, issue #99). project-initializer runs under `/init-project` — class
+        // `orchestrator`, `design_phase` — and chains two build-class skills through `Skill`.
+        // Refusing those calls blocked the generation. Opening the callee's phase would also
+        // have overwritten the main thread's phase with a wider one.
+        String agentChain = "ci-territory-agent-chain-" + System.nanoTime();
+        failures += run(hook, "prompt", agentChain,
+                "{\"session_id\":\"%s\",\"prompt\":\"/init-project --name x\"}",
+                0, "prompt opens init-project's orchestrator phase");
+
+        failures += run(hook, "call", agentChain,
+                "{\"session_id\":\"%s\",\"agent_type\":\"project-initializer\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"transport-security-setup\"}}",
+                0, "classed agent's build-class Skill call admitted mid-orchestrator");
+
+        failures += run(hook, "write", agentChain,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"CLAUDE.md\"}}",
+                2, "the main thread keeps init-project's empty territory — not the callee's");
+
+        failures += run(hook, "call", agentChain,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"sonarqube-setup\"}}",
+                2, "the same call from the main thread is still refused");
+
+        failures += run(hook, "call", agentChain,
+                "{\"session_id\":\"%s\",\"agent_type\":\"general-purpose\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"sonarqube-setup\"}}",
+                2, "an unclassed agent still falls back to the phase");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — the territory guard is NOT"
                     + " enforcing what skill_classes declares.");
             System.exit(1);
         }
         System.out.println("✅ Skill territory enforced: deny by default while a phase is open,"
-                + " agent_type judged by its own class, build-class calls refused mid-design,"
+                + " agent_type judged by its own class on writes and Skill calls,"
+                + " build-class calls refused mid-design,"
                 + " same-class chains summing territories, report-class runs held to"
                 + " docs/lessons-learned/, and no restriction with no phase open.");
     }
