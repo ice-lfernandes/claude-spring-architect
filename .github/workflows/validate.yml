@@ -324,7 +324,14 @@ jobs:
       # named volume a template uses without declaring surfaced only there. Needs the Compose
       # plugin the Ubuntu runner ships, no daemon. A template that starts its service at column
       # 0 is re-indented, since the skill merges "indentation matched to the file's own".
+      # The database templates read their passwords with `${DB_PASSWORD:?…}` and no default
+      # (decision 0124, `rules/secrets.md`): the step exports throwaway values the way a
+      # developer's `.env` would, and fills `{{DB_NAME}}` the way docker-architect step 4.5
+      # does. Unset, `config` fails naming the variable — which is the point of `:?`.
       - name: compose service templates merge and parse
+        env:
+          DB_PASSWORD: ci-only
+          DB_ROOT_PASSWORD: ci-only
         run: |
           set -euo pipefail
           T=.claude/skills/docker-architect/templates
@@ -338,7 +345,7 @@ jobs:
           }
           {
             grep -v '^#' .claude/skills/project-bootstrap/templates/docker-compose.yml.example
-            for f in "$T"/*-service.yml.example; do service "$f"; done
+            for f in "$T"/*-service.yml.example; do service "$f"; done | sed 's/{{DB_NAME}}/ci_app/g'
             echo "volumes:"
             for f in "$T"/*-service.yml.example; do volumes "$f"; done | sort -u
           } > "$OUT"

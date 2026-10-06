@@ -2,18 +2,32 @@
 # Tag matched to test-architect's pin in TestcontainersConfiguration.java when one
 # exists — see docker-architect/SKILL.md step 4. Don't ship "latest": a floating tag
 # makes today's container different from next week's.
+#
+# ONE SET OF VARIABLES FOR BOTH SIDES. `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` and `DB_PORT`
+# are the names application.yml reads too, so one line in the untracked `.env` moves the
+# container and the application together. `{{DB_NAME}}` is the artifact name, with `-`
+# replaced by `_`, the same literal application.yml's defaults carry: two projects from the
+# same blueprint then never share a database name, and a host run that reaches the wrong
+# project's database fails on login instead of running Flyway against its schema
+# (lessons-learned-021). The password has no default: `rules/secrets.md`, and `:?` makes
+# `docker compose up` name the missing variable instead of starting with an empty one.
+#
+# THE IMAGE READS DB_NAME / DB_USERNAME / DB_PASSWORD ONCE, when it initializes an empty data
+# directory. After the first start the named volume keeps the old database and user, while
+# `docker exec … env` shows the new ones. Changing any of the three needs
+# `docker compose down -v`, which deletes the data.
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-appdb}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${DB_NAME:-{{DB_NAME}}}
+      POSTGRES_USER: ${DB_USERNAME:-{{DB_NAME}}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-appdb}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 5

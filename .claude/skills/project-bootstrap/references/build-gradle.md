@@ -49,7 +49,10 @@ If `multi-module`:
    and declares the `spring-boot-starter-*` dependencies its features need — every
    other module stays a plain `java-library`.
 4. Move the `@SpringBootApplication` class to the module with `contains_main: true`.
-5. Move `application.yml` into that module's `resources`.
+5. Move `application.yml` into that module's `resources`. When it imports `.env`
+   (`persistence-jpa`), the import becomes
+   `optional:file:../.env[.properties],optional:file:.env[.properties]`: the run's working
+   directory is the module, and `.env` stays at the root next to `docker-compose.yml`.
 
 Mandatory order: settings → parent build.gradle → module build.gradles → main class →
 configuration → docs → CI. A swapped order leaves the build broken halfway through

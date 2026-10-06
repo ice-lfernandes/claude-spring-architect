@@ -20,18 +20,24 @@
 #
 # PLAINTEXT is the compose-network listener: the `app` service keeps
 # `KAFKA_BOOTSTRAP_SERVERS: kafka:9092` untouched. EXTERNAL serves the host at
-# `localhost:29092`, which is the port `application-kafka.yml`'s `bootstrap-servers` default
-# has to name (`messaging-architect` owns that default).
+# `localhost:${KAFKA_EXTERNAL_PORT:-29092}`, which is the port `application-kafka.yml`'s
+# `bootstrap-servers` default has to name (`messaging-architect` owns that default).
+#
+# Both host ports are variables, like every other service the application reaches: two
+# projects from the same blueprint publish the same defaults, and the second one's broker
+# stays in `Created` while its host run talks to the first one's (lessons-learned-021 § 5).
+# Set `KAFKA_PORT` / `KAFKA_EXTERNAL_PORT` in the untracked `.env`; the advertised EXTERNAL
+# address and the application default read the same variable, so they move together.
 kafka:
   image: apache/kafka:3.8.0
   ports:
-    - "9092:9092"
-    - "29092:29092"
+    - "${KAFKA_PORT:-9092}:9092"
+    - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
   environment:
     KAFKA_NODE_ID: 1
     KAFKA_PROCESS_ROLES: broker,controller
     KAFKA_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:29092,CONTROLLER://:9093
-    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT:-29092}
     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER

@@ -368,6 +368,7 @@ Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions
 Provenance: .claude/.arch-provenance.json — blueprint <id>, ref <ref>, commit <short sha>. `/arch-doctor` reports anything edited since
 Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
+Local secrets: .env (untracked) holds DB_PASSWORD, read by docker compose and imported by application.yml for the host run; a fresh clone copies .env.example — <only with persistence-jpa; omit the line otherwise>
 Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
 Transport: <the first line of `transport-security-setup`'s report — topology A edge | B direct | C mutual TLS | C′ mesh> — HTTP/2 on, HSTS by <Spring Security | HstsHeaderFilter>, <ForwardedHeadersIT | TransportSecurityIT>
 SonarQube: <the first line of `sonarqube-setup`'s report — existing server <url> | SonarCloud <org> | local container on http://localhost:9000> — scanner <v>, CI step <added | none>
@@ -471,6 +472,9 @@ born, never this repository) — no other skill touches these files:
   one service per blueprint feature that's already active and needs a container
   (`persistence-jpa`, `observability` today). Every service a **use case** adds
   afterward is `docker-architect`'s alone, invoked on its own thread, not this skill's
+- `.env`, `.env.example`, and the `.env` line of `.gitignore` and `.dockerignore` — only with
+  `persistence-jpa`, through the same step 4.10 call (`docker-architect` step 4.5). `.env`
+  holds a random `DB_PASSWORD`, is never committed and never printed
 - `.claude/hooks/ArchHook.java` — copy, see step 6.6
 - `.claude/schemas/extensions.json` — copy without its own `export` block, see step 6.6
 - `.claude/settings.json` — written whole, see step 6.6
@@ -491,7 +495,9 @@ born, never this repository) — no other skill touches these files:
 - `README.md` and `README.pt-br.md` — step 8.5, after Verify. English is the default,
   Portuguese the linked option
 
-`.gitignore` is deliberately left out — it comes from the Initializr (step 6.5).
+`.gitignore` is deliberately left out — it comes from the Initializr (step 6.5). The one
+line step 4.10 appends to it (`.env`) is `docker-architect`'s, applied through its merge
+procedure.
 
 **Chains** `transport-security-setup` in step 7.5 — the transport lines of `application.yml`,
 the HSTS filter, the transport IT and the `**Transport:` paragraph are that skill's (and, for the

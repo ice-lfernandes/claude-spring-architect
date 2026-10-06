@@ -1,19 +1,27 @@
 # Shape for a MySQL service block appended under docker-compose.yml's `services:`.
 # Tag matched to test-architect's pin in TestcontainersConfiguration.java when one
 # exists — see docker-architect/SKILL.md step 4. Don't ship "latest".
+#
+# Same variables as postgres-service.yml.example, and the same reason: application.yml
+# reads `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` and `DB_PORT` too, `{{DB_NAME}}` is the
+# artifact name with `-` replaced by `_`, and no password has a default (`rules/secrets.md`).
+# `DB_ROOT_PASSWORD` lives in the untracked `.env` next to `DB_PASSWORD`.
+#
+# THE IMAGE READS THESE ONCE, when it initializes an empty data directory. Changing any of
+# them after the first start needs `docker compose down -v`, which deletes the data.
   mysql:
     image: mysql:8.4
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
-      MYSQL_USER: ${MYSQL_USER:-app}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-{{DB_NAME}}}
+      MYSQL_USER: ${DB_USERNAME:-{{DB_NAME}}}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
     ports:
-      - "3306:3306"
+      - "${DB_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 5

@@ -216,9 +216,45 @@ that project: read `<path>/docker-compose.yml` instead.
    of leaving a YAML comment as the only link between the two halves, which is what let a
    tag drift go unnoticed once (`lessons-learned-010.md` § 6).
 
+4.5 **Database name and the untracked `.env`** — only for a database service (`postgres`,
+   `mysql`, or one written by hand from their shape).
+
+   - **`{{DB_NAME}}`** in the template is the artifact name with `-` replaced by `_` — the
+     literal `application.yml`'s datasource defaults already carry. From `project-bootstrap`,
+     it is the artifact it resolved. Invoked by hand, read it from the project: the
+     `${DB_NAME:<literal>}` in `spring.datasource.url` when there is one, else
+     `spring.application.name`. Never `appdb` or another fixed literal: two projects from
+     the same blueprint would share a database name, and a host run that reaches the other
+     project's database would log in and run Flyway against its schema
+     (`lessons-learned-021.md` § 5).
+   - **`.env`** at the project root holds `DB_PASSWORD` (and `DB_ROOT_PASSWORD` for MySQL).
+     The service template reads it with `:?` and no default — `@.claude/rules/secrets.md` —
+     and `application.yml` imports the same file. Create it when it is missing, and append a
+     missing key when it exists, never overwriting a line already there. The value is
+     random, never typed:
+
+     ```bash
+     grep -qs '^DB_PASSWORD=' .env || printf 'DB_PASSWORD=%s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)" >> .env
+     ```
+
+     Never read `.env` back with `Read` and never print it: it is a secret file, and the
+     generated project's `permissions.deny` refuses the read.
+   - **`.env.example`**, versioned, with the same keys and empty values, from
+     `templates/env.example.example`: what someone who clones the project copies to `.env`.
+     Append a missing key the same way; it holds no value, so it is read and edited
+     normally.
+   - **`.gitignore`** gets one line, `.env`, and **`.dockerignore`** the same line — the
+     `Dockerfile`'s build stage runs `COPY . .`, and a secret left in a layer is a secret in
+     the image (`@.claude/rules/secrets.md`). Append each only when missing.
+
 5. **Wire the app service's environment**, only the variables that change because of
-   step 4 (`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD` pointing at the new service's
-   hostname and port from compose's internal network). For the OTLP collector that is
+   step 4. For a database that is `DB_URL` — the JDBC URL at the service's compose hostname
+   and container port, the database `${DB_NAME:-<literal>}` — plus `DB_USERNAME:
+   ${DB_USERNAME:-<literal>}` and `DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}`:
+   the names `application.yml` reads, never `SPRING_DATASOURCE_*`. Relaxed binding makes the
+   Spring names work too, and that is the problem — two names for one setting, and a reader
+   of `application.yml` cannot see where the container's value comes from
+   (`lessons-learned-021.md` § 2). For the OTLP collector that is
    **both** endpoint variables, one per signal — `OTLP_ENDPOINT=http://otel-collector:4318/v1/traces`
    and `OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics`, matching the two
    placeholders the observability fragment declares. Wiring only the tracing one leaves
@@ -287,6 +323,10 @@ that project: read `<path>/docker-compose.yml` instead.
    resolve**, and **every `${VAR:default}` the application points at a compose service
    holding on both sides**: the default reaches a port that service publishes, and `app`
    overrides the variable. `docker compose up -d` exits 0 in all four of those failures.
+   It also prints, as a ⚠️ warning that never blocks, a datasource whose database or user
+   disagrees with the database service it reaches, or that has no password where the
+   service requires one — the login the socket check above cannot see
+   (`lessons-learned-021.md` § 3). Name the `.env` keys step 4.5 wrote, never their values.
 
    The third one is the only check in the system that sees it, so say what it means when it
    fires: a service that publishes a port to the host is claiming host reachability, and a
@@ -331,7 +371,9 @@ one today.
 ## Contract
 
 **Class:** build — the territory is `skill_classes.build`'s override for this skill in
-`@.claude/schemas/extensions.json`: the compose file and the `docker/` tree, nothing else.
+`@.claude/schemas/extensions.json`: the compose file, the `docker/` tree, the `Dockerfile`,
+and what a database service needs next to them (step 4.5) — `.env`, `.env.example`, and the
+`.env` line of `.gitignore` and `.dockerignore`. Nothing else.
 `ArchHook.java guard` enforces it, and it also makes this skill **unreachable from inside a
 design run** — `/new-feature` and the layer skills record the missing service in the spec,
 and the user invokes `/docker-architect` from a prompt of its own afterwards.

@@ -289,6 +289,25 @@ do `compose` lê os dois lados, e o gate bloqueia um projeto antigo logo depois 
 4318, use `OTLP_HTTP_PORT` no `.env` e a mesma porta em `OTLP_ENDPOINT`/`OTLP_METRICS_ENDPOINT`
 no host. Design: `.claude/decisions/0110-otlp-host-first-collector.md`.
 
+**Um socket que abre não é um login que funciona.** A pergunta 5 compara host e porta, então
+`jdbc:postgresql://localhost:5432/bankingapp` passou contra um serviço `postgres` que criou
+`appdb` para o usuário `app`, e o run no host morreu no login com o `compose` dizendo
+saudável (lessons-learned-021). O datasource e o serviço de banco agora leem um único conjunto
+de variáveis — `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_PORT` — com o nome do artifact como
+default nos dois lados, e a senha só no `.env` não versionado que o compose lê e o
+`application.yml` importa. `compose` e `doctor` mostram uma divergência de banco ou usuário,
+ou a falta de senha onde o serviço exige uma, como **aviso**: o gate nunca bloqueia por isso,
+porque um projeto pode apontar o datasource para outro banco de propósito. Nunca imprime o
+valor de uma senha. Projetos gerados antes recebem o prompt da migration
+`datasource-env-convention` do `/arch-adopt`. Design:
+`.claude/decisions/0124-datasource-defaults-one-convention-checked-by-compose.md`.
+
+**A imagem do banco aplica `DB_NAME`, `DB_USERNAME` e `DB_PASSWORD` só num volume vazio.**
+Depois do primeiro start, o volume nomeado mantém o banco e o usuário antigos, enquanto
+`docker exec … env` mostra os valores novos — a checagem a que todo mundo recorre mente.
+Só `docker compose down -v` aplica os valores novos, e apaga os dados. Nada checa isso; os
+templates de serviço e o `CLAUDE.md` raiz gerado dizem.
+
 **`grep -A2 "^services:" docker-compose.yml` não é a lista de serviços.** Ele lê duas linhas
 e para, perdendo serviços declarados mais abaixo e reportando os filhos de `volumes:` como
 serviços. Toda peça que precisa dessa lista — a injeção e o step 3 do `docker-architect`, o

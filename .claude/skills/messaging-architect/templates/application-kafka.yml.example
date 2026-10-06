@@ -26,8 +26,10 @@ spring:
     # Defaulting to the container-only port instead sends every host-side developer into
     # `UnknownHostException: kafka` with no way to know why — lessons-learned-013 § 11.
     # The port here and the EXTERNAL listener in `docker-architect`'s Kafka service block are
-    # one decision in two files; `ArchHook.java compose` fails when they disagree.
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    # one decision in two files; `ArchHook.java compose` fails when they disagree. The port is
+    # `KAFKA_EXTERNAL_PORT`, the variable the service publishes and advertises, read from the
+    # untracked `.env` like the rest of the local overrides.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_EXTERNAL_PORT:29092}}
     producer:
       acks: all
       properties:

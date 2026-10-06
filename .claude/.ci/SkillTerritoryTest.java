@@ -195,6 +195,24 @@ public class SkillTerritoryTest {
                 "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"docker/caddy/Caddyfile\"}}",
                 0, "the Caddyfile — docker-architect's docker/**");
 
+        // docker-architect's database files (decision 0124): a database service reads its
+        // password from the untracked `.env`, with `.env.example` beside it and `.env` ignored
+        // by git and by the Docker build context. The datasource defaults in application.yml
+        // stay outside its territory — they belong to whoever writes the application's config.
+        String docker = "ci-territory-docker-" + System.nanoTime();
+        failures += run(hook, "prompt", docker,
+                "{\"session_id\":\"%s\",\"prompt\":\"/docker-architect\"}",
+                0, "prompt opens docker-architect's phase");
+        for (String f : new String[] {".env", ".env.example", ".gitignore", ".dockerignore"}) {
+            failures += run(hook, "write", docker,
+                    "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"" + f + "\"}}",
+                    0, f + " — docker-architect's, step 4.5");
+        }
+        failures += run(hook, "write", docker,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"src/main/resources/application.yml\"}}",
+                2, "application.yml is not docker-architect's — blocked");
+
         // `report` (decision 0100): the class default is the whole territory, with no
         // override. sonar-lessons runs a full build and publishes outward — the one file it
         // may leave behind is its lessons-learned, never the build file or code.

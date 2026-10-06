@@ -38,7 +38,10 @@ If `multi-module`:
 2. Create a `pom.xml` per module from `templates/pom.module.xml.example`,
    with the dependencies that module's `depends_on` authorizes — **and only those**.
 3. Move the `@SpringBootApplication` class to the module with `contains_main: true`.
-4. Move `application.yml` into that module's `resources`.
+4. Move `application.yml` into that module's `resources`. When it imports `.env`
+   (`persistence-jpa`), the import becomes
+   `optional:file:../.env[.properties],optional:file:.env[.properties]`: the run's working
+   directory is the module, and `.env` stays at the root next to `docker-compose.yml`.
 
 Mandatory order: parent → modules → main class → configuration → docs → CI.
 A swapped order leaves the build broken halfway through generation.

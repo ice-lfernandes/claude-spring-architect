@@ -452,6 +452,7 @@ public class ArchHook {
         ComposeReport comp = composeReport();
         report("Compose", comp.ok(), comp.summary(), comp.summary());
         for (String d : comp.detail()) err("    " + d);
+        for (String cw : comp.warnings()) err("    ⚠️  " + cw);
 
         boolean git = false;
         try { git = run("git", "rev-parse", "HEAD").exit == 0; } catch (Exception ignored) { }
@@ -885,6 +886,9 @@ public class ArchHook {
     //      the host, and `app` setting VAR, for the run in the container? The collector
     //      published nothing from 0046 to issue #66, so every host-run export failed, and
     //      projects older than 0046 never set the metrics endpoint on `app`.
+    //      Its login half — the database, the user and whether a password exists, compared
+    //      with the database service the datasource reaches — is a warning, never a block:
+    //      lessons-learned-021, decision 0124.
     //
     // Questions 3 to 5 need no Docker at all — they read files — and they are here because
     // this mode already owns `docker-compose.yml`. Two skills used to promise the match in
@@ -909,7 +913,11 @@ public class ArchHook {
     /** Seconds each `docker` call gets before it is given up on. See {@link #runTimed}. */
     static final int DOCKER_TIMEOUT = 10;
 
-    record ComposeReport(boolean ok, String summary, List<String> detail) {}
+    /**
+     * {@code warnings} never change {@code ok}: they are printed by the report form and by
+     * {@code doctor}, and the gate never reads them. Decision 0124.
+     */
+    record ComposeReport(boolean ok, String summary, List<String> detail, List<String> warnings) {}
 
     static void compose(String sub, String stdin) {
         if ("gate".equals(sub)) { composeGate(stdin); return; }
@@ -918,8 +926,12 @@ public class ArchHook {
         err("  Project root ...... " + ROOT);
         report("Compose", r.ok(), r.summary(), r.summary());
         for (String d : r.detail()) err("    " + d);
+        for (String w : r.warnings()) err("    ⚠️  " + w);
         err("");
-        err(r.ok() ? "✅ Compose healthy." : "⚠️  See the marked lines above.");
+        err(!r.ok() ? "⚠️  See the marked lines above."
+                : r.warnings().isEmpty() ? "✅ Compose healthy."
+                : "✅ Compose healthy, with " + r.warnings().size()
+                        + " warning(s) above that do not block.");
     }
 
     /**
@@ -963,7 +975,7 @@ public class ArchHook {
                 .map(ROOT::resolve).filter(Files::isRegularFile).findFirst().orElse(null);
         if (file == null) {
             return new ComposeReport(true, "no compose file — nothing to check (optional)",
-                    List.of());
+                    List.of(), List.of());
         }
 
         Map<String, Set<String>> declared = composeHostPorts(readOrNull(file));
@@ -973,20 +985,21 @@ public class ArchHook {
         List<String> tagIssues = new ArrayList<>(imageTagMismatches(file));
         tagIssues.addAll(advertisedAddressIssues(file, declared));
         tagIssues.addAll(placeholderIssues(file, declared));
+        List<String> warnings = datasourceLoginWarnings(file, declared);
 
         Proc ps;
         try {
             ps = runTimed(DOCKER_TIMEOUT, "docker", "compose", "ps", "-a", "--format", "json");
         } catch (Exception e) {
-            return withTags(tagIssues,
+            return withTags(tagIssues, warnings,
                     "docker not on PATH — service state not checked (optional)");
         }
         if (ps.exit() == -1) {
-            return withTags(tagIssues, "`docker compose ps` did not answer in "
+            return withTags(tagIssues, warnings, "`docker compose ps` did not answer in "
                     + DOCKER_TIMEOUT + "s (daemon starting?) — not checked");
         }
         if (ps.exit() != 0) {
-            return withTags(tagIssues,
+            return withTags(tagIssues, warnings,
                     "`docker compose ps` failed (daemon down?) — not checked");
         }
 
@@ -1049,7 +1062,7 @@ public class ArchHook {
                         + " published ports advertised to the host, placeholders hold on host"
                         + " and container"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";
-        return new ComposeReport(ok, summary, detail);
+        return new ComposeReport(ok, summary, detail, warnings);
     }
 
     /**
@@ -1057,11 +1070,11 @@ public class ArchHook {
      * advertised-address check read files only, so they still count — and still fail the
      * report, however unreachable the daemon is.
      */
-    static ComposeReport withTags(List<String> fileIssues, String summary) {
-        if (fileIssues.isEmpty()) return new ComposeReport(true, summary, List.of());
+    static ComposeReport withTags(List<String> fileIssues, List<String> warnings, String summary) {
+        if (fileIssues.isEmpty()) return new ComposeReport(true, summary, List.of(), warnings);
         return new ComposeReport(false,
                 fileIssues.size() + " problem(s) read from the compose file; " + summary,
-                fileIssues);
+                fileIssues, warnings);
     }
 
     /** Accepts both shapes `docker compose ps --format json` emits: an array, or one object per line. */
@@ -1207,7 +1220,7 @@ public class ArchHook {
                 String key = e.getKey();
                 if (suffixes.stream().noneMatch(key::endsWith)) continue;
                 boolean reachable = false;
-                for (String entry : e.getValue().split(",")) {
+                for (String entry : composeDefaults(e.getValue()).split(",")) {
                     String addr = entry.strip();
                     int scheme = addr.indexOf("://");
                     if (scheme >= 0) addr = addr.substring(scheme + 3);
@@ -1331,6 +1344,217 @@ public class ArchHook {
             }
         }
         return new ArrayList<>(new LinkedHashSet<>(out));
+    }
+
+    /**
+     * Question 5, login half: the datasource reaches a database service, so does it log in?
+     * The host-and-port half above passed {@code jdbc:postgresql://localhost:5432/bankingapp}
+     * against a {@code postgres} service that created {@code appdb} for user {@code app}: the
+     * socket opened and the login failed, and {@code compose} said "placeholders hold on host
+     * and container" — lessons-learned-021 § 3, the 0110 shape again.
+     *
+     * <p>For each side that reaches a database service — the default in the base
+     * {@code application.yml} (the run on the host) and the value {@code app} sets (the run in
+     * the container) — it compares the database in the JDBC URL and the user with the
+     * service's own environment, every {@code ${VAR:default}} read as its default. The
+     * password is never compared and never printed: only whether the service requires one
+     * and the application side has none (absent, empty, or an empty default).
+     *
+     * <p>Why this is a warning and not a block, unlike the rest of question 5: a project may
+     * declare a database service on the port its datasource uses while the developer connects
+     * to another database there on purpose, and a block on every {@code Stop} would stop a
+     * legitimate setup. The templates are aligned by construction, so what this catches is
+     * drift. Which properties pair with which service variables, per engine image, is data —
+     * {@code compose.datasource_pairs} (invariant 10). Invoked through {@code composeReport()}
+     * by {@code compose} and {@code doctor}; {@code compose gate} on {@code Stop} never reads
+     * it. Design: {@code .claude/decisions/0124-datasource-defaults-one-convention-checked-by-compose.md}.
+     */
+    static List<String> datasourceLoginWarnings(Path composeFile, Map<String, Set<String>> ports) {
+        Map<String, Object> cfg = asMap(get(asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE)))),
+                "compose"));
+        if (cfg == null) return List.of();
+        Map<String, Object> pairs = asMap(cfg.get("datasource_pairs"));
+        List<String> hosts = asStrList(cfg.get("host_addresses"));
+        List<String> globs = asStrList(cfg.get("app_config_globs"));
+        String appKey = asStr(cfg.get("app_service_key"));
+        if (pairs == null || hosts.isEmpty() || globs.isEmpty() || appKey == null) return List.of();
+        String urlProp = asStr(pairs.get("url_property"));
+        String userProp = asStr(pairs.get("username_property"));
+        String pwdProp = asStr(pairs.get("password_property"));
+        List<Object> engines = asList(pairs.get("engines"));
+        if (urlProp == null || userProp == null || pwdProp == null || engines == null) return List.of();
+
+        // The base file only: the host run has no profile active, and a profile file is what
+        // a container usually layers on top.
+        Map<String, String> props = new LinkedHashMap<>();
+        String configFile = null;
+        for (Path f : projectFiles(rel -> matchesAny(globs, rel)
+                && rel.matches("(.*/)?application\\.ya?ml"))) {
+            String content = readOrNull(f);
+            if (content == null) continue;
+            Map<String, String> read = yamlScalars(content);
+            if (configFile == null && read.containsKey(urlProp)) configFile = relative(f);
+            read.forEach(props::putIfAbsent);
+        }
+        String rawUrl = props.get(urlProp);
+        if (rawUrl == null) return List.of();
+        String rawUser = props.get(userProp), rawPwd = props.get(pwdProp);
+
+        String yaml = readOrNull(composeFile);
+        Map<String, String> images = composeImages(yaml);
+        Map<String, Map<String, String>> env = composeServiceEnv(yaml);
+        Map<String, Set<String>> keys = composeServiceKeys(yaml);
+        Set<String> apps = keys.entrySet().stream().filter(e -> e.getValue().contains(appKey))
+                .map(Map.Entry::getKey).collect(Collectors.toCollection(LinkedHashSet::new));
+        String compose = relative(composeFile);
+        List<String> out = new ArrayList<>();
+
+        // Host side: the defaults of the base file.
+        String hostUrl = springDefault(rawUrl);
+        String hostSvc = null;
+        for (String[] hp : hostPorts(hostUrl)) {
+            if (!hosts.contains(hp[0])) continue;
+            hostSvc = ports.entrySet().stream()
+                    .filter(e -> !apps.contains(e.getKey()) && e.getValue().contains(hp[1]))
+                    .map(Map.Entry::getKey).findFirst().orElse(null);
+            if (hostSvc != null) break;
+        }
+        if (hostSvc != null) {
+            String pwd = rawPwd == null ? null : springDefault(rawPwd);
+            boolean hasPwd = rawPwd != null && (pwd == null || !pwd.isEmpty());
+            loginCompare(out, engines, images, env, hostSvc, compose,
+                    "the host run (defaults in " + configFile + ")",
+                    hostUrl, springDefault(rawUser), hasPwd);
+        }
+
+        // Container side: what each application service sets, by placeholder name or by the
+        // relaxed-binding form of the property; the file's default where it sets nothing.
+        for (String app : apps) {
+            Map<String, String> appEnv = env.getOrDefault(app, Map.of());
+            String url = composeDefaults(appSet(appEnv, rawUrl, urlProp));
+            if (url == null) continue;
+            String svc = null;
+            for (String[] hp : hostPorts(url)) {
+                if (images.containsKey(hp[0]) && !apps.contains(hp[0])) { svc = hp[0]; break; }
+            }
+            if (svc == null) continue;
+            String user = appSet(appEnv, rawUser, userProp);
+            user = user != null ? composeDefaults(user) : springDefault(rawUser);
+            String setPwd = appSet(appEnv, rawPwd, pwdProp);
+            String filePwd = rawPwd == null ? null : springDefault(rawPwd);
+            boolean hasPwd = setPwd != null || (filePwd != null && !filePwd.isEmpty());
+            loginCompare(out, engines, images, env, svc, compose, "service `" + app + "`",
+                    url, user, hasPwd);
+        }
+        return new ArrayList<>(new LinkedHashSet<>(out));
+    }
+
+    /** One side of the login comparison against one database service. Never prints a password. */
+    static void loginCompare(List<String> out, List<Object> engines, Map<String, String> images,
+                             Map<String, Map<String, String>> env, String svc, String compose,
+                             String side, String url, String user, boolean hasPwd) {
+        String[] img = images.containsKey(svc) ? splitImage(images.get(svc)) : null;
+        if (img == null) return;
+        String repo = img[0].substring(img[0].lastIndexOf('/') + 1);
+        Map<String, Object> engine = null;
+        for (Object o : engines) {
+            Map<String, Object> e = asMap(o);
+            if (e != null && asStrList(e.get("images")).contains(repo)) { engine = e; break; }
+        }
+        if (engine == null) return;
+        Map<String, String> svcEnv = env.getOrDefault(svc, Map.of());
+
+        String dbKey = asStr(engine.get("database_env"));
+        String svcDb = dbKey == null ? null : composeDefaults(svcEnv.get(dbKey));
+        Matcher path = Pattern.compile("^jdbc:[a-z0-9]+://[^/]+/([^?;/]+)").matcher(url == null ? "" : url);
+        String appDb = path.find() ? path.group(1) : null;
+        if (appDb != null && svcDb != null && !svcDb.contains("${") && !appDb.equals(svcDb)) {
+            out.add("login: " + side + " connects to database `" + appDb + "`, but service `" + svc
+                    + "` creates `" + svcDb + "` (`" + dbKey + "` in " + compose + ") — the socket"
+                    + " opens and the login fails  →  read one variable on both sides (`DB_NAME`,"
+                    + " the same default in the JDBC URL and in `" + dbKey + "`)");
+        }
+
+        String userKey = asStr(engine.get("username_env"));
+        String svcUser = userKey == null ? null : composeDefaults(svcEnv.get(userKey));
+        if (user != null && svcUser != null && !svcUser.contains("${") && !user.contains("${")
+                && !user.equals(svcUser)) {
+            out.add("login: " + side + " logs in as `" + user + "`, but service `" + svc
+                    + "` creates user `" + svcUser + "` (`" + userKey + "` in " + compose + ")  →"
+                    + "  read one variable on both sides (`DB_USERNAME`, the same default in"
+                    + " `spring.datasource.username` and in `" + userKey + "`)");
+        }
+
+        String pwdKey = asStr(engine.get("password_env"));
+        String svcPwd = pwdKey == null ? null : svcEnv.get(pwdKey);
+        if (svcPwd != null && !svcPwd.isBlank() && !hasPwd) {
+            out.add("login: service `" + svc + "` requires a password (`" + pwdKey + "` in "
+                    + compose + "), and " + side + " has none — absent, empty, or an empty"
+                    + " default  →  read it from `DB_PASSWORD` with no default, kept in the"
+                    + " untracked `.env`");
+        }
+    }
+
+    /**
+     * What an application service sets for a property: the variable its placeholder names,
+     * else the relaxed-binding form of the property. Null when it sets neither.
+     */
+    static String appSet(Map<String, String> appEnv, String raw, String property) {
+        Matcher m = Pattern.compile("^\\$\\{([^:}]+)").matcher(raw == null ? "" : raw);
+        if (m.find() && appEnv.containsKey(m.group(1).strip())) return appEnv.get(m.group(1).strip());
+        return appEnv.get(envForm(property));
+    }
+
+    /**
+     * A Spring value read as its defaults: {@code ${A:${B:x}}} is {@code x}, {@code ${A:}} is
+     * empty. Null when a placeholder has no default — the value comes from the environment
+     * and there is nothing in the file to compare.
+     */
+    static String springDefault(String raw) {
+        if (raw == null) return null;
+        Pattern inner = Pattern.compile("\\$\\{([^:{}]+)(?::([^{}]*))?}");
+        String s = raw;
+        for (int guard = 0; guard < 16; guard++) {
+            Matcher m = inner.matcher(s);
+            if (!m.find()) return s;
+            if (m.group(2) == null) return null;
+            s = s.substring(0, m.start()) + m.group(2) + s.substring(m.end());
+        }
+        return null;
+    }
+
+    /**
+     * Compose interpolation read as its defaults: {@code ${VAR:-x}} and {@code ${VAR-x}} are
+     * {@code x}. A {@code ${VAR}} or {@code ${VAR:?message}} has no default and stays as it is.
+     */
+    static String composeDefaults(String s) {
+        if (s == null) return null;
+        return Pattern.compile("\\$\\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]*)}").matcher(s)
+                .replaceAll(m -> Matcher.quoteReplacement(m.group(1)));
+    }
+
+    /**
+     * Every scalar of a YAML config file by its dotted property, first occurrence wins.
+     * Same indentation walk as {@link #placeholdersIn}: no YAML library, one value per line.
+     */
+    static Map<String, String> yamlScalars(String content) {
+        Map<String, String> out = new LinkedHashMap<>();
+        Deque<Map.Entry<Integer, String>> path = new ArrayDeque<>();
+        Pattern key = Pattern.compile("^([A-Za-z0-9_.\\-\"']+)\\s*:(\\s+(.*))?$");
+        for (String raw : content.split("\r?\n", -1)) {
+            String body = raw.strip();
+            if (body.isEmpty() || body.startsWith("#") || body.equals("---")) continue;
+            int indent = raw.length() - raw.stripLeading().length();
+            Matcher k = key.matcher(body);
+            if (!k.find()) continue;
+            while (!path.isEmpty() && path.peekLast().getKey() >= indent) path.removeLast();
+            path.addLast(Map.entry(indent, k.group(1).replace("\"", "").replace("'", "")));
+            String value = k.group(3) == null ? "" : k.group(3).replaceAll("\\s+#.*$", "").strip();
+            if (value.isEmpty()) continue;
+            String property = path.stream().map(Map.Entry::getValue).collect(Collectors.joining("."));
+            out.putIfAbsent(property, unquote(value));
+        }
+        return out;
     }
 
     /**
