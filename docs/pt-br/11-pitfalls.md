@@ -131,7 +131,14 @@ falho. `export`, `doctor`, `build` e o `compose` puro são invocados por pessoas
 **Rejeita uma pergunta com menos de 2 opções, e rejeita o lote inteiro com ela:**
 `InputValidationError ... "too_small" ... path: ["questions",1,"options"]`. Uma pergunta com
 uma opção não é pergunta — decida, e registre a decisão onde a resposta iria. O lote também
-tem limite superior de 4 perguntas por chamada. O projeto gerado carrega este mesmo pitfall
+tem limite superior de 4 perguntas por chamada.
+
+**Rejeita uma pergunta com mais de 4 opções, do mesmo jeito:**
+`InputValidationError ... "too_big", "maximum": 4 ... path: ["questions",0,"options"]`. Sete
+escolhas não são uma pergunta: pergunte só o que ainda está em aberto — o resto já está decidido
+em algum lugar, como o `features: true` de um blueprint — ou ofereça quatro e deixe as outras
+para o Other. Vale o mesmo para uma chamada com mais de 4 perguntas: as seguintes vão na
+próxima chamada. O projeto gerado carrega este mesmo pitfall
 no seu próprio `CLAUDE.md`, vindo de
 `project-bootstrap/templates/root.CLAUDE.md.example`.
 

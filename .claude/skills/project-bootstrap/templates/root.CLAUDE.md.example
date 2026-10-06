@@ -77,7 +77,9 @@ of truth for its topic and is cited, never copied.
 ## Known pitfalls
 
 - **`AskUserQuestion` with one option fails** with `InputValidationError`. A question with
-  one option isn't a question: decide, and record the decision.
+  one option isn't a question: decide, and record the decision. **More than 4 options, or
+  more than 4 questions in one call, fails the same way:** ask only what is still open, offer
+  four and leave the rest to Other, and send further questions in the next call.
 - **The shell may be zsh.** Quote every glob passed to a command (`--include='*.java'`);
   unquoted, zsh aborts with `no matches found` before the command runs. To list
   `docs/use-cases/UC-*`, use `find docs/use-cases -maxdepth 1 -name 'UC-*'`, not `ls`.

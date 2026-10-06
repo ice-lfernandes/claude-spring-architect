@@ -121,13 +121,13 @@ reportar** — um bootstrap que entrega build vermelho não está terminado.
 Como `--blueprint`, `--groupId`, `--name` e `--bounded-context` já vieram nos argumentos,
 o `/init-project` não pergunta de novo sobre eles — só entrevista o que falta, na sessão
 principal e antes de delegar: build (já veio, também pula), **features**, TLS e Sonar
-(as perguntas de `transport-security-setup` e `sonarqube-setup`). O agent não pergunta nada.
-As features oferecidas: REST, JPA+Flyway, Kafka, SQS, OpenAPI,
-Testcontainers, Actuator. Suponha que o usuário responde: REST, JPA+Flyway, OpenAPI,
-Testcontainers, Actuator (sem Kafka/SQS).
+(as perguntas de `transport-security-setup` e `sonarqube-setup`), no máximo quatro perguntas
+por chamada. O agent não pergunta nada. Features só são perguntadas onde o blueprint as marca
+`false`: o `hexagonal` já liga REST, JPA+Flyway, OpenAPI, Testcontainers e Actuator, então a
+única pergunta oferece Kafka e SQS. Suponha que o usuário não marca nenhuma.
 
-O **contexto delimitado** (`--bounded-context`) é um campo da mesma pergunta das
-coordenadas, com o artifactId como default. É um fato do projeto, não uma resposta por
+O **contexto delimitado** (`--bounded-context`) é uma pergunta própria, com o artifactId
+como default. É um fato do projeto, não uma resposta por
 caso de uso: ele é o primeiro segmento de todo nome de tópico Kafka, e escolhê-lo dentro
 de um caso de uso daria a um sistema dois namespaces. Por isso é perguntado uma vez aqui
 e escrito no `CLAUDE.md` da raiz do projeto gerado, mesmo quando não há mensageria.

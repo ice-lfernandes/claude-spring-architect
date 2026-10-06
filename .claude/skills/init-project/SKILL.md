@@ -40,30 +40,47 @@ $ARGUMENTS
    background, where `AskUserQuestion` does not exist; a question it needs mid-run is a hand-back,
    a resume over its whole context, and a user who cannot leave the terminal
    (`@.claude/lessons-learned/lessons-learned-020.md` § 6). Read every blueprint listed above in
-   one response, in parallel. Skip any question the arguments already answer. Up to three
-   `AskUserQuestion` calls:
-   - **First call.** *Architecture* — every blueprint by `id`, each with its `when_to_choose` and
-     a `trade_off` from the YAML itself, written in the question text; up to four of them as
-     options, the rest typed by `id` under Other. Never a list written by hand. *Build* — Maven or
-     Gradle. *Features* — REST, JPA + Flyway, Kafka, SQS, OpenAPI, Testcontainers, Actuator
-     (multi-select): an active feature is a dependency and its configuration, never business
-     code (`@.claude/decisions/0011-bootstrap-without-business-code.md`); ArchUnit and coverage are
-     not asked, `test-architect` installs them later. *artifactId* — typed under Other.
-   - **Second call.** *groupId*, *project name* and *bounded context* (default: the artifactId;
-     the first segment of every topic name, and nothing else in the project declares it).
-     *Transport topology* — the first question of `transport-security-setup` § 2, read from that
-     file, with its options. *SonarQube* — the two questions of `sonarqube-setup` § 2, read from
-     that file, with their options. Those skills own their questions; this step asks them earlier
-     and never rewrites them.
-   - **Third call, only when an answer needs its follow-up.** The second question set of
-     `transport-security-setup` § 2 for the chosen topology; a server URL or SonarCloud
-     organization when the Sonar answer named an existing server.
+   one response, in parallel.
+
+   The questions, in this order — skip any the arguments already answer:
+
+   1. *Architecture* — every blueprint by `id`, each with its `when_to_choose` and a `trade_off`
+      from the YAML itself, written in the question text; up to four of them as options, the
+      rest typed by `id` under Other. Never a list written by hand.
+   2. *Build* — Maven or Gradle.
+   3. *Features* — multi-select, and **only** over the features the chosen blueprint sets
+      `false`, among REST, JPA + Flyway, Kafka, SQS, OpenAPI, Testcontainers, Actuator. Every
+      feature it sets `true` is already confirmed and never asked. None `false` → no question.
+      An active feature is a dependency and its configuration, never business code
+      (`@.claude/decisions/0011-bootstrap-without-business-code.md`); ArchUnit and coverage are
+      not asked, `test-architect` installs them later.
+   4. *artifactId*.
+   5. *groupId*.
+   6. *Project name* — default: the artifactId.
+   7. *Bounded context* — default: the artifactId; the first segment of every topic name, and
+      nothing else in the project declares it.
+   8. *Transport topology* — the first question of `transport-security-setup` § 2, read from
+      that file, with its options.
+   9. *SonarQube* — the two questions of `sonarqube-setup` § 2, read from that file, with their
+      options. Those skills own their questions; this step asks them earlier and never rewrites
+      them.
+   10. *Follow-ups*, only when an answer needs one — the second question set of
+       `transport-security-setup` § 2 for the chosen topology; a server URL or SonarCloud
+       organization when the Sonar answer named an existing server.
+
+   Send them in that order, **at most four questions per `AskUserQuestion` call and two to four
+   options per question** — the tool rejects the whole call otherwise
+   (`@docs/pt-br/11-pitfalls.md` § `AskUserQuestion`). A question whose options or default
+   depend on an answer not yet given — *Features* on the blueprint, a default on the artifactId,
+   a follow-up on its parent — goes to the next call. A free-text field offers its default and
+   one variant derived from an answer already given; the value itself is typed under Other.
 
    A free-text answer that comes back incomplete — `groupId` without `artifactId` — is asked
    again, alone, before delegating.
 3. Delegate to the `project-initializer` agent, passing the arguments and **every** answer of
-   step 2, by name: blueprint, coordinates, project name, bounded context, build tool, features,
-   transport topology and its follow-up, Sonar server and authentication. The agent asks
+   step 2, by name: blueprint, coordinates, project name, bounded context, build tool, features
+   (every one the blueprint sets `true`, plus the ones checked), transport topology and its
+   follow-up, Sonar server and authentication. The agent asks
    nothing; a missing answer makes it stop with `blocked: missing <field>`, and then the field
    is asked here and the agent is resumed once. The agent exists for two of the three legitimate
    reasons: generation produces verbose output that shouldn't fill this conversation, and it

@@ -129,8 +129,14 @@ nothing.
 **It rejects a question with fewer than 2 options, and rejects the whole batch with it:**
 `InputValidationError ... "too_small" ... path: ["questions",1,"options"]`. A question with one
 option isn't a question — decide it, and record the decision where the answer would have gone.
-The batch also has an upper bound of 4 questions per call. The generated project carries the
-same pitfall in its own `CLAUDE.md`, from
+The batch also has an upper bound of 4 questions per call.
+
+**It rejects a question with more than 4 options, the same way:**
+`InputValidationError ... "too_big", "maximum": 4 ... path: ["questions",0,"options"]`. Seven
+choices are not one question: ask only what is still open — the rest is already decided
+somewhere, like a blueprint's `features: true` — or offer four and leave the others to Other.
+Same for a call with more than 4 questions: the next ones go in the next call. The generated
+project carries the same pitfall in its own `CLAUDE.md`, from
 `project-bootstrap/templates/root.CLAUDE.md.example`.
 
 ### MCP
