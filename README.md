@@ -518,8 +518,8 @@ Every job and step, plus the known gaps: [`docs/en/07-ci-validate.md`](docs/en/0
 - **Claude Code only.** Hooks, `paths`, `disable-model-invocation`, and `context: fork`
   belong to the Claude Code runtime. Nothing here runs on Codex, Cursor, or Copilot.
 - **Spring Boot only, servlet stack.** No WebFlux, no Quarkus or Micronaut, no front end.
-- **The full pipeline is expensive by design.** One real `/new-feature` run cost about
-  USD 15 for a two-field aggregate. The audit trail exists to measure that; the levers are
+- **The full pipeline is expensive by design.** One `/new-feature` run designs every layer
+  before the executor writes code. The audit trail exists to measure that; the levers are
   in [`docs/en/03-new-feature.md`](docs/en/03-new-feature.md).
 - **Rigor has a learning curve.** The guards refuse writes on purpose. When one blocks, its
   message names the rule and the fix, and [`docs/en/11-pitfalls.md`](docs/en/11-pitfalls.md)
