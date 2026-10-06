@@ -25,6 +25,27 @@ Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/pt-br/`](docs
 (português). How it compares with similar projects, with sources:
 [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
 
+<p align="center">
+  <img alt="/init-project generating bank-app: the interview, the background agent, the final report and the push to GitHub" src="docs/assets/init-project-demo.gif" width="100%">
+</p>
+
+One `/init-project` run, sped up about 5×. What it produced is public:
+[`nerviz-ai/bank-app`](https://github.com/nerviz-ai/bank-app), a
+`clean-architecture-single-module` project with a green build. The run took 20 minutes, a figure
+read from the session transcripts into its
+[`GENESIS.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/GENESIS.md).
+
+The generated project, opened as is: it starts against the compose Postgres, and
+`mvn clean verify` passes with tests, Spotless, Checkstyle and JaCoCo.
+
+<p align="center">
+  <img alt="bank-app starting in the IDE: Flyway validates the schema and Tomcat starts on port 8080" src="docs/assets/bank-app-run.gif" width="100%">
+</p>
+
+<p align="center">
+  <img alt="mvn clean verify on bank-app: 3 tests, 0 Checkstyle violations, BUILD SUCCESS" src="docs/assets/bank-app-verify.gif" width="100%">
+</p>
+
 Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
 the engineer-architect whose structures are their own form. Formerly
 `claude-spring-architect`; the old GitHub address redirects here.
@@ -508,8 +529,8 @@ Every job and step, plus the known gaps: [`docs/en/07-ci-validate.md`](docs/en/0
 - **Claude Code only.** Hooks, `paths`, `disable-model-invocation`, and `context: fork`
   belong to the Claude Code runtime. Nothing here runs on Codex, Cursor, or Copilot.
 - **Spring Boot only, servlet stack.** No WebFlux, no Quarkus or Micronaut, no front end.
-- **The full pipeline is expensive by design.** One real `/new-feature` run cost about
-  USD 15 for a two-field aggregate. The audit trail exists to measure that; the levers are
+- **The full pipeline is expensive by design.** One `/new-feature` run designs every layer
+  before the executor writes code. The audit trail exists to measure that; the levers are
   in [`docs/en/03-new-feature.md`](docs/en/03-new-feature.md).
 - **Rigor has a learning curve.** The guards refuse writes on purpose. When one blocks, its
   message names the rule and the fix, and [`docs/en/11-pitfalls.md`](docs/en/11-pitfalls.md)
