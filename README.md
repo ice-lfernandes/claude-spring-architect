@@ -25,6 +25,16 @@ Documentation: [`docs/en/`](docs/en/README.md) (English) · [`docs/pt-br/`](docs
 (português). How it compares with similar projects, with sources:
 [`docs/en/09-differentiators.md`](docs/en/09-differentiators.md).
 
+<p align="center">
+  <img alt="/init-project generating bank-app: the interview, the background agent, the final report and the push to GitHub" src="docs/assets/init-project-demo.gif" width="100%">
+</p>
+
+One `/init-project` run, sped up about 5×. What it produced is public:
+[`nerviz-ai/bank-app`](https://github.com/nerviz-ai/bank-app), a
+`clean-architecture-single-module` project with a green build. The run took 20 minutes and cost
+USD 6.38, figures read from the session transcripts into its
+[`GENESIS.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/GENESIS.md).
+
 Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
 the engineer-architect whose structures are their own form. Formerly
 `claude-spring-architect`; the old GitHub address redirects here.
