@@ -141,9 +141,12 @@ below.
   without Docker a red result says nothing about the code, and the daily false
   negative trains whoever sees it to ignore the build.
 - **In CI, Docker is mandatory and the absence of a container is a failure.** The
-  pipeline's `verify` runs with Docker, and the pipeline fails if the number of
-  integration tests executed is zero — without that count the guard turns into a
-  universal skip, which is exactly the silent degradation the first point forbids.
+  pipeline's `verify` runs with Docker, and the pipeline fails if any integration test
+  was skipped, or if none ran. A class the guard turns off is reported as skipped, not
+  as zero tests. A total alone misses it as soon as one integration test needs no
+  container, and the guard then becomes the silent degradation the first point forbids.
+  The count comes from the build tool's aggregate, never from one report per class:
+  the enclosing class of `@Nested` tests reports zero while its nested classes run.
 
 ## Coverage
 

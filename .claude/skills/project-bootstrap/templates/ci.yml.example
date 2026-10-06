@@ -33,15 +33,16 @@ jobs:
         run: ./mvnw -B clean verify
 
       # `.claude/rules/testing.md` § Database in integration tests: the
-      # `@EnabledIf(dockerAvailable)` guard is allowed locally, not in CI. Without this
-      # check the guard turns into a universal skip and `verify` goes green without having
-      # touched the database — the silent degradation the rule forbids.
+      # `@EnabledIf(dockerAvailable)` guard is allowed locally, not in CI. A class the guard
+      # turns off is reported as skipped, not as zero tests, so any skipped IT fails here.
+      # Otherwise `verify` goes green without having touched the database, which is the
+      # silent degradation the rule forbids.
       #
-      # Keyed off *IT.java source presence, not off the report alone: a freshly
-      # bootstrapped project (see decisions/0011) has zero business code and therefore
-      # zero *IT sources — that state must pass, not fail. Once the first *IT lands,
-      # the check gains teeth: sources without a report, or a report with zero tests,
-      # both fail the build.
+      # Keyed off *IT.java source presence: a freshly bootstrapped project (see
+      # decisions/0011) has zero *IT sources, and that state must pass. The counts come from
+      # failsafe-summary.xml, one per module, never from the per-class .txt reports. The
+      # enclosing class of @Nested tests writes `Tests run: 0` there while its nested
+      # classes run (see decisions/0127).
       - name: integration tests actually ran
         run: |
           IT_SOURCES=$(find . -path '*/src/test/java/*IT.java' -print -quit)
@@ -49,16 +50,30 @@ jobs:
             echo "ℹ️  No *IT.java sources yet — nothing to verify."
             exit 0
           fi
-          REPORTS=$(find . -path '*/target/failsafe-reports/*IT.txt' -print -quit)
-          if [ -z "$REPORTS" ]; then
-            echo "❌ *IT.java sources exist but no failsafe report. Either failsafe isn't"
-            echo "   wired up, or the Docker guard skipped them all. In CI that's a failure."
+          SUMMARIES=$(find . -path '*/target/failsafe-reports/failsafe-summary.xml')
+          if [ -z "$SUMMARIES" ]; then
+            echo "❌ *IT.java sources exist but no failsafe-summary.xml. Failsafe isn't wired up"
+            echo "   in the build. In CI that's a failure."
             exit 1
           fi
-          if grep -rlE '^Tests run: 0' --include='*IT.txt' . ; then
-            echo "❌ An IT ran with 0 tests — Docker guard active in CI."; exit 1
+          count() { sed -n "s:.*<$1>\([0-9]*\)</$1>.*:\1:p" "$2" | head -1; }
+          TOTAL=0; SKIPPED=0
+          while IFS= read -r f; do
+            c=$(count completed "$f"); s=$(count skipped "$f")
+            TOTAL=$((TOTAL + ${c:-0})); SKIPPED=$((SKIPPED + ${s:-0}))
+          done <<< "$SUMMARIES"
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "❌ $SKIPPED integration test(s) skipped in CI. The Docker guard, @Disabled or an"
+            echo "   assumption turned them off, and a skipped IT proves nothing. Skipped in:"
+            find . -path '*/target/failsafe-reports/TEST-*.xml' \
+              -exec grep -lE '<testsuite [^>]*skipped="[1-9]' {} + \
+              | sed 's:.*/TEST-::; s:\.xml$::; s:^:     :' || true
+            exit 1
           fi
-          echo "✅ Integration tests ran against a real container."
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "❌ *IT.java sources exist but failsafe ran no integration test."; exit 1
+          fi
+          echo "✅ $TOTAL integration test(s) ran, none skipped."
 
   boundaries:
     name: architectural boundaries

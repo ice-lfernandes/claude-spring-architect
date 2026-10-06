@@ -191,7 +191,7 @@ happens anyway.
 
 ## The sibling workflow: `templates.yml`
 
-Path-filtered: it runs only when a PR touches the files it tests, because both jobs download
+Path-filtered: it runs only when a PR touches the files it tests, because every job downloads
 from Maven Central, GitHub or `start.spring.io`. Not a required check — a required check on a
 path-filtered workflow stays pending on every PR it skips. Design:
 `.claude/decisions/0099-ci-tests-for-verbatim-templates.md`.
@@ -200,6 +200,7 @@ path-filtered workflow stays pending on every PR it skips. Design:
 |---|---|---|
 | `checkstyle-configs` | `CheckstyleConfigTest.java`: `checkstyle.xml.example` and `checkstyle-test.xml.example` run on the **latest** Checkstyle release (resolved from Maven Central, `-all` jar from its GitHub release) over three fixtures — a clean file passes both, `record` and `permits` as names fail both with `IllegalIdentifierName`. Plus six comment fixtures, `checkstyle.xml` only: an own-line `//`, a trailing `//`, a `/* */`, a `/** */` inside a body and a `TODO` in Javadoc each fail by their own module; a file holding both exceptions (empty body, tool directive) and the strings `"http://…"` and `"/api/*"` passes; `checkstyle-test.xml` lets the comment through. Plus eleven throw-assertion fixtures, `checkstyle-test.xml` only: ten lambdas with more than one call — one per assertion name `testing.md` § Names and shape lists, a `new` argument, a chained `orElseThrow()`, a two-statement block, a qualified `Assertions.` — each fail with `OneCallInThrowLambda`; a file of one-call shapes (constructor under test, method reference, one-statement block, a `forEach` lambda with two calls) passes. Plus two repeated-literal fixtures: a 5-character literal three times fails `checkstyle.xml` with `MultipleStringLiterals` and passes `checkstyle-test.xml`; a file holding the same literal twice, a 4-character literal three times and a literal three times inside annotations passes `checkstyle.xml` | Decision 0097 — Checkstyle 14's default `format` rejects `var` only; a config relying on it passed four `record` variables with 0 violations, and the config never runs in this repository. Decision 0108 — Javadoc is the only comment in `src/main`. Decision 0113 — the one-call rule for throw-assertion lambdas was a rule line only, and the shape came back in test shapes no template covered. Decision 0120 — "no magic strings" was a norm only; the numbers are Sonar S1192's, which skips test files |
 | `java-templates` | `JavaTemplatesTest.java`: every file of `new-feature/templates/commons/` plus the `// --- ` blocks of `JpaEntity.java.example` (`AssignedIdEntity` included) placed into a fresh `start.spring.io` project, then `./mvnw test` over the three `*Test` templates | Decisions 0096 and 0098 — these templates are copied as files, not read as shapes: one that stops compiling breaks `commons-logging-installer` in every project. `exemplar-imports` proves each import exists; this proves the files compile together and the shipped tests pass |
+| `ci-it-check` | `CiItCheckTest.java`: reads the `integration tests actually ran` step out of `ci.yml.example` and `ci-gradle.yml.example` and runs it with `bash -eo pipefail` on a fresh `start.spring.io` project per build tool, wired with the IT block of `pom.parent.xml.example` or `build.gradle.parent.example`. With `ForwardedHeadersIT` alone (every test in `@Nested`) the step must pass; with a `GuardedIT` switched off by the Docker `@EnabledIf` guard, it must fail naming the class | Decision 0127 — the step failed every build whose IT used `@Nested` (failsafe writes `Tests run: 0` in the enclosing class's `.txt`; Gradle names the report `<Outer>$<Nested>`) and never caught the guard skip, which is reported as `Skipped: N`, not as zero tests. The step only runs inside the generated project, so nothing here ever saw it |
 
 ## What's not here yet
 
@@ -239,6 +240,7 @@ java .claude/.ci/XmlTemplatesTest.java
 # templates.yml — network, ~1 min with a warm Maven cache:
 java .claude/.ci/CheckstyleConfigTest.java
 java .claude/.ci/JavaTemplatesTest.java
+java .claude/.ci/CiItCheckTest.java
 ```
 
 A `git push` without running this first still goes through the local hook

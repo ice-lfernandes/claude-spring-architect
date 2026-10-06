@@ -9,6 +9,8 @@ name: templates
 #      shipped with them pass (decisions 0096, 0098)
 #   3. the transport templates pass their own integration test once per topology — edge and
 #      direct — in a fresh Initializr project (decision 0122)
+#   4. the generated CI's "integration tests actually ran" step reads the reports Maven and
+#      Gradle really write: @Nested ITs pass it, a Docker-guard skip fails it (decision 0127)
 # Design: .claude/decisions/0099-ci-tests-for-verbatim-templates.md
 #
 # Path-filtered on purpose: every job downloads from Maven Central, GitHub or
@@ -27,6 +29,11 @@ on:
       - '.claude/.ci/JavaTemplatesTest.java'
       - '.claude/skills/transport-security-setup/templates/**'
       - '.claude/.ci/TransportTemplatesTest.java'
+      - '.claude/skills/project-bootstrap/templates/ci.yml.example'
+      - '.claude/skills/project-bootstrap/templates/ci-gradle.yml.example'
+      - '.claude/skills/project-bootstrap/templates/pom.parent.xml.example'
+      - '.claude/skills/project-bootstrap/templates/build.gradle.parent.example'
+      - '.claude/.ci/CiItCheckTest.java'
       - '.github/workflows/templates.yml'
   pull_request:
     paths:
@@ -37,6 +44,11 @@ on:
       - '.claude/.ci/JavaTemplatesTest.java'
       - '.claude/skills/transport-security-setup/templates/**'
       - '.claude/.ci/TransportTemplatesTest.java'
+      - '.claude/skills/project-bootstrap/templates/ci.yml.example'
+      - '.claude/skills/project-bootstrap/templates/ci-gradle.yml.example'
+      - '.claude/skills/project-bootstrap/templates/pom.parent.xml.example'
+      - '.claude/skills/project-bootstrap/templates/build.gradle.parent.example'
+      - '.claude/.ci/CiItCheckTest.java'
       - '.github/workflows/templates.yml'
   workflow_dispatch:
 
@@ -97,3 +109,21 @@ jobs:
       # checked in (.claude/rules/secrets.md § Key material).
       - name: edge and direct topologies in a fresh Initializr project
         run: java .claude/.ci/TransportTemplatesTest.java
+
+  ci-it-check:
+    name: generated CI's IT check reads the real reports
+    runs-on: ubuntu-latest
+    # Two fresh Initializr projects (Maven, Gradle), two builds each: one green, one red.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The step once failed every build whose IT held its tests in @Nested classes, and
+      # never caught the Docker-guard skip it exists for (decision 0127).
+      - name: "@Nested ITs pass, a Docker-guard skip fails, on Maven and Gradle"
+        run: java .claude/.ci/CiItCheckTest.java
