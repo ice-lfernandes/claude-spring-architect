@@ -83,25 +83,25 @@ other pattern except for a symptom already on disk.
 
 ## Implementation order (checklist)
 
-[ ] 1. Domain exceptions — n/a, reused
-[ ] 2. Value objects — n/a, reused
-[ ] 3. Aggregate — n/a, reused
-[ ] 4. Events — n/a, none
-[ ] 5. Use case command — n/a, id only
-[ ] 6. Use case
-[ ] 7. Output port method `byId`
-[ ] 8. Migration — n/a, none
-[ ] 9. Persistence entity — n/a, reused
-[ ] 10. Spring Data interface — n/a, `findById` inherited
-[ ] 11. Repository adapter `byId`
-[ ] 12. Persistence properties — n/a
-[ ] 13. Response DTO — reused
-[ ] 14. Controller method + contract interface
-[ ] 15. REST properties — n/a
-[ ] 16. Test fixtures — reused
-[ ] 17. Unit tests
-[ ] 18. Integration + contract tests
-[ ] 19. `./mvnw verify` — green build, coverage gate
+- [ ] 1. Domain exceptions — n/a, reused
+- [ ] 2. Value objects — n/a, reused
+- [ ] 3. Aggregate — n/a, reused
+- [ ] 4. Events — n/a, none
+- [ ] 5. Use case command — n/a, id only
+- [ ] 6. Use case
+- [ ] 7. Output port method `byId`
+- [ ] 8. Migration — n/a, none
+- [ ] 9. Persistence entity — n/a, reused
+- [ ] 10. Spring Data interface — n/a, `findById` inherited
+- [ ] 11. Repository adapter `byId`
+- [ ] 12. Persistence properties — n/a
+- [ ] 13. Response DTO — reused
+- [ ] 14. Controller method + contract interface
+- [ ] 15. REST properties — n/a
+- [ ] 16. Test fixtures — reused
+- [ ] 17. Unit tests
+- [ ] 18. Integration + contract tests
+- [ ] 19. `./mvnw verify` — green build, coverage gate
 
 ## Resolved divergences
 
