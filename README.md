@@ -46,12 +46,37 @@ The generated project, opened as is: it starts against the compose Postgres, and
   <img alt="mvn clean verify on bank-app: 3 tests, 0 Checkstyle violations, BUILD SUCCESS" src="docs/assets/bank-app-verify.gif" width="100%">
 </p>
 
-Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
-the engineer-architect whose structures are their own form. Formerly
-`claude-spring-architect`; the old GitHub address redirects here.
+Then the first feature, inside the generated project. `/new-feature` takes a one-line
+request, asks only the questions that change the design (who may call it, duplicates, the
+age rule, data retention), and has one skill per layer write its part of the spec. The spec
+is approved, frozen, committed and pushed before a single line of code exists. Run sped up
+about 12×; it took 10 minutes, about 2 of them waiting for answers.
 
-Not affiliated with Anthropic, Broadcom or Oracle. Claude Code, Spring and Java are named
-only to describe what Nerviz works with; this is not an official product of any of them.
+<p align="center">
+  <img alt="/new-feature in bank-app: the interview, use-case-design, domain-modeling, rest-api-architect, persistence-architect and test-architect writing their partials, the spec approved and pushed" src="docs/assets/new-feature-demo.gif" width="100%">
+</p>
+
+Everything it wrote is public:
+[the approved spec](https://github.com/nerviz-ai/bank-app/blob/main/docs/use-cases/UC-001-create-customer/UC-001-spec.md),
+[its partials](https://github.com/nerviz-ai/bank-app/tree/main/docs/use-cases/UC-001-create-customer),
+and [the run's audit report](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/2026-10-07T08-52-11--new-feature.md).
+`/new-feature UC-001-create-customer` hands that spec to the executor agent later, in any
+session.
+
+## At a glance
+
+- **Seven architectures as data**, plus your own. A blueprint is a YAML file. Adding one
+  changes no prompt.
+- **Spec before code.** One use case per run, designed layer by layer by an owner skill
+  for each layer, approved by you, then frozen.
+- **Blocked at write time.** A forbidden import, a write outside a skill's territory, an
+  edit to an approved spec, or a force push is refused by a hook. The model is not asked to
+  remember the rule.
+- **Versions from Spring Initializr**, never from the model's memory.
+- **Every run measured.** Each skill and agent leaves a report with its time, tokens,
+  questions asked and files touched.
+- **Self-contained projects.** A generated project carries the whole harness and its own
+  CI, and `/arch-adopt` updates it later.
 
 ---
 
@@ -255,6 +280,17 @@ from a real spec.
 Each step's output contract is literally the next step's input contract. A free-prose
 handoff degrades by the third hop. Details: [`docs/en/03-new-feature.md`](docs/en/03-new-feature.md).
 
+What the consolidation produces: one `UC-NNN-spec.md` that keeps a single decision per
+fact, links back to the partial that owns each one, and ends in an implementation order
+the executor follows. Below is bank-app's
+[`UC-001-spec.md`](https://github.com/nerviz-ai/bank-app/blob/main/docs/use-cases/UC-001-create-customer/UC-001-spec.md).
+Conditional layers the use case does not need, such as security, outbound HTTP, messaging
+and jobs, are recorded as not applicable instead of being left out silently.
+
+<p align="center">
+  <img alt="UC-001-spec.md of bank-app: partials and owners, use case, domain model, persistence, REST API, tests, design patterns, out of scope, implementation order" src="docs/assets/new-feature-spec.gif" width="100%">
+</p>
+
 ### Edit cycle — what runs on every write in a generated project
 
 ```
@@ -286,23 +322,15 @@ Stop
 
 ### Audit trail — what every run cost
 
-Excerpt of a real report from a `/new-feature` run in a demo project:
+The report of the bank-app `/new-feature` run above, as it lands in the project:
+[`2026-10-07T08-52-11--new-feature.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/2026-10-07T08-52-11--new-feature.md).
+It shows the duration with the time spent waiting for the user taken out, the chain of
+skills with each one's share, tokens per piece, tool calls and peak context per piece, the
+most expensive turns, the files touched, and every question asked with the answer given.
 
-```text
-| ⏱️ Duration        | 2h55m35s  |   ⏸️ Waiting for the user | 2h44m33s |   ⚙️ Active duration | 11m01s |
-
-/new-feature                                  ████████████████████ 11m01s   100%
-├─ 📘 use-case-design                         ████░░░░░░░░░░░░░░░░ 2m17s    21%
-├─ 📘 domain-modeling (UC-002)                ██░░░░░░░░░░░░░░░░░░ 1m15s    11%
-├─ 📘 rest-api-architect (UC-002)             ███░░░░░░░░░░░░░░░░░ 1m43s    16%
-├─ 📘 persistence-architect (UC-002)          ██░░░░░░░░░░░░░░░░░░ 1m06s    10%
-├─ 📘 test-architect (UC-002)                 ████░░░░░░░░░░░░░░░░ 2m25s    22%
-└─ 🤖 java-spring-boot-developer              ██░░░░░░░░░░░░░░░░░░ 1m12s    11%
-
-| Piece                         | Own billable      |     | 🧮 billable (run)  | 530,831 |
-| 📘 test-architect             |           242,813 |     | ♻️ cache read      | 6,849,774 |
-| 🤖 java-spring-boot-developer |            88,517 |     | cache hit          | 100% |
-```
+<p align="center">
+  <img alt="Execution audit of a /new-feature run: duration, chain, tokens per piece, tool calls per piece, peak context, files touched and the questions asked" src="docs/assets/new-feature-audit.gif" width="100%">
+</p>
 
 The trail is a hook, not a skill. It survives the model forgetting and the session dying,
 and it costs zero tokens to produce. Prompts are redacted before they land in git.
@@ -495,7 +523,7 @@ Startup costs about 0.3 s per invocation.
 | `compose` | `Stop` (`gate`), manual, inside `doctor` | `gate` only | services running, no foreign container on the ports, reachable published ports, `image:` tags matching `src/test`, `${VAR:default}` that holds on the host and in the `app` container |
 | `context` | `SubagentStart` (generated project) | no | hands the design-pattern catalog to agents whose class declares it |
 | `audit` | eleven lifecycle events (generated project) | no | execution trail of every skill and agent |
-| `doctor` | manual (`/arch-doctor`) | no | diagnoses the setup on this machine |
+| `doctor` | manual (`/arch-doctor`), generated CI (`gate`) | `gate` only | diagnoses the setup on this machine; `gate` fails on a red committed check (`doctor.gate.labels`) |
 | `export` | manual (through `/arch-adopt`) | no | writes a target project's `.claude/` from the manifest, with the provenance stamp |
 | `build` | `PostToolUse` on `ArchHook.java` (this repo), manual | no | rebuilds the jar; `--verify` compares it byte for byte |
 
@@ -521,6 +549,17 @@ every push and PR:
   exported `.claude/` validates on its own.
 
 Every job and step, plus the known gaps: [`docs/en/07-ci-validate.md`](docs/en/07-ci-validate.md).
+
+The generated project gets its own `.github/workflows/build.yml`, which runs only what
+exists inside the project:
+
+- **`verify`**: tests, Spotless, Checkstyle and the JaCoCo coverage gate. The runner has
+  Docker, so Testcontainers-based tests run for real.
+- **Integration tests actually ran.** The job fails when any integration test was skipped
+  or none ran, so a disabled Docker guard cannot leave the build green.
+- **Architectural boundaries.** `doctor gate` fails when a committed check of the harness
+  is red: no boundary rules, an invalid schema, a stale hook jar, broken hook
+  registrations, or a bad `.mcp.json`.
 
 ---
 
@@ -571,6 +610,15 @@ Blueprints and norms are the most useful contributions. Full guide, per file typ
 Bugs and proposals have forms:
 [new issue](https://github.com/nerviz-ai/nerviz/issues/new/choose).
 
+## Name
+
+Nerviz is pronounced *NAIR-viz*, like Nervi plus a z: it is named after Pier Luigi Nervi,
+the engineer-architect whose structures are their own form. Formerly
+`claude-spring-architect`; the old GitHub address redirects here.
+
 ## License
 
 MIT.
+
+Not affiliated with Anthropic, Broadcom or Oracle. Claude Code, Spring and Java are named
+only to describe what Nerviz works with; this is not an official product of any of them.
