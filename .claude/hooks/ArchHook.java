@@ -984,6 +984,12 @@ public class ArchHook {
      * opinion. A project with no compose file returns before the first `docker` call, and a
      * machine with the daemon off still gets the two file-only checks, which is the half that
      * catches the defect above. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+     *
+     * <p>A foreign container on one of our ports blocks only once a container of this project
+     * exists; before that it is a warning `compose` and `doctor` print and this gate never
+     * reads, because a stack nobody started has nothing to bind yet. Scoping by the turn's
+     * change set was the closest rejected form: the daemon half catches what no file change
+     * caused. Design: `.claude/decisions/0129-compose-gate-foreign-port-warns-without-our-stack.md`.
      */
     static void composeGate(String stdin) {
         // If the Stop hook already blocked before, don't block again: avoids cycles.
@@ -1017,7 +1023,7 @@ public class ArchHook {
         List<String> tagIssues = new ArrayList<>(imageTagMismatches(file));
         tagIssues.addAll(advertisedAddressIssues(file, declared));
         tagIssues.addAll(placeholderIssues(file, declared));
-        List<String> warnings = datasourceLoginWarnings(file, declared);
+        List<String> warnings = new ArrayList<>(datasourceLoginWarnings(file, declared));
 
         Proc ps;
         try {
@@ -1059,6 +1065,10 @@ public class ArchHook {
         // A foreign container holding one of our host ports. This is the check that would
         // have answered lessons-learned-008 in seconds, and it runs even when every
         // service above is fine: the collision is what stops a service from starting.
+        // With no container of ours at all, nothing is binding yet: the line is a warning
+        // for the next `up`, so `compose gate` does not block a turn on another project's
+        // state. Design: .claude/decisions/0129-compose-gate-foreign-port-warns-without-our-stack.md
+        List<String> collisions = total == 0 ? warnings : detail;
         Set<String> wanted = declared.values().stream().flatMap(Set::stream)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (!wanted.isEmpty()) {
@@ -1074,9 +1084,13 @@ public class ArchHook {
                         Set<String> held = publishedPorts(line.substring(tab + 1));
                         held.retainAll(wanted);
                         for (String p : held) {
-                            detail.add("host port " + p + " is held by `" + name
+                            collisions.add("host port " + p + " is held by `" + name
                                     + "`, a container of ANOTHER project — "
                                     + declaredBy(declared, p) + " here cannot bind it"
+                                    + (total == 0
+                                            ? " once `docker compose up` runs (nothing of"
+                                              + " this project is up yet, so not blocking)"
+                                            : "")
                                     + "  →  docker stop " + name);
                         }
                     }
@@ -1090,7 +1104,7 @@ public class ArchHook {
         boolean ok = detail.isEmpty();
         String summary = ok
                 ? running + "/" + total
-                        + " service(s) running, no port collision, image tags match,"
+                        + " service(s) running, no blocking port collision, image tags match,"
                         + " published ports advertised to the host, placeholders hold on host"
                         + " and container"
                 : detail.size() + " problem(s) — " + running + "/" + total + " running";

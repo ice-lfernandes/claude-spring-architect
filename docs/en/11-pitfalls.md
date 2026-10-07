@@ -261,6 +261,11 @@ one and was unreachable from every host client until a use case needed it. The g
 same `composeReport()` — one definition of healthy, shared with `doctor` — silent while
 healthy, exit 2 with the failing lines otherwise. A service stopped on purpose blocks the stop
 too; that is a gate, not a bug. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+A foreign container on one of the declared host ports is the exception: while no container of
+this project exists (`docker compose ps -a` lists nothing), it is a warning that `compose` and
+`doctor` print and the gate does not block on, since a stack nobody started has nothing to
+bind yet. Once any container of the project exists, stopped or `created` included, it blocks
+as before. Issue #107, `.claude/decisions/0129-compose-gate-foreign-port-warns-without-our-stack.md`.
 
 **A healthcheck that passes proves nothing about host reachability** — it runs inside the
 container, where `localhost` is the service. A service that publishes a port to the host
