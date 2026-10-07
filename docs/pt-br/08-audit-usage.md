@@ -150,8 +150,8 @@ carregadas · arquivos tocados · retrabalho.
 **A última skill encadeada carrega a cauda de quem a chamou.** Um turno da thread principal
 pertence à última peça que começou antes dele, e o runtime não emite evento nenhum quando
 uma skill inline termina. Por isso tudo o que o orquestrador faz depois da última skill, até
-o próximo agent ou skill, entra na linha dela. No `/new-feature`, isso é a consolidação, as
-perguntas de aprovação e o pre-flight, somados ao `test-architect`. No exemplo acima, os
+o próximo agent ou skill, entra na linha dela. No fluxo de spec do `/new-feature`, isso é a
+consolidação e a pergunta de aprovação, somadas ao `test-architect`. No exemplo acima, os
 242,813 tokens do `test-architect` incluem essa cauda. Num run real do UC-007, cerca de
 USD 1,47 dos USD 1,91 atribuídos a ele eram consolidação. O rodapé do relatório diz o mesmo.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.

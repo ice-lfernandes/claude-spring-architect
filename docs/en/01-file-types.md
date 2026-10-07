@@ -201,7 +201,8 @@ project: a skill with `disable-model-invocation: true` cannot be preloaded throu
 **Who invokes it:** always another piece of the system, never the user directly via
 `/agent-name` — that command doesn't exist. Here, it's always a skill that delegates
 via the `Agent tool`: `init-project` delegates to `project-initializer`,
-`new-feature` delegates to `java-spring-boot-developer` after consolidating the spec,
+`new-feature` delegates to `java-spring-boot-developer` when `/new-feature UC-NNN-slug` implements
+an approved spec — three times, one per block group,
 `test-architect` delegates to `archunit-installer` in setup mode (no argument), and
 `new-feature`'s pre-flight delegates to `commons-logging-installer` when `commons` is empty.
 

@@ -22,7 +22,7 @@ os outros.
 | [00-visao-geral.md](00-visao-geral.md) | Diagrama geral da arquitetura do `.claude/`, com legenda por tipo de peça |
 | [01-tipos-de-arquivo.md](01-tipos-de-arquivo.md) | Como funciona cada tipo — skill, rule, agent, `CLAUDE.md`, hook — segundo o runtime do Claude Code |
 | [02-init-project.md](02-init-project.md) | Workflow completo de `/init-project`: quem chama quem, exemplo de invocação, relatório final |
-| [03-new-feature.md](03-new-feature.md) | Workflow completo de `/new-feature`: pipeline de skills de design (5 fixas + mensageria e jobs quando se aplicam) + executor, exemplo, relatório final |
+| [03-new-feature.md](03-new-feature.md) | Os dois fluxos do `/new-feature`: criar a spec (pipeline de skills de design, 5 fixas + mensageria e jobs quando se aplicam) e implementá-la (executor em três grupos encadeados), exemplo, relatório final |
 | [04-arch-doctor.md](04-arch-doctor.md) | Workflow de `/arch-doctor`: o que ele diagnostica e como ler a saída |
 | [05-blueprints.md](05-blueprints.md) | Contrato `_schema.md`, o que cada blueprint declara, como criar um blueprint customizado |
 | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) | Workflow de `/claude-code-architect-designer`: as 5 fases, matriz de decisão, campos de frontmatter, exemplo completo |

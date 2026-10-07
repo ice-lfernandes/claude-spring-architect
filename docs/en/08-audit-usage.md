@@ -149,8 +149,8 @@ loaded · files touched · rework.
 **The last skill a run chains carries its caller's tail.** A main-thread turn belongs to
 the last piece that started before it, and the runtime emits no event when an inline skill
 ends. So everything the orchestrator does after its last skill, up to the next agent or
-skill, lands on that skill's row. In `/new-feature`, that is consolidation, the approval
-questions and the pre-flight, all counted under `test-architect`. In the example above,
+skill, lands on that skill's row. In `/new-feature`'s spec flow, that is consolidation and the
+approval question, counted under `test-architect`. In the example above,
 `test-architect`'s 242,813 tokens include that tail. In a real UC-007 run, about USD 1.47
 of the USD 1.91 attributed to it was consolidation. The report's footnote says the same.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.

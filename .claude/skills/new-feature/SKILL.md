@@ -74,7 +74,7 @@ through. Record: `@.claude/decisions/0058-skill-classes-territory-schema.md`
 
 **Never writes under `src/`.** Neither does any skill it chains. Every file under `src/`
 — migrations included — belongs to `java-spring-boot-developer`. The one exception: the
-executor-offer pre-flight (§ End of flow) may trigger `archunit-installer` (via
+implement pre-flight (§ Implement) may trigger `archunit-installer` (via
 `test-architect`'s setup mode) and `commons-logging-installer` (directly) before
 delegating. Those writes are the installers' own, one-time, gated by their own
 `AskUserQuestion` — not this orchestrator writing business code.
@@ -148,8 +148,9 @@ nothing upstream compiles against it. Security is block 4.5, implemented by the 
 right after Block 3 — its annotations and the actor resolution go on the controllers Block 3
 just wrote. The pipeline orders by who needs whose requirements;
 the spec orders by what compiles against what.
-8. `java-spring-boot-developer` — offered, only for an `approved` spec, after the
-   one-time setup pre-flight (§ End of flow) checks for ArchUnit and commons-logging gaps
+8. `java-spring-boot-developer` — only from input row 3, over an `approved` spec, in three
+   chained groups, after the one-time setup pre-flight (§ Implement) checks for ArchUnit and
+   commons-logging gaps
 9. `git-publish` — invoked at the end, per § End of flow
 
 `gof-design-patterns` is not a pipeline step, and this orchestrator never invokes it — a
@@ -255,7 +256,7 @@ text" row.
 |---|---|---|
 | 1 | empty | ✅ list the survey above — each case with its `status` — and stop |
 | 2 | `EXACT`, `FOLDER`, status `draft` or `(no spec)` | ✅ resume: skip `use-case-design`, generate only the missing partials, then consolidation |
-| 3 | `EXACT`, `FOLDER`, status `approved` | ✅ **implement**: jump to § End of flow at *Implement now*, skipping steps 1-6, consolidation and the approval question. The argument is the request; nothing is asked again |
+| 3 | `EXACT`, `FOLDER`, status `approved` | ✅ **implement**: jump to § Implement, skipping steps 1-6, consolidation and the approval question. The argument is the request; nothing is asked again |
 | 4 | `EXACT`, `FOLDER`, status `implemented` or `implemented-blocked` | ❌ `already implemented — describe the change as a new feature` |
 | 5 | no `FOLDER`, and the argument's `UC-NNN` resolves to **exactly one** folder on disk | ❌ `<UC-NNN> is <real-slug>, status <status>` — plus the exact command for it. The case exists; the argument named it wrongly |
 | 6 | `EXACT`, no `FOLDER`, number resolving to zero or several folders | ❌ `use case not found; to create one, describe the feature` |
@@ -710,20 +711,21 @@ outbound HTTP only when step 3c wasn't, messaging only when step 4 wasn't, jobs 
 Every branch below ends in an explicit instruction. None of them runs git outside
 `git-publish`.
 
-**Two entry points reach this section, and they differ in exactly one thing — whether the
-implement question has already been answered.**
+**Design and implementation never share a session.** A run that consolidated a spec ends at
+§ Approval; a spec is implemented only by `/new-feature UC-NNN-<slug>` over an `approved` spec
+(input row 3), typed after `/clear`. The executor never inherits the conversation, but this
+thread does: every hand-back it receives, every group it launches and the `git-publish` after
+them would otherwise run at the 250–370k context the design phase leaves behind
+(`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
-| Arriving from | Enters at | Asks *Implement now / Not now* |
-|---|---|---|
-| Consolidation, in the same run | § Approval | yes — the user has not said yet |
-| Input row 3, `/new-feature UC-NNN-slug` over an `approved` spec | § Executor offer, at **Implement now**, skipping § Approval | no — the command is the request |
+| Arriving from | Enters at |
+|---|---|
+| Consolidation, in the same run | § Approval |
+| Input row 3, `/new-feature UC-NNN-slug` over an `approved` spec | § Implement — nothing is asked before the pre-flight: the command is the request |
 
-The second is the front door the second half of the pipeline did not have. Without it, an
-approved spec's normal life — the run ends, the context is cleared — left no supported way to
-reach the delegation, and every guarantee below became something a later session either
-remembered or dropped: the pre-flight, the `CHANGELOG.md` writes, the four mandated findings of
-the final report, and the `git-publish` chaining. Design:
-`@.claude/decisions/0067-implement-entry-row.md`.
+Row 3 is the one door to the second half of the pipeline, and the only one that reaches the
+pre-flight, the `CHANGELOG.md` writes, the four mandated findings of the final report, and the
+`git-publish` chaining (`@.claude/decisions/0067-implement-entry-row.md`).
 
 ### Approval — asked on every run that consolidated a spec
 
@@ -731,62 +733,17 @@ the final report, and the `git-publish` chaining. Design:
 
 - **Keep as draft** → report the spec path and the resume command
   (`/new-feature UC-NNN-<slug>`), and stop. No git: a draft isn't a deliverable.
-- **Approve** → change the spec's line to `status: approved`, then the executor offer.
+- **Approve** → change the spec's line to `status: approved`, then **invoke** `git-publish`
+  via the `Skill` tool, with context `docs(UC-NNN-<slug>): approved spec` and
+  `docs/use-cases/UC-NNN-<slug>/` plus `docs/use-cases/BACKLOG.md` as the paths to stage.
+  Nothing else: a design-only run writes nothing outside `docs/`, and the guard is what makes
+  that true rather than intended. Then the final report, which ends with the two lines to
+  type next:
 
-### Executor offer — only for `approved`
-
-`AskUserQuestion`: **Implement now** (`java-spring-boot-developer`) / **Not now**.
-
-**Asked only when the run itself just approved the spec.** Arriving from input row 3, the
-question is skipped and the run starts at **Implement now** below: the command named an
-approved spec, which is the answer.
-
-- **Implement now** →
-  - **One-time setup pre-flight, before delegating.** The executor is about to write the
-    first `.java` under `src/` for this project run — the only point in the pipeline
-    where "is the one-time infrastructure installed yet" actually matters. Detect what's
-    missing, don't assume:
-
-    ```bash
-    grep -rl "ArchRule\|ArchTest" --include='*.java' src/test/ 2>/dev/null | head -1
-    find . -type d -iname commons -o -type d -path '*shared/logging' 2>/dev/null
-    ```
-
-    First command empty → ArchUnit not installed yet (same gap step 3 already flagged,
-    if this use case is the first one). Second command empty, or the directory it finds
-    has nothing but `package-info.java` → commons-logging classes not installed yet.
-    Either gap found → `AskUserQuestion`, one option per gap found: **Install now** /
-    **Skip for this run**.
-    - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with **no
-      argument at all** (setup mode) — same route step 3 already names, never invoke
-      `archunit-installer` directly, it stays `test-architect`'s alone.
-    - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
-      the `Agent` tool. No owning per-feature skill to route through: this orchestrator
-      is the trigger, same as it owns `git-publish`'s invocation.
-    - **Both gaps found and both answered "Install now" → either order works, and the
-      same turn is fine.** This used to be the one place in the repo that could deadlock
-      itself: `Skill(test-architect)` opened a design phase and
-      `Agent(commons-logging-installer)` closed one, two `PreToolUse` hooks with no ordering
-      guarantee between them, and the loser blocked every write the other agent made under
-      `src/` for the rest of the run — lessons-learned-006 § 1 is the run that hit it (138k
-      tokens, zero files written, had to relaunch alone). `agent_classes` retired it: a
-      subagent's write is judged by its own `agent_type`, so no phase reaches it and nothing
-      closes a phase on an `Agent` call any more
-      (`@.claude/decisions/0059-agent-classes-territory-schema.md`).
-    - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
-      `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
-      compile; skipping isn't a gate failure, it's the user's call.
-    - Neither gap found → skip this pre-flight silently, no question asked.
-  - Delegate to `java-spring-boot-developer`, sending the spec path.
-  - **Success** (final summary reports the checklist complete, the build green, and the
-    spec at `status: implemented` — or at `implemented-blocked`, which is a success too, with
-    the case it blocks on named) → **invoke** `git-publish` via the `Skill` tool, with
-    `feat(UC-NNN-<slug>): <one-line summary>` as context.
-  - **Failure** → report the executor's failure and stop. No git.
-- **Not now** → **invoke** `git-publish` via the `Skill` tool, with context
-  `docs(UC-NNN-<slug>): approved spec` and `docs/use-cases/UC-NNN-<slug>/` plus
-  `docs/use-cases/BACKLOG.md` as the paths to stage. Nothing else: a design-only run writes
-  nothing outside `docs/`, and the guard is what makes that true rather than intended.
+  ```
+  /clear
+  /new-feature UC-NNN-<slug>
+  ```
 
   What used to be staged here — `docker-compose.yml` and `docker/init/**`, when the pipeline
   chained `docker-architect` — is no longer written during the run at all. The service the
@@ -794,6 +751,73 @@ approved spec, which is the answer.
   invocation the user should run next. An unmentioned pending service is how a `kafka`
   service went orphan once (`lessons-learned-010.md` § 7), and the fix is naming it, not
   writing the file mid-design.
+
+### Implement — only from input row 3
+
+1. **One-time setup pre-flight, before delegating.** The executor is about to write the
+   first `.java` under `src/` for this project run — the only point in the pipeline
+   where "is the one-time infrastructure installed yet" actually matters. Detect what's
+   missing, don't assume:
+
+   ```bash
+   grep -rl "ArchRule\|ArchTest" --include='*.java' src/test/ 2>/dev/null | head -1
+   find . -type d -iname commons -o -type d -path '*shared/logging' 2>/dev/null
+   ```
+
+   First command empty → ArchUnit not installed yet (same gap step 3 already flagged,
+   if this use case is the first one). Second command empty, or the directory it finds
+   has nothing but `package-info.java` → commons-logging classes not installed yet.
+   Either gap found → `AskUserQuestion`, one option per gap found: **Install now** /
+   **Skip for this run**.
+   - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with **no
+     argument at all** (setup mode) — same route step 3 already names, never invoke
+     `archunit-installer` directly, it stays `test-architect`'s alone.
+   - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
+     the `Agent` tool. No owning per-feature skill to route through: this orchestrator
+     is the trigger, same as it owns `git-publish`'s invocation.
+   - **Both gaps found and both answered "Install now" → either order works, and the
+     same turn is fine.** This used to be the one place in the repo that could deadlock
+     itself: `Skill(test-architect)` opened a design phase and
+     `Agent(commons-logging-installer)` closed one, two `PreToolUse` hooks with no ordering
+     guarantee between them, and the loser blocked every write the other agent made under
+     `src/` for the rest of the run — lessons-learned-006 § 1 is the run that hit it (138k
+     tokens, zero files written, had to relaunch alone). `agent_classes` retired it: a
+     subagent's write is judged by its own `agent_type`, so no phase reaches it and nothing
+     closes a phase on an `Agent` call any more
+     (`@.claude/decisions/0059-agent-classes-territory-schema.md`).
+   - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
+     `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
+     compile; skipping isn't a gate failure, it's the user's call.
+   - Neither gap found → skip this pre-flight silently, no question asked.
+
+2. **Three delegations to `java-spring-boot-developer`, chained.** Every turn of the executor
+   rereads its whole context, so one run carrying Block 1 into Block 4 pays for it on every
+   later turn — 427,889 tokens of context and USD 9.88 in the run that reopened this
+   (`0130`). Each group starts again from the spec and what is on disk:
+
+   | Group | Blocks | Checklist steps it ticks |
+   |---|---|---|
+   | `domain` | 1, 2 | 1–12 |
+   | `adapters` | H, 3, S, M, J — those the spec carries | 13–15 |
+   | `tests` | 4 | 16–19, then the `status:` line |
+
+   - **Where the chain starts.** At the first group with a checklist step neither ticked nor
+     `n/a`. A group ticks its steps only when it ends green, so a run that failed in
+     `adapters` starts there again, and a fresh spec starts at `domain`.
+   - **Each delegation sends** the spec path, the group, and — from the second on — the
+     `Blocks` lines and findings of every earlier group, copied from their reports. A
+     decision a group took that is in neither the spec nor the disk reaches the next one only
+     this way.
+   - **Launch the next group in the turn that receives the previous one's report, and ask
+     nothing in between.** The `tests` Stop gate defers while a writer subagent of the
+     session runs; a turn that ends between two groups has none running, and the gate tests
+     a half-built tree (`@.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`).
+   - **A group that fails stops the chain** → report its failure, name the group, and stop.
+     No git. `/new-feature UC-NNN-<slug>` again resumes at that group.
+   - **Success** — the `tests` group reports the checklist complete, the build green, and the
+     spec at `status: implemented` (or `implemented-blocked`, which is a success too, with the
+     case it blocks on named) → **invoke** `git-publish` via the `Skill` tool, with
+     `feat(UC-NNN-<slug>): <one-line summary>` as context.
 
 `git-publish`'s two confirmation gates decide whether anything is committed or pushed —
 this orchestrator only triggers the offer.
@@ -812,9 +836,10 @@ idempotency is assumed or unknown** (or "none"), and **every personal-data field
 a boundary in clear, with its receiver** (or "none") — now a repeat of what § 8 and § 6 of the
 partials already recorded, not the first time anyone asks — three findings a reader must not have to
 reconstruct from a fixture comment or a Javadoc sentence — what `git-publish`
-did, and a recommendation to run
-`/clear` before the next `/new-feature` — a clean context per use case keeps cost
-measurable per case.
+did, and the next commands. After § Approval those are `/clear` and
+`/new-feature UC-NNN-<slug>`; after § Implement, `/clear` before the next `/new-feature` — a
+clean context per use case keeps cost measurable per case. An implement run's findings come
+from the `tests` group's report, which carries every group's lines.
 
 ---
 
@@ -858,7 +883,7 @@ See `templates/feature-spec.md.example` for the full shape.
 - **`@.claude/decisions/0032-messaging-architect-skill.md`** — `messaging-architect`
   chained as a conditional step, same pattern as `persistence-architect`/`rest-api-architect`.
 - **`@.claude/agents/commons-logging-installer.md`** — one-time logging/masking setup,
-  triggered directly from the executor-offer pre-flight, same "installed once, not at
+  triggered directly from the implement pre-flight, same "installed once, not at
   bootstrap" shape as `archunit-installer`.
 - **`@.claude/decisions/0037-lessons-learned-005-remediation.md`** — closed input table,
   one use case per run, spec lifecycle, no `src/` and no git outside `git-publish`.
@@ -885,8 +910,9 @@ execution dies where it was. This happened three times in a row on the first rea
 feature, with not a single file written, because all three died still in the reading
 phase.
 
-Before delegating in the background, warn and offer both options: keep the machine
-awake during execution (`caffeinate -i` on macOS), or implement on the main thread,
-which is resumable. The executor writes by checkpoint precisely so that an interruption
-leaves reusable progress — but no checkpoint helps if execution dies before the first
-`Write`.
+Before delegating the first group in the background, warn once and offer both options:
+keep the machine awake for the whole chain (`caffeinate -i` on macOS), or implement on the
+main thread, which is resumable. The executor writes by checkpoint precisely so that an
+interruption leaves reusable progress — but no checkpoint helps if execution dies before the
+first `Write`. A chain cut between groups resumes at the first group with open steps
+(§ Implement).

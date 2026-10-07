@@ -9,6 +9,11 @@
   1–6 and consolidation.
 - **State:** approved by Lucas Fernandes, on 2026-09-28.
 
+*Note (0130):* this row is now the **only** door to implementation. A design run ends at
+§ Approval, commits the spec and prints `/clear` + `/new-feature UC-NNN-<slug>`; the *Implement
+now / Not now* question is gone.
+@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md.
+
 ## The gap, stated as a lifecycle and not as an omission
 
 Input row 3 refuses an `approved` argument outright — *"approved spec is immutable — describe

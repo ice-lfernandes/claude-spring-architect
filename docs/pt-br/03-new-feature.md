@@ -1,4 +1,4 @@
-# `/new-feature` — pipeline de design de uma feature
+# `/new-feature` — desenhar uma spec, depois implementá-la
 
 Fonte primária: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, as skills de design (`use-case-design`,
@@ -12,6 +12,18 @@ Desenha **um caso de uso por execução** e o consolida num único `UC-NNN-spec.
 pronto para o agent executor implementar depois que o usuário aprovar. **Este comando só
 existe dentro de um projeto já gerado** por `/init-project`: lê `pom.xml`,
 `.claude/forbidden-imports.txt` e descobre o package de domínio no projeto real.
+
+**Dois fluxos, um comando — o argumento decide qual, e os dois nunca dividem uma sessão.**
+
+| Fluxo | Comando | Termina com |
+|---|---|---|
+| 1 · Criar a spec | `/new-feature <descrição>` (ou `UC-NNN-slug` de um draft para retomar) | a spec aprovada e commitada pelo `git-publish`, e os dois comandos a digitar em seguida: `/clear` · `/new-feature UC-NNN-slug` |
+| 2 · Implementar a spec | `/new-feature UC-NNN-slug` sobre uma spec `approved`, depois do `/clear` | o pre-flight, depois o `java-spring-boot-developer` em três grupos encadeados — `domain` (blocos 1–2) → `adapters` (H, 3, S, M, J) → `tests` (bloco 4) —, `status: implemented` e o commit da feature |
+
+O design deixa a thread principal com 250–370k tokens de contexto; implementar em cima dele
+pagaria isso a cada hand-back e no `git-publish`. Cada grupo do executor recomeça da spec e do
+disco em vez de carregar os blocos anteriores
+(`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 Estas fronteiras valem em toda execução, e nenhuma delas é prosa — o hook `guard`
 bloqueia com `exit 2`, `permissions.ask` pergunta, ou a consolidação para:
@@ -76,6 +88,10 @@ quase-acerto responder com o slug real em vez de "não encontrado".
 
 ## Diagrama de sequência
 
+Os dois fluxos abaixo são duas execuções, com `/clear` entre elas.
+
+### Fluxo 1 — criar a spec: `/new-feature <descrição>`
+
 ```mermaid
 sequenceDiagram
     actor U as Usuário
@@ -89,8 +105,6 @@ sequenceDiagram
     participant JOBS as skill: jobs-architect
     participant PER as skill: persistence-architect
     participant TST as skill: test-architect
-    participant LOG as agent: commons-logging-installer
-    participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
     U->>NF: /new-feature endpoint REST que cancela um pedido confirmado na tabela orders
@@ -123,19 +137,34 @@ sequenceDiagram
     alt manter draft
         NF-->>U: comando para retomar, sem git
     else aprovar (status: approved)
-        NF-->>U: Implementar agora?
-        alt implementar agora
-            opt pre-flight — uma vez por projeto, cada gap atrás de uma pergunta
-                NF->>TST: Skill, sem argumento (modo setup → archunit-installer)
-                NF->>LOG: Agent commons-logging-installer, em turno separado
-            end
-            NF->>DEV: caminho do spec
-            DEV-->>NF: build verde, status: implemented (ou implemented-blocked)
-            NF->>GIT: feat(UC-NNN-slug) — dois portões
-        else agora não
-            NF->>GIT: só os docs do spec aprovado — dois portões
-        end
+        NF->>GIT: só os docs do spec aprovado — dois portões
+        NF-->>U: relatório final + /clear, depois /new-feature UC-NNN-slug
     end
+```
+
+### Fluxo 2 — implementar a spec: `/new-feature UC-NNN-slug` sobre uma spec aprovada
+
+```mermaid
+sequenceDiagram
+    actor U as Usuário
+    participant NF as skill: new-feature
+    participant TST as skill: test-architect
+    participant LOG as agent: commons-logging-installer
+    participant DEV as agent: java-spring-boot-developer
+    participant GIT as skill: git-publish
+
+    U->>NF: /new-feature UC-NNN-slug — depois do /clear, em sessão limpa
+    NF->>NF: tabela de entrada → linha 3, spec aprovada · worktree decidida · checagens do projeto
+    opt pre-flight — uma vez por projeto, cada gap atrás de uma pergunta
+        NF->>TST: Skill, sem argumento (modo setup → archunit-installer)
+        NF->>LOG: Agent commons-logging-installer, em turno separado
+    end
+    loop grupos domain → adapters → tests, a partir do primeiro com passos abertos, o próximo no mesmo turno
+        NF->>DEV: caminho do spec, grupo, linhas dos grupos anteriores
+        DEV-->>NF: relatório do grupo, passos do checklist dele marcados
+    end
+    Note over DEV: o grupo tests fecha status: implemented (ou implemented-blocked)
+    NF->>GIT: feat(UC-NNN-slug) — dois portões
     NF-->>U: relatório final + recomenda /clear
 ```
 
@@ -179,7 +208,7 @@ padrão cria estão no que o usuário aprova. O executor implementa essas linhas
 padrão por conta própria só para um sintoma já em disco; o catálogo chega a ele no
 `SubagentStart` (`.claude/decisions/0089-design-patterns-decided-at-design-time.md`).
 
-## Pre-flight — infraestrutura instalada uma vez, no primeiro "implementar agora"
+## Pre-flight — infraestrutura instalada uma vez, na primeira execução de implementação
 
 Antes de delegar ao executor, `new-feature` detecta (por comando, não por suposição)
 dois gaps que só importam quando o primeiro `.java` vai ser escrito em `src/`:
@@ -253,7 +282,11 @@ todas as linhas da mesma seção de cada parcial.
 Uma execução real custou ~USD 15 para um agregado de dois campos, 70% em cache read: a
 alavanca é turnos × tamanho do contexto. Por isso: sem mensagens de progresso entre
 passos, escritas independentes no mesmo turno, versões lidas do `pom.xml`, um caso de
-uso por execução e `/clear` entre execuções.
+uso por execução e `/clear` entre execuções. Uma execução de design termina na aprovação,
+então a de implementação começa em sessão limpa, e o executor roda em três grupos
+encadeados — `domain`, `adapters`, `tests` —, cada um recomeçando da spec e do disco em vez
+de carregar o contexto dos blocos anteriores
+(`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 ## Nota operacional — trabalho longo em background
 
