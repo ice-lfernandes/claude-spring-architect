@@ -82,14 +82,16 @@ public class ArchHook {
                 case "compose" -> compose(args.length > 1 ? args[1] : "report", stdin);
                 case "context" -> context(args.length > 1 ? args[1] : "subagent", stdin);
                 case "export" -> export(args);
-                case "doctor" -> doctor();
+                case "doctor" -> doctor(args.length > 1 && "gate".equals(args[1]));
                 case "build"  -> build(args);
                 default -> { err("Unknown mode: " + mode); System.exit(0); }
             }
         } catch (Exception e) {
             // A hook must never crash the session because of its own error.
             err("⚠️  ArchHook (" + mode + ") failed: " + e);
-            System.exit(0);
+            // `doctor gate` is a CI gate, not a hook: a throw there must fail closed, or the
+            // job goes green on a report that never finished.
+            System.exit("doctor".equals(mode) && args.length > 1 && "gate".equals(args[1]) ? 1 : 0);
         }
         System.exit(0);
     }
@@ -306,8 +308,21 @@ public class ArchHook {
     }
 
     // ── doctor ───────────────────────────────────────────────────────────────
-    /** Answers "does this work on my machine?" without having to guess. */
-    static void doctor() {
+    /** Labels of the {@link #report} lines that printed ❌ in this process, in order. */
+    static final List<String> REPORT_FAILED = new ArrayList<>();
+
+    /**
+     * Answers "does this work on my machine?" without having to guess. With {@code gate}, the
+     * same report, then exit 1 when a line whose label {@code doctor.gate.labels} of
+     * extensions.json lists printed ❌ — a line not printed passes, and an unreadable list
+     * fails closed. Form 7c, invoked by a CI step of the generated project, not by a hook
+     * event: the bare {@code doctor} only ever printed, so the step that claimed to prove
+     * enforcement went green on {@code ENFORCEMENT OFF} (issue #104). The closer form, a
+     * {@code grep} of this output in the project's {@code build.yml}, was rejected because
+     * that file is never re-exported while this text changes with every update. Design:
+     * .claude/decisions/0128-doctor-gate-fails-the-generated-boundaries-job.md
+     */
+    static void doctor(boolean gate) {
         err("ArchHook doctor");
         err("  OS ................ " + System.getProperty("os.name")
                 + (WINDOWS ? "  (Windows — no shell is used, exec form)" : ""));
@@ -483,6 +498,22 @@ public class ArchHook {
         err(rules > 0 && w != null
                 ? "✅ Setup operational."
                 : "⚠️  Setup incomplete — see marked lines above.");
+        if (!gate) return;
+        List<String> gated = asStrList(get(doctorSpec("gate"), "labels"));
+        if (gated.isEmpty()) {
+            err("❌ doctor gate: no `doctor.gate.labels` in " + SCHEMA_FILE
+                    + " — nothing to gate on, so the gate fails closed. Restore the list"
+                    + " (an /arch-adopt update writes it).");
+            System.exit(1);
+        }
+        List<String> hit = REPORT_FAILED.stream().filter(gated::contains).distinct()
+                .collect(Collectors.toList());
+        if (!hit.isEmpty()) {
+            err("❌ doctor gate: " + String.join(", ", hit)
+                    + " failed — each marked line above names its fix.");
+            System.exit(1);
+        }
+        err("✅ doctor gate: no gated line failed (" + String.join(", ", gated) + ").");
     }
 
     /**
@@ -659,6 +690,7 @@ public class ArchHook {
     }
 
     static void report(String label, boolean ok, String yes, String no) {
+        if (!ok) REPORT_FAILED.add(label);
         String pad = "                  ".substring(Math.min(label.length(), 17));
         err("  " + label + " " + pad.replace(' ', '.') + " " + (ok ? "✅ " + yes : "❌ " + no));
     }

@@ -137,6 +137,13 @@ jobs:
       - name: compose gate blocks a published service no host client can reach
         run: java .claude/.ci/ComposeGateTest.java
 
+      # The generated project's "architectural boundaries" job is `doctor gate`. The bare
+      # `doctor` only prints, so that job went green on ENFORCEMENT OFF (issue #104, 0128).
+      # Each line `doctor.gate.labels` names must fail the gate and runner-state lines must
+      # not; a renamed label drops out of the gate in silence, so the test fails on that too.
+      - name: doctor gate fails on every gated line and only on those
+        run: java .claude/.ci/DoctorGateTest.java
+
       # SubagentStart cannot block and an empty stdout is legal: a catalog that stops
       # arriving, or starts arriving everywhere, fails silently (0077).
       - name: context subagent hands the catalog to pattern_catalog agents only
