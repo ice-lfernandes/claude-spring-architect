@@ -268,7 +268,12 @@ sido rodado contra um projeto: um bloco `kafka` publicando 9092 enquanto anuncia
 de uso precisar dele. O gate é o mesmo `composeReport()` — uma definição só de saudável,
 compartilhada com o `doctor` — silencioso enquanto saudável, exit 2 com as linhas que falharam
 caso contrário. Um serviço parado de propósito também bloqueia o stop; isso é um gate, não um
-bug. Design: `.claude/decisions/0064-compose-gate-on-stop.md`.
+bug. Design: `.claude/decisions/0064-compose-gate-on-stop.md`. A exceção é um container de
+outro projeto numa das portas de host declaradas: enquanto nenhum container deste projeto
+existe (`docker compose ps -a` não lista nada), ela vira um aviso que `compose` e `doctor`
+mostram e o gate não bloqueia, porque uma stack que ninguém subiu ainda não tem o que bindar.
+Assim que existe qualquer container do projeto, parado ou `created` inclusive, bloqueia como
+antes. Issue #107, `.claude/decisions/0129-compose-gate-foreign-port-warns-without-our-stack.md`.
 
 **Um healthcheck que passa não prova nada sobre alcance a partir do host** — ele roda dentro
 do container, onde `localhost` é o próprio serviço. Um serviço que publica uma porta no host

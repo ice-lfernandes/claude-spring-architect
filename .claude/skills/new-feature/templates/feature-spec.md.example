@@ -169,25 +169,25 @@ approved case produced; the approved specs themselves are never edited.
 Fixed at 19 steps, the executor's checkpoints. A step this case doesn't need is marked
 `n/a` with the reason — never deleted.
 
-[ ] 1. Domain exceptions (`10-dominio.md` § 2)
-[ ] 2. Value objects + constructor validation
-[ ] 3. Aggregate + invariants
-[ ] 4. Events — n/a, none
-[ ] 5. Use case command
-[ ] 6. Use case (port and implementation per the blueprint vocabulary)
-[ ] 7. Output ports
-[ ] 8. Migration — materialize from `20-persistencia.md` § 4
-[ ] 9. Persistence entity
-[ ] 10. Spring Data interface
-[ ] 11. Repository adapter
-[ ] 12. Persistence properties
-[ ] 13. DTOs + manual mapper
-[ ] 14. Controller + contract interface + `ApiExceptionHandler`
-[ ] 15. Idempotency interceptor + `IdempotentExecution` wiring (first time: store + component) + REST properties
-[ ] 16. Test fixtures
-[ ] 17. Unit tests
-[ ] 18. Integration + contract tests
-[ ] 19. `./mvnw verify` — green build, coverage gate
+- [ ] 1. Domain exceptions (`10-dominio.md` § 2)
+- [ ] 2. Value objects + constructor validation
+- [ ] 3. Aggregate + invariants
+- [ ] 4. Events — n/a, none
+- [ ] 5. Use case command
+- [ ] 6. Use case (port and implementation per the blueprint vocabulary)
+- [ ] 7. Output ports
+- [ ] 8. Migration — materialize from `20-persistencia.md` § 4
+- [ ] 9. Persistence entity
+- [ ] 10. Spring Data interface
+- [ ] 11. Repository adapter
+- [ ] 12. Persistence properties
+- [ ] 13. DTOs + manual mapper
+- [ ] 14. Controller + contract interface + `ApiExceptionHandler`
+- [ ] 15. Idempotency interceptor + `IdempotentExecution` wiring (first time: store + component) + REST properties
+- [ ] 16. Test fixtures
+- [ ] 17. Unit tests
+- [ ] 18. Integration + contract tests
+- [ ] 19. `./mvnw verify` — green build, coverage gate
 
 ---
 
