@@ -28,7 +28,7 @@ the right CI item then is one line naming that step.
 | `validate` · job `export-determinism` | same | every push and PR | What the `export` mode writes into a target: reproducible tree, the jar carried, `export.retired` deleted, the exported jar's own `schema` and `doctor` |
 | `validate` · job `exemplar-imports` | same | every push and PR, network | Every `import` of a `.java.example` exists in a JAR of a real Initializr project |
 | `templates` | `.github/workflows/templates.yml` | path-filtered, network | Anything that needs network or a Maven build: Checkstyle configs against fixtures, templates copied as files compiled and their tests run (`0099`). Not a required check — it stays pending on PRs it skips |
-| Generated project · `build` | `project-bootstrap/templates/ci.yml.example` (+ `ci-gradle.yml.example`) | every push and PR **of the generated project** | Only what exists inside the project: `./mvnw verify`, the IT-ran check, `ArchHook.java doctor`. Nothing under `.claude/.ci/` travels (`export` does not copy it) |
+| Generated project · `build` | `project-bootstrap/templates/ci.yml.example` (+ `ci-gradle.yml.example`) | every push and PR **of the generated project** | Only what exists inside the project: `./mvnw verify`, the IT-ran check, `ArchHook.java doctor gate` (fails on the lines `doctor.gate.labels` lists — `0128`). Nothing under `.claude/.ci/` travels (`export` does not copy it) |
 
 ## Form → what already covers it → when a new check is needed
 
@@ -46,7 +46,7 @@ the right CI item then is one line naming that step.
 | Create nothing | — | — | — |
 
 **Axis 8 = "both".** Whatever the generated project receives runs there through its own
-`ci.yml.example`: `doctor` already reports a new hook registration and a broken `schema`. A new
+`ci.yml.example`: `doctor gate` already fails on a broken hook registration and a broken `schema`. A new
 step in that template is warranted only for a claim about the **project's** code that `verify`
 does not already fail on (precedent: `integration tests actually ran`). Write it in
 `ci.yml.example` and `ci-gradle.yml.example` identically.

@@ -86,6 +86,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # Proves enforcement is switched on for this machine, not just declared.
-      - name: doctor
-        run: java .claude/hooks/ArchHook.java doctor
+      # Fails when a committed check of the .claude/ setup is red — the lines
+      # `doctor.gate.labels` names in .claude/schemas/extensions.json: boundary rules present,
+      # schema valid, hook jar built from the current source, hook registrations, .mcp.json,
+      # audit overrides. CLAUDE_PROJECT_DIR and Compose are runner state and never gate. The
+      # bare `doctor` only prints and always exits 0.
+      - name: doctor gate
+        run: java .claude/hooks/ArchHook.java doctor gate
