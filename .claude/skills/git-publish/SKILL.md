@@ -71,9 +71,9 @@ Never writes project source files.
 **Integration:**
 - Invoked by `project-initializer` (agent) right after a green build, via the `Skill`
   tool, with a scaffold summary as context.
-- Invoked by `/new-feature` at its end: after `java-spring-boot-developer` reports success,
-  with the UC name/summary as context; or, when the user declines implementing now, with
-  the approved spec's paths as the only paths to stage.
+- Invoked by `/new-feature` at the end of each of its two flows: when a spec is approved, with
+  the approved spec's paths as the only paths to stage; and when an implement run's
+  `java-spring-boot-developer` reports success, with the UC name/summary as context.
 - Invocable directly by the user (`/git-publish`, or by asking in plain language).
 
 ## Procedure

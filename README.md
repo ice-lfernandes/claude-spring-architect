@@ -60,8 +60,9 @@ Everything it wrote is public:
 [the approved spec](https://github.com/nerviz-ai/bank-app/blob/main/docs/use-cases/UC-001-create-customer/UC-001-spec.md),
 [its partials](https://github.com/nerviz-ai/bank-app/tree/main/docs/use-cases/UC-001-create-customer),
 and [the run's audit report](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/2026-10-07T08-52-11--new-feature.md).
-`/new-feature UC-001-create-customer` hands that spec to the executor agent later, in any
-session.
+That is the first of `/new-feature`'s two flows. The second, `/new-feature
+UC-001-create-customer` after `/clear`, hands the approved spec to the executor agent in a
+clean session.
 
 ## At a glance
 
@@ -254,10 +255,16 @@ greens, which is why `/arch-doctor` exists. More traps, runtime and repository a
 No business code is generated: no `ExampleController` to delete. The first feature comes
 from a real spec.
 
-### `/new-feature` — one use case, spec first
+### `/new-feature` — one use case, spec first, code in a clean session
+
+One command, two flows. The argument decides which, and the two never share a session: the
+design leaves the main thread at 250–370k tokens of context, and implementing on top of it
+would pay for that on every turn.
+
+**Flow 1 — create the spec.** `/new-feature <feature description>`
 
 ```
-/new-feature <feature description>     (or UC-NNN-slug to resume, or empty to list)
+/new-feature <feature description>     (or UC-NNN-slug to resume a draft, or empty to list)
      │
      use-case-design → domain-modeling → rest-api-architect
         → security-architect (conditional) → http-client-architect (conditional)
@@ -269,12 +276,27 @@ from a real spec.
      │
      ▼  consolidates into UC-NNN-spec.md (status: draft)
      ▼  asks approval → status: approved (the guard hook freezes the folder from here)
+     ▼  git-publish (the approved spec only)
+     ▼  prints the next two commands:  /clear  ·  /new-feature UC-NNN-slug
+```
+
+**Flow 2 — implement the spec.** `/new-feature UC-NNN-slug` over an approved spec, after
+`/clear`
+
+```
+/new-feature UC-NNN-slug               (status: approved — the command is the request)
      │
-     ├─ implement now → pre-flight once per project (ArchUnit, logging/masking aspects)
-     │                → agent: java-spring-boot-developer, pattern catalog injected at start
-     │                → status: implemented (or implemented-blocked)
-     │                → git-publish (feature commit)
-     └─ not now       → git-publish (the approved spec only)
+     │  pre-flight, once per project (ArchUnit, logging/masking aspects)
+     │  agent: java-spring-boot-developer, pattern catalog injected at start,
+     │         in three chained groups, each starting again from the spec and the disk:
+     │
+     │    domain (blocks 1–2) → adapters (H, 3, S, M, J) → tests (block 4, ./mvnw verify)
+     │
+     │  each group ticks its checklist steps when it ends green;
+     │  a failed group stops the chain, and the same command resumes there
+     │
+     ▼  status: implemented (or implemented-blocked)
+     ▼  git-publish (feature commit)
 ```
 
 Each step's output contract is literally the next step's input contract. A free-prose

@@ -21,7 +21,8 @@ circulam em 2026, e o repositório fica na interseção deles:
   `skills/`, `blueprints/` e as specs de caso de uso são os guias. `ArchHook`, ArchUnit, o
   build incremental e o CI são os sensores.
 - **Spec-driven development (SDD).** O `/new-feature` é *spec-first*: um caso de uso por
-  execução, consolidado numa spec, aprovado e congelado antes de qualquer código.
+  execução, consolidado numa spec, aprovado e congelado antes de qualquer código — e o
+  código sai de uma segunda execução, `/new-feature UC-NNN-slug`, numa sessão limpa.
 - **Gerador de projetos.** O `/init-project` gera via Spring Initializr, na linha do
   JHipster e do Seed4J. Aqui, porém, a geração é o primeiro passo, não o produto.
 

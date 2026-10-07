@@ -1,4 +1,4 @@
-# `/new-feature` — feature design pipeline
+# `/new-feature` — design a spec, then implement it
 
 Primary source: `.claude/skills/new-feature/SKILL.md`,
 `.claude/agents/java-spring-boot-developer.md`, the design skills (`use-case-design`,
@@ -13,6 +13,18 @@ ready for the executor agent to implement once the user approves it. **This comm
 only makes sense inside an already-generated project**, created by `/init-project`: it
 reads `pom.xml`, `.claude/forbidden-imports.txt`, and discovers the domain package in the
 real project.
+
+**Two flows, one command — the argument decides which, and they never share a session.**
+
+| Flow | Command | Ends with |
+|---|---|---|
+| 1 · Create the spec | `/new-feature <description>` (or `UC-NNN-slug` of a draft to resume) | the spec approved and committed by `git-publish`, and the two commands to type next: `/clear` · `/new-feature UC-NNN-slug` |
+| 2 · Implement the spec | `/new-feature UC-NNN-slug` over an `approved` spec, after `/clear` | the pre-flight, then `java-spring-boot-developer` in three chained groups — `domain` (blocks 1–2) → `adapters` (H, 3, S, M, J) → `tests` (block 4) — `status: implemented`, and the feature commit |
+
+The design leaves the main thread at 250–370k tokens of context; implementing on top of it
+would pay for that on every hand-back and on `git-publish`. Each executor group starts again
+from the spec and the disk instead of carrying the earlier blocks
+(`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 These boundaries hold on every run, and none of them is prose — the `guard` hook blocks
 with `exit 2`, `permissions.ask` prompts, or consolidation stops:
@@ -76,6 +88,10 @@ with the real slug instead of "not found".
 
 ## Sequence diagram
 
+The two flows below are two runs, with `/clear` between them.
+
+### Flow 1 — create the spec: `/new-feature <description>`
+
 ```mermaid
 sequenceDiagram
     actor U as User
@@ -89,8 +105,6 @@ sequenceDiagram
     participant JOBS as skill: jobs-architect
     participant PER as skill: persistence-architect
     participant TST as skill: test-architect
-    participant LOG as agent: commons-logging-installer
-    participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
     U->>NF: /new-feature REST endpoint that cancels a confirmed order in the orders table
@@ -123,19 +137,34 @@ sequenceDiagram
     alt keep as draft
         NF-->>U: resume command, no git
     else approve (status: approved)
-        NF-->>U: Implement now?
-        alt implement now
-            opt pre-flight — once per project, each gap behind a question
-                NF->>TST: Skill, no argument (setup mode → archunit-installer)
-                NF->>LOG: Agent commons-logging-installer, in a separate turn
-            end
-            NF->>DEV: spec path
-            DEV-->>NF: green build, status: implemented (or implemented-blocked)
-            NF->>GIT: feat(UC-NNN-slug) — two gates
-        else not now
-            NF->>GIT: docs of the approved spec only — two gates
-        end
+        NF->>GIT: docs of the approved spec only — two gates
+        NF-->>U: final report + /clear, then /new-feature UC-NNN-slug
     end
+```
+
+### Flow 2 — implement the spec: `/new-feature UC-NNN-slug` over an approved spec
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant NF as skill: new-feature
+    participant TST as skill: test-architect
+    participant LOG as agent: commons-logging-installer
+    participant DEV as agent: java-spring-boot-developer
+    participant GIT as skill: git-publish
+
+    U->>NF: /new-feature UC-NNN-slug — after /clear, in a clean session
+    NF->>NF: input table → row 3, spec approved · worktree decided · project checks
+    opt pre-flight — once per project, each gap behind a question
+        NF->>TST: Skill, no argument (setup mode → archunit-installer)
+        NF->>LOG: Agent commons-logging-installer, in a separate turn
+    end
+    loop groups domain → adapters → tests, from the first with open steps, next one in the same turn
+        NF->>DEV: spec path, group, earlier groups' lines
+        DEV-->>NF: group report, its checklist steps ticked
+    end
+    Note over DEV: the tests group closes status: implemented (or implemented-blocked)
+    NF->>GIT: feat(UC-NNN-slug) — two gates
     NF-->>U: final report + recommend /clear
 ```
 
@@ -180,7 +209,7 @@ implements those rows, and adopts one on its own only for a symptom already on d
 catalog reaches it at `SubagentStart`
 (`.claude/decisions/0089-design-patterns-decided-at-design-time.md`).
 
-## Pre-flight — infrastructure installed once, on the first "implement now"
+## Pre-flight — infrastructure installed once, on the first implement run
 
 Before delegating to the executor, `new-feature` detects (by command, never by
 assumption) two gaps that only matter when the first `.java` is about to be written
@@ -255,7 +284,11 @@ every row of the same section of each partial.
 
 A real run cost ~USD 15 for a two-field aggregate, 70% of it cache reads: the lever is
 turns × context size. So: no progress messages between steps, independent writes in one
-turn, versions read from `pom.xml`, one use case per run, and `/clear` between runs.
+turn, versions read from `pom.xml`, one use case per run, and `/clear` between runs. A design
+run ends at approval, so the implement run starts in a clean session, and the executor runs
+as three chained groups — `domain`, `adapters`, `tests` — each starting again from the spec
+and the disk instead of carrying the earlier blocks' context
+(`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 ## Operational note — long-running background work
 

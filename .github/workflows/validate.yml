@@ -87,6 +87,7 @@ jobs:
       # Issue #76: a main-thread Stop fired while a background executor wrote src/, ran Maven
       # over its half-written tree and blocked a thread that cannot write src/ (0116). A marker
       # never written brings that back; one never cleared turns the gate off — both silent.
+      # 0130 chains three executor groups: the gate must stay deferred across the handover.
       - name: tests defers while a writer subagent of the session runs, and only then
         run: java .claude/.ci/TestsDeferTest.java
 

@@ -21,7 +21,8 @@ in use in 2026, and the repository sits where they overlap:
   `blueprints/` and the use-case specs are the guides. `ArchHook`, ArchUnit, the
   incremental build and CI are the sensors.
 - **Spec-driven development (SDD).** `/new-feature` is *spec-first*: one use case is
-  designed per run, consolidated into a spec, approved, and frozen before code is written.
+  designed per run, consolidated into a spec, approved, and frozen before code is written —
+  and the code comes from a second run, `/new-feature UC-NNN-slug`, in a clean session.
 - **Project generator.** `/init-project` generates through Spring Initializr, in the
   tradition of JHipster and Seed4J. Here, though, generation is the first step, not the
   product.

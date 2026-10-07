@@ -3,7 +3,8 @@
 // CI test: proves the `tests` Stop gate defers while a writer subagent of the same session is
 // still running, and runs Maven as before in every other case — a read-only agent, an agent
 // no class lists, a writer that already stopped, another session's writer, a marker past
-// `tests.writer_agent_max_minutes`.
+// `tests.writer_agent_max_minutes` — and between two chained writers, when the first stopped
+// and the second already started.
 //
 // Why this test exists: a main-thread `Stop` that fired while `java-spring-boot-developer`
 // worked in the background ran Maven over its half-written tree and blocked a thread that
@@ -55,6 +56,25 @@ public class TestsDeferTest {
                 String s = session();
                 hook(p, "agent-start", agent(s, "a1", WRITER));
                 hook(p, "agent-end", agent(s, "a1", WRITER));
+                return s;
+            }, true);
+
+            // /new-feature chains three executor groups; the next one starts in the turn that
+            // receives the previous one's report, before that turn's Stop (decision 0130).
+            failures += run("group 1 stopped, group 2 started — still deferred", null, p -> {
+                String s = session();
+                hook(p, "agent-start", agent(s, "g1", WRITER));
+                hook(p, "agent-end", agent(s, "g1", WRITER));
+                hook(p, "agent-start", agent(s, "g2", WRITER));
+                return s;
+            }, false);
+
+            failures += run("every group stopped — Maven called", null, p -> {
+                String s = session();
+                for (String g : List.of("g1", "g2", "g3")) {
+                    hook(p, "agent-start", agent(s, g, WRITER));
+                    hook(p, "agent-end", agent(s, g, WRITER));
+                }
                 return s;
             }, true);
 

@@ -251,6 +251,11 @@ on a cheaper model, and returns a short verdict to the executor.
 
 ### Reopening option 2
 
+*Note (0130):* reopened and approved. Issue #109 brought an executor run after option 1 at
+USD 9.88 with a peak of 427,889. The three preconditions below are settled there, and the
+second (the A/B) is a measurement of the next implement run, with a revert criterion.
+@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md.
+
 Recorded as a candidate, not rejected. Reopen it when an audit report after option 1 still
 shows an executor run above ~USD 5, or a peak context above ~300k. Before writing it:
 

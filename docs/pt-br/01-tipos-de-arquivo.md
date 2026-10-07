@@ -199,7 +199,8 @@ uma skill com `disable-model-invocation: true` não pode ser pré-carregada via 
 **Quem invoca:** sempre outra peça do sistema, nunca o usuário diretamente por
 `/nome-do-agent` — não existe esse comando. Aqui, é sempre uma skill que delega via
 `Agent tool`: `init-project` delega para `project-initializer`, `new-feature` delega
-para `java-spring-boot-developer` após consolidar a spec, `test-architect` delega para
+para `java-spring-boot-developer` quando `/new-feature UC-NNN-slug` implementa uma spec
+aprovada — três vezes, uma por grupo de blocos, `test-architect` delega para
 `archunit-installer` no modo setup (sem argumento), e o pre-flight de `new-feature` delega
 para `commons-logging-installer` quando `commons` está vazio.
 
