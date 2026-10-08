@@ -36,7 +36,7 @@ step.
 | Frontmatter | Effect | Example in this repo |
 |---|---|---|
 | (no control field) | The model decides, from `description`, whether the skill is relevant | `project-bootstrap` — description lists triggers like "scaffolding", "new Spring project"; `git-publish` — auto-invocable, but the side effect (commit/push) sits behind two `AskUserQuestion` gates in the body, not the frontmatter — same D17 pattern |
-| `disable-model-invocation: true` | Only the user invokes it, by typing `/name` | `init-project`, `new-feature`, `arch-doctor` — the three commands documented here are all side-effect-heavy and **don't** fire on their own |
+| `disable-model-invocation: true` | Only the user invokes it, by typing `/name` | `init-project`, `new-feature`, `new-feature-implement`, `arch-doctor` — the commands documented here are all side-effect-heavy and **don't** fire on their own |
 | `user-invocable: false` | Only the model invokes it — background knowledge, no visible command | Not used in this repository today |
 
 The three central commands in this document are all `disable-model-invocation: true` —
@@ -80,7 +80,7 @@ every skill belongs to exactly one of seven classes, and the class declares both
 | Class | Skills | Write territory |
 |---|---|---|
 | `design` | the 9 that write use-case partials | the UC folder + `BACKLOG.md` |
-| `orchestrator` | `new-feature`; `init-project` | the use case's `docs/**`; `init-project` writes nothing (it delegates) |
+| `orchestrator` | `new-feature`; `new-feature-implement`; `init-project` | the use case's `docs/**`; `new-feature-implement` and `init-project` write nothing (they delegate) |
 | `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup`, `transport-security-setup` | one override per skill — the whole tree, the compose file only, `.claude/` only, `src/` only, the root build file and `.github/workflows/` only, or the main module's `application*.yml` + the HSTS filter + `src/test/**` + the root `CLAUDE.md` |
 | `observer` | `arch-doctor`, `audit-usage` | nothing |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
@@ -201,10 +201,10 @@ project: a skill with `disable-model-invocation: true` cannot be preloaded throu
 **Who invokes it:** always another piece of the system, never the user directly via
 `/agent-name` — that command doesn't exist. Here, it's always a skill that delegates
 via the `Agent tool`: `init-project` delegates to `project-initializer`,
-`new-feature` delegates to `java-spring-boot-developer` when `/new-feature UC-NNN-slug` implements
+`new-feature-implement` delegates to `java-spring-boot-developer` when `/new-feature-implement UC-NNN-slug` implements
 an approved spec — three times, one per block group,
 `test-architect` delegates to `archunit-installer` in setup mode (no argument), and
-`new-feature`'s pre-flight delegates to `commons-logging-installer` when `commons` is empty.
+`new-feature-implement`'s pre-flight delegates to `commons-logging-installer` when `commons` is empty.
 
 **Fork — a different kind of agent:** a *fork* inherits the entire conversation
 instead of starting from scratch (`claude-help.md` § Forks). Only the final result

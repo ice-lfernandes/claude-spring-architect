@@ -14,6 +14,10 @@
 now / Not now* question is gone.
 @.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md.
 
+*Note (0135):* the door is now a skill of its own, `/new-feature-implement`; this row is an
+error that prints it. Option 2 below was revisited against the reasons it was rejected for:
+@.claude/decisions/0135-new-feature-split-spec-and-implement.md § What changed since 0067.
+
 ## The gap, stated as a lifecycle and not as an omission
 
 Input row 3 refuses an `approved` argument outright — *"approved spec is immutable — describe

@@ -17,13 +17,16 @@ existe dentro de um projeto já gerado** por `/init-project`: lê `pom.xml`,
 
 | Fluxo | Comando | Termina com |
 |---|---|---|
-| 1 · Criar a spec | `/new-feature <descrição>` (ou `UC-NNN-slug` de um draft para retomar) | a spec aprovada e commitada pelo `git-publish`, e os dois comandos a digitar em seguida: `/clear` · `/new-feature UC-NNN-slug` |
-| 2 · Implementar a spec | `/new-feature UC-NNN-slug` sobre uma spec `approved`, depois do `/clear` | o pre-flight, depois o `java-spring-boot-developer` em três grupos encadeados — `domain` (blocos 1–2) → `adapters` (H, 3, S, M, J) → `tests` (bloco 4) —, `status: implemented` e o commit da feature |
+| 1 · Criar a spec | `/new-feature <descrição>` (ou `UC-NNN-slug` de um draft para retomar) | a spec aprovada e commitada pelo `git-publish`, e os dois comandos a digitar em seguida: `/clear` · `/new-feature-implement UC-NNN-slug` |
+| 2 · Implementar a spec | `/new-feature-implement UC-NNN-slug` sobre uma spec `approved`, depois do `/clear` | o pre-flight, depois o `java-spring-boot-developer` em três grupos encadeados — `domain` (blocos 1–2) → `adapters` (H, 3, S, M, J) → `tests` (bloco 4) —, `status: implemented` e o commit da feature |
 
 O design deixa a thread principal com 250–370k tokens de contexto; implementar em cima dele
 pagaria isso a cada hand-back e no `git-publish`. Cada grupo do executor recomeça da spec e do
 disco em vez de carregar os blocos anteriores
 (`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
+Desde a decisão 0135, o fluxo de implementação é uma skill própria, a `new-feature-implement`:
+roda em `sonnet`, não escreve nada por conta própria e nunca carrega o procedimento de design
+(`.claude/decisions/0135-new-feature-split-spec-and-implement.md`).
 
 Estas fronteiras valem em toda execução, e nenhuma delas é prosa — o hook `guard`
 bloqueia com `exit 2`, `permissions.ask` pergunta, ou a consolidação para:
@@ -74,7 +77,7 @@ interpretado. Vale a primeira linha que casar; qualquer outra coisa é erro.
 |---|---|
 | vazia | lista os casos de uso com o `status` de cada um |
 | `UC-NNN-slug`, pasta existe, spec `draft` ou ausente | retoma: só os partials que faltam, depois consolidação |
-| `UC-NNN-slug`, spec `approved` | implementa: direto para a delegação ao executor, pulando os passos de design e a consolidação |
+| `UC-NNN-slug`, spec `approved` | ❌ aprovada — imprime `/clear` + `/new-feature-implement UC-NNN-slug` |
 | `UC-NNN-slug`, spec `implemented` ou `implemented-blocked` | ❌ já implementado — descreva a mudança como feature nova |
 | pasta não existe, mas o `UC-NNN` do argumento tem exatamente uma pasta no disco | ❌ informa o slug real e o status, mais o comando exato — o caso existe, o argumento nomeou errado |
 | `UC-NNN-slug`, pasta não existe, número casando com zero ou várias | ❌ não encontrado — descreva a feature para criar |
@@ -138,34 +141,34 @@ sequenceDiagram
         NF-->>U: comando para retomar, sem git
     else aprovar (status: approved)
         NF->>GIT: só os docs do spec aprovado — dois portões
-        NF-->>U: relatório final + /clear, depois /new-feature UC-NNN-slug
+        NF-->>U: relatório final + /clear, depois /new-feature-implement UC-NNN-slug
     end
 ```
 
-### Fluxo 2 — implementar a spec: `/new-feature UC-NNN-slug` sobre uma spec aprovada
+### Fluxo 2 — implementar a spec: `/new-feature-implement UC-NNN-slug` sobre uma spec aprovada
 
 ```mermaid
 sequenceDiagram
     actor U as Usuário
-    participant NF as skill: new-feature
+    participant NFI as skill: new-feature-implement
     participant TST as skill: test-architect
     participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
-    U->>NF: /new-feature UC-NNN-slug — depois do /clear, em sessão limpa
-    NF->>NF: tabela de entrada → linha 3, spec aprovada · worktree decidida · checagens do projeto
+    U->>NFI: /new-feature-implement UC-NNN-slug — depois do /clear, em sessão limpa
+    NFI->>NFI: tabela de entrada → spec aprovada · worktree decidida · checagens do projeto
     opt pre-flight — uma vez por projeto, cada gap atrás de uma pergunta
-        NF->>TST: Skill, sem argumento (modo setup → archunit-installer)
-        NF->>LOG: Agent commons-logging-installer, em turno separado
+        NFI->>TST: Skill, sem argumento (modo setup → archunit-installer)
+        NFI->>LOG: Agent commons-logging-installer, em turno separado
     end
     loop grupos domain → adapters → tests, a partir do primeiro com passos abertos, o próximo no mesmo turno
-        NF->>DEV: caminho do spec, grupo, linhas dos grupos anteriores
-        DEV-->>NF: relatório do grupo, passos do checklist dele marcados
+        NFI->>DEV: caminho do spec, grupo, linhas dos grupos anteriores
+        DEV-->>NFI: relatório do grupo, passos do checklist dele marcados
     end
     Note over DEV: o grupo tests fecha status: implemented (ou implemented-blocked)
-    NF->>GIT: feat(UC-NNN-slug) — dois portões
-    NF-->>U: relatório final + recomenda /clear
+    NFI->>GIT: feat(UC-NNN-slug) — dois portões
+    NFI-->>U: relatório final + recomenda /clear
 ```
 
 ## Peças e o que cada uma escreve
@@ -210,13 +213,13 @@ padrão por conta própria só para um sintoma já em disco; o catálogo chega a
 
 ## Pre-flight — infraestrutura instalada uma vez, na primeira execução de implementação
 
-Antes de delegar ao executor, `new-feature` detecta (por comando, não por suposição)
+Antes de delegar ao executor, `new-feature-implement` detecta (por comando, não por suposição)
 dois gaps que só importam quando o primeiro `.java` vai ser escrito em `src/`:
 
 | Gap | Como detecta | Instala via |
 |---|---|---|
 | ArchUnit ausente | `grep -rl "ArchRule\|ArchTest" src/test/` vazio | `Skill(test-architect)` sem argumento — modo setup, que delega a `archunit-installer` (ArchUnit + portão JaCoCo) |
-| Classes de logging/máscara ausentes | pasta `commons` inexistente ou só com `package-info.java` | `Agent(commons-logging-installer)` — treze exemplares de `new-feature/templates/commons/` traduzidos para o package real, mais `AutoConfiguration.imports` e as dependências AOP |
+| Classes de logging/máscara ausentes | pasta `commons` inexistente ou só com `package-info.java` | `Agent(commons-logging-installer)` — treze exemplares de `new-feature-implement/templates/commons/` traduzidos para o package real, mais `AutoConfiguration.imports` e as dependências AOP |
 
 Cada gap encontrado vira um `AskUserQuestion` (**Install now** / **Skip for this run**);
 nenhum gap, nenhuma pergunta. Os dois podem disparar no mesmo turno — e não podiam antes:
@@ -291,7 +294,7 @@ de carregar o contexto dos blocos anteriores
 ## Nota operacional — trabalho longo em background
 
 Um executor em background **não sobrevive à máquina dormir**. Antes de delegar em
-background, `new-feature/SKILL.md` manda oferecer manter a máquina acordada
+background, `new-feature-implement/SKILL.md` manda oferecer manter a máquina acordada
 (`caffeinate -i` no macOS) ou rodar na thread principal, que é retomável.
 
 ## Entrada em projetos gerados

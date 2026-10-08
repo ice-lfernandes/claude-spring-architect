@@ -6,6 +6,10 @@
 - **State:** approved by Lucas Fernandes, on 2026-10-08
 - **Goes to the generated project:** yes — `new-feature` and `java-spring-boot-developer` are both in `export.include`; nothing to add to the manifest
 
+*Note (0135):* § Implement now lives in `/new-feature-implement`, a skill of its own, and input
+row 3 of `/new-feature` is an error that prints it. The groups, the hand-off and the clean
+session are unchanged: @.claude/decisions/0135-new-feature-split-spec-and-implement.md.
+
 ## Reproduced on disk
 
 From `issue-verifier`'s tables for `/triage-issue 109` (layer static, `2cfe145`, run twice —

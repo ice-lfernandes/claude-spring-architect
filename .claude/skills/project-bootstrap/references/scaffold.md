@@ -117,7 +117,7 @@ is the one role that stays empty on purpose.** Its `package-info.java` still get
 written here, same as every other role — but the logging/masking annotations and AOP
 aspects that belong in it are `.java` beyond `package-info.java`, which this skill never
 writes (`SKILL.md` § Contract). They're installed later, once, by the
-`commons-logging-installer` agent, triggered from `/new-feature`'s pre-flight check —
+`commons-logging-installer` agent, triggered from `/new-feature-implement`'s pre-flight check —
 not from here. Don't write them, and don't skip the empty `package-info.java` either:
 without the package existing on disk, the installer has nowhere to write into.
 

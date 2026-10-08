@@ -1,12 +1,12 @@
 ---
 name: new-feature
-description: Orchestrates the feature pipeline — one use case per run, 5 design skills → spec.md for the executor, and implements an already-approved spec on the same argument
+description: Orchestrates the feature design pipeline — one use case per run, the design skills → an approved UC-NNN-spec.md for the executor; `/new-feature-implement` implements it
 disable-model-invocation: true
-argument-hint: "<feature description> | UC-NNN-slug | empty to list"
+argument-hint: "<feature description> | UC-NNN-slug of a draft case | empty to list"
 model: opus
 ---
 
-# `/new-feature` — Feature pipeline orchestrator
+# `/new-feature` — Feature design orchestrator
 
 ## Why this is Form 2 (manual skill)
 
@@ -73,11 +73,9 @@ through. Record: `@.claude/decisions/0058-skill-classes-territory-schema.md`
   including its `status:` line (`draft` → `approved`)
 
 **Never writes under `src/`.** Neither does any skill it chains. Every file under `src/`
-— migrations included — belongs to `java-spring-boot-developer`. The one exception: the
-implement pre-flight (§ Implement) may trigger `archunit-installer` (via
-`test-architect`'s setup mode) and `commons-logging-installer` (directly) before
-delegating. Those writes are the installers' own, one-time, gated by their own
-`AskUserQuestion` — not this orchestrator writing business code.
+— migrations included — belongs to `java-spring-boot-developer`, delegated by
+`/new-feature-implement`, which also owns the one-time setup pre-flight
+(`@.claude/skills/new-feature-implement/SKILL.md`).
 
 **Never runs `git add`, `git commit`, or `git push`.** Neither does any skill it chains.
 Git happens only through `git-publish`, behind its two confirmations, at the end steps
@@ -148,10 +146,10 @@ nothing upstream compiles against it. Security is block 4.5, implemented by the 
 right after Block 3 — its annotations and the actor resolution go on the controllers Block 3
 just wrote. The pipeline orders by who needs whose requirements;
 the spec orders by what compiles against what.
-8. `java-spring-boot-developer` — only from input row 3, over an `approved` spec, in three
-   chained groups, after the one-time setup pre-flight (§ Implement) checks for ArchUnit and
-   commons-logging gaps
-9. `git-publish` — invoked at the end, per § End of flow
+8. `git-publish` — invoked at § Approval, per § End of flow, to commit the approved spec
+
+The executor, `java-spring-boot-developer`, is not a step of this skill: `/new-feature-implement`
+delegates to it over an `approved` spec, in a clean session.
 
 `gof-design-patterns` is not a pipeline step, and this orchestrator never invokes it — a
 design run cannot reach a `build`-class skill. **Its catalog is still applied at design
@@ -201,15 +199,14 @@ case" — the future case decides it, in its own impact section.
 ## Entry guardrail
 
 Runs before any skill invocation, any write, and any question. Every check is a command;
-the model doesn't interpret the input.
+the model doesn't interpret the input. **Read `references/entry-guardrail.md` first** — the
+survey and classification commands, the error rule, and §§ 2–4 (worktree, project, disk) live
+there, shared with `/new-feature-implement`. This section holds only what is this skill's own:
+the history check and the input table.
 
 ### 1 · Input table — closed
 
-Survey the use cases once:
-
-```bash
-find docs/use-cases -mindepth 1 -maxdepth 1 -type d -name 'UC-*' 2>/dev/null | sort | while read -r d; do s=$(find "$d" -maxdepth 1 -name 'UC-*-spec.md' -exec grep -m1 '^status:' {} \;); echo "$d ${s:-status: (no spec)}"; done
-```
+Run the survey of `references/entry-guardrail.md` § 1.
 
 **The disk is not the history.** A folder deleted from the working tree is invisible to
 `find` and still in `HEAD`, so the next number looks free when it isn't:
@@ -236,34 +233,26 @@ git diff --stat HEAD -- docs/use-cases/BACKLOG.md 2>/dev/null
 Non-empty when a `UC-NNN` is missing from the disk → show the diff before
 `use-case-design` writes a new entry.
 
-Classify the argument with the argument in single quotes:
-
-```bash
-printf '%s' '<argument>' | grep -Eqx 'UC-[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*' && echo EXACT
-printf '%s' '<argument>' | grep -Eiq 'uc-[0-9]' && echo UC_LIKE
-test -d 'docs/use-cases/<argument>' && echo FOLDER
-
-# The number the argument carries, and the folders it resolves to. RESOLVES_ONE when the
-# argument names no folder of its own but its UC number has exactly one on disk.
-N=$(printf '%s' '<argument>' | grep -Eio 'uc-[0-9]{3}' | head -1 | tr 'a-z' 'A-Z')
-test -n "$N" && ls -d "docs/use-cases/$N"-*/ 2>/dev/null
-```
-
-Evaluate in order and **stop at the first row that matches**. There is no "any other
-text" row.
+Classify the argument with the commands of `references/entry-guardrail.md` § 1, then
+evaluate in order and **stop at the first row that matches**:
 
 | # | Input | Result |
 |---|---|---|
 | 1 | empty | ✅ list the survey above — each case with its `status` — and stop |
 | 2 | `EXACT`, `FOLDER`, status `draft` or `(no spec)` | ✅ resume: skip `use-case-design`, generate only the missing partials, then consolidation |
-| 3 | `EXACT`, `FOLDER`, status `approved` | ✅ **implement**: jump to § Implement, skipping steps 1-6, consolidation and the approval question. The argument is the request; nothing is asked again |
+| 3 | `EXACT`, `FOLDER`, status `approved` | ❌ `<UC-NNN-slug> is approved — implement it in a clean session` — plus the two lines `/clear` and `/new-feature-implement <UC-NNN-slug>`. This skill designs; it cannot forward, since `/new-feature-implement` is manual |
 | 4 | `EXACT`, `FOLDER`, status `implemented` or `implemented-blocked` | ❌ `already implemented — describe the change as a new feature` |
-| 5 | no `FOLDER`, and the argument's `UC-NNN` resolves to **exactly one** folder on disk | ❌ `<UC-NNN> is <real-slug>, status <status>` — plus the exact command for it. The case exists; the argument named it wrongly |
+| 5 | no `FOLDER`, and the argument's `UC-NNN` resolves to **exactly one** folder on disk | ❌ `<UC-NNN> is <real-slug>, status <status>` — plus the exact command for it: `/new-feature <real-slug>` for an open case, `/new-feature-implement <real-slug>` for an approved one. The case exists; the argument named it wrongly |
 | 6 | `EXACT`, no `FOLDER`, number resolving to zero or several folders | ❌ `use case not found; to create one, describe the feature` |
 | 7 | `UC_LIKE` but not `EXACT` (slug plus context, malformed slug, two slugs, a path) | ❌ `ambiguous argument` |
 | 8 | free text, and the survey shows an open case | ❌ `<UC folder> is open — resume or approve it first` |
 | 9 | free text, and no open case | ✅ new: pass the description **as is** to `use-case-design` |
 | — | anything else | ❌ `unrecognized argument` |
+
+Row 3 used to implement on the same argument; it is an error row since the implement flow
+became its own skill, and it points there instead of guessing
+(`@.claude/decisions/0135-new-feature-split-spec-and-implement.md`). A user typing the old
+command loses one line, not a run.
 
 Row 5 is the near miss, and it is an **error row, not a success one**: it reports and stops.
 `/new-feature UC-003-spec` once answered `use case not found` while
@@ -271,115 +260,28 @@ Row 5 is the near miss, and it is an **error row, not a success one**: it report
 carries that name, and practically wrong, since the argument was the basename of the spec file
 inside that folder (lessons-learned-014 § 12). The answer names the real slug and the status, so
 the next attempt is one line away. It does **not** resolve the argument and carry on: the
-argument was wrong, two rows above write `src/`, and guessing which case was meant is exactly
-what the next paragraph forbids.
-
-**The model doesn't interpret the input.** It doesn't fix a slug, separate a slug from
-context, or infer intent. A text that almost matches a row doesn't match it. Row 5 is not an
-exception: it reports what it found, it does not act on it.
-
-**An error has a fixed shape and ends the run. After it: no side effect** — no skill call, no
-write, no question. Reading is still allowed, and row 5 is why: the survey is `ls` and `grep`,
-it changes nothing, and it is the cheapest way for a near miss to correct itself. The rule used
-to say "no output", which a run broke by printing the survey after the error — the output the
-user actually needed. A rule violated because it is slightly wrong is a rule to fix, not to
-repeat.
+argument was wrong, and guessing which case was meant is exactly what the guardrail forbids.
 
 ```text
 ❌ /new-feature: <reason>.
 Usage: /new-feature <feature description>   → new use case
-       /new-feature UC-NNN-slug              → resume a draft case,
-                                               or implement it once approved
+       /new-feature UC-NNN-slug              → resume a draft case
        /new-feature                          → list
+       /new-feature-implement UC-NNN-slug    → implement an approved case
 ```
 
 Row 5 keeps that shape and adds the one line that makes it actionable:
 
 ```text
 ❌ /new-feature: UC-003 is UC-003-initiate-kyc-verification, status approved.
-Did you mean: /new-feature UC-003-initiate-kyc-verification
+Did you mean: /new-feature-implement UC-003-initiate-kyc-verification
 Usage: …
 ```
 
-### 2 · Worktree — decided here, never later
+### 2 · Worktree, project, disk
 
-```bash
-git rev-parse --show-toplevel
-git rev-parse --git-dir --git-common-dir
-```
-
-Both fail → not a git repository yet: no worktree, paths are relative to the project
-root. Different `--git-dir` and `--git-common-dir` → the session is inside a worktree. Every
-path this run writes is under `--show-toplevel`, and nothing is written in the main
-checkout. If the work should be isolated in a worktree and isn't yet, that is decided
-**now**, before any question or write. Never enter or leave a worktree mid-flow — edits
-get refused outside it and orphan folders appear in the main checkout.
-
-**Third case: the project root itself is gitignored by a parent repository.**
-
-```bash
-git check-ignore -q . && echo IGNORED
-```
-
-Happens when this project lives inside another repo's ignored path (e.g. a demo under
-this meta-repo's own `examples/`, which is 100% gitignored). The pipeline runs normally
-— nothing above depends on the root being tracked — but flag it here, once, so the
-run's own state carries the fact forward instead of `git-publish` discovering a `git
-status` that doesn't match the feature just implemented (lessons-learned-006 § 8:
-`src/`, `docs/use-cases/` all ignored, only an unrelated dirty file showed up in
-`status`). `IGNORED` → note it in the run's context and pass it to `git-publish`'s
-invocation at § End of flow so its own state check (`@.claude/skills/git-publish/SKILL.md`
-step 1) knows to warn instead of assuming the diff matches the feature.
-
-**Fourth case: the worktree already carries changes from before this run.**
-
-```bash
-git status --porcelain 2>/dev/null
-```
-
-Non-empty → work that is **not** this run's. Report it here, in full (path count and what
-the paths are, staged and unstaged alike), and carry **the list itself** to `git-publish`
-the same way `IGNORED` travels — not just the fact that something was dirty.
-
-`git status --porcelain`, never `git diff --cached`: the index is half the picture, and the
-half that was already known. An unstaged edit and an untracked file from a previous run are
-invisible to the index and are swept into the commit by `git add -A` all the same — a modified
-`.claude/audit-usage/history.jsonl` and one untracked report rode along exactly that way, while
-the guardrail reported a clean start (lessons-learned-014 § 11). Harmless there, since
-`git-publish` commits the audit trail with the run on purpose; the shape is not.
-
-**`.claude/audit-usage/**` is never pre-existing work** — leave those paths out of the list.
-The previous run's report and its `history.jsonl` line are written at `Stop` and on the next
-prompt, both after that run's commit, so every run starts with them dirty by construction;
-`git-publish` stages the directory with this run's commit anyway (lessons-learned-016 § 8).
-Reporting them would make every start look dirty and teach the reader to ignore the report.
-
-This is the cheap moment to decide: at the end of the flow the run's own deliverable is mixed
-into the same worktree, and separating them costs a reset nobody planned. lessons-learned-012
-§ 7: 1.503 staged deletions from before the run only surfaced at `git-publish`, and the
-handling was improvised because no state in either skill described it.
-
-### 3 · Project
-
-Checks `pom.xml` (exists + parseable), `.claude/forbidden-imports.txt`, and that a domain
-package exists. **Discover it, don't assume it.**
-
-```bash
-find src/main/java -type d -name domain
-```
-
-`src/domain/` and `adapter/` don't exist in any blueprint: they're Maven module paths,
-and even in multi-module blueprints the layer lives at `<module>/src/main/java/…`. A
-guardrail that checks a literal path either fails on a valid project or passes by
-accident — neither case guards anything. The package name comes from the active
-blueprint's `packages.map`; where the blueprint isn't at hand, it comes from the `find`
-above.
-
-### 4 · Disk
-
-Available space > 100MB, write permission on `docs/use-cases/`.
-
-Without ✅ validation, anti-pattern 9 (invoking against an invalid project).
+`references/entry-guardrail.md` §§ 2–4, in that order, before any question or write.
+`IGNORED` and the list of pre-existing changes travel to `git-publish` at § Approval.
 
 ---
 
@@ -711,21 +613,15 @@ outbound HTTP only when step 3c wasn't, messaging only when step 4 wasn't, jobs 
 Every branch below ends in an explicit instruction. None of them runs git outside
 `git-publish`.
 
-**Design and implementation never share a session.** A run that consolidated a spec ends at
-§ Approval; a spec is implemented only by `/new-feature UC-NNN-<slug>` over an `approved` spec
-(input row 3), typed after `/clear`. The executor never inherits the conversation, but this
-thread does: every hand-back it receives, every group it launches and the `git-publish` after
-them would otherwise run at the 250–370k context the design phase leaves behind
-(`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
-
-| Arriving from | Enters at |
-|---|---|
-| Consolidation, in the same run | § Approval |
-| Input row 3, `/new-feature UC-NNN-slug` over an `approved` spec | § Implement — nothing is asked before the pre-flight: the command is the request |
-
-Row 3 is the one door to the second half of the pipeline, and the only one that reaches the
-pre-flight, the `CHANGELOG.md` writes, the four mandated findings of the final report, and the
-`git-publish` chaining (`@.claude/decisions/0067-implement-entry-row.md`).
+**Design and implementation never share a session.** This skill designs; a run that
+consolidated a spec ends at § Approval. An `approved` spec is implemented only by
+`/new-feature-implement UC-NNN-<slug>`, typed after `/clear`. The executor never inherits the
+conversation, but the orchestrator's thread does: every hand-back it receives, every group it
+launches and the `git-publish` after them would otherwise run at the 250–370k context the
+design phase leaves behind
+(`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`). The
+second half of the pipeline lives in its own skill, so an implement run never loads this body
+(`@.claude/decisions/0135-new-feature-split-spec-and-implement.md`).
 
 ### Approval — asked on every run that consolidated a spec
 
@@ -742,7 +638,7 @@ pre-flight, the `CHANGELOG.md` writes, the four mandated findings of the final r
 
   ```
   /clear
-  /new-feature UC-NNN-<slug>
+  /new-feature-implement UC-NNN-<slug>
   ```
 
   What used to be staged here — `docker-compose.yml` and `docker/init/**`, when the pipeline
@@ -751,76 +647,6 @@ pre-flight, the `CHANGELOG.md` writes, the four mandated findings of the final r
   invocation the user should run next. An unmentioned pending service is how a `kafka`
   service went orphan once (`lessons-learned-010.md` § 7), and the fix is naming it, not
   writing the file mid-design.
-
-### Implement — only from input row 3
-
-1. **One-time setup pre-flight, before delegating.** The executor is about to write the
-   first `.java` under `src/` for this project run — the only point in the pipeline
-   where "is the one-time infrastructure installed yet" actually matters. Detect what's
-   missing, don't assume:
-
-   ```bash
-   grep -rl "ArchRule\|ArchTest" --include='*.java' src/test/ 2>/dev/null | head -1
-   find . -type d -iname commons -o -type d -path '*shared/logging' 2>/dev/null
-   ```
-
-   First command empty → ArchUnit not installed yet (same gap step 3 already flagged,
-   if this use case is the first one). Second command empty, or the directory it finds
-   has nothing but `package-info.java` → commons-logging classes not installed yet.
-   Either gap found → `AskUserQuestion`, one option per gap found: **Install now** /
-   **Skip for this run**.
-   - ArchUnit, install now → **invoke** `test-architect` via the `Skill` tool with **no
-     argument at all** (setup mode) — same route step 3 already names, never invoke
-     `archunit-installer` directly, it stays `test-architect`'s alone.
-   - Commons-logging, install now → **invoke** `commons-logging-installer` directly via
-     the `Agent` tool. No owning per-feature skill to route through: this orchestrator
-     is the trigger, same as it owns `git-publish`'s invocation.
-   - **Both gaps found and both answered "Install now" → either order works, and the
-     same turn is fine.** This used to be the one place in the repo that could deadlock
-     itself: `Skill(test-architect)` opened a design phase and
-     `Agent(commons-logging-installer)` closed one, two `PreToolUse` hooks with no ordering
-     guarantee between them, and the loser blocked every write the other agent made under
-     `src/` for the rest of the run — lessons-learned-006 § 1 is the run that hit it (138k
-     tokens, zero files written, had to relaunch alone). `agent_classes` retired it: a
-     subagent's write is judged by its own `agent_type`, so no phase reaches it and nothing
-     closes a phase on an `Agent` call any more
-     (`@.claude/decisions/0059-agent-classes-territory-schema.md`).
-   - Either **Skip** → proceed to the executor anyway. A spec that doesn't cite
-     `@LogExecution`/`@MaskSensitiveData` or ArchUnit doesn't need either installed to
-     compile; skipping isn't a gate failure, it's the user's call.
-   - Neither gap found → skip this pre-flight silently, no question asked.
-
-2. **Three delegations to `java-spring-boot-developer`, chained.** Every turn of the executor
-   rereads its whole context, so one run carrying Block 1 into Block 4 pays for it on every
-   later turn — 427,889 tokens of context and 531,362 billable tokens in the run that reopened this
-   (`0130`). Each group starts again from the spec and what is on disk:
-
-   | Group | Blocks | Checklist steps it ticks |
-   |---|---|---|
-   | `domain` | 1, 2 | 1–12 |
-   | `adapters` | H, 3, S, M, J — those the spec carries | 13–15 |
-   | `tests` | 4 | 16–19, then the `status:` line |
-
-   - **Where the chain starts.** At the first group with a checklist step neither ticked nor
-     `n/a`. A group ticks its steps only when it ends green, so a run that failed in
-     `adapters` starts there again, and a fresh spec starts at `domain`.
-   - **Each delegation sends** the spec path, the group, and — from the second on — the
-     `Blocks` lines and findings of every earlier group, copied from their reports. A
-     decision a group took that is in neither the spec nor the disk reaches the next one only
-     this way.
-   - **Launch the next group in the turn that receives the previous one's report, and ask
-     nothing in between.** The `tests` Stop gate defers while a writer subagent of the
-     session runs; a turn that ends between two groups has none running, and the gate tests
-     a half-built tree (`@.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`).
-   - **A group that fails stops the chain** → report its failure, name the group, and stop.
-     No git. `/new-feature UC-NNN-<slug>` again resumes at that group.
-   - **Success** — the `tests` group reports the checklist complete, the build green, and the
-     spec at `status: implemented` (or `implemented-blocked`, which is a success too, with the
-     case it blocks on named) → **invoke** `git-publish` via the `Skill` tool, with
-     `feat(UC-NNN-<slug>): <one-line summary>` as context.
-
-`git-publish`'s two confirmation gates decide whether anything is committed or pushed —
-this orchestrator only triggers the offer.
 
 ### Final report
 
@@ -837,9 +663,7 @@ a boundary in clear, with its receiver** (or "none") — now a repeat of what §
 partials already recorded, not the first time anyone asks — three findings a reader must not have to
 reconstruct from a fixture comment or a Javadoc sentence — what `git-publish`
 did, and the next commands. After § Approval those are `/clear` and
-`/new-feature UC-NNN-<slug>`; after § Implement, `/clear` before the next `/new-feature` — a
-clean context per use case keeps cost measurable per case. An implement run's findings come
-from the `tests` group's report, which carries every group's lines.
+`/new-feature-implement UC-NNN-<slug>`; after **Keep as draft**, `/new-feature UC-NNN-<slug>`.
 
 ---
 
@@ -882,9 +706,9 @@ See `templates/feature-spec.md.example` for the full shape.
 - **D22** — `/new-feature` design (this record).
 - **`@.claude/decisions/0032-messaging-architect-skill.md`** — `messaging-architect`
   chained as a conditional step, same pattern as `persistence-architect`/`rest-api-architect`.
-- **`@.claude/agents/commons-logging-installer.md`** — one-time logging/masking setup,
-  triggered directly from the implement pre-flight, same "installed once, not at
-  bootstrap" shape as `archunit-installer`.
+- **`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`** and
+  **`@.claude/decisions/0135-new-feature-split-spec-and-implement.md`** — design and implement
+  never share a session; the implement flow is `/new-feature-implement`, a skill of its own.
 - **`@.claude/decisions/0037-lessons-learned-005-remediation.md`** — closed input table,
   one use case per run, spec lifecycle, no `src/` and no git outside `git-publish`.
 - **Invariant 2** (`@CLAUDE.md`) — single owner. The orchestrator owns `UC-NNN-spec.md`;
@@ -899,20 +723,3 @@ Step 6.6 writes the skills into the project. `/new-feature` travels the same way
 `/new-feature <feature description>` to design a new feature.
 
 No adaptation needed — skills already use relative paths.
-
----
-
-## Operational note: long-running background work
-
-Implementing a complete feature takes dozens of minutes. An executor launched in the
-background **doesn't survive the machine sleeping**: the watchdog cuts the stream and
-execution dies where it was. This happened three times in a row on the first real
-feature, with not a single file written, because all three died still in the reading
-phase.
-
-Before delegating the first group in the background, warn once and offer both options:
-keep the machine awake for the whole chain (`caffeinate -i` on macOS), or implement on the
-main thread, which is resumable. The executor writes by checkpoint precisely so that an
-interruption leaves reusable progress — but no checkpoint helps if execution dies before the
-first `Write`. A chain cut between groups resumes at the first group with open steps
-(§ Implement).

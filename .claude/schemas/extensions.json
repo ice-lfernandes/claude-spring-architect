@@ -212,14 +212,15 @@
         ]
       },
       "orchestrator": {
-        "$comment": "Chains other skills and owns the consolidated artifact. init-project overrides to an empty territory: everything it does is delegated to the project-initializer agent, which the guard bypasses as an executor.",
+        "$comment": "Chains other skills and owns the consolidated artifact. init-project and new-feature-implement override to an empty territory: everything each does is delegated to subagents (project-initializer; java-spring-boot-developer and the two installers), whose writes are judged by their own agent_classes entry. new-feature-implement is the implement half of the feature pipeline, split from new-feature so an implement run never loads the design procedure: .claude/decisions/0135-new-feature-split-spec-and-implement.md",
         "design_phase": true,
         "allowed_models": ["opus", "sonnet"],
         "write_allow": ["docs/use-cases/**", "docs/lessons-learned/**"],
         "required_sections": ["## Procedure"],
-        "skills": ["new-feature", "init-project"],
+        "skills": ["new-feature", "new-feature-implement", "init-project"],
         "overrides": {
-          "init-project": { "write_allow": [] }
+          "init-project": { "write_allow": [] },
+          "new-feature-implement": { "write_allow": [] }
         }
       },
       "build": {
@@ -539,6 +540,12 @@
         "blueprints": ["clean-architecture-single-module", "clean-architecture-multi-module", "hexagonal", "modular-monolith", "layered", "vertical-slice", "onion"],
         "note": "The 'architectural boundaries' job of .github/workflows/build.yml ran `java .claude/hooks/ArchHook.java doctor`, which only prints and always exits 0. The job therefore went green with 'Boundaries ❌ 0 rules — ENFORCEMENT OFF', a stale hook jar, or an invalid extensions.json, although its comment said it proved enforcement was on. It now runs `doctor gate`: the same report, failing when a line listed in doctor.gate.labels of .claude/schemas/extensions.json prints ❌. /arch-adopt does not write .github/workflows/, so a project generated before this change keeps the old step. Once changed, a project that already has one of those lines red goes red in CI.",
         "prompt": "In .github/workflows/build.yml, in the job named 'architectural boundaries', change the step that runs `java .claude/hooks/ArchHook.java doctor` so it runs `java .claude/hooks/ArchHook.java doctor gate`. Replace the comment above it with: '# Fails when a committed check of the .claude/ setup is red — the lines doctor.gate.labels names in .claude/schemas/extensions.json. CLAUDE_PROJECT_DIR and Compose are runner state and never gate.' Change nothing else. Before committing, run `java .claude/hooks/ArchHook.java doctor gate` locally and show me its last lines; if it exits 1, list the failing lines and wait for my go-ahead."
+      },
+      {
+        "id": "new-feature-implement-skill",
+        "blueprints": ["clean-architecture-single-module", "clean-architecture-multi-module", "hexagonal", "modular-monolith", "layered", "vertical-slice", "onion"],
+        "note": "An approved spec is now implemented by `/new-feature-implement UC-NNN-slug`, a skill of its own. `/new-feature` only designs: over an approved case it stops and prints the `/clear` and `/new-feature-implement` lines instead of implementing. Nothing in src/ changes. One project setting can be left behind: an audit opt-out in .claude/audit-usage/audited.json is matched by piece name, so a project that switched `new-feature` off keeps auditing implement runs until it names the new skill too.",
+        "prompt": "Check .claude/audit-usage/audited.json. If the file does not exist, or its `skills` object does not set `new-feature`, tell me there is nothing to do and stop. Otherwise add `\"new-feature-implement\"` to `skills` with the same boolean `new-feature` has, change nothing else in the file, and show me the diff."
       }
 
     ]
@@ -605,7 +612,23 @@
       ".claude/skills/java-patterns/templates/Strategy.java.example",
       ".claude/skills/java-patterns/templates/TemplateMethod.java.example",
       ".claude/skills/java-patterns/templates/Visitor.java.example",
-      ".claude/audit-usage/pricing.json"
+      ".claude/audit-usage/pricing.json",
+      ".claude/skills/new-feature/templates/commons/AutoConfiguration.imports.example",
+      ".claude/skills/new-feature/templates/commons/GlobalHttpMethodLogAspect.java.example",
+      ".claude/skills/new-feature/templates/commons/GlobalProperties.java.example",
+      ".claude/skills/new-feature/templates/commons/HttpMethodLogExecution.java.example",
+      ".claude/skills/new-feature/templates/commons/HttpMethodLogExecutionAspect.java.example",
+      ".claude/skills/new-feature/templates/commons/HttpMethodLogExecutionAspectTest.java.example",
+      ".claude/skills/new-feature/templates/commons/HttpMethodProperties.java.example",
+      ".claude/skills/new-feature/templates/commons/LogExecution.java.example",
+      ".claude/skills/new-feature/templates/commons/LogExecutionAspect.java.example",
+      ".claude/skills/new-feature/templates/commons/LogExecutionAspectTest.java.example",
+      ".claude/skills/new-feature/templates/commons/LogMask.java.example",
+      ".claude/skills/new-feature/templates/commons/LoggingCommonsMethods.java.example",
+      ".claude/skills/new-feature/templates/commons/LoggingCommonsMethodsTest.java.example",
+      ".claude/skills/new-feature/templates/commons/LoggingOptions.java.example",
+      ".claude/skills/new-feature/templates/commons/MaskSensitiveData.java.example",
+      ".claude/skills/new-feature/templates/commons/MaskedType.java.example"
     ],
 
     "ensure_dirs": [".claude/audit-usage"],
@@ -636,6 +659,7 @@
         "jobs-architect",
         "messaging-architect",
         "new-feature",
+        "new-feature-implement",
         "persistence-architect",
         "report-issue",
         "rest-api-architect",

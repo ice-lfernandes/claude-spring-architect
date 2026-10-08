@@ -23,7 +23,7 @@ on:
     # Same list under both triggers — keep them identical.
     paths:
       - '.claude/skills/project-bootstrap/templates/checkstyle*.xml.example'
-      - '.claude/skills/new-feature/templates/commons/**'
+      - '.claude/skills/new-feature-implement/templates/commons/**'
       - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
       - '.claude/.ci/CheckstyleConfigTest.java'
       - '.claude/.ci/JavaTemplatesTest.java'
@@ -38,7 +38,7 @@ on:
   pull_request:
     paths:
       - '.claude/skills/project-bootstrap/templates/checkstyle*.xml.example'
-      - '.claude/skills/new-feature/templates/commons/**'
+      - '.claude/skills/new-feature-implement/templates/commons/**'
       - '.claude/skills/persistence-architect/templates/JpaEntity.java.example'
       - '.claude/.ci/CheckstyleConfigTest.java'
       - '.claude/.ci/JavaTemplatesTest.java'

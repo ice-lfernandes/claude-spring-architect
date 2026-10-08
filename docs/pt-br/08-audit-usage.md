@@ -177,7 +177,9 @@ uma skill inline termina. Por isso tudo o que o orquestrador faz depois da últi
 o próximo agent ou skill, entra na linha dela. No fluxo de spec do `/new-feature`, isso é a
 consolidação e a pergunta de aprovação, somadas ao `test-architect`. No exemplo acima, os
 242,813 tokens do `test-architect` incluem essa cauda; num run real do UC-007, a maior parte
-do que foi atribuído a ele era consolidação. O rodapé do relatório diz o mesmo.
+do que foi atribuído a ele era consolidação. O rodapé do relatório diz o mesmo. Uma execução de implementação é uma execução à parte: sai
+reportada como `new-feature-implement` (arquivo `<stamp>--new-feature-implement.md`), não como
+`new-feature`.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
 
 **Onde o run gastou** (`🔎 Where the run spent`) sai dos mesmos transcripts de onde vêm os

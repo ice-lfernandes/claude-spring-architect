@@ -59,7 +59,7 @@ public class TestsDeferTest {
                 return s;
             }, true);
 
-            // /new-feature chains three executor groups; the next one starts in the turn that
+            // /new-feature-implement chains three executor groups; the next one starts in the turn that
             // receives the previous one's report, before that turn's Stop (decision 0130).
             failures += run("group 1 stopped, group 2 started — still deferred", null, p -> {
                 String s = session();

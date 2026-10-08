@@ -199,7 +199,8 @@ nenhum — com `claude plugin validate` imprimindo `✔ Validation passed` sobre
 | Comando | O que faz | Detalhes |
 |---|---|---|
 | `/init-project` | Interview → escolhe blueprint → gera estrutura completa do projeto Spring Boot, sem código de negócio | [02-init-project.md](02-init-project.md) |
-| `/new-feature <descrição>` · `/new-feature UC-NNN-slug` | Dois fluxos. **Criar a spec:** desenha um caso de uso por execução (caso de uso → domínio → REST → mensageria e jobs quando se aplicam → persistência → testes) num spec único, pede aprovação e o commita. **Implementar a spec:** sobre uma spec aprovada, depois do `/clear`, roda o executor em três grupos encadeados (domain → adapters → tests) e commita a feature | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature <descrição>` · `/new-feature UC-NNN-slug` | **Criar a spec:** desenha um caso de uso por execução (caso de uso → domínio → REST → mensageria e jobs quando se aplicam → persistência → testes) num spec único, pede aprovação e o commita; `UC-NNN-slug` retoma um draft. Termina imprimindo `/clear` e `/new-feature-implement UC-NNN-slug` | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature-implement UC-NNN-slug` | **Implementar a spec:** sobre uma spec aprovada, depois do `/clear`, roda o pre-flight e o executor em três grupos encadeados (domain → adapters → tests) e commita a feature | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnostica hooks ativos, boundaries carregadas, wrapper do Maven, `java` no PATH, schema, trilha de auditoria, serviços do compose | [04-arch-doctor.md](04-arch-doctor.md) |
 | `/audit-usage` | Lê a trilha de auditoria do projeto gerado: gasto por skill e agent entre execuções, taxa de falha, qual relatório abrir. Aqui reporta que a trilha está desligada | [08-audit-usage.md](08-audit-usage.md) |
 | `/claude-code-architect-designer` | Decide qual das nove formas (skill auto-invocável, skill manual, agent, rule, seção do `CLAUDE.md`, servidor MCP, hook, regra de `permissions`, mod — ou nada) resolve um cenário, e escreve o arquivo após aprovação. Só neste meta-repo | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
@@ -207,7 +208,7 @@ nenhum — com `claude plugin validate` imprimindo `✔ Validation passed` sobre
 
 `git-publish` não é um quarto comando de topo — é uma skill Forma 1 (sem
 `disable-model-invocation`) encadeada automaticamente por `project-initializer` (fim do
-`/init-project`, se o build passou) e por `/new-feature` (todo fim de fluxo com spec aprovado — depois
+`/init-project`, se o build passou) e por `/new-feature` e `/new-feature-implement` (todo fim de fluxo com spec aprovado — depois
 só os docs quando o fluxo 1 aprova uma spec, e o commit da feature quando o executor do fluxo 2 reporta sucesso), e também invocável diretamente pelo usuário. Dois portões de
 `AskUserQuestion` no corpo da skill substituem a flag como guarda — mesmo padrão do D17
 (`@.claude/decisions/0007-pipeline-skills-invocation.md`), documentado em

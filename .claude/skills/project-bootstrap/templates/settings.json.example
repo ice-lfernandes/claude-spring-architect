@@ -299,6 +299,7 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Skill(new-feature)",
+      "Skill(new-feature-implement)",
       "Skill(use-case-design)",
       "Skill(domain-modeling)",
       "Skill(rest-api-architect)",

@@ -176,7 +176,9 @@ ends. So everything the orchestrator does after its last skill, up to the next a
 skill, lands on that skill's row. In `/new-feature`'s spec flow, that is consolidation and the
 approval question, counted under `test-architect`. In the example above,
 `test-architect`'s 242,813 tokens include that tail; in a real UC-007 run, most of what was
-attributed to it was consolidation. The report's footnote says the same.
+attributed to it was consolidation. The report's footnote says the same. An implement run is a run of its own: it is reported
+under `new-feature-implement` (report file `<stamp>--new-feature-implement.md`), not under
+`new-feature`.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
 
 **Where the run spent** is read from the same transcripts the tokens come from — the

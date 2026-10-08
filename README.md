@@ -60,7 +60,7 @@ Everything it wrote is public:
 [the approved spec](https://github.com/nerviz-ai/bank-app/blob/main/docs/use-cases/UC-001-create-customer/UC-001-spec.md),
 [its partials](https://github.com/nerviz-ai/bank-app/tree/main/docs/use-cases/UC-001-create-customer),
 and [the run's audit report](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/2026-10-07T08-52-11--new-feature.md).
-That is the first of `/new-feature`'s two flows. The second, `/new-feature
+That is the first of `/new-feature`'s two flows. The second, `/new-feature-implement
 UC-001-create-customer` after `/clear`, hands the approved spec to the executor agent in a
 clean session.
 
@@ -277,14 +277,14 @@ would pay for that on every turn.
      ▼  consolidates into UC-NNN-spec.md (status: draft)
      ▼  asks approval → status: approved (the guard hook freezes the folder from here)
      ▼  git-publish (the approved spec only)
-     ▼  prints the next two commands:  /clear  ·  /new-feature UC-NNN-slug
+     ▼  prints the next two commands:  /clear  ·  /new-feature-implement UC-NNN-slug
 ```
 
-**Flow 2 — implement the spec.** `/new-feature UC-NNN-slug` over an approved spec, after
-`/clear`
+**Flow 2 — implement the spec.** `/new-feature-implement UC-NNN-slug` over an approved spec,
+after `/clear`
 
 ```
-/new-feature UC-NNN-slug               (status: approved — the command is the request)
+/new-feature-implement UC-NNN-slug     (status: approved — the command is the request)
      │
      │  pre-flight, once per project (ArchUnit, logging/masking aspects)
      │  agent: java-spring-boot-developer, pattern catalog injected at start,
