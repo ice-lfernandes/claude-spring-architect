@@ -1,6 +1,6 @@
 ---
 name: commons-logging-installer
-description: Installs the ported logging/masking annotations and AOP aspects (LogExecution, HttpMethodLogExecution, MaskSensitiveData, LogMask) into an already-generated Spring Boot project's empty `commons` package. Invoked by /new-feature's pre-flight check — never directly by the user.
+description: Installs the ported logging/masking annotations and AOP aspects (LogExecution, HttpMethodLogExecution, MaskSensitiveData, LogMask) into an already-generated Spring Boot project's empty `commons` package. Invoked by /new-feature-implement's pre-flight check — never directly by the user.
 model: sonnet
 tools: Read, Write, Edit, Bash
 effort: medium
@@ -14,7 +14,7 @@ omitClaudeMd: true
 **Preserves context.** Same shape as `archunit-installer`: translate exemplar packages
 to the project's own, write a fixed set of files, edit a POM, run `./mvnw` up to twice,
 iterate until green. None of it needs the conversation that triggered it — the
-`/new-feature` run that detected the gap doesn't need eleven file writes and a build log
+`/new-feature-implement` run that detected the gap doesn't need eleven file writes and a build log
 landing in its own context and getting re-paid on every later turn.
 
 No tool or model reason applies on its own — reads and writes stay inside the project,
@@ -46,13 +46,13 @@ that flag in both directions.
 **Input (required):** project root. Precondition — the `commons` package/module already
 exists, empty, with its `package-info.java` (written by `project-bootstrap` step 4.7,
 per the active blueprint's `packages.map` entry `commons.logging`) — is the caller's
-(`/new-feature`'s pre-flight check) to verify before invoking; this agent doesn't
+(`/new-feature-implement`'s pre-flight check) to verify before invoking; this agent doesn't
 re-derive it, only fails loudly if it isn't there.
 
 **Reads:** root POM, module POMs (multi-module only), the active blueprint's
 `packages.map` (for the real `commons.logging` package — modular-monolith
 names it `shared.logging` instead, see its own blueprint comment), `.claude/rules/logging.md`,
-`.claude/skills/new-feature/templates/commons/*.example` (the sixteen exemplars: twelve
+`.claude/skills/new-feature-implement/templates/commons/*.example` (the sixteen exemplars: twelve
 production `.java.example`, three `*Test.java.example`, plus `AutoConfiguration.imports.example`).
 
 **Writes:** one `.java` file per exemplar in `templates/commons/`, translated into the
@@ -99,7 +99,7 @@ or fix the blueprint by hand.
    module's own `CLAUDE.md` if it has `forbidden_imports`) for the `commons.logging`
    `packages.map` value. Never invent it from the exemplar's own `com.exemplo.minhaapi.commons.logging`.
 
-3. **Translate and write each exemplar**, from `.claude/skills/new-feature/templates/commons/`:
+3. **Translate and write each exemplar**, from `.claude/skills/new-feature-implement/templates/commons/`:
    `LoggingOptions`, `LoggingCommonsMethods`, `LogExecution`, `HttpMethodLogExecution`,
    `MaskSensitiveData`, `MaskedType`, `LogMask`, `LogExecutionAspect`,
    `HttpMethodLogExecutionAspect`, `GlobalHttpMethodLogAspect`, `GlobalProperties`,

@@ -36,7 +36,7 @@ não um passo único.
 | Frontmatter | Efeito | Exemplo neste repo |
 |---|---|---|
 | (nenhum campo de controle) | O modelo decide, a partir da `description`, se a skill é relevante | `project-bootstrap` — description lista gatilhos como "scaffolding", "new Spring project"; `git-publish` — auto-invocável, mas o efeito colateral (commit/push) fica atrás de dois portões `AskUserQuestion` no corpo, não da frontmatter — mesmo padrão de D17 |
-| `disable-model-invocation: true` | Só o usuário invoca, digitando `/nome` | `init-project`, `new-feature`, `arch-doctor` — os três comandos documentados aqui são side-effect-heavy e **não** disparam sozinhos |
+| `disable-model-invocation: true` | Só o usuário invoca, digitando `/nome` | `init-project`, `new-feature`, `new-feature-implement`, `arch-doctor` — os comandos documentados aqui são side-effect-heavy e **não** disparam sozinhos |
 | `user-invocable: false` | Só o modelo invoca — conhecimento de fundo, sem comando visível | Não usado neste repositório hoje |
 
 Os três comandos centrais deste documento são todos `disable-model-invocation: true` —
@@ -79,7 +79,7 @@ skill pertence a exatamente uma das sete classes, e a classe declara duas coisas
 | Classe | Skills | Território de escrita |
 |---|---|---|
 | `design` | as 9 que escrevem parciais de caso de uso | a pasta do UC + `BACKLOG.md` |
-| `orchestrator` | `new-feature`; `init-project` | `docs/**` do caso de uso; `init-project` não escreve nada (delega) |
+| `orchestrator` | `new-feature`; `new-feature-implement`; `init-project` | `docs/**` do caso de uso; `new-feature-implement` e `init-project` não escrevem nada (delegam) |
 | `build` | `project-bootstrap`, `docker-architect`, `arch-adopt`, `gof-design-patterns`, `sonarqube-setup`, `transport-security-setup` | um override por skill — a árvore toda, só o compose, só `.claude/`, só `src/`, só o build file raiz e `.github/workflows/`, ou o `application*.yml` do módulo principal + o filtro de HSTS + `src/test/**` + o `CLAUDE.md` raiz |
 | `observer` | `arch-doctor`, `audit-usage` | nada |
 | `meta` | `claude-code-architect-designer` | `.claude/**`, `CLAUDE.md`, `.mcp.json`, `docs/**`, `.github/**` |
@@ -198,10 +198,10 @@ uma skill com `disable-model-invocation: true` não pode ser pré-carregada via 
 
 **Quem invoca:** sempre outra peça do sistema, nunca o usuário diretamente por
 `/nome-do-agent` — não existe esse comando. Aqui, é sempre uma skill que delega via
-`Agent tool`: `init-project` delega para `project-initializer`, `new-feature` delega
-para `java-spring-boot-developer` quando `/new-feature UC-NNN-slug` implementa uma spec
+`Agent tool`: `init-project` delega para `project-initializer`, `new-feature-implement` delega
+para `java-spring-boot-developer` quando `/new-feature-implement UC-NNN-slug` implementa uma spec
 aprovada — três vezes, uma por grupo de blocos, `test-architect` delega para
-`archunit-installer` no modo setup (sem argumento), e o pre-flight de `new-feature` delega
+`archunit-installer` no modo setup (sem argumento), e o pre-flight de `new-feature-implement` delega
 para `commons-logging-installer` quando `commons` está vazio.
 
 **Fork — um caso diferente de agent:** um *fork* herda a conversa inteira em vez de

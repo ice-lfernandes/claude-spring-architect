@@ -200,7 +200,8 @@ of it.
 | Command | What it does | Details |
 |---|---|---|
 | `/init-project` | Interview → picks a blueprint → generates the complete Spring Boot project structure, with no business code | [02-init-project.md](02-init-project.md) |
-| `/new-feature <description>` · `/new-feature UC-NNN-slug` | Two flows. **Create the spec:** designs one use case per run (use case → domain → REST → messaging and jobs when they apply → persistence → tests) into a single spec, asks approval and commits it. **Implement the spec:** over an approved spec, after `/clear`, runs the executor in three chained groups (domain → adapters → tests) and commits the feature | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature <description>` · `/new-feature UC-NNN-slug` | **Create the spec:** designs one use case per run (use case → domain → REST → messaging and jobs when they apply → persistence → tests) into a single spec, asks approval and commits it; `UC-NNN-slug` resumes a draft. Ends by printing `/clear` and `/new-feature-implement UC-NNN-slug` | [03-new-feature.md](03-new-feature.md) |
+| `/new-feature-implement UC-NNN-slug` | **Implement the spec:** over an approved spec, after `/clear`, runs the pre-flight and the executor in three chained groups (domain → adapters → tests), then commits the feature | [03-new-feature.md](03-new-feature.md) |
 | `/arch-doctor` | Diagnoses active hooks, loaded boundaries, Maven wrapper, `java` on PATH, schema, audit trail, compose services | [04-arch-doctor.md](04-arch-doctor.md) |
 | `/audit-usage` | Reads the generated project's audit trail: spend per skill and agent across runs, failure rate, which report to open. Here it reports the trail is off | [08-audit-usage.md](08-audit-usage.md) |
 | `/claude-code-architect-designer` | Decides which of the nine forms (auto-invocable skill, manual skill, agent, rule, `CLAUDE.md` section, MCP server, hook, `permissions` rule, mod — or nothing) solves a scenario, and writes the file after approval. Meta-repo only | [06-claude-code-architect-designer.md](06-claude-code-architect-designer.md) |
@@ -208,7 +209,7 @@ of it.
 
 `git-publish` isn't a fourth top-level command — it's a Form 1 skill (no
 `disable-model-invocation`) chained automatically by `project-initializer` (end of
-`/init-project`, if the build passed) and by `/new-feature` (every end of the flow with an approved spec —
+`/init-project`, if the build passed) and by `/new-feature` and `/new-feature-implement` (every end of the flow with an approved spec —
 docs-only when flow 1 approves a spec, and the feature commit when flow 2's executor succeeds), and also directly invocable by the user. Two `AskUserQuestion` gates
 in the skill's body replace the flag as the guard — the same D17 pattern
 (`@.claude/decisions/0007-pipeline-skills-invocation.md`), documented in

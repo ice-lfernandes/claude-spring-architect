@@ -274,6 +274,40 @@ public class SkillTerritoryTest {
                         + "\"tool_input\":{\"skill\":\"sonarqube-setup\"}}",
                 2, "an unclassed agent still falls back to the phase");
 
+        // `/new-feature-implement` (decision 0135): an orchestrator with an empty territory. Its
+        // main thread chains the executor and the installers and writes nothing itself — not
+        // even under docs/use-cases/, which `/new-feature`, the same class, may write. The name
+        // shares `/new-feature` as a prefix, so this also proves the prompt resolves to the
+        // implement skill and not the design one.
+        String implement = "ci-territory-implement-" + System.nanoTime();
+        failures += run(hook, "prompt", implement,
+                "{\"session_id\":\"%s\",\"prompt\":\"/new-feature-implement UC-001-x\"}",
+                0, "prompt opens new-feature-implement's orchestrator phase");
+
+        failures += run(hook, "write", implement,
+                "{\"session_id\":\"%s\",\"tool_input\":"
+                        + "{\"file_path\":\"docs/use-cases/UC-002-y/00-caso-de-uso.md\"}}",
+                2, "docs/use-cases/ is not the implement thread's — blocked");
+
+        failures += run(hook, "write", implement,
+                "{\"session_id\":\"%s\",\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
+                2, "src/ from the implement thread itself — blocked");
+
+        failures += run(hook, "write", implement,
+                "{\"session_id\":\"%s\",\"agent_type\":\"java-spring-boot-developer\","
+                        + "\"tool_input\":{\"file_path\":\"src/main/java/A.java\"}}",
+                0, "the executor's write under the implement phase — its own class");
+
+        failures += run(hook, "call", implement,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"docker-architect\"}}",
+                2, "build-class Skill call refused mid-implement");
+
+        failures += run(hook, "call", implement,
+                "{\"session_id\":\"%s\",\"tool_name\":\"Skill\","
+                        + "\"tool_input\":{\"skill\":\"test-architect\"}}",
+                0, "the pre-flight's test-architect setup call admitted");
+
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — the territory guard is NOT"
                     + " enforcing what skill_classes declares.");

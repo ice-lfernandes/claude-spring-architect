@@ -4,7 +4,7 @@
 // real Spring Boot project, and that the unit tests shipped with them pass.
 //
 // In scope — the templates copied as files, not read as shape references:
-//   - `new-feature/templates/commons/` — `commons-logging-installer` translates only the
+//   - `new-feature-implement/templates/commons/` — `commons-logging-installer` translates only the
 //     package and writes every file as-is, its three `*Test` templates included
 //     (decision 0098). A template there that stops compiling breaks the installer's own
 //     `test-compile` in every project that runs it.
@@ -37,7 +37,7 @@ import java.util.zip.*;
 public class JavaTemplatesTest {
 
     static final Path SKILLS = Paths.get(".claude/skills");
-    static final Path COMMONS = SKILLS.resolve("new-feature/templates/commons");
+    static final Path COMMONS = SKILLS.resolve("new-feature-implement/templates/commons");
     static final Path JPA_ENTITY = SKILLS.resolve("persistence-architect/templates/JpaEntity.java.example");
     static final Pattern PACKAGE = Pattern.compile("(?m)^package\\s+([\\w.]+)\\s*;");
     static final Pattern BLOCK = Pattern.compile("(?m)^// --- (\\S+\\.java)\\s*$");

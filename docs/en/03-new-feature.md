@@ -18,13 +18,16 @@ real project.
 
 | Flow | Command | Ends with |
 |---|---|---|
-| 1 · Create the spec | `/new-feature <description>` (or `UC-NNN-slug` of a draft to resume) | the spec approved and committed by `git-publish`, and the two commands to type next: `/clear` · `/new-feature UC-NNN-slug` |
-| 2 · Implement the spec | `/new-feature UC-NNN-slug` over an `approved` spec, after `/clear` | the pre-flight, then `java-spring-boot-developer` in three chained groups — `domain` (blocks 1–2) → `adapters` (H, 3, S, M, J) → `tests` (block 4) — `status: implemented`, and the feature commit |
+| 1 · Create the spec | `/new-feature <description>` (or `UC-NNN-slug` of a draft to resume) | the spec approved and committed by `git-publish`, and the two commands to type next: `/clear` · `/new-feature-implement UC-NNN-slug` |
+| 2 · Implement the spec | `/new-feature-implement UC-NNN-slug` over an `approved` spec, after `/clear` | the pre-flight, then `java-spring-boot-developer` in three chained groups — `domain` (blocks 1–2) → `adapters` (H, 3, S, M, J) → `tests` (block 4) — `status: implemented`, and the feature commit |
 
 The design leaves the main thread at 250–370k tokens of context; implementing on top of it
 would pay for that on every hand-back and on `git-publish`. Each executor group starts again
 from the spec and the disk instead of carrying the earlier blocks
 (`.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
+Since decision 0135 the implement flow is its own skill, `new-feature-implement`: it runs on
+`sonnet`, writes nothing itself, and never loads the design procedure
+(`.claude/decisions/0135-new-feature-split-spec-and-implement.md`).
 
 These boundaries hold on every run, and none of them is prose — the `guard` hook blocks
 with `exit 2`, `permissions.ask` prompts, or consolidation stops:
@@ -74,7 +77,7 @@ interpreted. First matching row wins; anything else is an error.
 |---|---|
 | empty | lists the use cases with their `status` |
 | `UC-NNN-slug`, folder exists, spec `draft` or missing | resumes: only the missing partials, then consolidation |
-| `UC-NNN-slug`, spec `approved` | implements it: straight to the executor delegation, skipping the design steps and consolidation |
+| `UC-NNN-slug`, spec `approved` | ❌ approved — prints `/clear` + `/new-feature-implement UC-NNN-slug` |
 | `UC-NNN-slug`, spec `implemented` or `implemented-blocked` | ❌ already implemented — describe the change as a new feature |
 | no folder, but the argument's `UC-NNN` has exactly one folder on disk | ❌ names the real slug and status, plus the exact command — the case exists, the argument named it wrongly |
 | `UC-NNN-slug`, no folder, number matching zero or several | ❌ not found — describe the feature to create one |
@@ -138,34 +141,34 @@ sequenceDiagram
         NF-->>U: resume command, no git
     else approve (status: approved)
         NF->>GIT: docs of the approved spec only — two gates
-        NF-->>U: final report + /clear, then /new-feature UC-NNN-slug
+        NF-->>U: final report + /clear, then /new-feature-implement UC-NNN-slug
     end
 ```
 
-### Flow 2 — implement the spec: `/new-feature UC-NNN-slug` over an approved spec
+### Flow 2 — implement the spec: `/new-feature-implement UC-NNN-slug` over an approved spec
 
 ```mermaid
 sequenceDiagram
     actor U as User
-    participant NF as skill: new-feature
+    participant NFI as skill: new-feature-implement
     participant TST as skill: test-architect
     participant LOG as agent: commons-logging-installer
     participant DEV as agent: java-spring-boot-developer
     participant GIT as skill: git-publish
 
-    U->>NF: /new-feature UC-NNN-slug — after /clear, in a clean session
-    NF->>NF: input table → row 3, spec approved · worktree decided · project checks
+    U->>NFI: /new-feature-implement UC-NNN-slug — after /clear, in a clean session
+    NFI->>NFI: input table → spec approved · worktree decided · project checks
     opt pre-flight — once per project, each gap behind a question
-        NF->>TST: Skill, no argument (setup mode → archunit-installer)
-        NF->>LOG: Agent commons-logging-installer, in a separate turn
+        NFI->>TST: Skill, no argument (setup mode → archunit-installer)
+        NFI->>LOG: Agent commons-logging-installer, in a separate turn
     end
     loop groups domain → adapters → tests, from the first with open steps, next one in the same turn
-        NF->>DEV: spec path, group, earlier groups' lines
-        DEV-->>NF: group report, its checklist steps ticked
+        NFI->>DEV: spec path, group, earlier groups' lines
+        DEV-->>NFI: group report, its checklist steps ticked
     end
     Note over DEV: the tests group closes status: implemented (or implemented-blocked)
-    NF->>GIT: feat(UC-NNN-slug) — two gates
-    NF-->>U: final report + recommend /clear
+    NFI->>GIT: feat(UC-NNN-slug) — two gates
+    NFI-->>U: final report + recommend /clear
 ```
 
 ## Pieces and what each writes
@@ -211,14 +214,14 @@ catalog reaches it at `SubagentStart`
 
 ## Pre-flight — infrastructure installed once, on the first implement run
 
-Before delegating to the executor, `new-feature` detects (by command, never by
+Before delegating to the executor, `new-feature-implement` detects (by command, never by
 assumption) two gaps that only matter when the first `.java` is about to be written
 under `src/`:
 
 | Gap | How it's detected | Installed via |
 |---|---|---|
 | ArchUnit missing | `grep -rl "ArchRule\|ArchTest" src/test/` is empty | `Skill(test-architect)` with no argument — setup mode, which delegates to `archunit-installer` (ArchUnit + JaCoCo gate) |
-| Logging/masking classes missing | no `commons` folder, or only `package-info.java` in it | `Agent(commons-logging-installer)` — thirteen exemplars from `new-feature/templates/commons/` translated into the real package, plus `AutoConfiguration.imports` and the AOP dependencies |
+| Logging/masking classes missing | no `commons` folder, or only `package-info.java` in it | `Agent(commons-logging-installer)` — thirteen exemplars from `new-feature-implement/templates/commons/` translated into the real package, plus `AutoConfiguration.imports` and the AOP dependencies |
 
 Each gap found becomes an `AskUserQuestion` (**Install now** / **Skip for this run**);
 no gap, no question. The two may fire in the same turn — and could not before:
@@ -293,7 +296,7 @@ and the disk instead of carrying the earlier blocks' context
 ## Operational note — long-running background work
 
 An executor running in the background **doesn't survive the machine sleeping**. Before
-delegating in the background, `new-feature/SKILL.md` says to offer keeping the machine
+delegating in the background, `new-feature-implement/SKILL.md` says to offer keeping the machine
 awake (`caffeinate -i` on macOS) or running on the main thread, which is resumable.
 
 ## Entry into generated projects

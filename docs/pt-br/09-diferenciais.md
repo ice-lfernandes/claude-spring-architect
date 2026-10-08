@@ -22,7 +22,7 @@ circulam em 2026, e o repositório fica na interseção deles:
   build incremental e o CI são os sensores.
 - **Spec-driven development (SDD).** O `/new-feature` é *spec-first*: um caso de uso por
   execução, consolidado numa spec, aprovado e congelado antes de qualquer código — e o
-  código sai de uma segunda execução, `/new-feature UC-NNN-slug`, numa sessão limpa.
+  código sai de uma segunda execução, `/new-feature-implement UC-NNN-slug`, numa sessão limpa.
 - **Gerador de projetos.** O `/init-project` gera via Spring Initializr, na linha do
   JHipster e do Seed4J. Aqui, porém, a geração é o primeiro passo, não o produto.
 
@@ -206,7 +206,7 @@ Nenhuma é única sozinha. Juntas, nenhum vizinho as reúne:
 | Preocupação | Onde vive |
 |---|---|
 | `Idempotency-Key` desde o primeiro endpoint, via AOP e tabela compartilhada | `rest-api-architect` + `persistence-architect` |
-| Log estruturado com mascaramento de dado sensível | `commons-logging-installer`, oferecido no pre-flight do `/new-feature` |
+| Log estruturado com mascaramento de dado sensível | `commons-logging-installer`, oferecido no pre-flight do `/new-feature-implement` |
 | Collector OTLP com traces e métricas; Jaeger ou Grafana + Tempo + Prometheus | `docker-architect` |
 | Diagnóstico de compose: container "de pé" que não responde, porta presa por projeto vizinho, default que o host não alcança | `ArchHook.java compose` |
 | Transporte decidido uma vez por projeto, antes de qualquer endpoint: borda, direto ou mutual TLS, HTTP/2 ligado, HSTS com um único escritor | `transport-security-setup` |

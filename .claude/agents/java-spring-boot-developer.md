@@ -144,16 +144,16 @@ from the destination map surveyed in the guardrail, never from a path written he
   and still the design skill's decision (lessons-learned-014 § 6)
 
 **Integration:**
-- Called by `/new-feature UC-NNN-<slug>` over an approved spec (its input row 3), three times
-  in a row — once per group
+- Called by `/new-feature-implement UC-NNN-<slug>` over an approved spec, three times in a row
+  — once per group
 - Receives: the spec path, the group, and the earlier groups' report lines — nothing else
 - Returns: **one** report, delivered once when the run ends — the group's summary, with one
   line per block that ran. Nothing goes to the caller between blocks: the runtime delivers a
   single report from a background agent and refuses a second, so a progress note sent early is
   the only report the caller ever gets (`@.claude/decisions/0119-audit-ignores-subagent-handback-executor-single-report.md`)
 - Does **not** invoke `git-publish` itself — stays out of its tool list on purpose, see
-  invariant 6 reason 2 (restrict tools). `/new-feature` invokes it after this agent
-  reports success
+  invariant 6 reason 2 (restrict tools). `/new-feature-implement` invokes it after
+  this agent reports success
 
 ---
 
@@ -363,9 +363,9 @@ report of § Failure mode.
 
 ### Groups — which blocks this run executes
 
-`/new-feature` runs this agent once per group, not once per spec. Every turn rereads the whole
-context, so carrying Block 1's reads and compile fixes into Block 4 is paid on every later
-turn: one run reached a 427,889-token context and 531,362 billable tokens that way
+`/new-feature-implement` runs this agent once per group, not once per spec. Every turn rereads
+the whole context, so carrying Block 1's reads and compile fixes into Block 4 is paid on every
+later turn: one run reached a 427,889-token context and 531,362 billable tokens that way
 (`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 | Group | Blocks | Ends with |
@@ -382,8 +382,8 @@ turn: one run reached a 427,889-token context and 531,362 billable tokens that w
   group.
 - **Tick at the end of the group, green only.** After the group's last compile passes, tick its
   steps `[ ]` → `[x]` — the toggles § Contract allows on an approved spec. A group that fails
-  ticks nothing, which is how `/new-feature` knows where to resume. Only the `tests` group
-  touches the `status:` line.
+  ticks nothing, which is how `/new-feature-implement` knows where to resume. Only the `tests`
+  group touches the `status:` line.
 - **The report of `domain` and `adapters`** is one line per block that ran, the findings, and
   the files written, headed `UC-NNN-<slug> — group <name> ✅`. The `tests` group's final summary
   lists the earlier groups' lines first, so it is the one report the caller needs.
@@ -909,7 +909,7 @@ UC-001-order implemented ✅ COMPLETE
 ✅ Checklist: 19/19 complete
 ✅ Spec: status: implemented          (or `implemented-blocked`, naming the case it blocks on)
 
-🔧 Next step: the caller (`/new-feature`) offers `git-publish` next — commit and push
+🔧 Next step: the caller (`/new-feature-implement`) offers `git-publish` next — commit and push
 happen there, not in this agent.
 ```
 
@@ -919,7 +919,7 @@ happen there, not in this agent.
 
 **Spec defect** (incomplete, or a block that can't be implemented as written). The spec is
 `approved`, so it's immutable for tools — this agent doesn't edit it, and neither does
-`/new-feature`. Report and stop:
+`/new-feature-implement`. Report and stop:
 ```
 ❌ Spec.md is missing § 3 (Persistence)
 The spec is approved and immutable. To fix it: set `status: draft` by hand in
@@ -1000,16 +1000,16 @@ asked for the feature reads it.
 
 ## Invocation
 
-Called by `/new-feature` after approval:
+Called by `/new-feature-implement` once `/new-feature` approved the spec:
 
 ```
 /new-feature REST endpoint that creates an order in the orders table
   → consolidates UC-001-spec.md (status: draft) ✅
   → "Approve UC-001-spec.md?" > Approve (status: approved)
-  → git-publish commits the spec; prints /clear + /new-feature UC-001-order
+  → git-publish commits the spec; prints /clear + /new-feature-implement UC-001-order
 
 /clear
-/new-feature UC-001-order
+/new-feature-implement UC-001-order
   → invokes java-spring-boot-developer, group domain    → steps 1-12 ticked
   → invokes java-spring-boot-developer, group adapters  → steps 13-15 ticked
   → invokes java-spring-boot-developer, group tests     → steps 16-19, status: implemented
