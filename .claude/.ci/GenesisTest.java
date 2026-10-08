@@ -5,17 +5,17 @@
 //
 // Why this test exists: a mode that throws exits 0 through ArchHook's top-level catch and looks
 // like it passed. GENESIS once recorded a start after its finish, written from a directory's
-// birth time in local zone with a literal `Z`, and no cost at all (lessons-learned-020 §§ 4–5,
-// decision 0123). The figures now come only from this mode, so a wrong sum, a turn counted from
+// birth time in local zone with a literal `Z` (lessons-learned-020 §§ 4–5, decision 0123).
+// Tokens only, never a cost: the trail prices nothing (decision 0134). The figures now come only from this mode, so a wrong sum, a turn counted from
 // before `/init-project`, or a second run overwriting the record would land in every project.
 //
 // What it builds: a throwaway CLAUDE_CONFIG_DIR with one main transcript (a turn before the
 // `/init-project` message, which must not count, and a turn written as two content blocks, which
 // must count once, and a later tool result quoting the command tag, which must not move Started)
-// and one subagent transcript with its `.meta.json`; a throwaway project with a
-// pricing.json and a GENESIS carrying the four placeholders. `audit.genesis` is read from this
-// repository's real extensions.json, through CLAUDE_PROJECT_DIR. Runs the jar, the bytes the
-// skill invokes (0084).
+// and one subagent transcript with its `.meta.json`; a throwaway project with a leftover
+// pricing.json, which must be ignored, and a GENESIS carrying the three placeholders.
+// `audit.genesis` is read from this repository's real extensions.json, through
+// CLAUDE_PROJECT_DIR. Runs the jar, the bytes the skill invokes (0084).
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -31,7 +31,6 @@ public class GenesisTest {
             | Started | {{startIso}} |
             | Finished | {{endIso}} |
             | Tokens | {{tokens}} |
-            | Cost | {{cost}} |
             """;
     static int failures = 0;
 
@@ -58,7 +57,8 @@ public class GenesisTest {
         Files.createDirectories(audit);
         Path genesis = audit.resolve("GENESIS.md");
 
-        Files.writeString(audit.resolve("pricing.json"), pricing(true));
+        Files.writeString(audit.resolve("pricing.json"), "{\"currency\":\"USD\",\"per\":1000000,\"models\":{"
+                + "\"claude-opus-5-5\":{\"input\":4,\"output\":20,\"cache_read\":0.2,\"cache_write\":5}}}");
         Files.writeString(genesis, GENESIS);
         int exit = run(cfg, project, SID);
         String filled = Files.readString(genesis);
@@ -70,7 +70,8 @@ public class GenesisTest {
         check("tokens: the main session from Started on plus the subagent, one turn per message id",
                 filled.contains("12,000 input · 150,000 output · 6,000,000 cache read · 300,000 cache write — 2 requests"),
                 filled);
-        check("cost priced from the project's pricing.json, both models", filled.contains("| Cost | USD 4.99 |"), filled);
+        check("no cost, though a pricing.json is left in the trail", !filled.contains("USD") && !filled.contains("Cost"),
+                filled);
         check("no placeholder left", !filled.contains("{{"), filled);
 
         exit = run(cfg, project, SID);
@@ -81,17 +82,11 @@ public class GenesisTest {
         exit = run(cfg, project, "00000000-0000-0000-0000-000000000000");
         check("an unknown session is refused", exit == 1 && Files.readString(genesis).equals(GENESIS), "exit " + exit);
 
-        Files.writeString(audit.resolve("pricing.json"), pricing(false));
-        exit = run(cfg, project, SID);
-        String unpriced = Files.readString(genesis);
-        check("an unpriced model names itself, never a partial sum",
-                exit == 0 && unpriced.contains("no price for `claude-sonnet-5`") && !unpriced.contains("USD"), unpriced);
-
         if (failures > 0) {
             System.err.println("❌ " + failures + " case(s) failed — GENESIS figures are not what the transcripts say.");
             System.exit(1);
         }
-        System.out.println("✅ audit genesis fills Started, Finished, tokens and cost from the transcripts, once.");
+        System.out.println("✅ audit genesis fills Started, Finished and tokens from the transcripts, once.");
     }
 
     static String turn(String iso, String id, String model, long in, long out, long cr, long cw) {
@@ -99,12 +94,6 @@ public class GenesisTest {
                 + "\",\"model\":\"" + model + "\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}],"
                 + "\"usage\":{\"input_tokens\":" + in + ",\"output_tokens\":" + out
                 + ",\"cache_read_input_tokens\":" + cr + ",\"cache_creation_input_tokens\":" + cw + "}}}";
-    }
-
-    static String pricing(boolean withSonnet) {
-        String opus = "\"claude-opus-5-5\":{\"input\":4,\"output\":20,\"cache_read\":0.2,\"cache_write\":5}";
-        String sonnet = ",\"claude-sonnet-5\":{\"input\":2,\"output\":10,\"cache_read\":0.2,\"cache_write\":2.5}";
-        return "{\"currency\":\"USD\",\"per\":1000000,\"models\":{" + opus + (withSonnet ? sonnet : "") + "}}";
     }
 
     static int run(Path cfg, Path project, String sid) throws Exception {

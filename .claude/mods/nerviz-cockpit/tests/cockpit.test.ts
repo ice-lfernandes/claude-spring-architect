@@ -32,7 +32,6 @@ function engine(on, status: string, calls: string[][] = [], surfaces: string[] =
   on('session.root', () => ({ value: '/repo' }))
   on('session.id', () => ({ value: 'session-1' }))
   on('session.surfaces', () => ({ value: surfaces }))
-  on('session.usage', () => ({ value: { context: { tokens: 0, window: 1, percent: 0 }, rateLimits: [] } }))
   on('command.register', () => ({ value: undefined }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('process.run', ($, e) => {
@@ -71,7 +70,9 @@ test('no phase open, no band of its own', async ($, on) => {
   await ui.unmount()
 })
 
-test('the spinner names the open phase', async ($, on) => {
+// 0134: the suffix showed the turn's cost in USD; the trail measures tokens only, and the mod
+// leaves the spinner as the engine draws it, phase open or not.
+test('the spinner is left as the engine draws it', async ($, on) => {
   engine(on, OPEN)
   await $.session.start(START)
   const ui = await $.ui.mount({
@@ -80,7 +81,7 @@ test('the spinner names the open phase', async ($, on) => {
     component: 'Spinner',
     props: { word: 'Sauteing', message: null, suffix: '…', mode: 'responding' },
   })
-  expect((await ui.find({ type: 'Text', text: /claude-code-architect-designer/ }))?.text).toBe('… · claude-code-architect-designer')
+  expect((await ui.find({ type: 'Text', text: /…/ }))?.text).toBe('…')
   await ui.unmount()
 })
 

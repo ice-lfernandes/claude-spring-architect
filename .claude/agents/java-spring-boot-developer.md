@@ -247,9 +247,9 @@ this rule exists to eliminate.
 ### What enters the context — build output and reads
 
 Every turn of this agent re-reads its whole context. Anything a tool prints stays there
-until the run ends, so the run's cost is turns × context size. In the measured runs this
-agent's cost was 75–80% cache reads. One run spent USD 14.82 at 203 turns, reaching 477k
-tokens of context, with 191k characters of `./mvnw … | tail -250` output and 48k
+until the run ends, so the run's spend is turns × context size. In the measured runs this
+agent's tokens were 75–80% cache reads. One run re-read 58.8M cache tokens over 203 turns,
+reaching 477k tokens of context, with 191k characters of `./mvnw … | tail -250` output and 48k
 characters of files read twice
 (`@.claude/decisions/0117-new-feature-cost-per-entry-scenario.md`).
 
@@ -365,7 +365,7 @@ report of § Failure mode.
 
 `/new-feature` runs this agent once per group, not once per spec. Every turn rereads the whole
 context, so carrying Block 1's reads and compile fixes into Block 4 is paid on every later
-turn: one run reached 427,889 tokens and USD 9.88 that way
+turn: one run reached a 427,889-token context and 531,362 billable tokens that way
 (`@.claude/decisions/0130-executor-split-by-block-group-implement-in-clean-session.md`).
 
 | Group | Blocks | Ends with |

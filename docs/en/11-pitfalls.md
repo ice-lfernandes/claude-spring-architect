@@ -413,8 +413,8 @@ rows. Seen in issue #111. Design:
 
 ### Mods
 
-**Below Claude Code 2.1.287 no mod loads, and nothing says so in the session.** The band,
-the spinner suffix and `/nerviz-doctor` are simply absent. `/arch-doctor`'s `Mods` line
+**Below Claude Code 2.1.287 no mod loads, and nothing says so in the session.** The band
+and `/nerviz-doctor` are simply absent. `/arch-doctor`'s `Mods` line
 compares the CLI on PATH with `mods.min_version`. In `claude -p`, VS Code, a cloud session or
 under `--safe-mode` they are absent by design: the guards they draw keep enforcing.
 

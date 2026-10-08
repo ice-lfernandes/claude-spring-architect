@@ -792,7 +792,7 @@ pre-flight, the `CHANGELOG.md` writes, the four mandated findings of the final r
 
 2. **Three delegations to `java-spring-boot-developer`, chained.** Every turn of the executor
    rereads its whole context, so one run carrying Block 1 into Block 4 pays for it on every
-   later turn — 427,889 tokens of context and USD 9.88 in the run that reopened this
+   later turn — 427,889 tokens of context and 531,362 billable tokens in the run that reopened this
    (`0130`). Each group starts again from the spec and what is on disk:
 
    | Group | Blocks | Checklist steps it ticks |

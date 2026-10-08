@@ -6,6 +6,10 @@
 - **State:** approved by Lucas Fernandes, on 2026-10-08
 - **Goes to the generated project:** no — axis 8 = meta-repo only
 
+> **Spinner — removed by `0134-audit-tokens-only-no-usd-pricing.md`.** `nerviz-cockpit` no
+> longer draws a spinner suffix: it showed the turn's cost in USD, and nothing in this
+> repository shows money any more. The band, the pane and the dialog stand.
+
 ## Interview
 
 Six explicit questions were put to the user, about the skill's own scope, one level up. Same

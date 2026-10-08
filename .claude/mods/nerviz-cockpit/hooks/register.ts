@@ -2,7 +2,6 @@
 //
 //   band     AbovePrompt: the open skill phase, its class and the paths it may write,
 //            from `java -jar .claude/hooks/ArchHook.jar guard status`
-//   spinner  Spinner: the phase and what the turn has cost so far
 //   doctor   /nerviz-doctor: runs `ArchHook.jar doctor` and shows it in a pane, no turn spent
 //   dialog   tool.call on Bash: when `guard` refused the command, holds the refusal behind two
 //            buttons — let Claude adapt, or stop the turn. The refusal stands either way
@@ -16,7 +15,8 @@
 // nothing breaks when it is absent. Allowed events, calls and programs: the `mods` block of
 // .claude/schemas/extensions.json. Tested against Claude Code 2.1.293.
 //
-// Design: .claude/decisions/0131-mods-in-architect-designer.md
+// Design: .claude/decisions/0131-mods-in-architect-designer.md. The spinner suffix, which showed
+// the turn's cost in USD, was removed by .claude/decisions/0134-audit-tokens-only-no-usd-pricing.md.
 //
 // Every hook that can gate an event ends in `.catch(($, e, next) => next(e))`: a hook that
 // throws then replays what the guards beneath already decided, or runs them once — never a
@@ -39,8 +39,6 @@ const NO_PHASE: Phase = { skills: [], cls: null, writeAllow: [], markers: [] }
 
 let phase: Phase = NO_PHASE
 let turnId: string | null = null
-let costAtTurnStart = 0
-let costNow = 0
 let doctor: string[] | null = null
 
 export const register: Register = (on) => {
@@ -68,18 +66,7 @@ export const register: Register = (on) => {
 
   on('turn.start', async ($, e, next) => {
     turnId = e.turnId
-    costAtTurnStart = await sessionCost($)
-    costNow = costAtTurnStart
     return next(e)
-  })
-
-  on('turn.step', async function* ($, e, next) {
-    const result = yield* next(e)
-    if (!e.agentId) {
-      costNow = await sessionCost($)
-      $.ui.invalidate('ui.render')
-    }
-    return result
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -156,12 +143,6 @@ export const register: Register = (on) => {
     })
     return theirs ? Box({ flexDirection: 'column', children: [mine, theirs] }) : mine
   })
-
-  on('ui.render', { component: 'Spinner' }, ($, e, next) => {
-    const label = spinnerLabel()
-    if (label === '') return next(e)
-    return next({ ...e, props: { ...e.props, suffix: e.props.suffix + ' ' + label } })
-  })
 }
 
 // ---- What the guard says ---------------------------------------------------
@@ -204,29 +185,13 @@ function question(deny: string): string {
   return 'guard refused this command: ' + first.trim() + '\nThe refusal stands. What should Claude do next?'
 }
 
-// ---- What the band and the spinner draw ------------------------------------
-
-async function sessionCost($: EngineInterface): Promise<number> {
-  try {
-    return (await $.session.usage()).cost?.usd ?? 0
-  } catch {
-    return 0
-  }
-}
+// ---- What the band draws -----------------------------------------------------
 
 function territory(): string {
   if (phase.writeAllow.length === 0) return 'nothing'
   const shown = phase.writeAllow.slice(0, TERRITORY_SHOWN).join(', ')
   const rest = phase.writeAllow.length - TERRITORY_SHOWN
   return rest > 0 ? shown + ' +' + rest : shown
-}
-
-function spinnerLabel(): string {
-  const parts: string[] = []
-  if (phase.skills.length > 0) parts.push(phase.skills[0] ?? '')
-  const spent = costNow - costAtTurnStart
-  if (turnId !== null && spent > 0) parts.push('turn $' + spent.toFixed(2))
-  return parts.length === 0 ? '' : '· ' + parts.join(' · ')
 }
 
 function lineColor(line: string): string | undefined {

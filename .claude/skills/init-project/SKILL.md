@@ -93,10 +93,9 @@ $ARGUMENTS
    java .claude/hooks/ArchHook.java audit genesis "<absolute path of the generated project>" <session id above>
    ```
 
-   It replaces Started, Finished, tokens and cost in the project's
+   It replaces Started, Finished and tokens in the project's
    `.claude/audit-usage/GENESIS.md` from this session's transcripts — this conversation since the
-   `/init-project` message and every agent run — priced from the project's `pricing.json`. Show
-   its four lines. A non-zero exit says why; report that line, and never write the values
+   `/init-project` message and every agent run. Show its three lines. A non-zero exit says why; report that line, and never write the values
    yourself. Before step 6, so the first commit carries the filled record.
 6. Chain `git-publish` once the report says the project was created, and only then, with
    `project: <absolute path of the generated project>` in its context. This skill is its only

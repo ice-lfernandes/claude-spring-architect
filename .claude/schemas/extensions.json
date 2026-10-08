@@ -148,30 +148,30 @@
 
   "audit": {
     "$comment": "Read by ArchHook.java `audit` mode. The audited set is not listed here: any name that resolves to .claude/skills/<n>/SKILL.md or .claude/agents/<n>.md is recorded, invoked by `/command` or by the model's own Skill/Agent call. Not frontmatter: it lives here because this file is the single owner of every list the hook reads. `redact` runs before the initial prompt, and the first line of each tool error, are written into the versioned .claude/audit-usage/ report — each `patterns` entry MUST expose the key part as group 1, the replacement keeps $1 and blanks the rest. Which pieces are NOT recorded is not listed here either: a class in `skill_classes` or `agent_classes` that declares `audited: false` leaves no report for any piece it lists — today `observer` (`audit-usage` reads the trail, `arch-doctor` reads the setup) and `ops` (`git-publish`: its own report would land after its commit). Three levels decide it, first boolean wins: a piece's own `overrides.<name>.audited` in its class, fixed here and out of the project's reach (`arch-adopt`, never audited); then the project's `project_overrides` file; then the class flag. Design: .claude/decisions/0035-auditoria-execucao-hook.md, .claude/decisions/0038-audit-trail-every-skill-and-agent.md, .claude/decisions/0085-audit-where-the-run-spent-and-english.md, .claude/decisions/0086-audit-exclusion-owned-by-the-class.md and .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
-    "$comment_project_overrides": "Resolved inside the trail directory, like pricing.json. One of the two files of `.claude/` a generated project writes for itself (the other is `plan_limits`): `export` never names it, so `/arch-adopt` never touches it. Shape: {\"skills\": {\"<name>\": true|false}, \"agents\": {\"<name>\": true|false}} — `false` takes a piece out of the trail with the semantics of `audited: false`, `true` puts back one its class leaves out. Absent file or absent name: the class decides, as before. `doctor` validates it strictly — any other key, a non-boolean, a name with no file, or a piece fixed by its class override fails by name: the file sets which pieces are audited and nothing else. Design: .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
+    "$comment_project_overrides": "Resolved inside the trail directory. One of the two files of `.claude/` a generated project writes for itself (the other is `plan_limits`): `export` never names it, so `/arch-adopt` never touches it. Shape: {\"skills\": {\"<name>\": true|false}, \"agents\": {\"<name>\": true|false}} — `false` takes a piece out of the trail with the semantics of `audited: false`, `true` puts back one its class leaves out. Absent file or absent name: the class decides, as before. `doctor` validates it strictly — any other key, a non-boolean, a name with no file, or a piece fixed by its class override fails by name: the file sets which pieces are audited and nothing else. Design: .claude/decisions/0111-audit-opt-out-owned-by-the-project.md",
     "project_overrides": "audited.json",
     "$comment_harness_prompts": "Prompts the harness injects on its own while a background agent's run is open — matched with find(), each one a regex. Not user intent: `audit prompt` neither closes, nor opens, nor overwrites the observer file on them, so the run keeps absorbing the agent's remaining events. `<task-notification>` is the agent's completion notice (decision 0041); `<agent-message` is its report, delivered through the runtime's one-shot hand-back (decision 0119). Both are undocumented runtime formats: a renamed shape closes runs early again, in silence — AuditRenderTest pins both.",
     "harness_prompts": ["^\\s*<task-notification>", "^\\s*<agent-message\\b"],
     "$comment_growth_top": "How many tool calls the report's `What grew the context` table lists, ranked by the tokens later requests re-read because of them; 0 keeps only the per-tool line of each piece. Every request rereads the whole context, so a result that enters early is paid on every later turn — the per-piece totals could not say which call that was, and each proposed cut to the executor was chosen blind (issue #111). Design: .claude/decisions/0132-audit-per-piece-cache-and-context-growth.md",
     "growth_top": 10,
-    "$comment_plans": "Read by `audit` (the run report's `Plan windows` section and `audit summary`) and by `doctor`. How many runs of a piece fit a plan's 5-hour and weekly windows, as if nothing else ran: the plan's budget for the window ÷ the run's USD cost, capped by the window's hours ÷ the run's active duration. Anthropic publishes no limit in tokens or dollars — only that Max gives 5x or 20x the usage of Pro per 5-hour session, and that paid plans add weekly limits on top with no multiplier stated. So the budget is the project's own reading, in the `plan_limits` file of the trail (owned by the project, never named by `export`, like `project_overrides`), for `budget_plan` only; every other plan is that budget × its multiplier, and a `null` multiplier prints `not published`. Re-read `plans_source` before changing a multiplier: a number that changes outside this repository is never written from memory (invariant 8). Design: .claude/decisions/0133-audit-plan-window-projection.md",
+    "$comment_plans": "Read by `audit` (the run report's `Plan windows` section and `audit summary`) and by `doctor`. How many runs of a piece fit a plan's 5-hour and weekly windows, as if nothing else ran: the plan's budget for the window ÷ the run's billable tokens (input + output + cache write), capped by the window's hours ÷ the run's active duration. Anthropic publishes no limit in tokens or dollars — only that Max gives 5x or 20x the usage of Pro per 5-hour session, and that paid plans add weekly limits on top with no multiplier stated. So the budget is the project's own reading, in billable tokens — the trail's only unit, model-blind on purpose (0134) — in the `plan_limits` file of the trail (owned by the project, never named by `export`, like `project_overrides`), for `budget_plan` only; every other plan is that budget × its multiplier, and a `null` multiplier prints `not published`. Re-read `plans_source` before changing a multiplier: a number that changes outside this repository is never written from memory (invariant 8). Design: .claude/decisions/0133-audit-plan-window-projection.md, unit by .claude/decisions/0134-audit-tokens-only-no-usd-pricing.md",
     "plans_source": "https://claude.com/pricing, read 2026-10-08",
     "plan_limits": "plan-limits.json",
     "budget_plan": "pro",
     "windows": {
-      "five_hour": {"label": "5 h", "hours": 5, "budget": "five_hour_usd"},
-      "weekly": {"label": "week", "hours": 168, "budget": "weekly_usd"}
+      "five_hour": {"label": "5 h", "hours": 5, "budget": "five_hour_tokens"},
+      "weekly": {"label": "week", "hours": 168, "budget": "weekly_tokens"}
     },
     "plans": {
       "pro": {"label": "Pro", "multipliers": {"five_hour": 1, "weekly": 1}},
       "max-5x": {"label": "Max 5x", "multipliers": {"five_hour": 5, "weekly": null}},
       "max-20x": {"label": "Max 20x", "multipliers": {"five_hour": 20, "weekly": null}}
     },
-    "$comment_genesis": "Read by `audit genesis <project> <session-id>`, which `/init-project` runs after `project-initializer` returns and before `git-publish`. `file` is the generated project's genesis record, relative to its root; `command` the skill whose `<command-name>` message marks Started in this session's transcript; `placeholders` the four literals step 8.6 of project-bootstrap leaves in the file and this mode replaces — Started, Finished (the moment it runs), the tokens of the main transcript and every subagent transcript from Started on, and their cost from the project's pricing.json. The model never writes those four values. Design: .claude/decisions/0123-lessons-learned-020-init-project-run.md",
+    "$comment_genesis": "Read by `audit genesis <project> <session-id>`, which `/init-project` runs after `project-initializer` returns and before `git-publish`. `file` is the generated project's genesis record, relative to its root; `command` the skill whose `<command-name>` message marks Started in this session's transcript; `placeholders` the three literals step 8.6 of project-bootstrap leaves in the file and this mode replaces — Started, Finished (the moment it runs), and the tokens of the main transcript and every subagent transcript from Started on — no cost, the trail prices nothing (0134). The model never writes those three values. Design: .claude/decisions/0123-lessons-learned-020-init-project-run.md",
     "genesis": {
       "file": ".claude/audit-usage/GENESIS.md",
       "command": "init-project",
-      "placeholders": {"started": "{{startIso}}", "finished": "{{endIso}}", "tokens": "{{tokens}}", "cost": "{{cost}}"}
+      "placeholders": {"started": "{{startIso}}", "finished": "{{endIso}}", "tokens": "{{tokens}}"}
     },
     "redact": {
       "patterns": [
@@ -559,8 +559,7 @@
 
     "copy": [
       { "$comment": "`verbatim`: copied byte for byte, skipping `transform`. The jar below carries the SHA-256 of THIS source, and `schema` compares the two inside the generated project too — a citation cut here would make every exported jar read as stale. Design: .claude/decisions/0075-precompiled-hook-jar.md", "from": ".claude/hooks/ArchHook.java", "to": ".claude/hooks/ArchHook.java", "verbatim": true },
-      { "from": ".claude/schemas/extensions.json", "to": ".claude/schemas/extensions.json" },
-      { "from": ".claude/skills/project-bootstrap/templates/audit-pricing.json.example", "to": ".claude/audit-usage/pricing.json" }
+      { "from": ".claude/schemas/extensions.json", "to": ".claude/schemas/extensions.json" }
     ],
 
     "$comment_binary": "Copied as bytes, never read as text, never transformed. What every hook registration launches (`java -jar`), so a project that lacked it would have every hook exit 1 — which does not block. Design: .claude/decisions/0075-precompiled-hook-jar.md",
@@ -605,7 +604,8 @@
       ".claude/skills/java-patterns/templates/State.java.example",
       ".claude/skills/java-patterns/templates/Strategy.java.example",
       ".claude/skills/java-patterns/templates/TemplateMethod.java.example",
-      ".claude/skills/java-patterns/templates/Visitor.java.example"
+      ".claude/skills/java-patterns/templates/Visitor.java.example",
+      ".claude/audit-usage/pricing.json"
     ],
 
     "ensure_dirs": [".claude/audit-usage"],

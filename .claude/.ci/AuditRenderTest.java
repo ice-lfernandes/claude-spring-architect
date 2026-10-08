@@ -3,8 +3,9 @@
 // CI test: proves `ArchHook.jar audit` renders "where the run spent" from the transcripts —
 // tool calls per piece, including a subagent's own transcript; the most expensive turns; the
 // peak context; each tool error's first line, redacted — writes the matching ledger fields,
-// that `audit summary` aggregates them next to a legacy pt-BR ledger row, that a model with
-// no price is named in the report header and by `doctor` (lessons-learned-018), and that an
+// that `audit summary` aggregates them next to a legacy pt-BR ledger row, that the trail
+// measures billable tokens only — no cost anywhere, a leftover pricing.json ignored, the model
+// named per piece (decision 0134) — and that an
 // observer — a piece whose class declares `audited: false` — leaves no report of its own, and
 // that a project's audited.json sets a piece on or off over its class, except arch-adopt,
 // fixed off by its own class override (decision 0111), and that a prompt the harness injects —
@@ -12,7 +13,8 @@
 // and that each piece carries its cache split and its agent call's description, and the report
 // ranks the tool calls whose results later requests re-read the most (decision 0132),
 // and that runs per plan window are the project's Pro budget × each plan's multiplier ÷ the run's
-// cost, capped by the window's hours, in the report and in `summary` (decision 0133).
+// billable tokens, capped by the window's hours, in the report and in `summary` (decisions 0133,
+// 0134).
 //
 // Why this test exists: every number here is parsed out of a transcript layout that is
 // observed, not documented, and a render that throws exits 0 through `main`'s catch — the
@@ -46,15 +48,16 @@ public class AuditRenderTest {
         Path trail = repo.resolve(".claude/audit-usage");
         Files.createDirectories(trail);
 
-        // A row written before 0085: Portuguese status, formatted pt-BR cost, no cost_usd.
+        // A row written before 0085: Portuguese status, formatted pt-BR cost — read for its
+        // tokens and status, its cost never shown (0134).
         Files.writeString(trail.resolve("history.jsonl"),
                 "{\"e\":\"run\",\"skill\":\"demo-skill\",\"kind\":\"skill\",\"origin\":\"user\","
                 + "\"start\":\"2026-01-01T00:00:00Z\",\"duration_ms\":\"1000\",\"status\":\"❌ erro\","
                 + "\"tokens_billable\":\"10\",\"tokens_self\":\"10\",\"cost\":\"USD 1.234,56\","
                 + "\"files\":\"0\",\"failures\":\"0\",\"report\":\".claude/audit-usage/old--demo-skill.md\"}\n");
 
-        // Prices one model, not the one the fixture runs on: the report must name the gap,
-        // not send the reader to a file that looks complete (lessons-learned-018).
+        // A project generated before 0134 keeps a pricing.json until its next /arch-adopt:
+        // nothing may read it.
         Files.writeString(trail.resolve("pricing.json"), "{\"currency\":\"USD\",\"per\":1000000,"
                 + "\"models\":{\"other-model\":{\"input\":1,\"output\":1,\"cache_read\":1,\"cache_write\":1}}}");
 
@@ -118,9 +121,12 @@ public class AuditRenderTest {
         must(md, "| 2 | Auth | Credential / scope? | password=[REDACTED] |", "asked: redacted, pipe made table-safe");
         mustNot(md, "hunter2x", "no secret from an answer reaches the versioned report");
 
-        String gap = "— (no price for `fixture-model` in `.claude/audit-usage/pricing.json`)";
-        must(md, "| 💰 Estimated cost | " + gap + " |", "header shows the cost cell, naming the unpriced model (018)");
-        must(md, "| 💰 estimated cost | " + gap + " |", "aggregate reuses the same cell");
+        mustNot(md, "💰", "no cost cell anywhere in the report (0134)");
+        mustNot(md, "USD", "no amount in the report, though a pricing.json is in the trail");
+        must(md, "| Piece | Origin | 🤖 Model | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | ⏱️ Duration |",
+                "per piece: the model column replaces the cost column (0134)");
+        must(md, "| `/demo-skill` | user | fixture-model | ", "per piece: the root's own model");
+        must(md, "| `🤖 demo-agent (work)` | nested | fixture-model | ", "per piece: the agent's own model");
         must(md, "## 🪟 Plan windows", "plan windows section rendered (0133)");
         must(md, "No `.claude/audit-usage/plan-limits.json` — no projection", "no plan-limits file: the report says so, projects nothing");
 
@@ -129,15 +135,18 @@ public class AuditRenderTest {
         must(history, "\"tool_calls_self\":\"Bash:1,Edit:1,Read:1\"", "history: root's own tool calls");
         must(history, "\"peak_context\":\"8010\"", "history: run peak");
         must(history, "\"status\":\"✅ success\"", "history: English status");
+        mustNot(history.substring(history.indexOf('\n') + 1), "cost", "history: no cost field written (0134)");
         must(Files.readString(trail.resolve("nodes.jsonl")), "\"tool_calls\":\"Grep:2\"", "nodes: agent's own tool calls");
+        mustNot(Files.readString(trail.resolve("nodes.jsonl")), "cost", "nodes: no cost field written (0134)");
 
         String doctor = runMode(hook, repo, "doctor");
-        must(doctor, "no price for fixture-model in pricing.json", "doctor names a recent model with no price (018)");
+        must(doctor, "✅ 1 execution(s) recorded", "doctor: the Audit line counts the reports, nothing else");
+        mustNot(doctor, "pricing", "doctor: pricing.json is neither required nor read (0134)");
 
         String summary = run(hook, repo, "summary", "");
         must(summary, "closed runs: 2", "summary reads the legacy row and the new one");
         must(summary, "failure rate: 1/2", "legacy Portuguese status still classified by its emoji");
-        must(summary, "USD 1234.56", "legacy pt-BR cost parsed, not multiplied by a hundred");
+        mustNot(summary, "USD", "summary: no cost, not even a legacy row's (0134)");
         must(summary, "Where the pieces spent", "summary aggregates tool calls per piece");
         must(summary, "Grep 2", "summary counts the agent's calls");
 
@@ -244,11 +253,11 @@ public class AuditRenderTest {
             System.err.println("❌ " + failures + " check(s) failed — `audit` is NOT rendering where the run"
                     + " spent, is leaking an unredacted error into the versioned trail, or is recording"
                     + " a piece its class, its fixed override or the project's audited.json takes out of the trail,"
-                    + " or is closing a run on a prompt the harness injected, or is misplacing what grew the context, or is projecting a plan window wrong.");
+                    + " or is closing a run on a prompt the harness injected, or is misplacing what grew the context, or is projecting a plan window wrong, or is showing a cost the trail no longer computes.");
             System.exit(1);
         }
         System.out.println("✅ audit: tool calls, top turns, peak context and redacted errors rendered;"
-                + " ledgers and summary carry them next to legacy rows; cache split, context growth and plan windows per piece.");
+                + " ledgers and summary carry them next to legacy rows; model, cache split, context growth and plan windows per piece, in tokens only.");
     }
 
     /**
@@ -295,8 +304,8 @@ public class AuditRenderTest {
             }
         }
         if (md == null) { check(false, "growth: a report names the `group tests` agent call"); return; }
-        must(md, "| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write |", "per piece: cache columns");
-        must(md, "| `🤖 demo-agent (group tests)` | nested | 7,900 | 20,050 | 7,570 |",
+        must(md, "| Piece | Origin | 🤖 Model | 🧮 Own billable | ♻️ Cache read | 💾 Cache write |", "per piece: cache columns");
+        must(md, "| `🤖 demo-agent (group tests)` | nested | fixture-model | 7,900 | 20,050 | 7,570 |",
                 "per piece: the agent's own cache read and write, labelled by its call's description");
         must(md, "### 📈 What grew the context", "growth section rendered");
         must(md, "| 1 | `🤖 demo-agent (group tests)` | Read | `src/Big.java` | 5,000 | 3 | 15,000 |",
@@ -312,25 +321,24 @@ public class AuditRenderTest {
     }
 
     /**
-     * Runs per plan window, from a run's cost and a Pro budget the project wrote — 0133.
-     * Budget: Pro 5 h USD 10, week USD 50; multipliers from extensions.json (Max 5x ×5,
-     * Max 20x ×20, weekly for Max not published). A run of exactly USD 2 (two cache-write
-     * tokens at USD 1 each): Pro 5 per 5 h and 25 per week, Max 5x 25, Max 20x 100. In the
-     * summary, two runs of USD 0.25 and 0.75 and one minute each — mean USD 0.50: Pro 20 and
-     * 100, Max 5x 100, and Max 20x capped by time, 300 one-minute runs in 5 h, not 400.
+     * Runs per plan window, from a run's billable tokens and a Pro budget the project wrote —
+     * 0133, in tokens since 0134. Budget: Pro 5 h 1,000 tokens, week 5,000; multipliers from
+     * extensions.json (Max 5x ×5, Max 20x ×20, weekly for Max not published). A run of exactly
+     * 200 billable tokens: Pro 5 per 5 h and 25 per week, Max 5x 25, Max 20x 100. In the
+     * summary, two runs of 25 and 75 tokens and one minute each — mean 50: Pro 20 and 100,
+     * Max 5x 100, and Max 20x capped by time, 300 one-minute runs in 5 h, not 400.
      */
     static void plans(Path hook, Path repo, Path trail, Path transcripts) throws Exception {
-        Files.writeString(trail.resolve("pricing.json"), "{\"currency\":\"USD\",\"per\":1000000,\"models\":{"
-                + "\"other-model\":{\"input\":1,\"output\":1,\"cache_read\":1,\"cache_write\":1},"
-                + "\"plan-model\":{\"input\":0,\"output\":0,\"cache_read\":0,\"cache_write\":1000000}}}");
         Files.writeString(trail.resolve("plan-limits.json"),
-                "{\"max-5x\":{},\"pro\":{\"five_hour_usd\":-1,\"monthly_usd\":3}}");
+                "{\"max-5x\":{},\"pro\":{\"five_hour_tokens\":-1,\"monthly_tokens\":3,\"weekly_usd\":50}}");
         String bad = runMode(hook, repo, "doctor");
         must(bad, "`max-5x` — only `pro` is read", "doctor: a plan other than the budget plan is refused by name");
-        must(bad, "`pro.five_hour_usd` must be a number above 0, or null", "doctor: a non-positive budget is refused");
-        must(bad, "`pro.monthly_usd` — only five_hour_usd, weekly_usd are read", "doctor: an unknown field is refused");
-        Files.writeString(trail.resolve("plan-limits.json"), "{\"pro\":{\"five_hour_usd\":10,\"weekly_usd\":50}}");
-        must(runMode(hook, repo, "doctor"), "✅ pro five_hour_usd 10, pro weekly_usd 50", "doctor lists the budgets set");
+        must(bad, "`pro.five_hour_tokens` must be a number above 0, or null", "doctor: a non-positive budget is refused");
+        must(bad, "`pro.monthly_tokens` — only five_hour_tokens, weekly_tokens are read", "doctor: an unknown field is refused");
+        must(bad, "`pro.weekly_usd` — only five_hour_tokens, weekly_tokens are read",
+                "doctor: a budget written in USD before 0134 is refused by name");
+        Files.writeString(trail.resolve("plan-limits.json"), "{\"pro\":{\"five_hour_tokens\":1000,\"weekly_tokens\":5000}}");
+        must(runMode(hook, repo, "doctor"), "✅ pro five_hour_tokens 1000, pro weekly_tokens 5000", "doctor lists the budgets set");
 
         Path main = transcripts.resolve("s13.jsonl");
         String tp = main.toString().replace("\\", "\\\\");
@@ -338,35 +346,35 @@ public class AuditRenderTest {
                 + "\"transcript_path\":\"" + tp + "\"}");
         Files.writeString(main, "{\"type\":\"assistant\",\"timestamp\":\"" + at(40) + "\",\"message\":{\"model\":"
                 + "\"plan-model\",\"id\":\"p1\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"…\"}],"
-                + "\"usage\":" + usage(0, 0, 0, 2) + "}}\n");
+                + "\"usage\":" + usage(0, 0, 0, 200) + "}}\n");
         run(hook, repo, "close", "{\"session_id\":\"s13\",\"transcript_path\":\"" + tp + "\"}");
         String md = null;
         try (var s = Files.list(trail)) {
             for (Path f : s.filter(f -> f.getFileName().toString().endsWith("--demo-skill.md")).toList()) {
                 String c = Files.readString(f);
-                if (c.contains("USD 2.00 per run")) md = c;
+                if (c.contains("200 billable tokens per run")) md = c;
             }
         }
-        if (md == null) { check(false, "plans: a report prices the USD 2.00 run and projects it"); return; }
+        if (md == null) { check(false, "plans: a report projects the 200-token run"); return; }
         must(md, "| Plan | 5 h | week |", "plans: one column per window");
-        must(md, "| Pro | 5 · budget | 25 · budget |", "plans: Pro = its own budget ÷ the run's cost");
+        must(md, "| Pro | 5 · budget | 25 · budget |", "plans: Pro = its own budget ÷ the run's billable tokens");
         must(md, "| Max 5x | 25 · budget | not published |", "plans: Max 5x = Pro × 5 on 5 h; weekly not published");
         must(md, "| Max 20x | 100 · budget | not published |", "plans: Max 20x = Pro × 20 on 5 h");
 
         Files.writeString(trail.resolve("history.jsonl"), Files.readString(trail.resolve("history.jsonl"))
-                + planRow("0.25") + planRow("0.75"));
+                + planRow(25) + planRow(75));
         String summary = run(hook, repo, "summary", "");
         must(summary, "### Plan windows", "summary: plan windows table");
-        must(summary, "| Piece | Runs | Mean cost | Mean active | Pro 5 h | Pro week | Max 5x 5 h | Max 20x 5 h |",
+        must(summary, "| Piece | Runs | Mean billable | Mean active | Pro 5 h | Pro week | Max 5x 5 h | Max 20x 5 h |",
                 "summary: a column per plan × window with a published multiplier, none for Max weekly");
-        must(summary, "| 📘 plan-skill | 2 | USD 0.50 | 1m00s | 20 · budget | 100 · budget | 100 · budget | 300 · time |",
+        must(summary, "| 📘 plan-skill | 2 | 50 | 1m00s | 20 · budget | 100 · budget | 100 · budget | 300 · time |",
                 "summary: mean per piece, and the window's hours cap a run that budget alone would allow more of");
     }
 
-    static String planRow(String cost) {
+    static String planRow(long tokens) {
         return "{\"e\":\"run\",\"skill\":\"plan-skill\",\"kind\":\"skill\",\"origin\":\"user\","
                 + "\"start\":\"2026-02-01T00:00:00Z\",\"duration_ms\":\"60000\",\"status\":\"✅ success\","
-                + "\"tokens_billable\":\"1\",\"tokens_self\":\"1\",\"cost_usd\":\"" + cost + "\",\"cost_self_usd\":\"" + cost + "\","
+                + "\"tokens_billable\":\"" + tokens + "\",\"tokens_self\":\"" + tokens + "\","
                 + "\"files\":\"0\",\"failures\":\"0\",\"report\":\".claude/audit-usage/x--plan-skill.md\"}\n";
     }
 

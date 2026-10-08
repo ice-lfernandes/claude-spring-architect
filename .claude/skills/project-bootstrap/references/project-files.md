@@ -106,8 +106,7 @@ What it writes, per the `export` block of `@.claude/schemas/extensions.json`:
   `use-case-design/examples/`, stays behind.
 - **The development agents**, whole.
 - **`ArchHook.java`, `schemas/extensions.json`, `settings.json`**, plus
-  `.claude/audit-usage/` with its `pricing.json` and the one `.gitignore` line the trail
-  needs.
+  `.claude/audit-usage/` and the one `.gitignore` line the trail needs.
 - **`.claude/.arch-provenance.json`** — where this `.claude/` came from (source, ref,
   commit, blueprint) and a digest per written file. `arch-doctor` recomputes those
   digests and names anything edited since, which is what a later update would overwrite.
@@ -162,12 +161,8 @@ prose and a real run broke anyway: while a design skill runs, nothing is written
 `approved → implemented` status edit. The lists are data in the `guard` block of the
 `extensions.json` that step 6.6 copied. No `guard` block, no guard.
 
-**`pricing.json` ages on its own.** It ships pre-filled with the official per-model rates
-as of the date in its own `$comment`, never from memory — same discipline as invariant 8.
-A model missing from it prints `— (no price for <model> in pricing.json)` instead of a
-confident `US$ 0.00` nobody checked, and `doctor` names it once it appears in the last 15
-runs; a rate that has since changed prints nothing at all. Tell the user, in the final report, to
-compare that date against
-`platform.claude.com/docs/en/about-claude/pricing` and update the file if it has gone
-stale; it does not refresh itself.
+**The trail counts tokens, never money.** Every report, ledger row and GENESIS figure is
+billable tokens, with the model named per piece; no price table ships, so a model Anthropic
+releases later has nothing to be missing from (decision 0134). Cost per session is the
+runtime's own `/cost`.
 
