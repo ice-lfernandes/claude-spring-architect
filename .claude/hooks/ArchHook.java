@@ -17,7 +17,8 @@
 //   schema  Pre/PostToolUse + Stop — frontmatter, injection paths, skill bodies (blocks)
 //   audit   lifecycle   — execution trail of every project skill and agent (never blocks)
 //   guard   PreToolUse  — a skill writes only its class's territory, approved specs
-//                         frozen, build skills unreachable mid-design       (blocks)
+//                         frozen, build skills unreachable mid-design       (blocks);
+//                         `guard status` prints the open phase for the cockpit mod
 //   compose manual      — every compose service up, no foreign container on our ports,
 //                         compose image tags equal to the ones src/test pins (never blocks)
 //   context SubagentStart (generated project only) — injects the pattern catalog into
@@ -462,6 +463,8 @@ public class ArchHook {
             err("  Hooks .............. no .claude/settings.json — no hook registered");
         }
 
+        doctorMods();
+
         provenance();
 
         ComposeReport comp = composeReport();
@@ -687,6 +690,60 @@ public class ArchHook {
             }
         }
         return found;
+    }
+
+    /**
+     * The `Mods` line: how many mods sit under `mods.root`, whether `schema` passes them, and
+     * whether the Claude Code on PATH is new enough to load them (`mods.min_version`). A CLI
+     * below the floor fails nothing — a mod is a layer over the settings hooks, which keep
+     * enforcing — but every mod here is then silently absent, which is what the line says.
+     * Silent where `root` does not exist; never in `doctor.gate.labels`, since which CLI a
+     * machine runs is machine state. Design: `.claude/decisions/0131-mods-in-architect-designer.md`.
+     */
+    static void doctorMods() {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        Map<String, Object> cfg = sch == null ? null : asMap(sch.get("mods"));
+        String root = cfg == null ? null : asStr(cfg.get("root"));
+        if (root == null || !Files.isDirectory(ROOT.resolve(root))) return;
+        long mods;
+        try (Stream<Path> s = Files.list(ROOT.resolve(root))) {
+            mods = s.filter(Files::isDirectory)
+                    .filter(p -> !p.getFileName().toString().startsWith(".")).count();
+        } catch (IOException e) {
+            mods = 0;
+        }
+        List<String> errs = new ArrayList<>();
+        checkMods(sch, errs);
+        String min = orEmpty(asStr(cfg.get("min_version")));
+        String version = null;
+        try {
+            Proc p = runTimed(15, WINDOWS ? "claude.cmd" : "claude", "--version");
+            Matcher m = Pattern.compile("(\\d+\\.\\d+\\.\\d+)").matcher(String.join(" ", p.out()));
+            if (p.exit() == 0 && m.find()) version = m.group(1);
+        } catch (Exception ignored) { }
+        String head = mods + " mod(s) in " + root;
+        if (!errs.isEmpty()) {
+            report("Mods", false, "", head + " — " + errs.size()
+                    + " problem(s), run `java ArchHook.java schema`");
+        } else if (version == null) {
+            err("  Mods .............. ⚪ " + head + " — no `claude` on PATH, version unchecked");
+        } else {
+            report("Mods", compareVersions(version, min) >= 0,
+                    head + " — Claude Code " + version + " loads them",
+                    head + " — Claude Code " + version + " is below " + min
+                            + ", so none loads; run `claude update`");
+        }
+    }
+
+    /** Negative, zero or positive, comparing dotted numeric versions part by part. */
+    static int compareVersions(String a, String b) {
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int u = i < x.length ? Integer.parseInt(x[i].replaceAll("\\D", "0")) : 0;
+            int v = i < y.length ? Integer.parseInt(y[i].replaceAll("\\D", "0")) : 0;
+            if (u != v) return Integer.compare(u, v);
+        }
+        return 0;
     }
 
     static void report(String label, boolean ok, String yes, String no) {
@@ -2498,12 +2555,17 @@ public class ArchHook {
             sweep(sch, errors);                       // Stop, or manual invocation
         } else {
             String rel = relative(Paths.get(file));
-            // Write brings the whole file in tool_input.content and is validated before
-            // writing. Edit brings old_string/new_string — there only disk works.
-            String content = in != null ? asStr(in.get("content")) : null;
-            if (content == null) content = readOrNull(Paths.get(file));
-            if (content == null) return;              // file deleted or unreadable
-            checkOne(sch, rel, content, errors);
+            String modsRoot = asStr(get(sch, "mods", "root"));
+            if (modsRoot != null && rel.startsWith(modsRoot + "/")) {
+                checkMods(sch, errors);               // a mod is judged whole, from disk
+            } else {
+                // Write brings the whole file in tool_input.content and is validated before
+                // writing. Edit brings old_string/new_string — there only disk works.
+                String content = in != null ? asStr(in.get("content")) : null;
+                if (content == null) content = readOrNull(Paths.get(file));
+                if (content == null) return;          // file deleted or unreadable
+                checkOne(sch, rel, content, errors);
+            }
         }
 
         if (file == null) {
@@ -2513,6 +2575,7 @@ public class ArchHook {
             checkExportManifest(sch, errors);
             checkSourceBlock(sch, errors);
             checkMigrations(sch, errors);
+            checkMods(sch, errors);
             String jarProblem = hookJarProblem(asMap(sch.get("hook_build")));
             if (jarProblem != null) errors.add("  " + jarProblem);
         }
@@ -2527,6 +2590,254 @@ public class ArchHook {
                     + "/references/frontmatter-fields.md");
             System.exit(2);
         }
+    }
+
+    // ── mods ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Every mod under `mods.root` against the `mods` block: the local marketplace lists each
+     * mod directory by relative path and nothing else, `.claude/settings.json` registers that
+     * marketplace as a `directory` source and enables each mod, and each mod has a manifest
+     * named after its directory, one hooks module, at least one test, and a module that hooks
+     * only known events, ends every `gating_events` hook in `.catch(...)`, calls none of
+     * `forbidden_calls`, and starts no program outside `process_allow`. Each
+     * `mods.deny_markers` entry must still appear in this file.
+     *
+     * <p>Extension of the existing `schema` mode (Form 7c rules, invariant 10 — every list is
+     * read from the block), motivated by axis 17 of `claude-code-architect-designer`: a mod
+     * that breaks any of these loads half-way or not at all, and the runtime says so only in a
+     * debug log nobody reads; `claude plugin validate` catches part of it, but only on a
+     * machine with the CLI. The closest rejected form was CI alone — it never runs inside a
+     * session, where a broken mod is noticed. Silent where `root` does not exist, which is
+     * every generated project. Design: `.claude/decisions/0131-mods-in-architect-designer.md`.
+     */
+    static void checkMods(Map<String, Object> sch, List<String> errors) {
+        Map<String, Object> cfg = asMap(sch.get("mods"));
+        if (cfg == null) return;
+        String root = orEmpty(asStr(cfg.get("root")));
+        Path dir = ROOT.resolve(root);
+        if (root.isEmpty() || !Files.isDirectory(dir)) return;
+        String block = SCHEMA_FILE + " › mods";
+
+        List<String> onDisk = new ArrayList<>();
+        try (Stream<Path> s = Files.list(dir)) {
+            s.filter(Files::isDirectory).map(p -> p.getFileName().toString())
+                    .filter(n -> !n.startsWith(".")).sorted().forEach(onDisk::add);
+        } catch (IOException e) {
+            errors.add("  " + root + " — unreadable: " + e.getMessage());
+            return;
+        }
+
+        String market = orEmpty(asStr(cfg.get("marketplace")));
+        String marketRel = root + "/.claude-plugin/marketplace.json";
+        Map<String, Object> mkt = asMap(Json.parse(readOrNull(ROOT.resolve(marketRel))));
+        if (mkt == null) {
+            errors.add("  " + marketRel + " — missing or invalid JSON. It is what registers the"
+                    + " mods here as the `" + market + "` marketplace (" + block + ")");
+        } else {
+            if (!market.equals(asStr(mkt.get("name")))) {
+                errors.add("  " + marketRel + " — `name` must be `" + market + "`, the id"
+                        + " .claude/settings.json enables each mod under (" + block + ".marketplace)");
+            }
+            Set<String> listed = new LinkedHashSet<>();
+            for (Object o : asList(mkt.get("plugins"))) {
+                Map<String, Object> pl = asMap(o);
+                String name = pl == null ? null : asStr(pl.get("name"));
+                if (name == null) continue;
+                listed.add(name);
+                if (!("./" + name).equals(asStr(pl.get("source")))) {
+                    errors.add("  " + marketRel + " — `" + name + "` must have `source: \"./"
+                            + name + "\"`: a relative path is what loads the mod in place");
+                }
+                if (!onDisk.contains(name)) {
+                    errors.add("  " + marketRel + " — lists `" + name + "`, which is no directory"
+                            + " under " + root);
+                }
+            }
+            for (String name : onDisk) {
+                if (!listed.contains(name)) {
+                    errors.add("  " + root + "/" + name + " — not listed in " + marketRel
+                            + "; it never loads");
+                }
+            }
+        }
+
+        Map<String, Object> settings = asMap(Json.parse(readOrNull(ROOT.resolve(".claude/settings.json"))));
+        Map<String, Object> src = asMap(get(settings, "extraKnownMarketplaces", market, "source"));
+        String srcPath = src == null ? null : orEmpty(asStr(src.get("path"))).replaceFirst("^\\./", "");
+        if (src == null || !"directory".equals(asStr(src.get("source"))) || !root.equals(srcPath)) {
+            errors.add("  .claude/settings.json — `extraKnownMarketplaces." + market + "` must be"
+                    + " `{ \"source\": { \"source\": \"directory\", \"path\": \"./" + root + "\" } }`;"
+                    + " without it no mod here loads");
+        }
+        for (String name : onDisk) {
+            if (!Boolean.TRUE.equals(get(settings, "enabledPlugins", name + "@" + market))) {
+                errors.add("  .claude/settings.json — `enabledPlugins` lacks `\"" + name + "@"
+                        + market + "\": true`; the mod is registered but off");
+            }
+            checkMod(sch, cfg, root + "/" + name, name, errors);
+        }
+
+        String hookSource = Optional.ofNullable(asStr(get(sch, "hook_build", "source")))
+                .orElse(".claude/hooks/ArchHook.java");
+        String source = orEmpty(readOrNull(ROOT.resolve(hookSource)));
+        for (String marker : asStrList(cfg.get("deny_markers"))) {
+            if (!source.contains(marker)) {
+                errors.add("  " + block + ".deny_markers — `" + marker + "` no longer appears in "
+                        + hookSource + "; the cockpit would stop recognizing that refusal."
+                        + " Update the marker to the message's new wording");
+            }
+        }
+    }
+
+    /** One mod directory: manifest, hooks module, tests, and the module's own source. */
+    static void checkMod(Map<String, Object> sch, Map<String, Object> cfg, String rel, String name,
+                         List<String> errors) {
+        Path dir = ROOT.resolve(rel);
+        Map<String, Object> manifest = asMap(Json.parse(readOrNull(dir.resolve(".claude-plugin/plugin.json"))));
+        if (manifest == null) {
+            errors.add("  " + rel + "/.claude-plugin/plugin.json — missing or invalid JSON");
+        } else if (!name.equals(asStr(manifest.get("name")))) {
+            errors.add("  " + rel + "/.claude-plugin/plugin.json — `name` must be `" + name
+                    + "`, the directory's name");
+        }
+        if (name.startsWith("claude-")) {
+            errors.add("  " + rel + " — a `claude-` name reads as Anthropic's;"
+                    + " `claude plugin validate` refuses it");
+        }
+
+        Map<String, Object> hooks = asMap(Json.parse(readOrNull(dir.resolve("hooks/hooks.json"))));
+        List<String> modules = hooks == null ? List.of() : asStrList(hooks.get("modules"));
+        if (modules.size() != 1) {
+            errors.add("  " + rel + "/hooks/hooks.json — needs `\"modules\": [\"./register.ts\"]`,"
+                    + " exactly one entry; without it the plugin is no mod");
+            return;
+        }
+        String module = rel + "/hooks/" + modules.get(0).replaceFirst("^\\./", "");
+        String ext = module.contains(".") ? module.substring(module.lastIndexOf('.')) : "";
+        if (!asStrList(cfg.get("module_extensions")).contains(ext)) {
+            errors.add("  " + module + " — `" + ext + "` is not one of "
+                    + asStrList(cfg.get("module_extensions")) + " (" + SCHEMA_FILE
+                    + " › mods.module_extensions)");
+        }
+        String code = readOrNull(ROOT.resolve(module));
+        if (code == null) {
+            errors.add("  " + rel + "/hooks/hooks.json — names " + module + ", which does not exist");
+            return;
+        }
+
+        boolean tested = false;
+        Path tests = dir.resolve(orEmpty(asStr(cfg.get("tests_dir"))));
+        if (Files.isDirectory(tests)) {
+            try (Stream<Path> s = Files.list(tests)) {
+                tested = s.anyMatch(p -> p.getFileName().toString().matches(".*\\.test\\.tsx?$"));
+            } catch (IOException ignored) { }
+        }
+        if (!tested) {
+            errors.add("  " + rel + " — no *.test.ts under " + asStr(cfg.get("tests_dir"))
+                    + "/; `claude plugin test` would prove nothing");
+        }
+
+        checkModSource(sch, cfg, module, stripJsComments(code), errors);
+    }
+
+    /** The hooks module's source, comments blanked: events, `.catch`, calls, programs. */
+    static void checkModSource(Map<String, Object> sch, Map<String, Object> cfg, String module,
+                               String code, List<String> errors) {
+        List<String> events = asStrList(cfg.get("events"));
+        List<String> classic = new ArrayList<>(asStrList(get(sch, "settings", "hook_events")));
+        classic.addAll(asStrList(get(sch, "settings", "hook_events_extra")));
+        List<String> gating = asStrList(cfg.get("gating_events"));
+
+        Matcher on = Pattern.compile("\\bon\\(\\s*(['\"`])([^'\"`]+)\\1").matcher(code);
+        while (on.find()) {
+            String event = on.group(2);
+            boolean known = events.contains(event)
+                    || (event.startsWith("classic.") && classic.contains(event.substring(8)));
+            if (!known) {
+                errors.add("  " + module + " — `on('" + event + "')`: no such event; it never"
+                        + " fires. Known: " + SCHEMA_FILE + " › mods.events, and classic.<Event>"
+                        + " for settings.hook_events");
+            }
+            if (gating.contains(event)) {
+                int close = closingParen(code, code.indexOf('(', on.start()));
+                String after = close < 0 ? "" : code.substring(close + 1).stripLeading();
+                if (!after.startsWith(".catch(")) {
+                    errors.add("  " + module + " — the `" + event + "` hook has no `.catch(...)`:"
+                            + " a hook that throws is skipped, and with it what it was holding."
+                            + " End it in `.catch(($, e, next) => next(e))` ("
+                            + SCHEMA_FILE + " › mods.gating_events)");
+                }
+            }
+        }
+
+        for (String call : asStrList(cfg.get("forbidden_calls"))) {
+            if (code.contains(call + "(")) {
+                errors.add("  " + module + " — calls `" + call + "`, which a mod here never does ("
+                        + SCHEMA_FILE + " › mods.forbidden_calls)");
+            }
+        }
+
+        List<String> programs = asStrList(cfg.get("process_allow"));
+        Matcher run = Pattern.compile("\\$\\.process\\.run\\(\\s*(\\[\\s*(['\"])([^'\"]*)\\2)?").matcher(code);
+        while (run.find()) {
+            String program = run.group(3);
+            if (program == null || !programs.contains(program)) {
+                errors.add("  " + module + " — `$.process.run` starts "
+                        + (program == null ? "a program not written as a string literal" : "`" + program + "`")
+                        + "; only " + programs + " (" + SCHEMA_FILE + " › mods.process_allow)");
+            }
+        }
+    }
+
+    /**
+     * `code` with every `//` and `/* *\/` comment replaced by spaces, string and template
+     * literals left alone — so a word in a comment never reads as a call, and offsets hold.
+     */
+    static String stripJsComments(String code) {
+        StringBuilder b = new StringBuilder(code);
+        int i = 0;
+        while (i < b.length()) {
+            char c = b.charAt(i);
+            if (c == '\'' || c == '"' || c == '`') {
+                i = skipString(code, i) + 1;
+            } else if (c == '/' && i + 1 < b.length() && b.charAt(i + 1) == '/') {
+                while (i < b.length() && b.charAt(i) != '\n') b.setCharAt(i++, ' ');
+            } else if (c == '/' && i + 1 < b.length() && b.charAt(i + 1) == '*') {
+                int end = code.indexOf("*/", i + 2);
+                end = end < 0 ? b.length() : end + 2;
+                while (i < end) { if (b.charAt(i) != '\n') b.setCharAt(i, ' '); i++; }
+            } else {
+                i++;
+            }
+        }
+        return b.toString();
+    }
+
+    /** Index of the quote closing the string literal that opens at `start`, or the end. */
+    static int skipString(String code, int start) {
+        char q = code.charAt(start);
+        int i = start + 1;
+        while (i < code.length()) {
+            char c = code.charAt(i);
+            if (c == '\\') { i += 2; continue; }
+            if (c == q) return i;
+            i++;
+        }
+        return code.length() - 1;
+    }
+
+    /** Index of the `)` matching the `(` at `open`, skipping string literals; -1 when none. */
+    static int closingParen(String code, int open) {
+        if (open < 0) return -1;
+        int depth = 0;
+        for (int i = open; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '\'' || c == '"' || c == '`') { i = skipString(code, i); continue; }
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return i;
+        }
+        return -1;
     }
 
     // ── skill classes ────────────────────────────────────────────────────────
@@ -5829,6 +6140,7 @@ public class ArchHook {
             case "write"  -> guardWrite(sch, state, in);
             case "bash"   -> guardBash(sch, state, in);
             case "sweep"  -> guardSweep(sch, state, in, stdin);
+            case "status" -> guardStatus(sch, state);
             default       -> { }
         }
     }
@@ -5837,6 +6149,40 @@ public class ArchHook {
         String s = session == null || session.isBlank() ? "unknown"
                 : session.replaceAll("[^A-Za-z0-9_-]", "_");
         return Paths.get(System.getProperty("java.io.tmpdir"), "archhook-guard", s);
+    }
+
+    /**
+     * `guard status` — the open phase as one JSON line on stdout: its skills (opener first),
+     * their class, the union of their `write_allow`, and the `mods.deny_markers` a refusal of
+     * this mode carries. Read-only: it opens, closes and judges nothing, and an empty `phase`
+     * means no skill phase is open.
+     *
+     * <p>Form 7c of `claude-code-architect-designer`, invoked by the `nerviz-cockpit` mod
+     * through `$.process.run` rather than by a hook event, with the session's id on stdin.
+     * Axis 9 motivated it: the band above the prompt shows the phase `guard prompt` and
+     * `guard call` opened, and the only other way to know it was to re-derive the phase in
+     * TypeScript — a second owner of the rule, invariant 2. The closest rejected form was the
+     * mod reading the state file under `java.io.tmpdir` itself: its location and line format
+     * would become a contract nobody owns. Design:
+     * `.claude/decisions/0131-mods-in-architect-designer.md`.
+     */
+    static void guardStatus(Map<String, Object> sch, Path state) {
+        List<String> phase = phaseSkills(state);
+        String cls = phase.isEmpty() ? null : skillClassOf(sch, phase.get(0));
+        List<String> allow = new ArrayList<>();
+        for (String s : phase) {
+            for (String g : writeAllowOf(sch, s)) if (!allow.contains(g)) allow.add(g);
+        }
+        System.out.println("{\"phase\":" + jsonArray(phase)
+                + ",\"class\":" + (cls == null ? "null" : "\"" + jsonEscape(cls) + "\"")
+                + ",\"write_allow\":" + jsonArray(allow)
+                + ",\"deny_markers\":" + jsonArray(asStrList(get(sch, "mods", "deny_markers")))
+                + "}");
+    }
+
+    static String jsonArray(List<String> items) {
+        return items.stream().map(i -> "\"" + jsonEscape(i) + "\"")
+                .collect(Collectors.joining(",", "[", "]"));
     }
 
     static void guardPrompt(Map<String, Object> sch, Path state, Object in) throws IOException {

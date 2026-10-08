@@ -116,6 +116,7 @@ Regras práticas:
 | Code intelligence | Após edits e sob demanda | Diagnósticos e símbolos | Baixo (reduz leituras) |
 | Subagents | Ao spawnar | Janela separada | Isolado |
 | Hooks | No trigger | Nada (roda fora) | Zero, salvo se retornar output |
+| Mods | No evento | Nada, salvo `context` em `prompt.submit`, `tool.register` ou texto variável em `prompt.section` (invalida cache) | Zero a baixo |
 
 ## Checkpoints e segurança
 

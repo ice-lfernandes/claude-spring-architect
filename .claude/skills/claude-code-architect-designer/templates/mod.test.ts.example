@@ -1,0 +1,39 @@
+// Shape reference for Form 9 — .claude/mods/<mod-name>/tests/<mod-name>.test.ts, run by
+// `claude plugin test .claude/mods/<mod-name>` and by .github/workflows/mods.yml.
+//
+// Precedent, whole: .claude/mods/nerviz-cockpit/tests/cockpit.test.ts. The test's `$` is the
+// engine; the stubs registered with `on` answer beneath the mod — a mods API call with
+// `{ value }`, an event with its result. There is no process here: what ArchHook.jar prints
+// is a stub, and a read-only mode the mod calls is proven by its own
+// .claude/.ci/<Mode>Test.java. One test per claim; prove each red once.
+
+import { expect, test } from 'claude-code/testing'
+
+const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
+
+function engine(on, stdout: string) {
+  on('session.root', () => ({ value: '/repo' }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout, stderr: '' } }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: [] }))
+}
+
+test('<what the person sees, in one sentence>', async ($, on) => {
+  engine(on, '<what the mode prints>')
+  await $.session.start(START)
+  const ui = await $.ui.mount({
+    plugin: '<mod-name>',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 120,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: {},
+    },
+  })
+  expect(await ui.find({ key: '<mod-name>' })).toBeDefined()
+  await ui.unmount()
+})

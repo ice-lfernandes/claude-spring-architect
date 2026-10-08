@@ -1,0 +1,70 @@
+// Shape reference for Form 9 — .claude/mods/<mod-name>/hooks/register.ts.
+//
+// Precedent, whole: .claude/mods/nerviz-cockpit/hooks/register.ts. What may be hooked, called
+// and started: the `mods` block of .claude/schemas/extensions.json; what each means:
+// ../references/mod-events.md. The `.d.ts` the engine writes into the mod's
+// .claude-plugin/types/ on load wins over both when they disagree.
+//
+// Four rules this shape keeps — `schema` refuses the mod when it breaks the first three:
+//   1. every hook on a `gating_events` event ends in `.catch(($, e, next) => next(e))`
+//   2. no `forbidden_calls`; `$.process.run` starts `java` only, on ArchHook.jar
+//   3. `on('<event>')` names an event in `mods.events`, or `classic.<settings event>`
+//   4. no rule here: what the mod shows comes from `ArchHook.jar <read-only mode>`
+//
+// The header of the real file carries the "why this is a mod" record: the form, the axis
+// that motivated it, the closest rejected form, the guarantee beneath it — and the Claude
+// Code version its tests ran against.
+
+// <mod-name> — <one line: what it draws, over which guarantee>
+//
+// Why this is a mod (Form 9 of claude-code-architect-designer): <axis and symptom>. The
+// closest rejected form was <form>: <why>. The guarantee beneath it is <settings hook or
+// permissions rule>; nothing breaks when this mod does not load. Tested against Claude
+// Code <version>.
+//
+// Design: .claude/decisions/NNNN-<slug>.md
+//
+// The engine reads `on(...)` and `$.noun.method(...)` from source, so they are spelled
+// literally, and helpers that take `$` are top-level functions.
+
+import type { EngineInterface, Register } from 'claude-code'
+
+const JAR = '.claude/hooks/ArchHook.jar'
+
+let reading: string | null = null
+
+export const register: Register = (on) => {
+  on('session.start', async ($, e, next) => {
+    const result = await next(e)
+    await read($)
+    return result
+  })
+
+  // A gating event: observe after the guarantees beneath decided, fall through on failure.
+  on('tool.call', { tool: '<Tool>' }, async ($, e, next) => {
+    const result = await next(e)
+    await read($)
+    return result
+  }).catch(($, e, next) => next(e))
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey || reading === null) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const theirs = await next(e)
+    const mine = Box({ key: '<mod-name>', paddingX: 1, children: [Text({ children: reading })] })
+    return theirs ? Box({ flexDirection: 'column', children: [mine, theirs] }) : mine
+  })
+}
+
+async function read($: EngineInterface) {
+  try {
+    const run = await $.process.run(['java', '-jar', JAR, '<read-only mode>'], {
+      cwd: await $.session.root(),
+      timeoutMs: 15000,
+    })
+    reading = run.exitCode === 0 ? run.stdout.trim() : null
+  } catch {
+    reading = null
+  }
+  $.ui.invalidate('ui.render')
+}

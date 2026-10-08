@@ -9,7 +9,9 @@ Purpose, features and status: `@README.md`.
 ## Dependencies
 
 `java` (JDK 21+) · `git` · `curl`. Nothing else. Zero Python, zero shell, zero `mvn` on
-PATH — the wrapper comes in the Initializr's `starter.tgz`.
+PATH — the wrapper comes in the Initializr's `starter.tgz`. The mods under `.claude/mods/`
+run inside Claude Code itself; only the `mods` CI workflow installs anything else (the
+Claude CLI, from npm, to test them).
 
 ## Commands
 
@@ -24,6 +26,7 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 | Check every compose service is up, no foreign container holds its ports (a warning, never a block, while no container of the project exists), every published port is advertised at a host-resolvable address, and every `${VAR:default}` pointing at a service holds on the host and in the `app` container — plus a warning, never a block, when the datasource's database or user disagrees with the database service it reaches, or has no password where the service requires one | `java .claude/hooks/ArchHook.java compose` |
 | Check which paths a shell command would write, and whether the guard admits them — and whether it is a force push, which it blocks | `echo '{"tool_input":{"command":"…"}}' \| java .claude/hooks/ArchHook.java guard bash` |
 | Sweep what the current turn wrote and no tool-time guard admitted against the open phase's territory and the frozen folders — the audit trail excepted | `echo '{}' \| java .claude/hooks/ArchHook.java guard sweep` |
+| Print the open skill phase — its skills, class and write territory — as one JSON line; read-only, what the `nerviz-cockpit` mod draws | `echo '{"session_id":"…"}' \| java .claude/hooks/ArchHook.java guard status` |
 | The compose check as a gate — silent while healthy, exit 2 otherwise | `echo '{}' \| java .claude/hooks/ArchHook.java compose gate` |
 | Show what an agent receives at `SubagentStart` — the pattern catalog, or nothing | `echo '{"agent_type":"java-spring-boot-developer"}' \| java .claude/hooks/ArchHook.java context subagent` |
 | Render the execution trail of a run by hand | `java .claude/hooks/ArchHook.java audit flush` |
@@ -39,6 +42,8 @@ PATH — the wrapper comes in the Initializr's `starter.tgz`.
 Clean Architecture applied to `.claude/` itself. Dependencies point in one direction:
 
 ```
+mods/                       interface — draws what hooks/ decide, only where it loads
+        ↓ asks (java -jar ArchHook.jar), never restates
 hooks/ + settings.json      infra/enforcement — deterministic
         ↓ verifies
 skills/                     procedure + exemplars
@@ -123,7 +128,8 @@ a design-time edge, like `project-bootstrap` writing `src/`; the runtime directi
 |---|---|
 | Creating a project from scratch | skill `project-bootstrap` |
 | Installing this `.claude/` into a project that was never generated here, or pulling a newer version into one that was | skill `arch-adopt` — manual only, runs **inside the target project**, refuses a dirty worktree, and writes through `ArchHook.java export` — plus the root `CLAUDE.md`'s bounded-context line, asked when missing. On an update it ends by printing the note and prompt of every `migrations` entry the project has not seen — a convention change that leaves existing code behind — and never runs them. It travels into the generated project, unlike the other creation skills: that is how a project updates itself once the plugin that delivered it is gone |
-| Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the eight | skill `claude-code-architect-designer` |
+| Creating a skill, agent, norm, or `CLAUDE.md` section — and deciding which of the nine | skill `claude-code-architect-designer` |
+| A band above the prompt, a pane, a spinner suffix, a dialog over a tool call, a `/command` that spends no turn — a **mod**, TypeScript under `.claude/mods/` | skill `claude-code-architect-designer`, Form 9 — always on top of a hook or `permissions` rule, never instead of one, and meta-repo only (`0131`). The one shipped: `nerviz-cockpit` — open phase and territory above the prompt, `/nerviz-doctor` in a pane. Loads from Claude Code 2.1.287 on; `/arch-doctor` says when it does not |
 | Creating a hook, a new `ArchHook.java` mode, or a `permissions.allow`/`deny` line — and deciding whether the answer is a guarantee at all | skill `claude-code-architect-designer`, forms 7 and 8. Writes it after approval, always with a record in `decisions/`, and warns that `settings.json` is read only at startup |
 | Designing a use case before implementing it; knowing whether a request is one or several | skill `use-case-design` |
 | Aggregate, value object, invariant, ports of an already-designed use case | skill `domain-modeling` |

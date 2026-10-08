@@ -35,6 +35,8 @@ metadados opcionais). Componentes possíveis:
 - **Skills** (`skills/<nome>/SKILL.md`) — namespaced como `/plugin:skill`
 - **Agents** (`agents/*.md`) — subagents delegáveis
 - **Hooks** (`hooks/hooks.json`) — comandos em eventos de lifecycle
+- **Mod** (`modules` em `hooks/hooks.json` apontando para um `.js`/`.ts`) — código que roda
+  dentro do processo do Claude Code e pode desenhar na interface. Página [16](16-mods.md)
 - **MCP servers** — servidores conectados enquanto o plugin estiver ativo
 
 ## Quando você precisa de um plugin
@@ -120,5 +122,12 @@ plugins (`strictPluginOnlyCustomization`). Ver
 - Subagents de plugin **ignoram** `hooks`, `mcpServers` e `permissionMode`.
 - `claude plugin eval` roda suites de eval para testar o plugin (JSON/report, sandbox, CI);
   `/skill-doctor` mostra custo de contexto e taxa de disparo das skills.
+- `claude plugin validate <dir>` lê manifesto e hooks module sem executar; as linhas `hooks:` e
+  `calls:` listam os eventos e as chamadas da mods API de um mod — é a revisão de segurança
+  antes de instalar um plugin de terceiros. `claude plugin test` roda os `*.test.ts` de um mod.
+- Um plugin instalado de GitHub, git, URL ou npm é **copiado para o cache** e conta como do
+  usuário mesmo com `enabledPlugins` managed; só um marketplace em diretório local, listado
+  por caminho relativo, carrega *in place* e conta como da organização (importa para mods,
+  [16 § Managed settings](16-mods.md#managed-settings)).
 - Variáveis úteis dentro de um plugin: `${CLAUDE_PLUGIN_ROOT}` (diretório de instalação) e
   `${CLAUDE_PLUGIN_DATA}` (diretório persistente que sobrevive a updates).

@@ -39,6 +39,8 @@ flowchart TD
         H14[TestsDeferTest.java — writer subagent of the session running → tests deferred, Maven not called]
         H15[GenesisTest.java — GENESIS figures from the transcripts, filled once]
         H16[DoctorGateTest.java — a gated doctor line red → exit 1; runner-state lines never gate]
+        H17[GuardStatusTest.java — guard status prints the open phase, its class and territory]
+        H18[ModsSchemaTest.java — a mod that would load half-way → exit 2]
     end
 
     subgraph J2["design (ubuntu-latest)"]
@@ -77,12 +79,14 @@ flowchart TD
 
 | Job / step | Verifies | Against what |
 |---|---|---|
-| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then fifteen tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
+| `hooks-cross-platform` | `ArchHook.java doctor`, `build --verify`, then seventeen tests on all three OSes, every one spawning `java -jar .claude/hooks/ArchHook.jar` — the exact command the registrations run | Decision D8 — "cross-platform" as a fact, not a claim — and decision 0084: a test of the source proves nothing about the jar the hooks launch |
 | `committed ArchHook.jar is what the source compiles to` | `build --verify` recompiles under the pinned `hook_build.javac_feature` and compares byte for byte | Decision 0075 — an edit to `ArchHook.java` without a rebuild changes nothing any hook executes. Runs before the tests, so they exercise reviewed bytes |
 | `hook blocks forbidden import, from the payload and from argv` | `BoundaryTest.java`, a throwaway project with a `forbidden-imports.txt`: the stdin payload and `check <path>` both exit 2 on a forbidden import, the argv form with stdin left open; a clean file exits 0, a missing one 1 | Decision 0123 — `check <path>` read stdin first, hung until the tool timeout, then passed in silence; the bootstrap's boundary probe reported a ✓ no hook produced (lessons-learned-020 § 3) |
 | `format, check and tests hand Maven the module the edited file belongs to` | `ModuleMapTest.java`, throwaway projects with a stub `mvnw` that records its arguments: a file under the root `src/main` or `src/test` of a single-module project reaches `format`, `check` and `tests` as `-pl .`, a multi-module file as `-pl <module>`; a `.java` under `.claude/` and a project with no `pom.xml` never call Maven | Decision 0107, issue #60 — `moduleOf` never looked at the root POM, so those three hooks returned before calling Maven in every single-module project since the first commit, and a hook that does nothing looks like a hook that passed |
 | `tests defers while a writer subagent of the session runs, and only then` | `TestsDeferTest.java`, throwaway projects with a stub `mvnw` and a copy of the real `extensions.json`: after `tests agent-start` for an agent whose class has `executor: true`, `Stop` does not call Maven and prints `Tests deferred` — also when a first writer stopped and a second one already started, the chained executor groups of 0130; a read-only agent, an agent no class lists, a writer that already stopped, another session's writer and a marker past `tests.writer_agent_max_minutes` call Maven as before, and so do three groups that all stopped | Decisions 0116 and 0130, issue #76 — a main-thread `Stop` during a background executor ran Maven over its half-written tree and blocked a thread that cannot write `src/`. A marker never written brings that back, one never cleared turns the gate off — both silently |
 | `guard bash refuses force pushes and holds shell writes to the phase` | `BashGuardTest.java`, 29 cases: every force-push spelling in `guard.force_push` (`-f`, `-uf`, `--force-with-lease`, `+ref`, `git -C`, `sh -c "…"`) refused, a redirect / `sed -i` outside a design phase's territory refused, a plain `sed`, an unresolvable `$OUT` target and `ls` let through; in `sonar-lessons`' phase, `./mvnw -q` and `gh issue create` let through and the scan redirected to `target/` refused; for `java-spring-boot-developer`, its documented test run logged under `$TMPDIR` and an absolute path outside the project let through, a log under `target/` refused; `sed -i ''`, `-i '' -e`, two `-e` scripts and `--expression=` on a file in the executor's territory let through, the same spellings on a file outside it refused | Decisions 0076, 0117 and 0118. The mode runs before every shell command in every session: it fails expensively in both directions, and the parser is data a JSON edit can change |
+| `guard status prints the open phase the cockpit draws` | `GuardStatusTest.java`: no phase prints an empty `phase` and a `null` class, and calling `status` opens nothing; `/claude-code-architect-designer` opens a phase that prints its skill, class `meta` and `.claude/**`; a same-class `Skill` call keeps the class; `deny_markers` come out equal to `mods.deny_markers`; the next prompt empties the phase | Decision 0131 — the `nerviz-cockpit` band draws from this one JSON line, and the mod's own tests can only stub it: a renamed key would empty the band with nothing failing |
+| `schema blocks a mod that would load half-way` | `ModsSchemaTest.java`, a throwaway copy of `.claude/`: the shipped mods pass; an unknown event, a gating hook without `.catch`, a `$.http.fetch`, a `$.process.run` of `sh`, a mod the marketplace does not list, a mod `enabledPlugins` leaves off, a mod with no tests, and a `deny_markers` entry no longer in `ArchHook.java` each exit 2 naming the defect; a comment inside a hook is not one; a tree with no `.claude/mods/` is silent | Decision 0131 — every one of those defects is silent at runtime (a skipped hook is a debug-log line), and `claude plugin validate` only runs where the CLI is, the `mods` workflow below |
 | `guard sweep reports this turn's writes, never pre-existing dirt` | `SweepTest.java` in a throwaway git repo: a file dirty before the prompt is never named, an out-of-territory write in the turn exits 2, `stop_hook_active` does not block twice, an in-territory write is silent, the `audit` trail written during the turn is not reported while a `Write` to it is still refused, a `/new-feature` → design skill → `git-publish` chain whose spec, partials and executor `src/` write were admitted at tool time is silent with the folder approved since, and a file no tool-time guard saw in that same turn is still named | Decisions 0065, 0105 and 0114 — the sweep is only as good as the `guard prompt` baseline, and a broken baseline fails quietly either way |
 | `compose gate blocks a published service no host client can reach` | `ComposeGateTest.java`: `9092:9092` + `PLAINTEXT://kafka:9092` exits 2 naming the advertised-address line, `stop_hook_active` exits 0, a `localhost` listener clears that line, no compose file is silent; a collector with no published port and an `app` without `OTLP_METRICS_ENDPOINT` exit 2 through question 5, while their fixed variants, `SPRING_DATASOURCE_URL` overriding `${DB_URL:…}` and Kafka's host-first default (fixed and variable host ports) stay quiet; in the report form, a datasource whose database or user disagrees with its `postgres` service, or that has no password where the service requires one, is a warning, never a gate line, and the password literal never reaches the output | Decisions 0064, 0110 and 0124. Needs no Docker — the advertised-address and placeholder checks read files |
 | `doctor gate fails on every gated line and only on those` | `DoctorGateTest.java` in a throwaway project holding copies of the real `extensions.json`, `ArchHook.java` and `ArchHook.jar`, `CLAUDE_PROJECT_DIR` unset: healthy exits 0 although `CLAUDE_PROJECT_DIR`, `Maven wrapper`, `Compose` and `git HEAD` are red; breaking `Boundaries`, `Schema`, `Hook jar`, `Hooks`, `MCP` or `Audit overrides` exits 1 naming the line; every label of `doctor.gate.labels` must appear in the healthy output; the bare `doctor` exits 0 on `ENFORCEMENT OFF`; an empty list fails closed | Decision 0128 (issue #104). The generated project's `architectural boundaries` job is `doctor gate`; the bare `doctor` only prints, so that job went green on `ENFORCEMENT OFF`. A label is matched by text, so a rename would drop it from the gate in silence |
@@ -204,6 +208,19 @@ path-filtered workflow stays pending on every PR it skips. Design:
 | `java-templates` | `JavaTemplatesTest.java`: every file of `new-feature/templates/commons/` plus the `// --- ` blocks of `JpaEntity.java.example` (`AssignedIdEntity` included) placed into a fresh `start.spring.io` project, then `./mvnw test` over the three `*Test` templates | Decisions 0096 and 0098 — these templates are copied as files, not read as shapes: one that stops compiling breaks `commons-logging-installer` in every project. `exemplar-imports` proves each import exists; this proves the files compile together and the shipped tests pass |
 | `ci-it-check` | `CiItCheckTest.java`: reads the `integration tests actually ran` step out of `ci.yml.example` and `ci-gradle.yml.example` and runs it with `bash -eo pipefail` on a fresh `start.spring.io` project per build tool, wired with the IT block of `pom.parent.xml.example` or `build.gradle.parent.example`. With `ForwardedHeadersIT` alone (every test in `@Nested`) the step must pass; with a `GuardedIT` switched off by the Docker `@EnabledIf` guard, it must fail naming the class | Decision 0127 — the step failed every build whose IT used `@Nested` (failsafe writes `Tests run: 0` in the enclosing class's `.txt`; Gradle names the report `<Outer>$<Nested>`) and never caught the guard skip, which is reported as `Skipped: N`, not as zero tests. The step only runs inside the generated project, so nothing here ever saw it |
 
+## The sibling workflow: `mods.yml`
+
+Path-filtered on `.claude/mods/**`, `extensions.json` and itself; not a required check. The
+one place in this repository's CI that installs something outside `java`/`git`/`curl`: the
+Claude Code CLI, from npm, at `mods.ci_version` — pinned, so a release that changes the mods
+API fails the PR that raises it. Nothing a person or a generated project runs needs it
+(mods stay in this repository). Design: `.claude/decisions/0131-mods-in-architect-designer.md`.
+
+| Step | Verifies | Against what |
+|---|---|---|
+| `claude plugin validate` | The marketplace and each mod, read the way the engine reads them; fails on any `gating hook without .catch` line | What `ModsSchemaTest` checks as data, proven against the engine's own parser |
+| `claude plugin test` | Each mod's `tests/*.test.ts` against the engine's own `$` — no session, sign-in or network | The TypeScript itself: the band, the spinner, the guard dialog, `/nerviz-doctor` where nothing draws |
+
 ## What's not here yet
 
 - Invariant 9 (the generated project is self-contained) is now **half** covered: the
@@ -220,7 +237,7 @@ path-filtered workflow stays pending on every PR it skips. Design:
   Actions runner, and installing it would pull in a dependency outside
   `java`/`git`/`curl` (see `CLAUDE.md` § Dependencies). Run it by hand before opening
   a PR; it's a cheap, complementary check to the `schema` step above, catches
-  malformed YAML.
+  malformed YAML. (`mods.yml` installs the CLI, but only to test `.claude/mods/`.)
 
 ## Running it locally
 
@@ -239,6 +256,10 @@ java .claude/.ci/SkillTerritoryTest.java
 java .claude/.ci/AgentTerritoryTest.java
 java .claude/.ci/GenesisTest.java
 java .claude/.ci/XmlTemplatesTest.java
+java .claude/.ci/GuardStatusTest.java
+java .claude/.ci/ModsSchemaTest.java
+# mods.yml — a Claude Code CLI at mods.ci_version or later:
+claude plugin validate .claude/mods && claude plugin test .claude/mods/nerviz-cockpit
 # templates.yml — network, ~1 min with a warm Maven cache:
 java .claude/.ci/CheckstyleConfigTest.java
 java .claude/.ci/JavaTemplatesTest.java

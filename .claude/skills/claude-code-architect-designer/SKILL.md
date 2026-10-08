@@ -3,12 +3,13 @@ name: claude-code-architect-designer
 description: >
   Decides which Claude Code extension resolves a scenario — auto-invocable skill,
   manually-invoked skill, subagent, rule in `rules/`, `CLAUDE.md` section, MCP server
-  connecting to an external system, lifecycle hook, or `permissions` rule — and writes
-  the files only after approval. Interviews first, proposes scored options with sources,
+  connecting to an external system, lifecycle hook, `permissions` rule, or a mod that
+  draws in the interface over what the hooks decide — and writes the files only after
+  approval. Interviews first, proposes scored options with sources,
   writes afterward. Explicit invocation only.
 argument-hint: "[scenario, use case, or problem in one sentence]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(claude plugin validate:*), Bash(java:*)
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(find:*), Bash(ls:*), Bash(claude plugin validate:*), Bash(claude plugin test:*), Bash(java:*)
 model: opus
 ---
 
@@ -30,8 +31,8 @@ $ARGUMENTS
 
 # Claude Code Architect Designer
 
-Decides **which of the eight forms** of extension resolves the scenario, and writes it.
-The eight:
+Decides **which of the nine forms** of extension resolves the scenario, and writes it.
+The nine:
 
 | # | Form | File |
 |---|---|---|
@@ -46,6 +47,7 @@ The eight:
 | 7b | Hook only while one skill or agent runs | `hooks:` in that file's frontmatter |
 | 7c | The executable behind 7a/7b | new mode in `.claude/hooks/ArchHook.java` |
 | 8 | Hard prohibition or standing permission | `permissions.deny` / `permissions.allow` |
+| 9 | Mod — draws in the interface what 7 and 8 already decide | `.claude/mods/<name>/` |
 
 6b isn't a fourth reason to write an agent — it's reason 2 of § 5 of the decision matrix
 (restrict tools) applied to an external connection instead of a built-in one. An agent
@@ -64,7 +66,17 @@ always hold — invariant 6 of `@CLAUDE.md` — and it makes them the most expen
 this list to get wrong, because a hook that blocks fires on every matching event for
 everyone, including when it's mistaken.
 
-A legitimate ninth answer, and the cheapest one: **create nothing**. A piece that already
+Form 9 sits **on top of** that line, never across it. A mod is TypeScript that runs inside
+the Claude Code process and can draw — a band above the prompt, a pane, a `/command` that
+spends no turn, a dialog that holds a tool call — but it does not load in `claude -p`, VS
+Code, a cloud session or under `--safe-mode`, so it is never the guarantee itself. It shows
+or holds what a Form 7 or 8 beneath it already decides, and it reaches the rule by calling
+`java -jar .claude/hooks/ArchHook.jar`, never by restating it. What a mod here may hook,
+call and start is data, the `mods` block of `@.claude/schemas/extensions.json`; the map of
+events and render sites is `references/mod-events.md`. Meta-repository only, by decision
+`0131`: nothing under `.claude/mods/` travels to a generated project.
+
+A legitimate tenth answer, and the cheapest one: **create nothing**. A piece that already
 covers the scenario exists, a CLI already solves it (§ 2.1 of the decision matrix), or an
 existing hook mode already runs the check and only needs a registration.
 
@@ -110,6 +122,9 @@ below eliminates candidate forms, and an unanswered axis leaves the decision gue
 | 15 | Reaction — observe and report, add context, or block | Exit code, and Form 7 vs Form 8: a call that must **never** happen is `permissions.deny`, cheaper than a hook that spawns a process to refuse it |
 | 16 | Existing mode — does `ArchHook.java` already run this check | Form 7a alone vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lists the modes in use |
 | 17 | CI coverage — which job already proves the piece does what it claims, what it leaves unproven, and in which pipeline the missing check runs | The CI item of every Phase 3 option and the CI step of Phase 4 — `references/ci-coverage.md` |
+| 18 | Surface — must the person see it only in the terminal and the Desktop app, or also in `claude -p`, VS Code, a cloud session | Form 9 vs a hook's `systemMessage` / `additionalContext`; never Form 9 alone when it must show everywhere |
+| 19 | Guarantee beneath — which settings hook or `permissions` rule already decides what the piece shows or holds | Form 9 only on top of one; none → Form 7 or 8 first, or the mod only observes |
+| 20 | State — what the piece keeps, and for how long: nothing, the session (`$.state`), or across sessions (`$.store`, shared by every session on the machine) | Which mods API the mod calls; `$.store` is not atomic — one key per item |
 
 Axis 9 is checked against the inventory injected at the top, not from memory. Two pieces
 writing to the same paths is an ownership bug, not a style decision.
@@ -124,6 +139,11 @@ matrix is persuasion, and asking which lifecycle event a skill fires on is a cat
 error. Axis 8 (destination) covers Form 7 unchanged: the generated project's hooks live
 in `project-bootstrap/templates/settings.json.example`, and a mode in `ArchHook.java`
 travels there on its own, since the `export` mode copies the whole file.
+
+Axes 18-20 only apply when the scenario asks the interface to show, hold or redraw
+something — a band, a pane, a spinner, a dialog over a tool call, a `/command` that must not
+spend a turn. Skip them otherwise: a mod is never the answer to "this must always hold"
+(axis 7) on its own, and asking about render sites for a norm is a category error.
 
 Axis 17 applies to **every** form, and is answered by you, not asked: read
 `references/ci-coverage.md` and the workflows under `.github/workflows/`, and name the job
@@ -145,11 +165,14 @@ anything (`@.claude/decisions/0103-issue-filing-and-skeptical-triage.md`).
 ### Phase 2 · Classify
 
 Apply the decision table in `references/decision-matrix.md` (§ 2; § 2.1 whenever axis 2
-named an external system; § 2.2 whenever axis 7 answered that the rule cannot fail). Then
+named an external system; § 2.2 whenever axis 7 answered that the rule cannot fail; § 2.3
+whenever axes 18-20 applied). Then
 run the eleven invariants of `@CLAUDE.md` as a veto — the most commonly violated are 1 (a
 rule that mentions a skill), 5 (an agent without one of the three reasons), 6 (prose
 where a guarantee was available, and its mirror: a hook for something the model gets
-right on its own), and, for MCP, 11 (a literal secret in `.mcp.json`). A proposal that
+right on its own — and, for Form 9, a mod standing in for the guarantee), 2 for Form 9 (a
+rule restated in TypeScript instead of read from `ArchHook.jar`), and, for MCP, 11 (a
+literal secret in `.mcp.json`). A proposal that
 fails an invariant **is not presented as viable**: it appears with the score it deserves
 and the reason for rejection.
 
@@ -178,7 +201,7 @@ precedent). A claim about the runtime without a source is decoration — cut it.
 
 What Phase 3 produced — options, scores, rejected alternatives, the references table —
 evaporates at the end of the session. Six months from now nobody knows why the piece is
-a skill and not an agent, and the seventeen-axis interview starts over from scratch.
+a skill and not an agent, and the twenty-axis interview starts over from scratch.
 
 **When to save a file.** Only if at least one of these is true:
 
@@ -194,6 +217,10 @@ a skill and not an agent, and the seventeen-axis interview starts over from scra
   reconstruct why it blocks will delete it the first time it gets in the way. A
   `permissions.deny` line is one line of JSON with the same problem and nowhere at all to
   explain itself.
+- The approved option is Form 9 — **always**, too. A mod adds a second language, a
+  marketplace entry and a settings line, and runs unsandboxed inside every session that
+  loads it; a reader who cannot tell which guarantee it sits on will either delete it or
+  start trusting it as one.
 
 None of these → don't save any file. The justification lives in the `## Why this is
 <form>` section of the file Phase 4 creates, and that's enough. A record for a trivial
@@ -224,13 +251,21 @@ the same interview again.
    needs, if any. For Form 7a/7b the shape reference is
    `templates/hook-entry.json.example`, and for 7c it is
    `templates/hook-mode.java.example` — merge into the `hooks` block that already exists,
-   never replace it.
+   never replace it. For Form 9 the shapes are `templates/mod.plugin.json.example`,
+   `mod.hooks.json.example`, `mod.register.ts.example` and `mod.test.ts.example`, into
+   `.claude/mods/<name>/`; the mod's entry goes into the existing
+   `.claude/mods/.claude-plugin/marketplace.json` (shape: `mod.marketplace.json.example`, for
+   the first mod only), and `"<name>@nerviz-mods": true` into `enabledPlugins` of
+   `.claude/settings.json`. Develop against the installed CLI's own types: the first
+   `claude --plugin-dir .claude/mods/<name>` writes them into the mod's
+   `.claude-plugin/types/` (gitignored), and they win over `references/mod-events.md`.
 2. Frontmatter: native fields only, list in `references/frontmatter-fields.md`. An
    invented field is silently ignored by the runtime — it looks like behavior, it's
    decoration. For a Form 6a server's fields, the equivalent list is
    `references/mcp-fields.md`; for a Form 7 event, entry field, and whether that event
-   reads a `matcher`, it is `references/hook-events.md` — same discipline,
-   `.claude/schemas/extensions.json` is the actual owner of all three.
+   reads a `matcher`, it is `references/hook-events.md`; for a Form 9 event, call or
+   program, it is `references/mod-events.md` — same discipline,
+   `.claude/schemas/extensions.json` is the actual owner of all four.
 3. No `metadata:` in frontmatter. Ownership, `reads`, and handoff go in the `## Contract`
    section of the body.
 4. Code boilerplate goes to `templates/<name>.example` inside the skill that emits it,
@@ -266,6 +301,26 @@ the same interview again.
    For Form 8, prefer `permissions.deny` over a hook whenever the answer is a flat
    refusal of a tool call: it costs no process and it is read before the call, not after.
 
+   **Form 9 — five rules, the same weight.** A mod runs unsandboxed in every session that
+   loads it, and a broken one is skipped with nothing but a debug-log line.
+
+   - **On top of a guarantee, never instead of one.** Axis 19 names the settings hook or
+     `permissions` rule beneath; with none, the mod only observes. It never answers a
+     gating event in a direction the guarantee beneath did not take.
+   - **Every hook on a `gating_events` event ends in `.catch(($, e, next) => next(e))`.**
+     A hook that throws is otherwise skipped; the handler makes the failure fall through
+     to the guarantees beneath. `schema` fails on a missing one, and so does `claude plugin
+     validate` (`gating hook without .catch`).
+   - **No rule in TypeScript.** What the mod shows comes from `java -jar
+     .claude/hooks/ArchHook.jar <mode>` through `$.process.run` — a read-only mode such as
+     `guard status` or `doctor`, a new one being Form 7c with its own test. A list, path or
+     pattern the mod needs lives in `extensions.json` and reaches it through that output.
+   - **Only the calls `mods` allows.** No network, no model, no prompt sent as the person,
+     no file write, no environment change, no program but `java` — `forbidden_calls` and
+     `process_allow`, checked by `schema`.
+   - **A fallback where nothing draws.** `$.session.surfaces()` is empty in `claude -p`: a
+     `/command` answers `{ text }` there, and a dialog leaves the decision beneath alone.
+
 7. **A `## Why this is <form>` section in the body of the created file, always.** Three
    sentences: the form chosen, the interview axis that motivated it, and the closest
    rejected form with the reason. It's the only record that travels with the file — it
@@ -281,7 +336,9 @@ the same interview again.
    carries the same three sentences there, naming the event that invokes it. Form 7b sits
    in the frontmatter of a skill or agent whose body already has a `## Why this is
    <form>` section: add one line saying which event, and why the hook is scoped to that
-   invocation instead of the whole session.
+   invocation instead of the whole session. Form 9 carries the three sentences in the
+   header comment of its hooks module, under `Why this is a mod`, with the Claude Code
+   version its tests ran against.
 8. **Propagate.** A new file that nobody routes to isn't found:
 
    | You created | Also update |
@@ -296,6 +353,7 @@ the same interview again.
    | Hook, this repo only (axis 8 = "meta-repo") | `.claude/settings.json`; `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` part 2, if the hook blocks something a reader would otherwise call a bug — never `@CLAUDE.md` § Known pitfalls, which holds only what bites with no hook behind it (decision 0090) |
    | Hook, also the generated project (axis 8 = "both") | Everything above, **plus** `project-bootstrap/templates/settings.json.example`. A Form 7c mode needs nothing further: the `export` mode copies `ArchHook.java`, the rebuilt `ArchHook.jar` and `schemas/extensions.json` whole |
    | Hook mode (Form 7c) | The mode table in `@CLAUDE.md` § Commands, and the `doctor` report if the mode has state worth reporting |
+   | Mod (Form 9) | Its entry in `.claude/mods/.claude-plugin/marketplace.json` and `enabledPlugins` of `.claude/settings.json` — `schema` fails by name on either gap; a `/command` it registers, in the `@CLAUDE.md` routing table; a read-only `ArchHook.java` mode it calls, in the mode table of `@CLAUDE.md` § Commands. Never `export`: mods stay in this repository (`0131`) |
    | `permissions` rule (Form 8) | `.claude/settings.json`; the generated project's template when axis 8 = "both". A `deny` also goes into part 2 of `docs/pt-br/11-pitfalls.md` and `docs/en/11-pitfalls.md` — a tool that silently refuses reads as a broken tool |
 
    A creation skill (only useful before the project exists) goes in `export.skills.exclude`,
@@ -341,6 +399,12 @@ the same interview again.
      `ci-gradle.yml.example`, identically, and **only** with what exists inside the
      generated project: nothing under `.claude/.ci/` travels, so a step calling it starts
      red (the header of `ci.yml.example`).
+   - **Form 9** — `ModsSchemaTest` already holds the structure (`validate` ›
+     `hooks-cross-platform`) and `.github/workflows/mods.yml` already runs every mod's
+     `claude plugin validate` and `claude plugin test`; what the mod needs is its own
+     `tests/*.test.ts`, one test per claim, stubbing what `ArchHook.jar` prints. A new
+     read-only mode the mod calls is Form 7c: its own `.claude/.ci/<Mode>Test.java`, since
+     the mod's tests only stub it.
    - **Nothing testable** — write the reason in the record's `## CI coverage`.
 
    Prove the check before reporting it: run it green, then once with the defect it guards
@@ -364,7 +428,13 @@ the same interview again.
     build` — committing it with the source: `schema` fails on a jar built from another
     version of the file. A mode that throws exits 0 through the top-level catch and looks like it
     passed. Whenever step 9 wrote or changed a test, run it again here, after the jar is
-    rebuilt — `java .claude/.ci/<Name>Test.java` — since the test exercises the jar.
+    rebuilt — `java .claude/.ci/<Name>Test.java` — since the test exercises the jar. For
+    Form 9, run `claude plugin validate .claude/mods/<name>` and `claude plugin test
+    .claude/mods/<name>` with a CLI at `mods.min_version` or later — read the `hooks:` and
+    `calls:` lines back against the design — and `java .claude/hooks/ArchHook.java doctor`,
+    whose `Mods` line says whether this machine's CLI loads them at all. Below the floor,
+    `npx @anthropic-ai/claude-code@<mods.ci_version>` runs the same two commands without
+    touching the installed one.
 
 ### Phase 5 · Report
 
@@ -375,7 +445,10 @@ nothing is testable — and — whenever a hook or a
 `permissions` rule was written — the restart warning, in its own line: `.claude/settings.json`
 is read only at session startup, so nothing written in Forms 7a or 8 takes effect until
 `claude` is restarted. Say it even if the user already knows; a hook believed to be
-active and silently absent is worse than no hook.
+active and silently absent is worse than no hook. For Form 9 the same line, plus two: the
+marketplace registers only once the folder's workspace trust was accepted, and a mod edited
+in a git worktree does not load from there — the relative marketplace path resolves
+against the main checkout.
 
 ## Out of scope
 
@@ -390,7 +463,19 @@ makes, and this skill only writes it when asked outright.
 `.claude/hooks/<Other>.java`. Enforcement stays in one executable that the generated
 project receives whole from the `export` mode; a second file would have to be
 copied, registered, and kept in sync separately, and the first one to fall out of sync
-fails silently.
+fails silently. A Form 9 mod is not one: it enforces nothing, calls `ArchHook.jar` for
+every answer it shows, and nothing breaks when it does not load.
+
+**A mod as the guarantee, or a mod in the generated project.** A mod does not load in
+`claude -p`, VS Code, a cloud session or under `--safe-mode`, so a rule that must always
+hold stays Form 7 or 8 (invariant 6). And nothing under `.claude/mods/` travels: a project
+would inherit a second language, a version floor and an unsandboxed process its owner
+never reviewed (`0131`). Changing that is a new decision, not a propagation row.
+
+**The built-in `plugin-authoring` skill and `~/.claude/dev-mods/`.** Same reason as the
+`skill-creator` plugin below: it writes a generic mod into a personal directory the next
+cleanup deletes, with no knowledge of the `mods` block, the marketplace or the guarantee a
+mod must sit on.
 
 **`.claude/commands/`.** Never. Invariant 4: write a skill and control invocation with
 `disable-model-invocation`.
@@ -436,7 +521,8 @@ win where the two disagree.
 `CLAUDE.md` of **this repository**, `.mcp.json` at this repo's root (Form 6a), the `hooks`
 and `permissions` blocks of `.claude/settings.json` (Forms 7a and 8), and
 `.claude/hooks/ArchHook.java` plus the lists it reads in `.claude/schemas/extensions.json`
-(Form 7c), `.claude/blueprints/**` when the approved option changes a
+(Form 7c), `.claude/mods/**` and the `extraKnownMarketplaces` and `enabledPlugins` keys of
+`.claude/settings.json` (Form 9), `.claude/blueprints/**` when the approved option changes a
 convention a blueprint owns, and — for the CI item of whichever form was approved (Phase 4 step 9) — the
 tests in `.claude/.ci/**`, the jobs of `.github/workflows/**`, the matching rows of
 `docs/*/07-ci-validate.md`, and, when axis 8 = "both", `project-bootstrap/templates/ci.yml.example`

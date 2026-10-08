@@ -606,7 +606,7 @@ exists inside the project:
 | [`01-file-types.md`](docs/en/01-file-types.md) | How each piece behaves in the Claude Code runtime |
 | [`02-init-project.md`](docs/en/02-init-project.md) · [`03-new-feature.md`](docs/en/03-new-feature.md) · [`04-arch-doctor.md`](docs/en/04-arch-doctor.md) | The main commands, step by step, with example output |
 | [`05-blueprints.md`](docs/en/05-blueprints.md) | The blueprint contract and how to write one |
-| [`06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The eight forms an extension can take, and the decision matrix |
+| [`06-claude-code-architect-designer.md`](docs/en/06-claude-code-architect-designer.md) | The nine forms an extension can take, and the decision matrix |
 | [`07-ci-validate.md`](docs/en/07-ci-validate.md) | What CI verifies and what it still does not |
 | [`08-audit-usage.md`](docs/en/08-audit-usage.md) | The audit trail, the guard hook, and `/audit-usage` |
 | [`10-arch-adopt.md`](docs/en/10-arch-adopt.md) | Installing or updating this `.claude/` in an existing project |

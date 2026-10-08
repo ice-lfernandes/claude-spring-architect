@@ -4,14 +4,16 @@ Primary source: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 `.claude/skills/claude-code-architect-designer/references/decision-matrix.md`,
 `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`,
 `.claude/skills/claude-code-architect-designer/references/mcp-fields.md`,
-`.claude/skills/claude-code-architect-designer/references/ci-coverage.md`.
+`.claude/skills/claude-code-architect-designer/references/ci-coverage.md`,
+`.claude/skills/claude-code-architect-designer/references/mod-events.md`.
 
 ## What it does
 
-Decides **which of the eight forms** of Claude Code extension resolves a concrete
+Decides **which of the nine forms** of Claude Code extension resolves a concrete
 scenario — auto-invocable skill, manual skill, subagent, rule, `CLAUDE.md` section,
 MCP server (shared or per-agent), hook (a registration, or a new `ArchHook.java` mode),
-or `permissions` rule — and only writes the file after explicit approval. A ninth answer,
+`permissions` rule, or a mod that draws in the interface over what the hooks decide — and
+only writes the file after explicit approval. A tenth answer,
 legitimate and the cheapest one, is **create nothing**: either a piece already covers the
 scenario, a CLI already solves it (`gh`, `psql`, `aws` — decision matrix § 2.1), or a mode
 `ArchHook.java` already has runs the check and only needs registering.
@@ -30,7 +32,7 @@ break invariant 1 of `@CLAUDE.md` (`rules/` is a leaf: a rule never mentions a s
 agent, or command). A rule explaining when to create skills and agents would be
 mentioning skills and agents inside itself.
 
-## The eight forms
+## The nine forms
 
 | # | Form | File |
 |---|---|---|
@@ -45,6 +47,7 @@ mentioning skills and agents inside itself.
 | 7b | Hook only while one skill or agent runs | `hooks:` in that file's frontmatter |
 | 7c | The executable behind 7a/7b | new mode in `.claude/hooks/ArchHook.java` |
 | 8 | Hard prohibition or standing permission | `permissions.deny` / `permissions.allow` |
+| 9 | Mod — draws in the interface what 7 and 8 already decide | `.claude/mods/<name>/` |
 
 6b isn't a fourth reason for an agent to exist — it's reason 2 of decision-matrix § 5
 (restrict tools) applied to an external connection instead of a built-in one. An agent
@@ -63,6 +66,19 @@ when it is mistaken. Both therefore require approval **and** a record under `dec
 with no exception, and the final report warns that `settings.json` is read only at session
 startup: a hook believed active and silently absent is worse than no hook.
 
+Form 9 sits **on top of** that line, never across it (decision 0131). A mod is TypeScript
+running inside the Claude Code process that can draw — a band above the prompt, a pane, a
+`/command` that spends no turn, a dialog holding a tool call — but it doesn't load in
+`claude -p`, VS Code, a cloud session or under `--safe-mode`, so it is never the guarantee.
+It shows or holds what a Form 7 or 8 beneath it already decides, and gets every answer from
+`java -jar .claude/hooks/ArchHook.jar`, never by restating the rule. What it may hook, call
+and start is the `mods` block of `extensions.json`; the map is `references/mod-events.md`.
+It also always gets a record under `decisions/`, and it stays in this repository — nothing
+under `.claude/mods/` goes to the generated project. The one shipped, `nerviz-cockpit`, draws
+the open skill phase and its territory above the prompt, the phase and turn cost beside the
+spinner, `/nerviz-doctor` in a pane, and holds a `guard` refusal behind two buttons (let
+Claude adapt, or stop the turn) — the refusal stands either way.
+
 ## Out of scope
 
 - **`~/.claude/settings.json` and `.claude/settings.local.json`.** Personal and
@@ -72,7 +88,13 @@ startup: a hook believed active and silently absent is worse than no hook.
   `.claude/hooks/<Other>.java`. Enforcement stays in one executable the generated project
   receives whole through the `export` mode; a second file would have to be copied,
   registered and kept in sync separately — and the first one to fall out of sync fails in
-  silence.
+  silence. A Form 9 mod isn't one: it enforces nothing and asks `ArchHook.jar` for every
+  answer.
+- **A mod as the guarantee, or a mod in the generated project.** The rule that must always
+  hold stays Form 7 or 8; mods stay here (0131).
+- **The built-in `plugin-authoring` skill and `~/.claude/dev-mods/`.** Same reason as
+  `skill-creator`: a generic mod in a personal directory, with no knowledge of the `mods`
+  block or of the guarantee it must sit on.
 - **`.claude/commands/`.** Never — invariant 4, commands became skills with
   `disable-model-invocation`.
 - **Blueprints.** Architecture is data, not extension (`@.claude/blueprints/_schema.md`).
@@ -145,7 +167,7 @@ sequenceDiagram
 produces the wrong piece, and the wrong piece costs more than no piece at all — it
 stays in context every session, or it never fires.
 
-Seventeen axes, each eliminates candidate forms. An unanswered axis leaves the decision
+Twenty axes, each eliminates candidate forms. An unanswered axis leaves the decision
 guessing:
 
 | # | Axis | What it decides |
@@ -167,6 +189,9 @@ guessing:
 | 15 | Reaction — observe and report, inject context, or block | The exit code, and Form 7 vs Form 8: a call that must **never** happen is `permissions.deny`, cheaper than a hook spawning a process to refuse it |
 | 16 | Existing mode — does `ArchHook.java` already run this check? | Form 7a alone vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lists the modes in use |
 | 17 | CI coverage — which job already proves the piece does what it claims, what it leaves unproven, and in which pipeline the missing check runs | The CI item of every Phase 3 option and the CI step of Phase 4 — `references/ci-coverage.md` |
+| 18 | Surface — must the person see it only in the terminal and Desktop, or also in `claude -p`, VS Code, a cloud session | Form 9 vs a hook's `systemMessage`/`additionalContext`; never Form 9 alone when it must show everywhere |
+| 19 | Guarantee beneath — which settings hook or `permissions` rule already decides what the piece shows or holds | Form 9 only on top of one; none → Form 7 or 8 first, or the mod only observes |
+| 20 | State — what the piece keeps and for how long: nothing, the session (`$.state`), or across sessions (`$.store`) | Which mods API the mod calls |
 
 Axes 14-16 only apply when axis 7 (mandatoriness) answered that the rule cannot be allowed
 to fail. Skip them otherwise — everything above the line in § 1 of the matrix is
@@ -180,6 +205,10 @@ Axes 11-13 only apply when axis 2 (trigger) names an external system — Jira, a
 database, GitHub, Figma, anything reachable only through its own API. Skip them
 otherwise: asking about credentials for a scenario that isn't MCP-shaped just burns a
 question.
+
+Axes 18-20 only apply when the scenario asks the interface to show, hold or redraw
+something — a band, a pane, a spinner, a dialog over a tool call, a `/command` that must not
+spend a turn.
 
 Axis 17 applies to **every** form and is answered by the skill, not asked: it reads
 `references/ci-coverage.md` and the workflows under `.github/workflows/` and names the job
@@ -240,6 +269,7 @@ execute, and none of the six above it.
 | … and does the user want to trigger it by hand, or does it have a side effect? | **Form 2** — `disable-model-invocation: true` |
 | … and should it fire on its own from the description, without the user asking? | **Form 1** |
 | Does it need isolated context, restricted tools, or a different model? | **Form 3** — subagent, and even then see § 5 of the matrix |
+| Does the person need to **see** or **act on** something the hooks already decide? | **Form 9** — mod; § 2.3 of the matrix sends it back to Form 7/8 when the rule must hold where no mod loads, or when one line of stderr says it all |
 
 No row matches → the answer is **create nothing**.
 
@@ -356,7 +386,7 @@ only to record why it was rejected.
 ## Phase 3.5 · Save the decision draft
 
 What Phase 3 produced — options, scores, rejected alternatives, references table —
-evaporates at the end of the session. Without a record, the same seventeen-axis interview
+evaporates at the end of the session. Without a record, the same twenty-axis interview
 starts over from scratch six months from now.
 
 **When to save a file.** Only if at least one is true:

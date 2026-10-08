@@ -9,7 +9,7 @@ points to the official reference link of each page.
 
 - **Source:** <https://code.claude.com/docs/en/overview> and the full index at
   <https://code.claude.com/docs/llms.txt> (209+ pages).
-- **Snapshot:** 2026-09-27. The product changes weekly (see
+- **Snapshot:** 2026-09-27; page 16 (mods) on 2026-10-08. The product changes weekly (see
   [What's new](https://code.claude.com/docs/en/whats-new/index)); confirm version details
   before publishing content based on these summaries.
 - **Convention:** any official URL can be read as plain Markdown by appending `.md`
@@ -35,6 +35,7 @@ points to the official reference link of each page.
 | 13 | [Administration and enterprise](13-administration-and-enterprise.md) | Managed settings, deployment, gateways, costs, monitoring, data |
 | 14 | [Agent SDK](14-agent-sdk.md) | TypeScript/Python SDK, agent loop, custom tools, permissions, deployment |
 | 15 | [Troubleshooting and glossary](15-troubleshooting-and-glossary.md) | Errors, config diagnostics, glossary of official terms |
+| 16 | [Mods](16-mods.md) | JS/TS plugins inside the process: events (`tool.call`, `prompt.submit`, `turn.step`…), mods API (`$`), panes and band, `/commands` without a turn, tests, governance |
 
 ## The five points that hold up everything else
 
@@ -66,6 +67,7 @@ points to the official reference link of each page.
 | Connection to an external system | MCP server | No (but the tool is real) |
 | Something that must happen **always** | Hook | Yes |
 | Block a tool, command or path | Permission rule / sandbox | Yes |
+| A pane, a band above the prompt, a `/command` without a turn, holding a tool call behind buttons, switching the model of one request | Mod | Yes, where it loads — but it doesn't draw in `-p`, VS Code, cloud, mobile, and `--safe-mode` turns it off |
 | Package all of this for reuse | Plugin | — |
 
 Table source: [Extend Claude Code](https://code.claude.com/docs/en/features-overview#match-features-to-your-goal).

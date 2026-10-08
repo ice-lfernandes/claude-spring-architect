@@ -4,15 +4,16 @@ Fonte primária: `.claude/skills/claude-code-architect-designer/SKILL.md`,
 `.claude/skills/claude-code-architect-designer/references/decision-matrix.md`,
 `.claude/skills/claude-code-architect-designer/references/frontmatter-fields.md`,
 `.claude/skills/claude-code-architect-designer/references/mcp-fields.md`,
-`.claude/skills/claude-code-architect-designer/references/ci-coverage.md`.
+`.claude/skills/claude-code-architect-designer/references/ci-coverage.md`,
+`.claude/skills/claude-code-architect-designer/references/mod-events.md`.
 
 ## O que faz
 
-Decide **qual das oito formas** de extensão do Claude Code resolve um cenário
+Decide **qual das nove formas** de extensão do Claude Code resolve um cenário
 concreto — skill auto-invocável, skill manual, subagent, rule, seção do `CLAUDE.md`,
 servidor MCP (compartilhado ou por agent), hook (registro ou modo novo do
-`ArchHook.java`), ou regra de `permissions` — e só escreve o arquivo depois de aprovação
-explícita. Uma nona resposta, legítima e a mais barata, é **não criar nada**: ou já
+`ArchHook.java`), regra de `permissions`, ou um mod que desenha na interface o que os hooks
+decidem — e só escreve o arquivo depois de aprovação explícita. Uma décima resposta, legítima e a mais barata, é **não criar nada**: ou já
 existe peça cobrindo o cenário, ou um CLI já resolve (`gh`, `psql`, `aws` — § 2.1 da
 matriz de decisão), ou um modo que o `ArchHook.java` já tem roda a checagem e só falta
 registrá-lo.
@@ -31,7 +32,7 @@ rule quebraria o invariante 1 do `@CLAUDE.md` (`rules/` é folha: uma rule nunca
 skill, agent ou comando). Uma rule que explicasse quando criar skills e agents estaria
 citando skills e agents dentro de si mesma.
 
-## As oito formas
+## As nove formas
 
 | # | Forma | Arquivo |
 |---|---|---|
@@ -46,6 +47,7 @@ citando skills e agents dentro de si mesma.
 | 7b | Hook só enquanto uma skill ou agent roda | `hooks:` no frontmatter daquele arquivo |
 | 7c | O executável por trás de 7a/7b | modo novo em `.claude/hooks/ArchHook.java` |
 | 8 | Proibição dura ou permissão permanente | `permissions.deny` / `permissions.allow` |
+| 9 | Mod — desenha na interface o que 7 e 8 já decidem | `.claude/mods/<name>/` |
 
 6b não é um quarto motivo pra existir agent — é o motivo 2 da § 5 da matriz de decisão
 (restringir tools) aplicado a uma conexão externa em vez de uma tool nativa. Um agent só
@@ -65,6 +67,20 @@ sem exceção, e o relatório final avisa que `settings.json` só é lido no sta
 sessão: um hook que se acredita ativo e está silenciosamente ausente é pior que hook
 nenhum.
 
+A Forma 9 fica **em cima** dessa linha, nunca atravessando (decisão 0131). Um mod é
+TypeScript rodando dentro do processo do Claude Code que pode desenhar — faixa acima do
+prompt, painel, `/comando` que não gasta turno, diálogo que segura uma tool call — mas não
+carrega em `claude -p`, VS Code, sessão cloud nem sob `--safe-mode`, então nunca é a
+garantia. Mostra ou segura o que uma Forma 7 ou 8 embaixo dele já decide, e pega toda
+resposta de `java -jar .claude/hooks/ArchHook.jar`, nunca reescrevendo a regra. O que ele
+pode escutar, chamar e iniciar é o bloco `mods` do `extensions.json`; o mapa é
+`references/mod-events.md`. Também sempre ganha registro em `decisions/`, e fica neste
+repositório — nada em `.claude/mods/` vai pro projeto gerado. O único entregue,
+`nerviz-cockpit`, desenha a fase de skill aberta e o território acima do prompt, a fase e o
+custo do turno ao lado do spinner, `/nerviz-doctor` num painel, e segura uma recusa do
+`guard` atrás de dois botões (deixar o Claude se ajustar, ou parar o turno) — a recusa vale
+de qualquer jeito.
+
 ## Fora de escopo
 
 - **`~/.claude/settings.json` e `.claude/settings.local.json`.** Configuração pessoal e
@@ -74,7 +90,12 @@ nenhum.
   `.claude/hooks/<Outro>.java`. O enforcement fica num único executável que o projeto
   gerado recebe inteiro pelo modo `export`; um segundo arquivo teria de ser copiado,
   registrado e mantido em sincronia à parte — e o primeiro a sair de sincronia falha em
-  silêncio.
+  silêncio. Um mod da Forma 9 não é um: não impõe nada e pergunta tudo ao `ArchHook.jar`.
+- **Mod como garantia, ou mod no projeto gerado.** A regra que precisa valer sempre
+  continua Forma 7 ou 8; mods ficam aqui (0131).
+- **A skill nativa `plugin-authoring` e `~/.claude/dev-mods/`.** Mesmo motivo do
+  `skill-creator`: um mod genérico num diretório pessoal, sem conhecer o bloco `mods` nem a
+  garantia sobre a qual ele precisa ficar.
 - **`.claude/commands/`.** Nunca — invariante 4, comandos viraram skills com
   `disable-model-invocation`.
 - **Blueprints.** Arquitetura é dado, não extensão (`@.claude/blueprints/_schema.md`).
@@ -147,7 +168,7 @@ sequenceDiagram
 produz a peça errada, e peça errada custa mais que nenhuma peça — fica em contexto toda
 sessão, ou nunca dispara.
 
-Dezessete eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão
+Vinte eixos, cada um elimina formas candidatas. Sem resposta em um eixo, a decisão
 está adivinhando:
 
 | # | Eixo | O que decide |
@@ -169,6 +190,9 @@ está adivinhando:
 | 15 | Reação — observar e reportar, injetar contexto, ou bloquear | O exit code, e Forma 7 vs Forma 8: uma chamada que **nunca** pode acontecer é `permissions.deny`, mais barato que um hook que sobe um processo pra recusar |
 | 16 | Modo existente — o `ArchHook.java` já roda essa checagem? | Forma 7a sozinha vs 7a + 7c. `java .claude/hooks/ArchHook.java doctor` lista os modos em uso |
 | 17 | Cobertura de CI — qual job já prova que a peça faz o que afirma, o que fica sem prova, e em qual pipeline roda o check que falta | O item CI de toda opção da Fase 3 e o passo de CI da Fase 4 — `references/ci-coverage.md` |
+| 18 | Superfície — a pessoa precisa ver só no terminal e no Desktop, ou também em `claude -p`, VS Code, sessão cloud | Forma 9 vs `systemMessage`/`additionalContext` de um hook; nunca Forma 9 sozinha quando precisa aparecer em todo lugar |
+| 19 | Garantia embaixo — qual settings hook ou regra de `permissions` já decide o que a peça mostra ou segura | Forma 9 só em cima de uma; nenhuma → Forma 7 ou 8 primeiro, ou o mod só observa |
+| 20 | Estado — o que a peça guarda e por quanto tempo: nada, a sessão (`$.state`), ou entre sessões (`$.store`) | Qual API de mods o mod chama |
 
 O eixo 9 é checado contra o inventário injetado no topo da skill (`ls .claude/skills`,
 `.claude/agents`, `.claude/rules`, `.claude/decisions`), nunca de memória. Duas peças
@@ -178,6 +202,10 @@ Os eixos 11-13 só se aplicam quando o eixo 2 (gatilho) nomeia um sistema extern
 banco de dados, GitHub, Figma, qualquer coisa alcançável só pela própria API. Pula-los
 nos demais casos: perguntar sobre credencial pra um cenário que não é forma de MCP só
 queima uma pergunta.
+
+Os eixos 18-20 só se aplicam quando o cenário pede pra interface mostrar, segurar ou
+redesenhar algo — faixa, painel, spinner, diálogo sobre uma tool call, `/comando` que não
+pode gastar turno.
 
 O eixo 17 vale pra **toda** forma e é respondido pela skill, não perguntado: ela lê
 `references/ci-coverage.md` e os workflows em `.github/workflows/` e nomeia o job que já
@@ -238,6 +266,7 @@ não nenhuma das seis de cima.
 | … e usuário quer disparar na mão, ou tem efeito colateral? | **Forma 2** — `disable-model-invocation: true` |
 | … e deve disparar sozinho pela descrição, sem o usuário pedir? | **Forma 1** |
 | Precisa de contexto isolado, tools restritas, ou modelo diferente? | **Forma 3** — subagent, e mesmo assim ver § 5 da matriz |
+| A pessoa precisa **ver** ou **agir sobre** algo que os hooks já decidem? | **Forma 9** — mod; a § 2.3 da matriz devolve pra Forma 7/8 quando a regra precisa valer onde nenhum mod carrega, ou quando uma linha de stderr já diz tudo |
 
 Nenhuma linha casa → resposta é **não criar nada**.
 
@@ -351,7 +380,7 @@ por que foi rejeitado.
 ## Fase 3.5 · Salva o rascunho da decisão
 
 O que a Fase 3 produziu — opções, scores, alternativas rejeitadas, tabela de
-referências — evapora no fim da sessão. Sem registro, a mesma interview de dezessete eixos
+referências — evapora no fim da sessão. Sem registro, a mesma interview de vinte eixos
 recomeça do zero daqui a seis meses.
 
 **Quando salvar arquivo.** Só se pelo menos um for verdade:

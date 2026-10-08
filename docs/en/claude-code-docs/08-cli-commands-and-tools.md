@@ -30,7 +30,7 @@ Official pages covered:
 | `claude auth login\|logout\|status` | Authentication (status exits 0 if logged in, 1 if not) |
 | `claude doctor` | Read-only diagnosis of installation and settings |
 | `claude mcp ...` | Manages MCP servers (`login`, `logout`, `list`, `get`, `add`, `remove`) |
-| `claude plugin ...` | Manages plugins |
+| `claude plugin ...` | Manages plugins; `validate <dir>` lists a mod's `hooks:`/`calls:`, `test [dir]` runs its `*.test.ts` |
 | `claude agents` / `attach` / `logs` / `stop` / `respawn` / `rm` | Background sessions (agent view) |
 | `claude setup-token` | Long-lived OAuth token for CI |
 | `claude project purge [path]` | Deletes all local state of the project |
@@ -73,12 +73,12 @@ Day-to-day flow:
 | `/permissions` | allow/ask/deny rules (**Auto mode** tab when available) |
 | `/hooks` | Lists hooks by event (read-only) |
 | `/skills`, `/reload-skills`, `/skill-doctor` | List, reload and measure skills |
-| `/plugin`, `/reload-plugins` | Manage plugins |
+| `/plugin`, `/reload-plugins` | Manage plugins; `/plugin` shows `N mod active · name` when a non-built-in mod loaded |
 | `/mcp` | Status and authentication of MCP servers |
 | `/model`, `/effort`, `/fast`, `/advisor` | Model, effort, fast mode, advisor |
 | `/output-style` | Switch response style |
 | `/config`, `/status`, `/usage` (`/cost`, `/stats`) | Configuration, status, cost and limits |
-| `/diff`, `/code-review` (`/review`), `/security-review`, `/simplify` | Review |
+| `/diff`, `/code-review` (`/review`), `/security-review`, `/simplify` | Review (`/diff` is a built-in mod, `cc-plugin-diff`) |
 | `/plan`, `/goal`, `/loop`, `/batch`, `/subtask`, `/tasks`, `/workflows` | Plan and parallelize |
 | `/agents`, `/list-agents` | Subagents (the wizard was removed in v2.1.198) |
 | `/resume`, `/rename`, `/branch`, `/export`, `/recap` | Session management |

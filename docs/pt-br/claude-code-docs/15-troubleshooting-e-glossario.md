@@ -23,6 +23,7 @@ Páginas oficiais cobertas:
 | Quais settings carregaram | `/status` → linha `Setting sources` |
 | Quais `CLAUDE.md` e rules carregaram | `/context` → **Memory files** (ou `/memory`) |
 | Hooks não disparam | `/hooks` e `claude --debug-file /tmp/claude.log` |
+| Mod não faz nada | `claude plugin validate ./mod` (linha `hooks:` ausente = `modules` faltando); debug log com `hooks module <nome> not loaded:` ou `hook skipped:`; tabela em [16 § Troubleshooting](16-mods.md#troubleshooting) |
 | MCP não conecta | `/mcp`, `claude mcp list`, `claude mcp get <nome>` |
 | Skill não dispara | `/skills`, `/skill-doctor`, e reforçar a `description` |
 | Configuração quebrada, causa desconhecida | `claude --safe-mode` (desliga todas as customizações) ou `--bare` |
@@ -96,11 +97,20 @@ claude project purge [path]         # apaga estado local do projeto
 - **Frontmatter** — bloco YAML no topo de um Markdown, entre `---`; usado por skills,
   subagents, output styles e rules.
 - **Hook** — handler executado automaticamente num ponto do lifecycle; três níveis: evento,
-  matcher e handler.
+  matcher e handler. Nas páginas de mods, "hook" é o handler de um mod e o hook de
+  `settings.json` vira **settings hook**.
 - **Managed settings** — settings impostos pela organização; settings de usuário e projeto
   não os sobrescrevem.
 - **MCP / MCP server / MCP Tool Search** — protocolo, servidor e mecanismo de carregamento
   sob demanda de definições de tool.
+- **Mod** — plugin cujo `hooks/hooks.json` tem `modules`: funções JS/TS que rodam dentro do
+  processo do Claude Code, reagem a eventos (`tool.call`, `prompt.submit`, `ui.render`…) e
+  podem desenhar na interface. Sem sandbox, com as permissões do usuário.
+- **Mods API (`$`)** — o único caminho de um mod para fora do seu código: `$.ui`, `$.fs`,
+  `$.process`, `$.model`, `$.store`… Cada chamada é também um evento que um mod anterior na
+  cadeia pode recusar.
+- **Render site** — ponto da interface que um mod pode desenhar ou redesenhar: `Pane`,
+  `AbovePrompt`, `Spinner`, `ToolUse`, `AskUserQuestion`… O prompt de permissão não é um.
 - **Non-interactive mode** — `claude -p`, sem UI interativa.
 - **Output style** — instruções que definem papel, tom e formato das respostas.
 - **Subagent** — worker delegado dentro de uma sessão, com contexto próprio, que devolve

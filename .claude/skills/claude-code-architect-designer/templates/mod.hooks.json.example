@@ -1,0 +1,6 @@
+{
+  "_comment": "Shape reference for Form 9 — .claude/mods/<mod-name>/hooks/hooks.json. Exactly one entry in `modules`, relative to this file, with an extension in `mods.module_extensions`; without `modules` the plugin is no mod and `claude plugin validate` prints no `hooks:` line. No settings hook goes here: this repository registers settings hooks in .claude/settings.json only, where `schema` and `doctor` see them. Delete this `_comment` key when copying.",
+  "modules": [
+    "./register.ts"
+  ]
+}
