@@ -9,7 +9,7 @@
 // Why this test exists: every one of those defects is silent at runtime. The engine skips a
 // hook it cannot run and says so only in a debug log; a mod nobody enabled simply never
 // draws. `claude plugin validate` sees part of it, but only where the CLI is installed — the
-// `mods` job of templates.yml, path-filtered. `schema` is what runs in every session, at Stop.
+// path-filtered `mods.yml` workflow. `schema` is what runs in every session, at Stop.
 // Decision 0131.
 
 import java.io.*;
@@ -68,9 +68,17 @@ public class ModsSchemaTest {
 
     interface Mutation { void apply(Path tree) throws IOException; }
 
+    /**
+     * Line endings normalized first: a Windows checkout with `core.autocrlf` holds the module
+     * as CRLF, and a fixture spanning lines would never match it.
+     */
+    static String read(Path f) throws IOException {
+        return Files.readString(f, StandardCharsets.UTF_8).replace("\r\n", "\n");
+    }
+
     static void edit(Path tree, String rel, String from, String to) throws IOException {
         Path f = tree.resolve(rel);
-        String s = Files.readString(f, StandardCharsets.UTF_8);
+        String s = read(f);
         if (!s.contains(from)) throw new IOException("fixture drifted: `" + from + "` not in " + rel);
         Files.writeString(f, s.replace(from, to), StandardCharsets.UTF_8);
     }
@@ -78,7 +86,7 @@ public class ModsSchemaTest {
     /** Removes the `.catch(...)` that closes the first hook opening with `opening`. */
     static void dropCatchAfter(Path tree, String opening) throws IOException {
         Path f = tree.resolve(MODULE);
-        String s = Files.readString(f, StandardCharsets.UTF_8);
+        String s = read(f);
         int at = s.indexOf(opening);
         int c = s.indexOf(".catch(", at);
         int end = s.indexOf('\n', c);
