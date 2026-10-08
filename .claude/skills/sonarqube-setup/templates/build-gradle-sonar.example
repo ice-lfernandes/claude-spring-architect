@@ -25,6 +25,10 @@ sonar {
         // No sonar.coverage.jacoco.xmlReportPaths: the scanner's default,
         // build/reports/jacoco/test/jacocoTestReport.xml, is where `jacocoTestReport`
         // writes once `xml.required = true` — already set by project-bootstrap.
+        // The coverage scope: the `exclude:` list of jacocoTestReport's classDirectories in
+        // THIS build.gradle, each `.class` turned into `.java`, comma-separated — derived in
+        // step 3, never copied from here. Coverage only, never sonar.exclusions.
+        property 'sonar.coverage.exclusions', '<!-- derived in step 3 -->'
         // Findings accepted by design in code the framework's own templates ship, scoped by
         // rule AND file — reasons in pom-sonar.xml.example, the Maven twin of this block.
         // Remove an entry together with the code it covers.

@@ -102,9 +102,22 @@ Then merge — never replace what the root build file already has:
 
 `sonar.projectKey` is `<groupId>:<artifactId>` from the root build file. `sonar.host.url`
 is the URL from step 2, or `http://localhost:9000` for the local container.
-`sonar.organization` only for SonarCloud. Coverage needs no property: the scanner's
-default report paths are exactly where the JaCoCo setup `project-bootstrap` writes puts
-them (`target/site/jacoco/jacoco.xml`, `build/reports/jacoco/test/jacocoTestReport.xml`).
+`sonar.organization` only for SonarCloud. The coverage report path needs no property: the
+scanner's default report paths are exactly where the JaCoCo setup `project-bootstrap` writes
+puts them (`target/site/jacoco/jacoco.xml`, `build/reports/jacoco/test/jacocoTestReport.xml`).
+
+The coverage **scope** does need one, `sonar.coverage.exclusions`, and it is derived, never
+typed. `@.claude/rules/testing.md` § Coverage leaves classes out of the calculation, and the
+root build file already says which: the `<excludes>` of `jacoco-maven-plugin`'s
+`<configuration>`, or the `exclude:` list of `jacocoTestReport`'s `classDirectories`. Sonar
+does not read that list. A class missing from `jacoco.xml` shows up there as uncovered, so
+without the property Sonar measures a scope the build gate never measured. Read those
+patterns from the project's own build file, not from the template, because the project may
+have changed them. Turn each trailing `.class` into `.java` and keep directory patterns as
+they are (`**/*Config.class` → `**/*Config.java`, `**/config/**` unchanged). Write them
+comma-separated, in their order. This is coverage exclusion only, never `sonar.exclusions`:
+the classes still get their issues analyzed. When the build file has no JaCoCo excludes,
+write no property and say so in the report.
 
 The `sonar.issue.ignore.multicriteria` entries go in as written, whether or not the files
 they name exist yet: each is scoped to one rule and one file, a file absent from the project
@@ -140,6 +153,7 @@ No `.github/workflows/build.yml` → skip, and say it in the report.
 
 Build ....... <pom.xml | build.gradle> — scanner <version> (resolved from <repository>)
 Project key . <groupId:artifactId>
+Coverage .... sonar.coverage.exclusions = <patterns> (from the JaCoCo excludes in <file>:<line>) | not set — no JaCoCo excludes in <file>
 Server ...... <url> · auth: <SONAR_TOKEN | anonymous>
 Compose ..... <sonarqube added by docker-architect, tag <tag> | not touched — external server>
 CI .......... <step added, runs when secret SONAR_TOKEN is set | skipped — local server | skipped — no workflow>
@@ -183,7 +197,8 @@ opens the server to anyone who can reach it:
 nothing else. `ArchHook.java guard` enforces it. `docker-compose.yml` is deliberately
 outside it.
 
-**Reads** the root `pom.xml` or `build.gradle` (coordinates, existing plugins), and
+**Reads** the root `pom.xml` or `build.gradle` (coordinates, existing plugins, the JaCoCo
+excludes that `sonar.coverage.exclusions` is derived from), and
 `.github/workflows/build.yml` when it exists.
 
 **Writes** the scanner plugin and the `sonar.*` properties into the root build file —
