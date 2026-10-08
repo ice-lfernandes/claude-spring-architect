@@ -118,6 +118,7 @@ Practical rules:
 | Code intelligence | After edits and on demand | Diagnostics and symbols | Low (reduces reads) |
 | Subagents | On spawn | Separate window | Isolated |
 | Hooks | On trigger | Nothing (runs outside) | Zero, unless it returns output |
+| Mods | On event | Nothing, except `context` in `prompt.submit`, `tool.register`, or variable text in `prompt.section` (invalidates the cache) | Zero to low |
 
 ## Checkpoints and safety
 

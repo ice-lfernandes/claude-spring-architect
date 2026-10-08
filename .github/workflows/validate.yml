@@ -11,6 +11,8 @@ name: validate
 #   5. the transformation into a project's `.claude/` is reproducible, carries the jar, and
 #      deletes what `export.retired` names (decision D54, 0082)
 #   6. every service template docker-architect merges yields a valid compose file (0092)
+#   7. every mod under .claude/mods/ is structurally what `mods` in extensions.json allows —
+#      its TypeScript runs in mods.yml (0131)
 on:
   push: { branches: [main] }
   pull_request:
@@ -131,6 +133,17 @@ jobs:
       # own writes against the narrower phase open at Stop (0114, issue #74).
       - name: guard sweep reports this turn's writes, never pre-existing dirt
         run: java .claude/.ci/SweepTest.java
+
+      # The cockpit mod draws the band above the prompt from this one JSON line; its own tests
+      # stub it, so a renamed key would empty the band with nothing failing (0131).
+      - name: guard status prints the open phase the cockpit draws
+        run: java .claude/.ci/GuardStatusTest.java
+
+      # A mod that hooks an unknown event, gates without `.catch`, calls the network or the
+      # model, or that the marketplace or settings forgot, loads half-way in silence. The
+      # `mods` workflow runs the TypeScript; this is the half that runs on every OS (0131).
+      - name: schema blocks a mod that would load half-way
+        run: java .claude/.ci/ModsSchemaTest.java
 
       # The advertised-address half of the gate reads the file, so it blocks on all three
       # OSes whether or not a Docker daemon is present (0064). Question 5 — a placeholder the

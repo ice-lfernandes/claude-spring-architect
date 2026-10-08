@@ -1,0 +1,6 @@
+{
+  "_comment": "Shape reference for Form 9 — .claude/mods/<mod-name>/.claude-plugin/plugin.json. `name` is the directory's name (`schema` checks it) and never starts with `claude-` (`claude plugin validate` refuses it). A mod adds no field of its own to the manifest: what makes this plugin a mod is `modules` in hooks/hooks.json. Delete this `_comment` key when copying — a manifest carries only its fields.",
+  "name": "<mod-name>",
+  "version": "0.1.0",
+  "description": "<what the person sees — the band, the pane, the /command — and which settings hook or permissions rule decides what it shows>"
+}

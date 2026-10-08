@@ -29,6 +29,13 @@ bloqueia a edição é enforcement."*
 | Custo de contexto | Zero, salvo se retornar output | Description sempre; corpo ao usar |
 | Bom para | Lint após edit, bloquear comando, log, notificação | Workflows com raciocínio, referência |
 
+Desde a v2.1.287 existe um terceiro tipo: o **mod**, função JS/TS que roda **dentro** do
+processo do Claude Code e pode desenhar na interface. A documentação passou a chamar o hook
+desta página de **settings hook**. Cada evento daqui existe para um mod como `classic.<Evento>`
+(`classic.PreToolUse`, `classic.Stop`), com o mesmo JSON do stdin em `e`. Um mod **não
+substitui** um settings hook: não desenha em `claude -p`, VS Code, cloud ou mobile, e
+`--safe-mode` o desliga. Página [16 — Mods](16-mods.md).
+
 ## Eventos de lifecycle
 
 | Evento | Quando dispara |
@@ -162,6 +169,7 @@ enforcement duro vai no sistema de permissões.
 | `.claude/settings.local.json` | Um projeto, só você | Não |
 | Managed settings | Organização | Sim (admin) |
 | Plugin `hooks/hooks.json` | Onde o plugin está ativo | Sim |
+| `modules` em `hooks/hooks.json` de plugin | Onde o plugin está ativo — é um **mod**, não um settings hook ([16](16-mods.md)) | Sim |
 | Frontmatter de skill | Resto da sessão, após invocar | Sim |
 | Frontmatter de subagent | Enquanto o subagent roda | Sim |
 

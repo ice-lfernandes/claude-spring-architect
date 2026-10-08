@@ -29,6 +29,13 @@ that blocks the edit is enforcement.
 | Context cost | Zero, unless it returns output | Description always; body on use |
 | Good for | Lint after edit, blocking a command, logging, notification | Workflows that need reasoning, reference |
 
+Since v2.1.287 there is a third kind: the **mod**, a JS/TS function that runs **inside** the
+Claude Code process and can draw in the interface. The documentation now calls the hook on
+this page a **settings hook**. Every event here exists for a mod as `classic.<Event>`
+(`classic.PreToolUse`, `classic.Stop`), with the same stdin JSON in `e`. A mod does **not**
+replace a settings hook: it doesn't draw in `claude -p`, VS Code, cloud or mobile, and
+`--safe-mode` turns it off. Page [16 — Mods](16-mods.md).
+
 ## Lifecycle events
 
 | Event | When it fires |
@@ -163,6 +170,7 @@ belongs in the permission system.
 | `.claude/settings.local.json` | One project, only you | No |
 | Managed settings | Organization | Yes (admin) |
 | Plugin `hooks/hooks.json` | Where the plugin is active | Yes |
+| `modules` in a plugin's `hooks/hooks.json` | Where the plugin is active — it's a **mod**, not a settings hook ([16](16-mods.md)) | Yes |
 | Skill frontmatter | Rest of the session, after invocation | Yes |
 | Subagent frontmatter | While the subagent runs | Yes |
 

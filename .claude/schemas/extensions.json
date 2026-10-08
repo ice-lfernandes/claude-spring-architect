@@ -142,7 +142,7 @@
     "allowed": [
       "$schema", "_comment", "hooks", "permissions", "enabledPlugins",
       "enabledMcpjsonServers", "disabledMcpjsonServers", "enableAllProjectMcpServers",
-      "allowedMcpServers", "deniedMcpServers"
+      "allowedMcpServers", "deniedMcpServers", "extraKnownMarketplaces"
     ]
   },
 
@@ -730,6 +730,44 @@
         }
       ]
     }
+  },
+
+  "mods": {
+    "$comment": "Single owner of what a mod of this repository may be. A mod is a plugin whose hooks/hooks.json names a hooks module: TypeScript that runs inside the Claude Code process and draws in the interface. Read by ArchHook.java `schema` (the structure of every mod under `root`, at Stop and after an edit there), `guard status` (`deny_markers`, handed to the mod with the open phase) and `doctor` (the `Mods` line, against `min_version`). A mod renders what the rest of this file already enforces through settings hooks: it holds no rule (invariant 2 — the rule stays in ArchHook.java, which the mod calls) and it is never the guarantee (invariant 6 — a mod does not load in `claude -p`, VS Code, a cloud session or under `--safe-mode`). Meta-repository only: the `export` block lists no mod and the generated project's settings template registers no marketplace, so the whole block is silent where `root` does not exist. Design: .claude/decisions/0131-mods-in-architect-designer.md",
+    "root": ".claude/mods",
+    "marketplace": "nerviz-mods",
+    "$comment_versions": "`min_version` is the first Claude Code release that loads a mod outside early access; `doctor` reports a lower CLI. `ci_version` is the CLI the `mods` job of .github/workflows/templates.yml installs to run `claude plugin validate` and `claude plugin test` — pinned, so a release that changes the mods API fails a pull request that raises it, not an unrelated one.",
+    "min_version": "2.1.287",
+    "ci_version": "2.1.293",
+    "module_extensions": [".ts", ".mts", ".tsx", ".js", ".mjs"],
+    "tests_dir": "tests",
+    "$comment_events": "Every event a hooks module may register with `on(...)`, transcribed from the `.d.ts` Claude Code writes into a loaded mod's .claude-plugin/types/ (EngineEventOf); that file wins when the two disagree. `classic.<Event>` is accepted for every name in `settings.hook_events` and `settings.hook_events_extra`. An unknown name fails `claude plugin validate` too, but only on a machine with the CLI — this list makes `schema` say it everywhere.",
+    "events": [
+      "agent.offer", "agent.spawn", "attribution.text", "command.describe", "command.run",
+      "config.describe", "config.set", "engine.create", "plugin.register",
+      "prompt.attachment", "prompt.autocomplete", "prompt.compose", "prompt.context",
+      "prompt.edit", "prompt.fill", "prompt.mention", "prompt.section", "prompt.submit",
+      "prompt.suggest", "session.append", "session.attach", "session.compact",
+      "session.detach", "session.end", "session.measure", "session.receive", "session.send",
+      "session.start", "skill.prompt", "telemetry.log", "telemetry.mark", "tool.call",
+      "tool.check", "tool.describe", "turn.complete", "turn.start", "turn.step", "ui.fault",
+      "ui.focus", "ui.input", "ui.message", "ui.press", "ui.render", "ui.resolve",
+      "ui.scroll", "ui.select"
+    ],
+    "$comment_gating": "Events whose hook can change whether something runs — a tool call, a prompt, a subagent, the end of a turn. A hook on one of them ends in `.catch(($, e, next) => next(e))`: a hook that throws or times out is otherwise skipped, and the handler makes the failure fall through to the settings hooks and `permissions` rules beneath — `next(e)` replays their decision once `next.called`, and runs them once when not. A mod here holds no refusal of its own, so the handler never needs one; a mod hooks these events only to show or hold what a guarantee beneath already decided, never to loosen it. `claude plugin validate` prints `gating hook without .catch` for the same defect, and the `mods` CI job fails on that line.",
+    "gating_events": [
+      "tool.call", "tool.check", "prompt.submit", "prompt.mention", "agent.spawn", "config.set",
+      "classic.PreToolUse", "classic.UserPromptSubmit", "classic.Stop", "classic.SubagentStop",
+      "classic.PostToolBatch", "classic.PermissionRequest"
+    ],
+    "$comment_calls": "What a mod here never calls: the network, the model (it spends the person's plan), a prompt or message sent as the person, a change to the environment every later command inherits, and a file write that no tool-time guard sees. `process_allow` is the only program `$.process.run` may start — the first element of its argument list, as a string literal; the mod reaches the repository's rules through `java -jar .claude/hooks/ArchHook.jar`, and nothing else.",
+    "forbidden_calls": [
+      "$.http.fetch", "$.model.complete", "$.model.fork", "$.model.classify",
+      "$.prompt.submit", "$.session.send", "$.env.set", "$.fs.write", "$.process.spawn"
+    ],
+    "process_allow": ["java"],
+    "$comment_markers": "Fragments of the refusals `guard write` and `guard bash` print. `guard status` hands them to the cockpit mod, which holds a Bash refusal behind its dialog only when the refusal carries one of them — a refusal the person typed at a permission prompt carries none. `schema` fails when a marker no longer appears in ArchHook.java, so a reworded message cannot silently turn the dialog off.",
+    "deny_markers": ["guard: force push blocked", "is outside its territory", "its specs are immutable"]
   },
 
   "mcp": {

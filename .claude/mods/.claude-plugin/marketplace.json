@@ -1,0 +1,16 @@
+{
+  "name": "nerviz-mods",
+  "owner": {
+    "name": "Nerviz"
+  },
+  "metadata": {
+    "description": "The mods of this repository. Registered by .claude/settings.json as a directory source, so each mod loads in place. Design: .claude/decisions/0131-mods-in-architect-designer.md"
+  },
+  "plugins": [
+    {
+      "name": "nerviz-cockpit",
+      "source": "./nerviz-cockpit",
+      "description": "The open skill phase and its write territory above the prompt, the phase and turn cost beside the spinner, /nerviz-doctor in a pane, and a guard refusal held behind two buttons."
+    }
+  ]
+}

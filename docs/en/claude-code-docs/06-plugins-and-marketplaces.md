@@ -35,6 +35,8 @@ optional). Possible components:
 - **Skills** (`skills/<name>/SKILL.md`) — namespaced as `/plugin:skill`
 - **Agents** (`agents/*.md`) — delegable subagents
 - **Hooks** (`hooks/hooks.json`) — commands on lifecycle events
+- **Mod** (`modules` in `hooks/hooks.json` pointing at a `.js`/`.ts`) — code that runs inside
+  the Claude Code process and can draw in the interface. Page [16](16-mods.md)
 - **MCP servers** — servers connected while the plugin is active
 
 ## When you need a plugin
@@ -120,5 +122,12 @@ installation, turn off session-only loading and restrict customization to plugin
 - Plugin subagents **ignore** `hooks`, `mcpServers` and `permissionMode`.
 - `claude plugin eval` runs eval suites to test the plugin (JSON/report, sandbox, CI);
   `/skill-doctor` shows the context cost and trigger rate of skills.
+- `claude plugin validate <dir>` reads the manifest and hooks module without running them; the
+  `hooks:` and `calls:` lines list a mod's events and mods API calls — the security review
+  before installing a third-party plugin. `claude plugin test` runs a mod's `*.test.ts`.
+- A plugin installed from GitHub, git, URL or npm is **copied into the cache** and counts as
+  the user's even with managed `enabledPlugins`; only a marketplace in a local directory,
+  listed by relative path, loads *in place* and counts as the organization's (matters for
+  mods, [16 § Managed settings](16-mods.md#managed-settings)).
 - Useful variables inside a plugin: `${CLAUDE_PLUGIN_ROOT}` (installation directory) and
   `${CLAUDE_PLUGIN_DATA}` (persistent directory that survives updates).

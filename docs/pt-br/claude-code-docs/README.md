@@ -7,7 +7,7 @@ funcionamento, e aponta para o link de referência oficial de cada página.
 
 - **Fonte:** <https://code.claude.com/docs/en/overview> e o índice completo em
   <https://code.claude.com/docs/llms.txt> (209+ páginas).
-- **Snapshot:** 2026-09-27. O produto muda semanalmente (ver
+- **Snapshot:** 2026-09-27; página 16 (mods) em 2026-10-08. O produto muda semanalmente (ver
   [What's new](https://code.claude.com/docs/en/whats-new/index)); confirme detalhes de versão
   antes de publicar conteúdo baseado nestes resumos.
 - **Convenção:** qualquer URL oficial pode ser lida em Markdown puro acrescentando `.md`
@@ -33,6 +33,7 @@ funcionamento, e aponta para o link de referência oficial de cada página.
 | 13 | [Administração e enterprise](13-administracao-e-enterprise.md) | Managed settings, deployment, gateways, custos, monitoramento, dados |
 | 14 | [Agent SDK](14-agent-sdk.md) | SDK TypeScript/Python, agent loop, tools customizadas, permissões, deploy |
 | 15 | [Troubleshooting e glossário](15-troubleshooting-e-glossario.md) | Erros, diagnóstico de config, glossário dos termos oficiais |
+| 16 | [Mods](16-mods.md) | Plugins em JS/TS dentro do processo: eventos (`tool.call`, `prompt.submit`, `turn.step`…), mods API (`$`), panes e band, `/comandos` sem turno, testes, governança |
 
 ## Os cinco pontos que sustentam todo o resto
 
@@ -64,6 +65,7 @@ funcionamento, e aponta para o link de referência oficial de cada página.
 | Conexão com sistema externo | MCP server | Não (mas a tool é real) |
 | Algo que precisa acontecer **sempre** | Hook | Sim |
 | Bloquear tool, comando ou caminho | Regra de permissão / sandbox | Sim |
+| Painel, faixa acima do prompt, `/comando` sem turno, segurar uma tool call com botões, trocar o modelo de uma requisição | Mod | Sim, onde carrega — mas não desenha em `-p`, VS Code, cloud, mobile, e `--safe-mode` o desliga |
 | Empacotar tudo isso para reuso | Plugin | — |
 
 Fonte da tabela: [Extend Claude Code](https://code.claude.com/docs/en/features-overview#match-features-to-your-goal).

@@ -4,6 +4,7 @@ Reference for the `claude-code-architect-designer` skill: interview axis 17, the
 every Phase 3 option, and Phase 4 step 9. Loads only when it is invoked.
 
 Source: `.github/workflows/validate.yml`, `.github/workflows/templates.yml`,
+`.github/workflows/mods.yml`,
 `.claude/.ci/*Test.java`, `.claude/skills/project-bootstrap/templates/ci.yml.example`.
 **The workflows are the owner.** Every job and step this page names is quoted from them; when
 they disagree, they win and this page gets corrected. Prose tour of the same jobs, with the
@@ -28,6 +29,7 @@ the right CI item then is one line naming that step.
 | `validate` · job `export-determinism` | same | every push and PR | What the `export` mode writes into a target: reproducible tree, the jar carried, `export.retired` deleted, the exported jar's own `schema` and `doctor` |
 | `validate` · job `exemplar-imports` | same | every push and PR, network | Every `import` of a `.java.example` exists in a JAR of a real Initializr project |
 | `templates` | `.github/workflows/templates.yml` | path-filtered, network | Anything that needs network or a Maven build: Checkstyle configs against fixtures, templates copied as files compiled and their tests run (`0099`). Not a required check — it stays pending on PRs it skips |
+| `mods` | `.github/workflows/mods.yml` | path-filtered (`.claude/mods/**`, `extensions.json`), ubuntu | What only the Claude CLI can prove about a mod: `claude plugin validate` reads it as the engine will (and the job fails on `gating hook without .catch`), `claude plugin test` runs its `*.test.ts`. The CLI comes from npm at `mods.ci_version` — the only install outside java/git/curl in this repository's CI, and nothing a user runs (`0131`). Not a required check |
 | Generated project · `build` | `project-bootstrap/templates/ci.yml.example` (+ `ci-gradle.yml.example`) | every push and PR **of the generated project** | Only what exists inside the project: `./mvnw verify`, the IT-ran check, `ArchHook.java doctor gate` (fails on the lines `doctor.gate.labels` lists — `0128`). Nothing under `.claude/.ci/` travels (`export` does not copy it) |
 
 ## Form → what already covers it → when a new check is needed
@@ -43,6 +45,7 @@ the right CI item then is one line naming that step.
 | 7a, 7b — hook registration | `frontmatter schema`: event names, entry fields, exec form, `matcher` only where the event reads one — in `.claude/settings.json` **and** in `project-bootstrap/templates/settings.json.example`. `hooks-cross-platform` › `doctor` | The registration changes **what is blocked or allowed** by an existing mode (a new `if`, a new data entry the mode reads) → a case in that mode's test | The mode's `.claude/.ci/<Mode>Test.java` |
 | 7c — new `ArchHook.java` mode | `hooks-cross-platform` › `committed ArchHook.jar is what the source compiles to` (the jar), nothing else | **Always.** A mode that throws exits 0 through the top-level catch and looks like it passed — no test, no proof. One new `<Mode>Test.java`, both directions: the input it must block or report, and the input it must let through | New `.claude/.ci/<Mode>Test.java` + a step in `hooks-cross-platform` |
 | 8 — `permissions` | Nothing. The runtime evaluates a permission rule; there is no offline matcher to run in CI | Not testable in CI — record that, and name the pitfall entry in `docs/*/11-pitfalls.md` that tells a reader the tool refuses on purpose | — |
+| 9 — mod | `hooks-cross-platform` › `schema blocks a mod that would load half-way` (`ModsSchemaTest`): marketplace and `enabledPlugins` entries, manifest, one hooks module, tests present, known events, `.catch` on every `gating_events` hook, no `forbidden_calls`, only `process_allow` programs, `deny_markers` still in the source. `mods.yml` › validate and test, every mod on disk | Always the mod's own `tests/*.test.ts` — one per claim, stubbing what `ArchHook.jar` prints, green then red once. A read-only mode the mod calls is Form 7c: its own `<Mode>Test.java` (precedent: `GuardStatusTest`), since the mod's tests stub it | `.claude/mods/<name>/tests/` · `.claude/.ci/<Mode>Test.java` + a step in `hooks-cross-platform` |
 | Create nothing | — | — | — |
 
 **Axis 8 = "both".** Whatever the generated project receives runs there through its own

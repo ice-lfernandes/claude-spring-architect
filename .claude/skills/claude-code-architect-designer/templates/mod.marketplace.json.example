@@ -1,0 +1,17 @@
+{
+  "_comment": "Shape reference for Form 9 — .claude/mods/.claude-plugin/marketplace.json, written once, with the first mod. Every later mod adds one entry to `plugins`, never a second marketplace. `name` is `mods.marketplace` in .claude/schemas/extensions.json, the id .claude/settings.json enables each mod under (`<mod>@nerviz-mods`). `source` is a relative path from .claude/mods/ — that is what loads the mod in place instead of copying it into the plugin cache. `schema` fails on a directory the list forgets, on an entry with no directory, and on a source that is not `./<name>`. Reference: ../references/mod-events.md.",
+  "name": "nerviz-mods",
+  "owner": {
+    "name": "Nerviz"
+  },
+  "metadata": {
+    "description": "The mods of this repository. Registered by .claude/settings.json as a directory source, so each mod loads in place."
+  },
+  "plugins": [
+    {
+      "name": "<mod-name>",
+      "source": "./<mod-name>",
+      "description": "<what the person sees, and which guarantee it sits on>"
+    }
+  ]
+}

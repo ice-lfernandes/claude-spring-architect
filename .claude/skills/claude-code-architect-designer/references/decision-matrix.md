@@ -20,6 +20,8 @@ docs win.
   ═════════════════════════════════════════════════════
    ┌─ permissions ── allow / ask / deny                   │  GUARANTEE
    └─ hooks ──────── lifecycle events                      │  (always executes)
+  ─────────────────────────────────────────────────────
+   └─ mods/ ──────── draws what the two above decide      │  INTERFACE (where it loads)
 ```
 
 Everything above the line is read by the model: it can be ignored, misinterpreted, or
@@ -32,6 +34,11 @@ replacing one.
 **Consequence for classification:** if breaking the rule is a compliance, security, or
 build bug, the answer is below the line — Form 7 (hook) or Form 8 (`permissions`), § 2.2.
 This skill designs and writes both, after approval, like every other form.
+
+**And mods sit under both, never between them.** A mod executes regardless of the model
+too, but only where it loads — not in `claude -p`, VS Code, a cloud session or under
+`--safe-mode` — so it is neither persuasion nor guarantee: it is the interface over the
+guarantee. Form 9, § 2.3.
 
 **And the consequence for the diagram of `@CLAUDE.md`:** a skill that writes a hook
 appears to point back at the layer that verifies it. It doesn't. The arrow is
@@ -57,6 +64,7 @@ elimination power, not by frequency.
 | … and does the user want to trigger it by hand, or does it have a side effect? | **Form 2** — `disable-model-invocation: true` |
 | … and should it fire on its own from the description, without the user asking? | **Form 1** |
 | Does it need isolated context, restricted tools, or a different model? | **Form 3** — subagent, and even then see § 5 |
+| Does the person need to **see** or **act on** something the hooks already decide — a band, a pane, a spinner, a dialog over a tool call, a `/command` that spends no turn? | **Form 9** — mod, § 2.3 |
 
 No row matches → the answer is **create nothing**.
 
@@ -92,6 +100,19 @@ Reached only from the first row of § 2. Same rule: **the first row that matches
 | Does only one skill or agent need it, while it runs? | **Form 7b** — `hooks:` in that file's frontmatter. The rest of the session pays nothing |
 | Does the whole session need it, on a lifecycle event? | **Form 7a** — the `hooks` block of `.claude/settings.json`, plus **7c** if no mode covers the check |
 | Does the model already get it right, and the hook would only make it official? | **Create nothing.** A hook is a guarantee against a failure that was observed — axis 1. Without the observed failure it is a process spawned per event to confirm what was already true |
+
+### 2.3. Sub-table — a mod, or something cheaper
+
+Reached from the Form 9 row of § 2. Same rule: **the first row that matches decides.**
+
+| Question | If yes |
+|---|---|
+| Must the rule hold even where no mod loads (`-p`, VS Code, cloud, `--safe-mode`)? | **Form 7 or 8** — § 2.2. A mod may be added on top later; it is never the first piece |
+| Is what the person needs to read a line at the moment of a refusal? | **Form 7** alone — the blocking hook's stderr is that line. A dialog over it pays a second language for the same sentence |
+| Is it text the **model** needs, not the person? | **Form 7a** with `additionalContext`, or a skill — a mod draws for the person, and `prompt.section`/`prompt.context` text that changes per request invalidates the prompt cache |
+| Does it show state a mode of `ArchHook.java` already computes? | **Form 9** calling that mode through `$.process.run` — plus **7c** only when no mode prints it, as `guard status` was added for the cockpit (`0131`) |
+| Does it hold a tool call until the person answers? | **Form 9** on `tool.call`, **only** over a guarantee that already refuses or asks — the dialog chooses what happens next, never whether the call runs |
+| Does it need the network, the model, or to write a file? | **Create nothing** here — `mods.forbidden_calls` refuses it. The network is an MCP server (§ 2.1), the model is a skill or an agent, a write is Claude's tool behind `guard` |
 
 Deciding **which event** is a separate question from which form, and it has one source:
 `references/hook-events.md`. Two mistakes it exists to prevent — an event name that
@@ -268,6 +289,8 @@ their reasoning. Specific always beats vague.
 | 19 | Shell string in `command` | A pipe, `&&`, or redirect inside `"command"` instead of exec form | `command` = binary, `args` = arguments. Rejected by `ArchHook.java schema` |
 | 20 | Skill or agent with no class | Created without an entry in `skill_classes` / `agent_classes`, so nothing describes its body or its territory | Add it to a class. `ArchHook.java schema` fails by name; for an agent, `model` and `tools` are required too, since they are two of the three reasons in § 5 |
 | 21 | CI answer is "later" | An option with no CI item, or one that defers the check to a future review — the shape of `0084` and `0099`, where CI arrived a review after the piece | Name the job that already covers it, the test Phase 4 step 9 writes, or why nothing is testable — `ci-coverage.md` |
+| 22 | Mod as the guarantee | A Form 9 that refuses or allows on its own, with no Form 7 or 8 beneath — invisible in `-p`, CI and every surface that draws nothing | Form 7 or 8 first; the mod renders their decision (§ 2.3) |
+| 23 | Rule restated in TypeScript | A list, path or pattern written into a hooks module, or a phase re-derived from events | Read it from `ArchHook.jar` (`guard status`, `doctor`); a new read-only mode is Form 7c |
 
 ---
 
@@ -288,8 +311,11 @@ nearest integer and show what cost points.
 | 8 | **Trust surface** | Grants a capability wider than the task needs — an MCP server that reads files and calls arbitrary APIs, an agent with `permissionMode: bypassPermissions`, a skill with unscoped `allowed-tools` where a narrower rule would do |
 | 9 | **Cost of always running** | Frequency of the event × cost per firing, and whether `if`/`matcher` narrows before a process is spawned. A `PostToolUse` hook with no filter pays a JVM startup on every edit in the repo; a `SessionStart` hook pays once. Also loses a point when the hook blocks (exit `2`) on a judgment call that will sometimes be wrong — the cost there isn't milliseconds, it's a person stuck |
 
-Criterion 9 only bites on Forms 7 and 8. For the persuasion forms it is scored full: they
-cost nothing until read. This is the same treatment criterion 3 gives an MCP server whose
+Criterion 9 only bites on Forms 7, 8 and 9. For the persuasion forms it is scored full:
+they cost nothing until read. A mod pays no process per event — it runs inside Claude Code
+— but each `$.process.run` it makes is one, so a mod that calls `ArchHook.jar` on every
+render loses the point a hook with no `if` loses; call it on the events that change the
+answer and keep the result. This is the same treatment criterion 3 gives an MCP server whose
 tool names load at every startup — the two are the runtime bill, before and after the
 line in § 1.
 
@@ -302,23 +328,25 @@ record why it was rejected.
 ## 9. Decision record
 
 Phase 3 produces options, scores, rejected alternatives, and sources. That disappears
-with the session, and without it the same seventeen-axis interview repeats itself six
+with the session, and without it the same twenty-axis interview repeats itself six
 months from now. Two levels, and the first is mandatory:
 
 | Level | Where | When | Content |
 |---|---|---|---|
-| 1 | `## Why this is <form>` section in the created file | Always — except Forms 5, 6a, 7a, and 8, which are JSON or have no body. Form 7c carries it in the new mode's Javadoc | Form chosen, axis that motivated it, closest alternative and why. Three sentences |
-| 2 | `.claude/decisions/NNNN-<slug>.md` | Only if there was a real choice — or always, for Forms 7 and 8 | Interview, all options with score, rubric, references, propagation |
+| 1 | `## Why this is <form>` section in the created file | Always — except Forms 5, 6a, 7a, and 8, which are JSON or have no body. Form 7c carries it in the new mode's Javadoc, Form 9 in the header comment of its hooks module | Form chosen, axis that motivated it, closest alternative and why. Three sentences |
+| 2 | `.claude/decisions/NNNN-<slug>.md` | Only if there was a real choice — or always, for Forms 7, 8 and 9 | Interview, all options with score, rubric, references, propagation |
 
 Level 2 is saved when at least one of these is true: two or more options scored ≥ 5; the
 approved option strains an invariant; axis 8 = "both"; axis 13 (MCP destination) =
-"both"; **the approved form is 7 or 8**. None of these → level 1 is enough. A record for a
+"both"; **the approved form is 7, 8 or 9**. None of these → level 1 is enough. A record for a
 trivial decision is ceremony, not memory.
 
 Forms 7 and 8 have no trivial case. A hook changes what every session enforces and has
 almost nowhere to explain itself — a `permissions.deny` line has nowhere at all. Whoever
 finds it later and can't reconstruct why it blocks will delete it the first time it gets
-in the way, and the failure it was bought against comes back.
+in the way, and the failure it was bought against comes back. Form 9 has none either: a
+mod is a second language running unsandboxed in every session that loads it, and its
+record is where the guarantee beneath it is named.
 
 Level 1 travels with the file, including into the generated project. Level 2 stays in
 this repository — it records decisions about this `.claude/`, invariant 9. It is not a

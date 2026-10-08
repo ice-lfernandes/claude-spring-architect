@@ -414,6 +414,31 @@ abre. Um marcador mais velho que `tests.writer_agent_max_minutes` é apagado e i
 agente morto pelo sono da máquina nunca chega ao `SubagentStop`. Design:
 `.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`.
 
+### Mods
+
+**Abaixo do Claude Code 2.1.287 nenhum mod carrega, e nada na sessão avisa.** A faixa, o
+sufixo do spinner e o `/nerviz-doctor` simplesmente não aparecem. A linha `Mods` do
+`/arch-doctor` compara o CLI do PATH com `mods.min_version`. Em `claude -p`, VS Code, sessão
+cloud ou sob `--safe-mode` eles não aparecem por design: os guards que eles desenham
+continuam impondo.
+
+**O marketplace de `.claude/mods/` só registra depois que o workspace trust da pasta é
+aceito, e resolve contra o checkout principal.** Num git worktree o mod carrega do checkout
+principal, não do worktree em edição; teste uma edição ali com
+`claude --plugin-dir .claude/mods/<name>`. Uma edição vale na próxima sessão ou depois de
+`/reload-plugins`.
+
+**O `schema` no `Stop` bloqueia um mod que carregaria pela metade** — evento desconhecido,
+hook de gating sem `.catch`, chamada proibida, programa que não é `java`, mod que o
+marketplace ou o `enabledPlugins` esqueceu, sem testes. A mensagem nomeia o defeito e a chave
+de `mods` dona da lista. Design: `.claude/decisions/0131-mods-in-architect-designer.md`.
+
+**O diálogo do cockpit só aparece numa recusa do `guard`.** Ele reconhece uma pelos
+fragmentos de `mods.deny_markers`; uma recusa digitada num prompt de permissão não carrega
+nenhum e não pergunta nada. Reescrever uma mensagem do guard sem atualizar o marcador faz o
+`schema` falhar pelo nome — senão o diálogo pararia de aparecer em silêncio. A recusa vale
+seja qual for o botão; "Stop the turn" só encerra o turno.
+
 ### Rules e decisions
 
 **Uma rule sem `paths` carrega no launch, em toda sessão — não é "só citação".** Por isso toda

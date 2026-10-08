@@ -30,7 +30,7 @@ Design and rationale: `@.claude/decisions/0053-hooks-in-architect-designer.md`.
 | `hooks:` in a skill's or agent's frontmatter | Only while that piece runs | ✅ Form 7b |
 | `.claude/settings.local.json` | This machine, not versioned | ❌ out of scope |
 | `~/.claude/settings.json` | Every project of one person | ❌ out of scope |
-| `<plugin>/hooks/hooks.json` | Wherever the plugin is active | ❌ this repo ships no plugin |
+| `<plugin>/hooks/hooks.json` | Wherever the plugin is active | ❌ for a settings hook. Its `modules` key is what makes a plugin a **mod** — Form 9, `references/mod-events.md` |
 
 ## Events
 

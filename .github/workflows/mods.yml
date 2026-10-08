@@ -1,0 +1,87 @@
+name: mods
+
+# Proves what `schema` cannot: that each mod under .claude/mods/ loads in the Claude Code it
+# was written for, and does what its own tests claim.
+#   1. `claude plugin validate` reads the marketplace, each manifest and each hooks module the
+#      way the engine will — and no hook that can gate an event lacks a `.catch`
+#   2. `claude plugin test` runs each mod's *.test.ts against the engine's own `$` (no session,
+#      sign-in or network)
+# `schema` (validate.yml › hooks-cross-platform › ModsSchemaTest) checks the same mods as data
+# on every OS and inside every session; this job is the one that runs the TypeScript.
+# Design: .claude/decisions/0131-mods-in-architect-designer.md
+#
+# The one place in this repository that installs anything outside java, git and curl: the
+# Claude Code CLI, from npm, with the Node the runner image ships. Nothing a person or a
+# generated project runs needs it — mods stay in this repository (0131). The version is
+# `mods.ci_version` in extensions.json, pinned, so a release that changes the mods API fails
+# the pull request that raises it, not an unrelated one.
+#
+# Path-filtered and not a required check, like templates.yml: a required check on a
+# path-filtered workflow stays pending forever on the PRs it skips.
+on:
+  push:
+    branches: [main]
+    # Same list under both triggers — keep them identical.
+    paths:
+      - '.claude/mods/**'
+      - '.claude/schemas/extensions.json'
+      - '.github/workflows/mods.yml'
+  pull_request:
+    paths:
+      - '.claude/mods/**'
+      - '.claude/schemas/extensions.json'
+      - '.github/workflows/mods.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mods-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mods:
+    name: mods load and pass their own tests
+    runs-on: ubuntu-latest
+    # One npm install and two CLI runs per mod.
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # sed, not a JSON tool: the file writes one key per line, and the version has one owner.
+      - name: install the Claude Code CLI the mods are tested against
+        run: |
+          set -euo pipefail
+          V=$(sed -n 's/^ *"ci_version": *"\([^"]*\)".*/\1/p' .claude/schemas/extensions.json)
+          [ -n "$V" ] || { echo "❌ no mods.ci_version in extensions.json"; exit 1; }
+          npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@$V"
+          claude --version
+
+      - name: claude plugin validate — the marketplace, every mod, no gating hook without .catch
+        run: |
+          set -uo pipefail
+          FAIL=0
+          LOG=$(mktemp)
+          claude plugin validate .claude/mods | tee -a "$LOG" || FAIL=1
+          for m in .claude/mods/*/; do
+            claude plugin validate "$m" | tee -a "$LOG" || FAIL=1
+          done
+          if grep -q 'gating hook without .catch' "$LOG"; then
+            echo "❌ a hook that can gate an event has no .catch: if it throws, what it held is"
+            echo "   skipped. End it in .catch((\$, e, next) => next(e)) — mods.gating_events"
+            FAIL=1
+          fi
+          [ "$FAIL" -eq 0 ] && echo "✅ Every mod loads as the engine reads it."
+          exit $FAIL
+
+      - name: claude plugin test — every mod's own tests
+        run: |
+          set -euo pipefail
+          for m in .claude/mods/*/; do
+            echo "── $m"
+            claude plugin test "$m"
+          done
