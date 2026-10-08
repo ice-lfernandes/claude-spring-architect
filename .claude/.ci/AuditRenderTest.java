@@ -10,7 +10,9 @@
 // fixed off by its own class override (decision 0111), and that a prompt the harness injects —
 // a background agent's notice or its hand-back — leaves the run open (decisions 0041, 0119),
 // and that each piece carries its cache split and its agent call's description, and the report
-// ranks the tool calls whose results later requests re-read the most (decision 0132).
+// ranks the tool calls whose results later requests re-read the most (decision 0132),
+// and that runs per plan window are the project's Pro budget × each plan's multiplier ÷ the run's
+// cost, capped by the window's hours, in the report and in `summary` (decision 0133).
 //
 // Why this test exists: every number here is parsed out of a transcript layout that is
 // observed, not documented, and a render that throws exits 0 through `main`'s catch — the
@@ -119,6 +121,8 @@ public class AuditRenderTest {
         String gap = "— (no price for `fixture-model` in `.claude/audit-usage/pricing.json`)";
         must(md, "| 💰 Estimated cost | " + gap + " |", "header shows the cost cell, naming the unpriced model (018)");
         must(md, "| 💰 estimated cost | " + gap + " |", "aggregate reuses the same cell");
+        must(md, "## 🪟 Plan windows", "plan windows section rendered (0133)");
+        must(md, "No `.claude/audit-usage/plan-limits.json` — no projection", "no plan-limits file: the report says so, projects nothing");
 
         String history = Files.readString(trail.resolve("history.jsonl"));
         must(history, "\"tool_calls\":\"Grep:2,Bash:1,Edit:1,Read:1\"", "history: run total of tool calls");
@@ -234,16 +238,17 @@ public class AuditRenderTest {
         check(rows(trail) == before + 1, "the user's next prompt closes the run");
 
         growth(hook, repo, trail, transcripts);
+        plans(hook, repo, trail, transcripts);
 
         if (failures > 0) {
             System.err.println("❌ " + failures + " check(s) failed — `audit` is NOT rendering where the run"
                     + " spent, is leaking an unredacted error into the versioned trail, or is recording"
                     + " a piece its class, its fixed override or the project's audited.json takes out of the trail,"
-                    + " or is closing a run on a prompt the harness injected, or is misplacing what grew the context.");
+                    + " or is closing a run on a prompt the harness injected, or is misplacing what grew the context, or is projecting a plan window wrong.");
             System.exit(1);
         }
         System.out.println("✅ audit: tool calls, top turns, peak context and redacted errors rendered;"
-                + " ledgers and summary carry them next to legacy rows; cache split and context growth per piece.");
+                + " ledgers and summary carry them next to legacy rows; cache split, context growth and plan windows per piece.");
     }
 
     /**
@@ -304,6 +309,65 @@ public class AuditRenderTest {
         must(nodes, "\"detail\":\"group tests\"", "nodes: the call's description, so a group is a field, not a row position");
         must(nodes, "\"cache_read\":\"20050\",\"cache_write\":\"7570\"", "nodes: the piece's cache split");
         must(nodes, "\"reread\":\"Read:15000,Bash:400,Edit:50\"", "nodes: re-read tokens per tool");
+    }
+
+    /**
+     * Runs per plan window, from a run's cost and a Pro budget the project wrote — 0133.
+     * Budget: Pro 5 h USD 10, week USD 50; multipliers from extensions.json (Max 5x ×5,
+     * Max 20x ×20, weekly for Max not published). A run of exactly USD 2 (two cache-write
+     * tokens at USD 1 each): Pro 5 per 5 h and 25 per week, Max 5x 25, Max 20x 100. In the
+     * summary, two runs of USD 0.25 and 0.75 and one minute each — mean USD 0.50: Pro 20 and
+     * 100, Max 5x 100, and Max 20x capped by time, 300 one-minute runs in 5 h, not 400.
+     */
+    static void plans(Path hook, Path repo, Path trail, Path transcripts) throws Exception {
+        Files.writeString(trail.resolve("pricing.json"), "{\"currency\":\"USD\",\"per\":1000000,\"models\":{"
+                + "\"other-model\":{\"input\":1,\"output\":1,\"cache_read\":1,\"cache_write\":1},"
+                + "\"plan-model\":{\"input\":0,\"output\":0,\"cache_read\":0,\"cache_write\":1000000}}}");
+        Files.writeString(trail.resolve("plan-limits.json"),
+                "{\"max-5x\":{},\"pro\":{\"five_hour_usd\":-1,\"monthly_usd\":3}}");
+        String bad = runMode(hook, repo, "doctor");
+        must(bad, "`max-5x` — only `pro` is read", "doctor: a plan other than the budget plan is refused by name");
+        must(bad, "`pro.five_hour_usd` must be a number above 0, or null", "doctor: a non-positive budget is refused");
+        must(bad, "`pro.monthly_usd` — only five_hour_usd, weekly_usd are read", "doctor: an unknown field is refused");
+        Files.writeString(trail.resolve("plan-limits.json"), "{\"pro\":{\"five_hour_usd\":10,\"weekly_usd\":50}}");
+        must(runMode(hook, repo, "doctor"), "✅ pro five_hour_usd 10, pro weekly_usd 50", "doctor lists the budgets set");
+
+        Path main = transcripts.resolve("s13.jsonl");
+        String tp = main.toString().replace("\\", "\\\\");
+        run(hook, repo, "prompt", "{\"session_id\":\"s13\",\"prompt\":\"/demo-skill plans\","
+                + "\"transcript_path\":\"" + tp + "\"}");
+        Files.writeString(main, "{\"type\":\"assistant\",\"timestamp\":\"" + at(40) + "\",\"message\":{\"model\":"
+                + "\"plan-model\",\"id\":\"p1\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"…\"}],"
+                + "\"usage\":" + usage(0, 0, 0, 2) + "}}\n");
+        run(hook, repo, "close", "{\"session_id\":\"s13\",\"transcript_path\":\"" + tp + "\"}");
+        String md = null;
+        try (var s = Files.list(trail)) {
+            for (Path f : s.filter(f -> f.getFileName().toString().endsWith("--demo-skill.md")).toList()) {
+                String c = Files.readString(f);
+                if (c.contains("USD 2.00 per run")) md = c;
+            }
+        }
+        if (md == null) { check(false, "plans: a report prices the USD 2.00 run and projects it"); return; }
+        must(md, "| Plan | 5 h | week |", "plans: one column per window");
+        must(md, "| Pro | 5 · budget | 25 · budget |", "plans: Pro = its own budget ÷ the run's cost");
+        must(md, "| Max 5x | 25 · budget | not published |", "plans: Max 5x = Pro × 5 on 5 h; weekly not published");
+        must(md, "| Max 20x | 100 · budget | not published |", "plans: Max 20x = Pro × 20 on 5 h");
+
+        Files.writeString(trail.resolve("history.jsonl"), Files.readString(trail.resolve("history.jsonl"))
+                + planRow("0.25") + planRow("0.75"));
+        String summary = run(hook, repo, "summary", "");
+        must(summary, "### Plan windows", "summary: plan windows table");
+        must(summary, "| Piece | Runs | Mean cost | Mean active | Pro 5 h | Pro week | Max 5x 5 h | Max 20x 5 h |",
+                "summary: a column per plan × window with a published multiplier, none for Max weekly");
+        must(summary, "| 📘 plan-skill | 2 | USD 0.50 | 1m00s | 20 · budget | 100 · budget | 100 · budget | 300 · time |",
+                "summary: mean per piece, and the window's hours cap a run that budget alone would allow more of");
+    }
+
+    static String planRow(String cost) {
+        return "{\"e\":\"run\",\"skill\":\"plan-skill\",\"kind\":\"skill\",\"origin\":\"user\","
+                + "\"start\":\"2026-02-01T00:00:00Z\",\"duration_ms\":\"60000\",\"status\":\"✅ success\","
+                + "\"tokens_billable\":\"1\",\"tokens_self\":\"1\",\"cost_usd\":\"" + cost + "\",\"cost_self_usd\":\"" + cost + "\","
+                + "\"files\":\"0\",\"failures\":\"0\",\"report\":\".claude/audit-usage/x--plan-skill.md\"}\n";
     }
 
     static long rows(Path trail) throws Exception {

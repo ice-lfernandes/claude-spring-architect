@@ -172,6 +172,8 @@ jobs:
       # Each piece's cache split and the calls whose results later requests re-read the most are
       # what a cut to the executor is chosen from — attributing growth to the wrong request, or
       # counting re-reads past a compaction, must fail here (0132).
+      # Runs per plan window divide the project's Pro budget by a run's cost — reading another
+      # plan's multiplier, or dropping the time cap, must fail here (0133).
       - name: audit renders where the run spent, redacts tool errors, skips what class or project turns off
         run: java .claude/.ci/AuditRenderTest.java
 

@@ -401,6 +401,13 @@ public class ArchHook {
                         set.isEmpty() ? "none set — every piece follows its class" : set,
                         String.join("; ", ovr));
             }
+            List<String> lim = auditSch == null ? null : planLimitProblems(auditSch, auditDir);
+            if (lim != null) {
+                String set = lim.remove(lim.size() - 1);
+                report("Plan limits", lim.isEmpty(),
+                        set.isEmpty() ? "no budget set — no plan window projection" : set,
+                        String.join("; ", lim));
+            }
 
             // A synthetic touched file that matches a real rule's `paths` — the exact
             // shape that once threw `ArrayIndexOutOfBoundsException` inside rule
@@ -5084,6 +5091,8 @@ public class ArchHook {
         md.append("Cache hit ").append(pct(all.cacheRead(), Math.max(1, ctx))).append(" ")
           .append(bar(hit)).append("\n\n");
 
+        md.append(planWindowsSection(dir, auditUsd(dir, all), total));
+
         md.append("## 🔎 Where the run spent\n\n");
         List<String> pieceLabels = new ArrayList<>();
         List<Spend> pieceSpends = new ArrayList<>();
@@ -5689,6 +5698,193 @@ public class ArchHook {
                 .collect(Collectors.joining(","));
     }
 
+    // ── plan windows: how many runs fit a plan's 5-hour and weekly windows ──────────
+    // Anthropic publishes no limit in tokens or dollars, only Max's multipliers over Pro per
+    // 5-hour session. The budget is the project's own reading (`audit.plan_limits`), every
+    // other number is `audit.plans` / `audit.windows` — nothing here is a constant (0133).
+
+    /** `audit.windows` as {key, label, hours, budget field}, in file order. */
+    static List<String[]> planWindows(Map<String, Object> sch) {
+        List<String[]> out = new ArrayList<>();
+        Map<String, Object> w = asMap(get(sch, "audit", "windows"));
+        if (w == null) return out;
+        for (Map.Entry<String, Object> e : w.entrySet()) {
+            Map<String, Object> m = asMap(e.getValue());
+            if (m == null || lnum(m.get("hours")) <= 0) continue;
+            out.add(new String[] {e.getKey(), orDash(asStr(m.get("label"))),
+                    String.valueOf(lnum(m.get("hours"))), asStr(m.get("budget"))});
+        }
+        return out;
+    }
+
+    /** The project's budgets for `audit.budget_plan`, or null when it wrote no plan-limits file. */
+    static Map<String, Object> planBudgets(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        String base = asStr(get(sch, "audit", "budget_plan"));
+        if (file == null || base == null) return null;
+        Object root = Json.parse(readOrNull(dir.resolve(file)));
+        return root == null ? null : Objects.requireNonNullElse(asMap(get(root, base)), Map.of());
+    }
+
+    /**
+     * One cell: runs like this one that fit {@code window} on {@code plan}, as if nothing
+     * else ran — budget × multiplier ÷ cost, capped by the window's hours ÷ active duration
+     * back to back — with the limit that binds; or why there is no number.
+     */
+    static String planCell(Map<String, Object> sch, Map<String, Object> budgets, String plan,
+                           String[] window, Double cost, long durationMs) {
+        Object mult = get(sch, "audit", "plans", plan, "multipliers", window[0]);
+        if (!(mult instanceof Number m)) return "not published";
+        if (cost == null || cost <= 0) return "— no cost";
+        Double budget = window[3] == null ? null : dbl(budgets.get(window[3]));
+        if (budget == null || budget <= 0) return "— set `" + window[3] + "`";
+        long byBudget = (long) Math.floor(budget * m.doubleValue() / cost);
+        long byTime = durationMs <= 0 ? Long.MAX_VALUE : Long.parseLong(window[2]) * 3_600_000L / durationMs;
+        return byTime < byBudget ? n(byTime) + " · time" : n(byBudget) + " · budget";
+    }
+
+    /** The run report's `Plan windows` section: one row per plan, one column per window. */
+    static String planWindowsSection(Path dir, Double cost, long durationMs) {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        List<String[]> windows = sch == null ? List.of() : planWindows(sch);
+        if (windows.isEmpty()) return "";
+        StringBuilder md = new StringBuilder("## 🪟 Plan windows\n\n");
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        Map<String, Object> budgets = planBudgets(sch, dir);
+        if (budgets == null) {
+            return md.append("No `.claude/audit-usage/").append(file).append("` — no projection. Anthropic publishes")
+              .append(" no limit in tokens or dollars: write the `").append(asStr(get(sch, "audit", "budget_plan")))
+              .append("` budget you observed, in USD at `pricing.json` rates, and every plan is projected from it.\n\n")
+              .toString();
+        }
+        md.append("Runs like this one that fit each window, as if nothing else ran — ")
+          .append(cost == null ? "no cost" : orDash(money(dir, cost))).append(" per run, ")
+          .append(hms(durationMs)).append(" active.\n\n| Plan |");
+        for (String[] w : windows) md.append(' ').append(w[1]).append(" |");
+        md.append("\n|---|").append("---|".repeat(windows.size())).append('\n');
+        for (String p : planKeys(sch)) {
+            md.append("| ").append(orDash(asStr(get(sch, "audit", "plans", p, "label")))).append(" |");
+            for (String[] w : windows) md.append(' ').append(planCell(sch, budgets, p, w, cost, durationMs)).append(" |");
+            md.append('\n');
+        }
+        return md.append("\n> budget = the ").append(asStr(get(sch, "audit", "budget_plan")))
+          .append(" budget in `").append(file).append("` × the plan's multiplier (")
+          .append(asStr(get(sch, "audit", "plans_source"))).append("); time = the window ÷ this run's")
+          .append(" active duration, back to back. An estimate: chat and other sessions share the real")
+          .append(" window, and the budget is the project's own reading.\n\n").toString();
+    }
+
+    /**
+     * `audit summary`'s plan-window table: per piece, the mean cost and active duration of
+     * its priced runs, projected like {@link #planWindowsSection}. A root run counts its
+     * whole cost — what typing that command costs; a chained piece only its own. Only the
+     * plan × window pairs with a published multiplier get a column.
+     */
+    static String planWindowsSummary(Path dir, List<Map<String, Object>> runs, List<Map<String, Object>> nested) {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        List<String[]> windows = sch == null ? List.of() : planWindows(sch);
+        if (windows.isEmpty()) return "";
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        Map<String, Object> budgets = planBudgets(sch, dir);
+        StringBuilder o = new StringBuilder("\n### Plan windows (runs per window, mean per piece, as if nothing else ran)\n\n");
+        if (budgets == null) {
+            return o.append("not configured — no `").append(file).append("` in the trail\n").toString();
+        }
+        Map<String, double[]> mean = new LinkedHashMap<>();   // label → cost sum, duration sum, runs
+        for (Map<String, Object> r : runs) {
+            Double c = runCost(r);
+            if (c == null) continue;
+            double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)), k -> new double[3]);
+            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+        }
+        for (Map<String, Object> r : nested) {
+            Double c = ldbl(r.get("cost_usd"));
+            if (c == null || "preloaded".equals(asStr(r.get("origin")))) continue;
+            double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)) + " (chained, own)", k -> new double[3]);
+            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+        }
+        if (mean.isEmpty()) return o.append("no priced run yet\n").toString();
+        List<String[]> cols = new ArrayList<>();                // {plan, window index}
+        for (String p : planKeys(sch)) {
+            for (int i = 0; i < windows.size(); i++) {
+                if (get(sch, "audit", "plans", p, "multipliers", windows.get(i)[0]) instanceof Number) {
+                    cols.add(new String[] {p, String.valueOf(i)});
+                }
+            }
+        }
+        o.append("| Piece | Runs | Mean cost | Mean active |");
+        for (String[] c : cols) {
+            o.append(' ').append(orDash(asStr(get(sch, "audit", "plans", c[0], "label")))).append(' ')
+             .append(windows.get(Integer.parseInt(c[1]))[1]).append(" |");
+        }
+        o.append("\n|---|---|---|---|").append("---|".repeat(cols.size())).append('\n');
+        List<Map.Entry<String, double[]>> rows = new ArrayList<>(mean.entrySet());
+        rows.sort((a, b) -> Double.compare(b.getValue()[0] / b.getValue()[2], a.getValue()[0] / a.getValue()[2]));
+        for (Map.Entry<String, double[]> e : rows) {
+            double[] a = e.getValue();
+            double cost = a[0] / a[2];
+            long dur = (long) (a[1] / a[2]);
+            o.append("| ").append(e.getKey()).append(" | ").append((long) a[2]).append(" | ")
+             .append(money(dir, cost)).append(" | ").append(hms(dur)).append(" |");
+            for (String[] c : cols) {
+                o.append(' ').append(planCell(sch, budgets, c[0], windows.get(Integer.parseInt(c[1])), cost, dur)).append(" |");
+            }
+            o.append('\n');
+        }
+        return o.append("\nbudget = `").append(file).append("` × the plan's multiplier (")
+          .append(asStr(get(sch, "audit", "plans_source"))).append("); time = the window ÷ the mean active duration;")
+          .append(" a plan × window with no published multiplier has no column\n").toString();
+    }
+
+    /** `audit.plans` keys, in file order. */
+    static List<String> planKeys(Map<String, Object> sch) {
+        Map<String, Object> p = asMap(get(sch, "audit", "plans"));
+        return p == null ? List.of() : new ArrayList<>(p.keySet());
+    }
+
+    /**
+     * What `doctor` says about the project's plan-limits file: null when there is none, else
+     * the problems (empty when valid) and, last, what it sets. Strict like `audited.json`: a
+     * misspelled field would otherwise project nothing, in silence.
+     */
+    static List<String> planLimitProblems(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        String base = asStr(get(sch, "audit", "budget_plan"));
+        if (file == null || base == null || !Files.isRegularFile(dir.resolve(file))) return null;
+        List<String> out = new ArrayList<>();
+        Map<String, Object> root = asMap(Json.parse(readOrNull(dir.resolve(file))));
+        if (root == null) {
+            out.add(file + " is not a JSON object");
+            out.add("");
+            return out;
+        }
+        Set<String> fields = new LinkedHashSet<>();
+        for (String[] w : planWindows(sch)) if (w[3] != null) fields.add(w[3]);
+        List<String> set = new ArrayList<>();
+        for (Map.Entry<String, Object> e : root.entrySet()) {
+            if (e.getKey().startsWith("$")) continue;
+            if (!base.equals(e.getKey())) {
+                out.add("`" + e.getKey() + "` — only `" + base + "` is read; every other plan is its multiple");
+                continue;
+            }
+            Map<String, Object> b = asMap(e.getValue());
+            if (b == null) { out.add("`" + base + "` must map " + String.join(" and ", fields) + " to a number"); continue; }
+            for (Map.Entry<String, Object> f : b.entrySet()) {
+                if (f.getKey().startsWith("$")) continue;
+                if (!fields.contains(f.getKey())) {
+                    out.add("`" + base + "." + f.getKey() + "` — only " + String.join(", ", fields) + " are read");
+                } else if (f.getValue() != null && !(f.getValue() instanceof Number x && x.doubleValue() > 0)) {
+                    out.add("`" + base + "." + f.getKey() + "` must be a number above 0, or null");
+                } else if (f.getValue() != null) {
+                    double v = ((Number) f.getValue()).doubleValue();
+                    set.add(base + " " + f.getKey() + " " + (v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)));
+                }
+            }
+        }
+        out.add(set.isEmpty() ? "" : String.join(", ", set));
+        return out;
+    }
+
     /** A node as the report's tables name it: icon, name and, for an agent call, its description. */
     static String pieceLabel(Node nd) {
         return ("agent".equals(nd.kind()) ? "🤖 " : "📘 ") + nd.name()
@@ -6059,6 +6255,8 @@ public class ArchHook {
                 }
                 o.append("```\n");
             }
+
+            o.append(planWindowsSummary(dir, runs, nested));
 
             o.append("\n### Health\n\n").append("failure rate: ").append(failed).append('/')
              .append(runs.size()).append(" (").append(pct(failed, runs.size())).append(")");

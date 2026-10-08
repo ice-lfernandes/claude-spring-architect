@@ -80,6 +80,12 @@ What the block's vocabulary means:
 - **Peak** — the largest single request a piece sent (input + cache read + cache write):
   how much context one turn carried. An absolute number: never turn it into a percentage
   of a context window you would have to state from memory.
+- **Plan windows** — how many runs of a piece fit a plan's 5-hour and weekly windows, as
+  if nothing else ran: the Pro budget in `.claude/audit-usage/plan-limits.json` × the plan's
+  multiplier ÷ the piece's mean cost, capped by the window's hours ÷ its mean active duration.
+  `budget` or `time` says which limit binds. Max 5x and 20x are multiples of Pro on 5 hours,
+  the only multiplier Anthropic publishes; Max weekly has no column. A root row counts the
+  whole run, what typing that command costs; a `(chained, own)` row only that piece's share.
 
 ## Procedure
 
@@ -109,6 +115,11 @@ includes time the user spent thinking. Then add what the block can't:
 
 If the block says `cost: not configured`, say so and point at
 `.claude/audit-usage/pricing.json` — never fill the gap with a price.
+If the plan windows say `not configured`, say so and point at
+`.claude/audit-usage/plan-limits.json` — `{"pro": {"five_hour_usd": <n>, "weekly_usd": <n>}}`, the USD
+the person saw a Pro window hold (the audit's cost when `/usage` reached 100%). Never suggest a
+budget: Anthropic publishes none, and one written from memory looks as authoritative as a
+measured one.
 
 ### 3 · Single run
 

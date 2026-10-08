@@ -90,7 +90,8 @@ a class that declares `audited: false` leaves no run of its own for any skill it
 
 ### Per project: `.claude/audit-usage/audited.json`
 
-The one file of `.claude/` a generated project writes for itself. `export` never names it,
+One of the two files of `.claude/` a generated project writes for itself (the other is
+`plan-limits.json`, below). `export` never names it,
 so `/arch-adopt` never touches it. Absent → every piece follows its class, as above.
 
 ```json
@@ -103,6 +104,27 @@ exceptions above avoid, and that is the project's call. First boolean wins: the 
 class override (`arch-adopt`), then this file, then the class. `doctor` validates it on its
 `Audit overrides` line and fails by name on any key other than `skills`/`agents`, a value
 that isn't `true`/`false`, a name with no file in the project, or `arch-adopt`. Decision 0111.
+
+### Per project: `.claude/audit-usage/plan-limits.json`
+
+How many runs of a piece fit each plan's 5-hour and weekly windows, as if nothing else ran.
+Anthropic publishes no limit in tokens or dollars — only that Max gives 5x or 20x the usage of
+Pro per 5-hour session, and that paid plans add weekly limits on top, with no multiplier
+published. So the budget is the project's own reading, for Pro only, in USD at `pricing.json`
+rates — for example, the cost the audit summed when `/usage` reached 100%:
+
+```json
+{ "pro": { "five_hour_usd": 10, "weekly_usd": 50 } }
+```
+
+Each plan is that budget × its multiplier in `audit.plans` of `extensions.json` (source and
+date in `audit.plans_source`), ÷ the run's cost, also capped by the clock — the window ÷ the
+active duration, back to back. The cell says which limit binds (`budget` or `time`); Max
+weekly is `not published`. It shows in each report's `🪟 Plan windows` section and, per
+piece's mean, in `audit summary`. Absent → the report says there is no projection. Like
+`audited.json`, `export` never names it, and `doctor` validates it on its `Plan limits` line:
+only `pro`, only `five_hour_usd` and `weekly_usd`, a number above 0 or `null`. An estimate:
+chat and other sessions share the real window. Decision 0133.
 
 ## Anatomy of a report
 
@@ -142,7 +164,7 @@ its numbers are unchanged. Reports written before 0085 stay in Portuguese on dis
 
 Sections, in order: header (with the estimated cost right after the model) · initial command (redacted, with the original's `sha256`)
 · longest steps · chain · tokens per piece · aggregate tokens (input, output,
-cache read, cache write, billable, estimated cost, cache hit) · where the run spent ·
+cache read, cache write, billable, estimated cost, cache hit) · plan windows · where the run spent ·
 permissions added (a diff of `settings.local.json` between start and end) · rules
 loaded · files touched · rework.
 
