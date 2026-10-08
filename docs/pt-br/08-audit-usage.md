@@ -135,9 +135,9 @@ Relatórios gravados antes da 0085 continuam em português no disco:
 
 ## 🧩 Tokens per piece
 
-| Piece | Origin | 🧮 Own billable | ⏱️ Duration |
-| `📘 test-architect` | nested | 242,813 | 2m25s |
-| `🤖 java-spring-boot-developer` | nested | 88,517 | 1m12s |
+| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |
+| `📘 test-architect` | nested | 242,813 | … | … | … | 2m25s |
+| `🤖 java-spring-boot-developer (group domain)` | nested | 88,517 | … | … | … | 1m12s |
 …
 ```
 
@@ -196,6 +196,16 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
   a mesma atribuição.
 - **Pico de contexto é número absoluto.** A janela de contexto do modelo não é escrita de
   memória, então o relatório nunca transforma o pico em percentual.
+- **O que inflou o contexto é estimativa** (`📈 What grew the context`). Cada requisição relê o
+  contexto inteiro, então o que o resultado de uma chamada acrescentou é pago de novo em cada
+  requisição seguinte do mesmo transcript, até uma compactação. Acrescentado = contexto da
+  próxima requisição menos o desta e o output dela, dividido entre as chamadas da requisição.
+  A seção lista as `audit.growth_top` chamadas que mais custaram em releitura (peça, tool,
+  alvo — o path, ou a primeira linha do comando, redigida —, tokens acrescentados, quantas
+  requisições releram, tokens relidos) e, por peça, uma linha por tool. É o que diz se o grupo
+  `tests` de um executor gasta lendo código anterior, saída de diagnóstico ou ciclos de
+  correção — os totais por peça não dizem (issue #111). Um lembrete do harness cai na chamada
+  anterior a ele. Design: `.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
 
 ## Redação e preço
 
@@ -219,8 +229,8 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
 
 | Arquivo | Uma linha por | Versionado? |
 |---|---|---|
-| `history.jsonl` | execução de topo (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, …) | sim |
-| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `tokens_self`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
+| `history.jsonl` | execução de topo (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | sim |
+| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `detail` — a description da chamada do agent, o grupo de um executor encadeado —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
 | `.state/*.ndjson`, `.state/*.prompt.json` | evento bruto da execução em andamento | não |
 
 `tool_calls` é string, `Bash:5,Read:12`, porque os ledgers só carregam strings. Linha

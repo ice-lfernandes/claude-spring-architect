@@ -169,6 +169,9 @@ jobs:
       # Which pieces it skips is a class flag, `audited: false` — removing it must fail here (0086).
       # A project's audited.json overrides the class per piece; arch-adopt's own override is fixed
       # off and out of its reach — dropping either read must fail here (0111).
+      # Each piece's cache split and the calls whose results later requests re-read the most are
+      # what a cut to the executor is chosen from — attributing growth to the wrong request, or
+      # counting re-reads past a compaction, must fail here (0132).
       - name: audit renders where the run spent, redacts tool errors, skips what class or project turns off
         run: java .claude/.ci/AuditRenderTest.java
 

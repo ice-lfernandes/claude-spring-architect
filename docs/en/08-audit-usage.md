@@ -134,9 +134,9 @@ its numbers are unchanged. Reports written before 0085 stay in Portuguese on dis
 
 ## 🧩 Tokens per piece
 
-| Piece | Origin | 🧮 Own billable | ⏱️ Duration |
-| `📘 test-architect` | nested | 242,813 | 2m25s |
-| `🤖 java-spring-boot-developer` | nested | 88,517 | 1m12s |
+| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |
+| `📘 test-architect` | nested | 242,813 | … | … | … | 2m25s |
+| `🤖 java-spring-boot-developer (group domain)` | nested | 88,517 | … | … | … | 1m12s |
 …
 ```
 
@@ -195,6 +195,16 @@ Four design decisions the report states about itself:
   same attribution.
 - **Peak context is an absolute number.** The model's context window is not written
   from memory, so the report never turns the peak into a percentage.
+- **What grew the context is an estimate** (`📈 What grew the context`). Every request rereads
+  the whole context, so what a call's result added is paid again by each later request of the
+  same transcript, up to a compaction. Added = the next request's context minus this one's and
+  its output, split across the request's calls. The section lists the `audit.growth_top` calls
+  that cost most in re-reads (piece, tool, target — the path, or the command's first line,
+  redacted —, tokens added, how many requests re-read them, re-read tokens) and, per piece, one
+  line by tool. It is what says whether an executor's `tests` group spends on reading earlier
+  code, on diagnostic output or on fix cycles — the per-piece totals cannot (issue #111). A
+  harness reminder lands on the call before it. Design:
+  `.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
 
 ## Redaction and pricing
 
@@ -218,8 +228,8 @@ Four design decisions the report states about itself:
 
 | File | One line per | Versioned? |
 |---|---|---|
-| `history.jsonl` | top-level run (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, …) | yes |
-| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `tokens_self`, `tool_calls`, `peak_context`, `duration_ms`) | yes |
+| `history.jsonl` | top-level run (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | yes |
+| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `detail` — the agent call's description, a chained executor's group —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | yes |
 | `.state/*.ndjson`, `.state/*.prompt.json` | raw event of the run in progress | no |
 
 `tool_calls` is a string, `Bash:5,Read:12`, because the ledgers carry strings only. Rows
