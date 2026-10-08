@@ -6,6 +6,11 @@
 - **State:** approved by Lucas Fernandes, on 2026-10-08 — shipped in the same PR as 0132 (#113)
 - **Goes to the generated project:** yes — through `export`, which copies `ArchHook.java`, the jar and `extensions.json` whole; `plan-limits.json` is the project's own and never exported
 
+> **Unit — superseded by `0134-audit-tokens-only-no-usd-pricing.md`.** The budget and the
+> division are in billable tokens (`five_hour_tokens`, `weekly_tokens`), not USD: the price
+> table blanked every total on each new model, and the projection with it (issue #111). The
+> rest of this record stands.
+
 ## What the runtime and Anthropic publish
 
 Checked against the official pages, not from memory (a `claude-code-guide` run in this session):

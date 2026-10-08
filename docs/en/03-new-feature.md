@@ -282,8 +282,8 @@ every row of the same section of each partial.
 
 ## Cost discipline
 
-A real run cost ~USD 15 for a two-field aggregate, 70% of it cache reads: the lever is
-turns × context size. So: no progress messages between steps, independent writes in one
+In a real run on a two-field aggregate, the executor took 203 turns and re-read 58.8M cache
+tokens: the lever is turns × context size. So: no progress messages between steps, independent writes in one
 turn, versions read from `pom.xml`, one use case per run, and `/clear` between runs. A design
 run ends at approval, so the implement run starts in a clean session, and the executor runs
 as three chained groups — `domain`, `adapters`, `tests` — each starting again from the spec

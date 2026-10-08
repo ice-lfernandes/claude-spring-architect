@@ -424,8 +424,8 @@ relatório e as linhas do run. Visto na issue #111. Design:
 
 ### Mods
 
-**Abaixo do Claude Code 2.1.287 nenhum mod carrega, e nada na sessão avisa.** A faixa, o
-sufixo do spinner e o `/nerviz-doctor` simplesmente não aparecem. A linha `Mods` do
+**Abaixo do Claude Code 2.1.287 nenhum mod carrega, e nada na sessão avisa.** A faixa e o
+`/nerviz-doctor` simplesmente não aparecem. A linha `Mods` do
 `/arch-doctor` compara o CLI do PATH com `mods.min_version`. Em `claude -p`, VS Code, sessão
 cloud ou sob `--safe-mode` eles não aparecem por design: os guards que eles desenham
 continuam impondo.

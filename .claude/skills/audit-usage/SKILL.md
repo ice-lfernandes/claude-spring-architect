@@ -2,9 +2,9 @@
 name: audit-usage
 description: >
   Reads the execution trail the `audit` hook writes into `.claude/audit-usage/` and
-  consolidates it across runs — spend per skill and agent, duration, failure rate,
-  permissions granted, and which report to open next. Answers "what has this project
-  cost me so far", which no single report answers. Explicit invocation only.
+  consolidates it across runs — billable tokens per skill and agent, duration, failure
+  rate, permissions granted, and which report to open next. Answers "how many tokens has
+  this project spent so far", which no single report answers. Explicit invocation only.
 argument-hint: "[empty for the consolidated view | last | <skill or agent> | <report name fragment>]"
 disable-model-invocation: true
 allowed-tools: Read, Bash(java:*), Bash(ls:*), Bash(grep:*)
@@ -24,8 +24,9 @@ nothing else.
 
 Answer in English, the language of the reports themselves, so the consolidated view and
 the per-run report read as one document. Reports and ledger rows written by an older
-hook are in Portuguese (`✅ sucesso`, `USD 1,23`); quote them as they are, never translate
-a number or a status out of them.
+hook are in Portuguese (`✅ sucesso`); quote them as they are, never translate a number or
+a status out of them. Reports written before decision 0134 also carry a cost in USD; quote
+it only from that report, never as a figure of the trail.
 
 ## When the block came back empty
 
@@ -66,15 +67,14 @@ What the block's vocabulary means:
 - **Model** — the model the run billed on, or a comma-separated list when a subagent ran
   on another one. `—` means the run was recorded before the column existed, not that the
   model is unknown. It is the first thing to read before comparing two runs of the same
-  pipeline: the same skills over the same use case cost tenfold more on a larger model,
-  and that difference is not a regression of the pipeline.
+  pipeline: the trail counts tokens only, and a token weighs more on a larger model — on
+  the bill and on the plan — so the same token count is not the same spend.
 - **root · nested · preloaded** — the piece opened its own run; it was chained
   inside another run; or it was loaded through an agent's `skills:` frontmatter (no
   tokens of its own — they are its agent's).
 - **own tokens** — a piece's own spend. A run's total minus its chained pieces is
   the root's own; that is why the per-piece bars add up to the totals instead of
   exceeding them.
-- **`*` after a cost** — partial sum: some invocations had no price configured.
 - **Calls** — tool calls counted from the transcripts' `tool_use` blocks, attributed to
   pieces like the tokens. `—` means the run was recorded before the column existed.
 - **Peak** — the largest single request a piece sent (input + cache read + cache write):
@@ -82,10 +82,11 @@ What the block's vocabulary means:
   of a context window you would have to state from memory.
 - **Plan windows** — how many runs of a piece fit a plan's 5-hour and weekly windows, as
   if nothing else ran: the Pro budget in `.claude/audit-usage/plan-limits.json` × the plan's
-  multiplier ÷ the piece's mean cost, capped by the window's hours ÷ its mean active duration.
+  multiplier ÷ the piece's mean billable tokens, capped by the window's hours ÷ its mean active
+  duration. Model-blind, like every number of the trail.
   `budget` or `time` says which limit binds. Max 5x and 20x are multiples of Pro on 5 hours,
   the only multiplier Anthropic publishes; Max weekly has no column. A root row counts the
-  whole run, what typing that command costs; a `(chained, own)` row only that piece's share.
+  whole run, what typing that command spends; a `(chained, own)` row only that piece's share.
 
 ## Procedure
 
@@ -104,7 +105,7 @@ Present the block, in its order, keeping its tables and the `text` bar chart int
 bars are proportional to billable tokens, not to duration, which is wall-clock and
 includes time the user spent thinking. Then add what the block can't:
 
-1. **One line of reading** above the tables — where the money went, in words.
+1. **One line of reading** above the tables — where the tokens went, in words.
 2. **Where it went** — from the `Where the pieces spent` block, the piece whose calls
    are dominated by one tool, or whose peak stands out from the rest. Name the tool and
    the number; that is what points at the step to trim.
@@ -113,19 +114,18 @@ includes time the user spent thinking. Then add what the block can't:
 4. **What to read next** — the single most relevant report, and the exact
    `/audit-usage <fragment>` that opens it.
 
-If the block says `cost: not configured`, say so and point at
-`.claude/audit-usage/pricing.json` — never fill the gap with a price.
 If the plan windows say `not configured`, say so and point at
-`.claude/audit-usage/plan-limits.json` — `{"pro": {"five_hour_usd": <n>, "weekly_usd": <n>}}`, the USD
-the person saw a Pro window hold (the audit's cost when `/usage` reached 100%). Never suggest a
-budget: Anthropic publishes none, and one written from memory looks as authoritative as a
-measured one.
+`.claude/audit-usage/plan-limits.json` — `{"pro": {"five_hour_tokens": <n>, "weekly_tokens": <n>}}`,
+the billable tokens the person saw a Pro window hold (the audit's total when `/usage` reached
+100%). Never suggest a budget: Anthropic publishes none, and one written from memory looks as
+authoritative as a measured one. Never convert anything to a currency either: the trail prices
+nothing, and a rate written from memory is wrong the day after it changes.
 
 ### 3 · Single run
 
 `Read` the `.md` file. It is already a finished, icon-rich report — **do not re-render
 it and do not paste it back in full.** Summarize in at most six lines: what was run, the
-outcome, what it cost, the longest step, where it spent (from `🔎 Where the run spent`:
+outcome, its billable tokens, the longest step, where it spent (from `🔎 Where the run spent`:
 the dominant tool, the costliest turn, the peak context), and anything that deserves
 attention (`⏳ in progress`, compaction incidents, permissions added, repeated tool
 failures — quote the error's first line the report already redacted, never more).
@@ -138,10 +138,10 @@ was killed, or it is still open right now.
 
 - **Never edits or deletes anything under `.claude/audit-usage/`.** Pruning old reports
   is the user's call; if they ask, show the command and let them run it.
-- **Never recomputes a cost from memory.** The numbers come from `audit summary`, which
-  prices from `pricing.json`. If prices are `null`, the honest answer is "cost not configured" plus
-  the path to fill in — never an invented rate. A price written from memory is wrong the
-  day after it changes, and it looks exactly as authoritative as a correct one.
+- **Never prices the trail.** The numbers come from `audit summary`, in tokens; a cost
+  computed from them needs a rate, and a rate written from memory is wrong the day after it
+  changes while looking exactly as authoritative as a correct one. Asked for money, point at
+  the runtime's own `/cost` for the session (decision 0134).
 - **Never reads `.state/`.** Those are the hook's open append-only logs; the rendered
   `.md` is the readable form.
 - **Never quotes a redacted value.** The reports blank credential-shaped text on the way

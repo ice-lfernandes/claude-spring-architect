@@ -78,7 +78,7 @@ sequenceDiagram
         BOOT-->>AG: build PASSED ou FAILED
         AG-->>CMD: relatório no formato fixo (§ Output contract)
         CMD-->>U: relatório, sem reescrever
-        CMD->>HOOK: ArchHook.java audit genesis <projeto> <sessão> — Started, Finished, tokens e custo no GENESIS.md
+        CMD->>HOOK: ArchHook.java audit genesis <projeto> <sessão> — Started, Finished e tokens no GENESIS.md
         opt projeto criado
             CMD->>CMD: Skill tool → git-publish (project: <caminho>)
         end
@@ -101,13 +101,13 @@ sequenceDiagram
 | 5 | Gera o mapa de boundaries | `.claude/forbidden-imports.txt` |
 | 6 | Gera `CLAUDE.md` raiz + por módulo | `CLAUDE.md`, `*/CLAUDE.md` |
 | 6.5 | Gera CI | `.github/workflows/build.yml` |
-| 6.6 | Escreve o `.claude/` do projeto num comando só — `ArchHook.java export <projeto> --blueprint <id>`, dirigido pelo manifesto `export` de `extensions.json` | Toda rule (`paths` de pacote reescritos a partir de `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (com `guard`, `audit` e `context` ligados); o blueprint ativo; `.claude/audit-usage/` + `pricing.json`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` só se um servidor foi desenhado para o projeto gerado |
+| 6.6 | Escreve o `.claude/` do projeto num comando só — `ArchHook.java export <projeto> --blueprint <id>`, dirigido pelo manifesto `export` de `extensions.json` | Toda rule (`paths` de pacote reescritos a partir de `packages.map`); `.claude/skills/{arch-adopt,arch-doctor,audit-usage,docker-architect,domain-modeling,git-publish,gof-design-patterns,jobs-architect,messaging-architect,new-feature,persistence-architect,rest-api-architect,test-architect,use-case-design}/**`; `.claude/agents/{java-spring-boot-developer,archunit-installer,commons-logging-installer}.md`; `ArchHook.java` + `ArchHook.jar`, `extensions.json`, `settings.json` (com `guard`, `audit` e `context` ligados); o blueprint ativo; `.claude/audit-usage/`; `.claude/.arch-provenance.json`; `.mcp.json` + `MCP-SETUP.md` só se um servidor foi desenhado para o projeto gerado |
 | 7 | Nada a rodar — o que o enforcement recém-instalado faz, para o relatório final | — |
 | 7.5 | Decide a segurança de transporte — encadeia `transport-security-setup`, que pergunta onde o TLS termina e o profile local ou a borda local | linhas de transporte no `application.yml`, o filtro de HSTS quando não há cadeia de segurança, o IT de transporte, o parágrafo `**Transport:` do `CLAUDE.md` raiz; o serviço `edge` ou a porta do `Dockerfile`, via `docker-architect` |
 | 8 | Verifica | `./mvnw clean verify`, teste de boundary, teste de `lombok.config`, teste de autonomia |
 | 8.4 | Configura o SonarQube — encadeia `sonarqube-setup`, que pergunta se já existe servidor | scanner + properties `sonar.*` no build file raiz; step de CI para servidor externo; serviço `sonarqube` no compose (via `docker-architect`) caso contrário |
 | 8.5 | Gera o README do projeto | `README.md` (inglês) + `README.pt-br.md` |
-| 8.6 | Grava o registro de gênese da trilha, com Started, Finished, tokens e custo como placeholders que o `/init-project` preenche depois com `audit genesis` | `.claude/audit-usage/GENESIS.md` |
+| 8.6 | Grava o registro de gênese da trilha, com Started, Finished e tokens como placeholders que o `/init-project` preenche depois com `audit genesis` | `.claude/audit-usage/GENESIS.md` |
 
 O passo 8 é o único portão de qualidade: se o build falhar, **corrige antes de
 reportar** — um bootstrap que entrega build vermelho não está terminado.
@@ -155,7 +155,7 @@ Lombok: lombok.config at the root — @Data and @Setter stop compilation
 ArchUnit: to be installed — `test-architect` skill, setup mode (delegates to `archunit-installer`, see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: 19 rules + 20 skills + 3 agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
-Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
+Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself, in tokens
 Docker: Dockerfile + docker-compose.yml — app, postgres (persistence-jpa), otel-collector (observability) — extend with `docker-architect` for anything a future use case adds
 Observability UI: none — the collector exports to `debug`. Run `/docker-architect` to add Jaeger or Grafana + Tempo + Prometheus
 Transport: topology A edge — HTTP/2 on, HSTS by Spring Security, ForwardedHeadersIT
@@ -172,7 +172,7 @@ Next steps:
 ```
 
 Como o build passou, o `/init-project` roda `ArchHook.java audit genesis`, que preenche
-Started, Finished, tokens e custo do `GENESIS.md` a partir das transcrições da sessão, e só
+Started, Finished e tokens do `GENESIS.md` a partir das transcrições da sessão, e só
 depois encadeia `git-publish` — o primeiro commit já leva o registro preenchido. Nada é
 commitado ou enviado sem os dois portões de confirmação de `git-publish` — ver
 [03-new-feature.md § Nota operacional](03-new-feature.md) e

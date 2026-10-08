@@ -12,7 +12,7 @@ Dois modos do mesmo hook, ambos ligados **só no projeto gerado** (o
 
 | Modo | Pergunta que responde | Bloqueia? |
 |---|---|---|
-| `audit` | "Quanto custou esta execução, o que ela encadeou, o que tocou, o que falhou?" | Nunca |
+| `audit` | "Quantos tokens esta execução gastou, o que ela encadeou, o que tocou, o que falhou?" | Nunca |
 | `guard` | "Uma skill de design tentou escrever em `src/`? Alguém tentou editar um spec aprovado?" | Sim (`exit 2`) |
 
 A skill `/audit-usage` é o leitor da trilha: consolida gasto por peça entre execuções
@@ -111,21 +111,22 @@ Quantas execuções de uma peça cabem na janela de 5 horas e na semanal de cada
 nada mais rodasse. A Anthropic não publica limite em tokens nem em dólares — só que o Max dá 5x
 ou 20x o uso do Pro por sessão de 5 horas, e que os planos pagos têm limite semanal por cima,
 sem multiplicador publicado. Então o orçamento é leitura do próprio projeto, só para o Pro, em
-USD aos preços do `pricing.json` — por exemplo, o custo que o audit somou quando o `/usage`
-chegou a 100%:
+tokens billable — por exemplo, o total que o audit somou quando o `/usage` chegou a 100%:
 
 ```json
-{ "pro": { "five_hour_usd": 10, "weekly_usd": 50 } }
+{ "pro": { "five_hour_tokens": 2000000, "weekly_tokens": 10000000 } }
 ```
 
 Cada plano é esse orçamento × o multiplicador em `audit.plans` do `extensions.json` (fonte e
-data em `audit.plans_source`), ÷ o custo da execução, limitado também pelo relógio — a janela ÷ a
+data em `audit.plans_source`), ÷ os tokens billable da execução, limitado também pelo relógio — a janela ÷ a
 duração ativa, uma atrás da outra. A célula diz qual limite manda (`budget` ou `time`); semanal
 de Max é `not published`. Aparece na seção `🪟 Plan windows` de cada relatório e, pela média de
 cada peça, no `audit summary`. Ausente → o relatório diz que não há projeção. Como o
 `audited.json`, o `export` nunca o nomeia, e o `doctor` valida na linha `Plan limits`: só `pro`,
-só `five_hour_usd` e `weekly_usd`, número acima de 0 ou `null`. É uma estimativa: chat e outras
-sessões dividem a janela real. Decisão 0133.
+só `five_hour_tokens` e `weekly_tokens`, número acima de 0 ou `null` — um `five_hour_usd`
+escrito antes da decisão 0134 é recusado pelo nome. É uma estimativa: chat e outras sessões
+dividem a janela real, e um token pesa igual em todo modelo aqui, o que não vale no plano.
+Decisões 0133 e 0134.
 
 ## Anatomia de um relatório
 
@@ -158,15 +159,15 @@ Relatórios gravados antes da 0085 continuam em português no disco:
 
 ## 🧩 Tokens per piece
 
-| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |
-| `📘 test-architect` | nested | 242,813 | … | … | … | 2m25s |
-| `🤖 java-spring-boot-developer (group domain)` | nested | 88,517 | … | … | … | 1m12s |
+| Piece | Origin | 🤖 Model | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | ⏱️ Duration |
+| `📘 test-architect` | nested | … | 242,813 | … | … | 2m25s |
+| `🤖 java-spring-boot-developer (group domain)` | nested | … | 88,517 | … | … | 1m12s |
 …
 ```
 
-Seções, na ordem: cabeçalho (com o custo estimado logo após o modelo) · comando inicial (redigido, com `sha256` do original) ·
+Seções, na ordem: cabeçalho · comando inicial (redigido, com `sha256` do original) ·
 etapas mais longas · encadeamento · tokens por peça · tokens agregados (input, output,
-cache read, cache write, faturável, custo estimado, cache hit) · janelas dos planos · onde o run gastou ·
+cache read, cache write, faturável, cache hit) · janelas dos planos · onde o run gastou ·
 permissões adicionadas (diff de `settings.local.json` entre início e fim) · regras
 carregadas · arquivos tocados · retrabalho.
 
@@ -175,8 +176,8 @@ pertence à última peça que começou antes dele, e o runtime não emite evento
 uma skill inline termina. Por isso tudo o que o orquestrador faz depois da última skill, até
 o próximo agent ou skill, entra na linha dela. No fluxo de spec do `/new-feature`, isso é a
 consolidação e a pergunta de aprovação, somadas ao `test-architect`. No exemplo acima, os
-242,813 tokens do `test-architect` incluem essa cauda. Num run real do UC-007, cerca de
-USD 1,47 dos USD 1,91 atribuídos a ele eram consolidação. O rodapé do relatório diz o mesmo.
+242,813 tokens do `test-architect` incluem essa cauda; num run real do UC-007, a maior parte
+do que foi atribuído a ele era consolidação. O rodapé do relatório diz o mesmo.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
 
 **Onde o run gastou** (`🔎 Where the run spent`) sai dos mesmos transcripts de onde vêm os
@@ -223,14 +224,14 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
   contexto inteiro, então o que o resultado de uma chamada acrescentou é pago de novo em cada
   requisição seguinte do mesmo transcript, até uma compactação. Acrescentado = contexto da
   próxima requisição menos o desta e o output dela, dividido entre as chamadas da requisição.
-  A seção lista as `audit.growth_top` chamadas que mais custaram em releitura (peça, tool,
+  A seção lista as `audit.growth_top` chamadas mais relidas (peça, tool,
   alvo — o path, ou a primeira linha do comando, redigida —, tokens acrescentados, quantas
   requisições releram, tokens relidos) e, por peça, uma linha por tool. É o que diz se o grupo
   `tests` de um executor gasta lendo código anterior, saída de diagnóstico ou ciclos de
   correção — os totais por peça não dizem (issue #111). Um lembrete do harness cai na chamada
   anterior a ele. Design: `.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
 
-## Redação e preço
+## Redação, e por que tokens
 
 - **Redação é obrigatória.** O prompt vai para um arquivo versionado; um token colado
   nele seria irreversível no histórico do git (invariante 11). Os padrões vivem em
@@ -240,27 +241,28 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
   truncada em 160 caracteres — um erro pode ecoar o comando que carregava o token. Um
   `Bash` que falha começa com `Exit code N`; o relatório junta essa linha com a seguinte,
   que é o que de fato falhou.
-- **Preço é dado, nunca memória.** `pricing.json` chega preenchido com as taxas da página
-  oficial na data do seu `$comment`, e o custo aparece por modelo (um subagent em outro
-  modelo é precificado na própria taxa). O id do modelo casa exato — `claude-opus-5-5` não
-  herda o preço de `claude-opus-5`. Um modelo sem preço deixa o total desconhecido, nunca
-  uma soma parcial nem um `USD 0.00` confiante, e a célula diz qual falta:
-  `— (no price for claude-opus-5-5 in .claude/audit-usage/pricing.json)`. Mesma razão pela
-  qual o invariante 8 proíbe versões de memória.
+- **Tokens, nunca dinheiro.** Todo número é token billable (input + output + cache write),
+  com o modelo nomeado por peça. A trilha já precificou isso por um `pricing.json` preenchido
+  a partir da página oficial; cada modelo que a Anthropic lançou apagou todo total até alguém
+  reler a página — `claude-opus-5-5`, depois `claude-sonnet-5-5` uma semana depois —, um run
+  fechado não podia ser re-precificado, e todo cache write saía na taxa de 5 minutos. Um token
+  pesa mais num modelo maior, então leia a coluna `🤖 Model` antes de comparar dois runs; em
+  dinheiro, quem responde por sessão é o `/cost` do próprio runtime. O próximo `/arch-adopt`
+  apaga o `pricing.json` de um projeto. Decisão 0134.
 
 ## Os ledgers e o `audit summary`
 
 | Arquivo | Uma linha por | Versionado? |
 |---|---|---|
-| `history.jsonl` | execução de topo (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | sim |
-| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `detail` — a description da chamada do agent, o grupo de um executor encadeado —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
+| `history.jsonl` | execução de topo (`kind`, `origin`, `model`, `status`, `tokens_billable`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | sim |
+| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `model`, `detail` — a description da chamada do agent, o grupo de um executor encadeado —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
 | `.state/*.ndjson`, `.state/*.prompt.json` | evento bruto da execução em andamento | não |
 
 `tool_calls` é string, `Bash:5,Read:12`, porque os ledgers só carregam strings. Linha
 gravada antes de um campo existir simplesmente não o tem, e todo leitor trata ausente como
 desconhecido, nunca como zero. Linhas anteriores à decisão 0085 também trazem status em
-português (`✅ sucesso`) e `cost` formatado em pt-BR (`USD 1.234,56`); o `audit summary`
-classifica o status pelo emoji e lê os dois formatos de custo, então as linhas antigas não
+português (`✅ sucesso`), que o `audit summary` classifica pelo emoji; linhas anteriores à
+decisão 0134 trazem `cost`, `cost_usd` e `cost_self_usd`, que nada lê. As linhas antigas não
 precisam de migração.
 
 `java .claude/hooks/ArchHook.java audit summary` agrega os dois ledgers **na JVM** e
@@ -307,7 +309,7 @@ most recent with failures: `.claude/audit-usage/2026-09-17T11-11-27--domain-mode
 | fragmento de nome de arquivo | O único relatório que casa; dois ou mais, lista e pergunta |
 
 O que a skill nunca faz: recalcular um número que o bloco imprimiu, ler `.state/`,
-editar ou apagar relatórios, inventar um preço, citar um valor redigido.
+editar ou apagar relatórios, dar preço a um token, citar um valor redigido.
 
 ## Diagrama de sequência
 
@@ -384,9 +386,7 @@ fronteira pode depender de qual deles rodou primeiro.
 
 ## O que `doctor` mostra
 
-`/arch-doctor` traz duas linhas sobre a trilha: `Audit` (quantas execuções registradas,
-se `pricing.json` existe, e ❌ nomeando cada modelo das últimas 15 execuções de
-`history.jsonl` que ele não precifica) e `Audit rule inference` (um arquivo sintético que casa com
+`/arch-doctor` traz duas linhas sobre a trilha: `Audit` (quantas execuções registradas) e `Audit rule inference` (um arquivo sintético que casa com
 o `paths` de uma norma real — a forma exata que uma vez lançou
 `ArrayIndexOutOfBoundsException` dentro da inferência e congelou todo relatório dali
 em diante, em silêncio). Sem o diretório: `⚪ no .claude/audit-usage/ — execution trail

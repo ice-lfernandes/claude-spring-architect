@@ -10,7 +10,7 @@
     {
       "name": "nerviz-cockpit",
       "source": "./nerviz-cockpit",
-      "description": "The open skill phase and its write territory above the prompt, the phase and turn cost beside the spinner, /nerviz-doctor in a pane, and a guard refusal held behind two buttons."
+      "description": "The open skill phase and its write territory above the prompt, /nerviz-doctor in a pane, and a guard refusal held behind two buttons."
     }
   ]
 }

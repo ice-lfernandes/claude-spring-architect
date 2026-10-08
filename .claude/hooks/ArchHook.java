@@ -370,28 +370,9 @@ public class ArchHook {
             try (Stream<Path> s = Files.list(auditDir)) {
                 runs = s.filter(f -> f.toString().endsWith(".md")).count();
             } catch (IOException ignored) { }
-            boolean priced = Files.isRegularFile(auditDir.resolve("pricing.json"));
-            // A model upgrade is routine, and a pricing.json complete for every model it
-            // lists still prices none of a new one's runs — every report then printed no
-            // cost, and nothing said which model was missing (lessons-learned-018).
-            List<String> unpriced = List.of();
-            if (priced) {
-                Set<String> recent = new LinkedHashSet<>();
-                try {
-                    List<Map<String, Object>> hist = jsonl(auditDir.resolve("history.jsonl"));
-                    for (int i = Math.max(0, hist.size() - AUDIT_RECENT_RUNS); i < hist.size(); i++) {
-                        String m = asStr(hist.get(i).get("model"));
-                        if (m != null) for (String id : m.split(",")) if (!id.isBlank()) recent.add(id.strip());
-                    }
-                } catch (IOException ignored) { }
-                List<String> missing = auditUnpriced(auditDir, recent);
-                unpriced = missing == null ? List.of() : missing;
-            }
-            report("Audit", unpriced.isEmpty(), runs + " execution(s) recorded"
-                    + (priced ? "" : " — pricing.json missing, no cost estimate"),
-                    runs + " execution(s) recorded — no price for " + String.join(", ", unpriced)
-                    + " in pricing.json (models of the last " + AUDIT_RECENT_RUNS + " runs);"
-                    + " copy the rates from platform.claude.com/docs/en/about-claude/pricing");
+            // Runs only: the trail measures billable tokens and prices nothing, so a model
+            // Anthropic ships next has nothing to be missing from (decision 0134).
+            report("Audit", true, runs + " execution(s) recorded", null);
 
             Map<String, Object> auditSch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
             List<String> ovr = auditSch == null ? null : auditOverrideProblems(auditSch, auditDir);
@@ -4278,7 +4259,7 @@ public class ArchHook {
     // counting it stretched a 12-second step to ten minutes in a real report.
     //
     // Inside a git worktree the trail is written to the MAIN checkout's
-    // .claude/audit-usage/, so reports, history.jsonl and pricing.json never diverge
+    // .claude/audit-usage/, so reports, history.jsonl and nodes.jsonl never diverge
     // between checkouts.
     //
     // Switched off by the absence of .claude/audit-usage/: every phase returns
@@ -4289,16 +4270,12 @@ public class ArchHook {
 
     static final String AUDIT_DIR = ".claude/audit-usage";
 
-    /**
-     * How far back "recent" reaches: the runs `audit summary` lists, and the runs whose
-     * models `doctor` checks against pricing.json — so a model that left use stops being
-     * reported once it scrolls out of the summary too.
-     */
+    /** How far back "recent" reaches: the runs `audit summary` lists. */
     static final int AUDIT_RECENT_RUNS = 15;
 
     /**
      * The trail's directory. In a git worktree `.git` is a file, and the trail belongs to
-     * the main checkout — one history.jsonl, one pricing.json, whichever checkout ran.
+     * the main checkout — one history.jsonl, one nodes.jsonl, whichever checkout ran.
      * Everywhere else, and whenever git can't answer, it's this project's own.
      */
     static Path auditDir() {
@@ -4742,7 +4719,7 @@ public class ArchHook {
         long context() { return u[0] + u[2] + u[3]; }
     }
 
-    /** Token usage summed per model — a subagent may run on another model, and a price is per model. */
+    /** Token usage summed per model — a subagent may run on another model, and the report names each. */
     static final class Usage {
         final Map<String, long[]> byModel = new LinkedHashMap<>();
 
@@ -4970,10 +4947,6 @@ public class ArchHook {
         md.append("# 🧾 Execution audit — `").append(rootLabel)
           .append(args == null || args.isBlank() ? "" : " " + args).append("`\n\n");
 
-        // Computed once, shown twice: the header is what a reader of the summary sees, and
-        // a cost that appeared only in the aggregate table near the bottom went unnoticed
-        // as missing (lessons-learned-018).
-        String costCell = auditCostCell(dir, all);
         md.append("| | |\n|---|---|\n")
           .append("| 🎯 Piece | `").append(rootLabel).append("` · ")
           .append("agent".equals(kind) ? "agent" : "skill").append(" |\n")
@@ -4988,7 +4961,6 @@ public class ArchHook {
           .append("| ").append(status.substring(0, status.indexOf(' ')))
           .append(" Status | ").append(status.substring(status.indexOf(' ') + 1)).append(" |\n")
           .append("| 🤖 Model | ").append(orDash(all.model())).append(" |\n")
-          .append("| 💰 Estimated cost | ").append(costCell).append(" |\n")
           .append("| 🌿 HEAD | ").append(orDash(headStart)).append(" → ")
           .append(orDash(headEnd)).append(" |\n\n");
 
@@ -5045,12 +5017,13 @@ public class ArchHook {
           .append(" are subtracted. Percentages are of the active duration.\n\n");
 
         md.append("## 🧩 Tokens per piece\n\n")
-          .append("| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |\n|---|---|---|---|---|---|---|\n")
+          .append("| Piece | Origin | 🤖 Model | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | ⏱️ Duration |\n|---|---|---|---|---|---|---|\n")
           .append("| `").append(rootLabel).append("` | ")
           .append("model".equals(origin) ? "model" : "user").append(" | ")
+          .append(orDash(rootSelf.model())).append(" | ")
           .append(n(rootSelf.billable())).append(" | ")
           .append(n(rootSelf.cacheRead())).append(" | ").append(n(rootSelf.cacheWrite())).append(" | ")
-          .append(orDash(auditCost(dir, rootSelf))).append(" | ").append(hms(total)).append(" |\n");
+          .append(hms(total)).append(" |\n");
         for (String p : rootPreloaded) {
             md.append("| `📎 ").append(p).append("` | preloaded | ↳ in the agent | — | — | — | — |\n");
         }
@@ -5059,10 +5032,10 @@ public class ArchHook {
             Usage u = selfOf.get(i);
             md.append("| `").append(pieceLabel(nd))
               .append("` | nested | ")
+              .append(u == null ? "—" : orDash(u.model())).append(" | ")
               .append(u == null ? "↳ in the agent" : n(u.billable())).append(" | ")
               .append(u == null ? "—" : n(u.cacheRead())).append(" | ")
               .append(u == null ? "—" : n(u.cacheWrite())).append(" | ")
-              .append(u == null ? "—" : orDash(auditCost(dir, u))).append(" | ")
               .append(hms(dur(nd, nodes, endMs, ticks, waits))).append(" |\n");
             if ("agent".equals(nd.kind())) {
                 for (String p : preloadedSkills(nd.name())) {
@@ -5084,14 +5057,13 @@ public class ArchHook {
           .append("| ⬆️ output | ").append(n(all.out())).append(" |\n")
           .append("| ♻️ cache read | ").append(n(all.cacheRead())).append(" |\n")
           .append("| 💾 cache write | ").append(n(all.cacheWrite())).append(" |\n")
-          .append("| 🧮 billable (input + output + cache write) | **").append(n(all.billable())).append("** |\n");
-        md.append("| 💰 estimated cost | ").append(costCell).append(" |\n\n");
+          .append("| 🧮 billable (input + output + cache write) | **").append(n(all.billable())).append("** |\n\n");
         long ctx = all.contextRead();
         double hit = ctx == 0 ? 0 : (double) all.cacheRead() / ctx;
         md.append("Cache hit ").append(pct(all.cacheRead(), Math.max(1, ctx))).append(" ")
           .append(bar(hit)).append("\n\n");
 
-        md.append(planWindowsSection(dir, auditUsd(dir, all), total));
+        md.append(planWindowsSection(dir, all.billable(), total));
 
         md.append("## 🔎 Where the run spent\n\n");
         List<String> pieceLabels = new ArrayList<>();
@@ -5140,17 +5112,15 @@ public class ArchHook {
             List<Growth> byReread = new ArrayList<>(grown);
             byReread.sort((a, b) -> Long.compare(b.reread(), a.reread()));
             if (top > 0) {
-                md.append("| # | Piece | Tool | Target | ➕ Added | 🔁 Re-read by | ♻️ Re-read tokens | 💰 Est. |\n")
-                  .append("|---|---|---|---|---|---|---|---|\n");
+                md.append("| # | Piece | Tool | Target | ➕ Added | 🔁 Re-read by | ♻️ Re-read tokens |\n")
+                  .append("|---|---|---|---|---|---|---|\n");
                 for (int i = 0; i < Math.min(top, byReread.size()); i++) {
                     Growth g = byReread.get(i);
-                    Usage r = new Usage();
-                    r.add(g.model(), new long[] {0, 0, g.reread(), 0});
                     md.append("| ").append(i + 1).append(" | `")
                       .append(g.owner() < 0 ? rootLabel : pieceLabel(nodes.get(g.owner()))).append("` | ")
                       .append(g.tool()).append(" | `").append(targetCell(g.target())).append("` | ")
                       .append(n(g.added())).append(" | ").append(g.rereads()).append(" | ")
-                      .append(n(g.reread())).append(" | ").append(orDash(auditCost(dir, r))).append(" |\n");
+                      .append(n(g.reread())).append(" |\n");
                 }
                 md.append('\n');
             }
@@ -5166,8 +5136,7 @@ public class ArchHook {
             md.append("\n> Every request rereads the whole context, so what a call's result added is paid")
               .append(" again by each later request of the same transcript, up to a compaction. Added =")
               .append(" the next request's context minus this one's and its output, split across the")
-              .append(" request's calls — an estimate: a harness reminder lands on the call before it.")
-              .append(" Est. prices the re-read at the piece's cache-read rate.\n\n");
+              .append(" request's calls — an estimate: a harness reminder lands on the call before it.\n\n");
         }
         md.append("### 📏 Peak context\n\n");
         if (allSpend.peak == 0) {
@@ -5302,10 +5271,10 @@ public class ArchHook {
             Files.writeString(dir.resolve("history.jsonl"),
                     ev("run", "skill", skill, "kind", kind, "origin", origin, "start", startIso,
                        // The model is what the report's header showed and the ledger did
-                       // not: two runs of the same pipeline, one on Sonnet and one on Opus,
-                       // differ tenfold in cost, and the comparison had to be rebuilt by
-                       // hand from the reports (lessons-learned-012, header note). A
-                       // comma-separated list when a subagent ran on another model.
+                       // not: a token weighs differently on Sonnet and on Opus, and the
+                       // comparison had to be rebuilt by hand from the reports
+                       // (lessons-learned-012, header note). A comma-separated list when a
+                       // subagent ran on another model.
                        "model", all.model(),
                        "duration_ms", String.valueOf(total),
                        "wait_ms", String.valueOf(wait),
@@ -5317,11 +5286,8 @@ public class ArchHook {
                        "cache_read_self", String.valueOf(rootSelf.cacheRead()),
                        "cache_write_self", String.valueOf(rootSelf.cacheWrite()),
                        "reread_self", rereadLedger(grown, -1),
-                       "cost", auditCost(dir, all),
-                       "cost_usd", usd(auditUsd(dir, all)),
-                       "cost_self_usd", usd(auditUsd(dir, rootSelf)),
-                       // Run total and root's own, like the tokens: `audit summary` sums
-                       // the `_self` pair per piece so nested pieces are not counted twice.
+                       // Run total and root's own: `audit summary` sums the `_self` pair
+                       // per piece so nested pieces are not counted twice.
                        // decisions/0085-audit-where-the-run-spent-and-english.md
                        "tool_calls", allSpend.ledger(),
                        "tool_calls_self", rootSpend.ledger(),
@@ -5336,7 +5302,7 @@ public class ArchHook {
             // ledger keeps one line per run, so what reads it does not pay for the finer grain.
             StringBuilder rows = new StringBuilder();
             String run = relative(report);
-            for (String p : rootPreloaded) rows.append(nodeRow(run, skill, "skill", p, "preloaded", null, null, null, null, dir, 0)).append('\n');
+            for (String p : rootPreloaded) rows.append(nodeRow(run, skill, "skill", p, "preloaded", null, null, null, null, 0)).append('\n');
             for (int i = 0; i < nodes.size(); i++) {
                 Node nd = nodes.get(i);
                 if (!isAudited(nd.kind(), nd.name())) continue;
@@ -5346,11 +5312,11 @@ public class ArchHook {
                     for (Node o : nodes) if (tu != null && tu.equals(o.toolUseId())) parent = o.name();
                 }
                 rows.append(nodeRow(run, parent, nd.kind(), nd.name(), "nested", nd.description(), selfOf.get(i), spendOf.get(i),
-                        rereadLedger(grown, i), dir,
+                        rereadLedger(grown, i),
                         dur(nd, nodes, endMs, ticks, waits))).append('\n');
                 if ("agent".equals(nd.kind())) {
                     for (String p : preloadedSkills(nd.name())) {
-                        rows.append(nodeRow(run, nd.name(), "skill", p, "preloaded", null, null, null, null, dir, 0)).append('\n');
+                        rows.append(nodeRow(run, nd.name(), "skill", p, "preloaded", null, null, null, null, 0)).append('\n');
                     }
                 }
             }
@@ -5378,7 +5344,7 @@ public class ArchHook {
 
     /** A `nodes.jsonl` line. No usage means "counted in its agent" — the field is left out, never zero. */
     static String nodeRow(String run, String parent, String kind, String name, String origin, String detail,
-                          Usage u, Spend sp, String reread, Path dir, long durationMs) {
+                          Usage u, Spend sp, String reread, long durationMs) {
         return ev("node", "run", run, "parent", parent, "kind", kind, "skill", name, "origin", origin,
                 "detail", detail == null || detail.isBlank() ? null : redact(detail),
                 "model", u == null ? null : u.model(),
@@ -5386,7 +5352,6 @@ public class ArchHook {
                 "cache_read", u == null ? null : String.valueOf(u.cacheRead()),
                 "cache_write", u == null ? null : String.valueOf(u.cacheWrite()),
                 "reread", reread,
-                "cost_usd", u == null ? null : usd(auditUsd(dir, u)),
                 "tool_calls", sp == null ? null : sp.ledger(),
                 "peak_context", sp == null || sp.peak == 0 ? null : String.valueOf(sp.peak),
                 "duration_ms", u == null ? null : String.valueOf(durationMs));
@@ -5559,7 +5524,7 @@ public class ArchHook {
      * Where one piece spent: its tool calls by name, the largest single request it sent
      * (input + cache read + cache write — the context that turn carried), and the errors
      * its tools returned. Absolute numbers only: the model's context window is not written
-     * from memory, the discipline invariant 8 imposes on versions and prices.
+     * from memory, the discipline invariant 8 imposes on versions.
      */
     static final class Spend {
         final Map<String, Integer> tools = new LinkedHashMap<>();
@@ -5605,7 +5570,7 @@ public class ArchHook {
      * What one tool call put into the context, and how many later requests of the same
      * transcript carried it again. {@code owner} indexes the run's nodes; -1 is the root.
      */
-    record Growth(int owner, String tool, String target, String model, long added, long rereads) {
+    record Growth(int owner, String tool, String target, long added, long rereads) {
         long reread() { return added * rereads; }
     }
 
@@ -5639,7 +5604,7 @@ public class ArchHook {
             int calls = a.tools().size();
             for (int c = 0; c < calls; c++) {
                 String target = c < a.targets().size() ? a.targets().get(c) : "";
-                out.add(new Growth(owner.applyAsInt(a), a.tools().get(c), target, a.model(), grew / calls, rereads));
+                out.add(new Growth(owner.applyAsInt(a), a.tools().get(c), target, grew / calls, rereads));
             }
         }
         return out;
@@ -5700,8 +5665,9 @@ public class ArchHook {
 
     // ── plan windows: how many runs fit a plan's 5-hour and weekly windows ──────────
     // Anthropic publishes no limit in tokens or dollars, only Max's multipliers over Pro per
-    // 5-hour session. The budget is the project's own reading (`audit.plan_limits`), every
-    // other number is `audit.plans` / `audit.windows` — nothing here is a constant (0133).
+    // 5-hour session. The budget is the project's own reading (`audit.plan_limits`), in
+    // billable tokens like every other number of the trail; every other number is
+    // `audit.plans` / `audit.windows` — nothing here is a constant (0133, unit by 0134).
 
     /** `audit.windows` as {key, label, hours, budget field}, in file order. */
     static List<String[]> planWindows(Map<String, Object> sch) {
@@ -5728,23 +5694,23 @@ public class ArchHook {
 
     /**
      * One cell: runs like this one that fit {@code window} on {@code plan}, as if nothing
-     * else ran — budget × multiplier ÷ cost, capped by the window's hours ÷ active duration
-     * back to back — with the limit that binds; or why there is no number.
+     * else ran — budget × multiplier ÷ billable tokens, capped by the window's hours ÷ active
+     * duration back to back — with the limit that binds; or why there is no number.
      */
     static String planCell(Map<String, Object> sch, Map<String, Object> budgets, String plan,
-                           String[] window, Double cost, long durationMs) {
+                           String[] window, double tokens, long durationMs) {
         Object mult = get(sch, "audit", "plans", plan, "multipliers", window[0]);
         if (!(mult instanceof Number m)) return "not published";
-        if (cost == null || cost <= 0) return "— no cost";
+        if (tokens <= 0) return "— no tokens";
         Double budget = window[3] == null ? null : dbl(budgets.get(window[3]));
         if (budget == null || budget <= 0) return "— set `" + window[3] + "`";
-        long byBudget = (long) Math.floor(budget * m.doubleValue() / cost);
+        long byBudget = (long) Math.floor(budget * m.doubleValue() / tokens);
         long byTime = durationMs <= 0 ? Long.MAX_VALUE : Long.parseLong(window[2]) * 3_600_000L / durationMs;
         return byTime < byBudget ? n(byTime) + " · time" : n(byBudget) + " · budget";
     }
 
     /** The run report's `Plan windows` section: one row per plan, one column per window. */
-    static String planWindowsSection(Path dir, Double cost, long durationMs) {
+    static String planWindowsSection(Path dir, long tokens, long durationMs) {
         Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
         List<String[]> windows = sch == null ? List.of() : planWindows(sch);
         if (windows.isEmpty()) return "";
@@ -5754,30 +5720,31 @@ public class ArchHook {
         if (budgets == null) {
             return md.append("No `.claude/audit-usage/").append(file).append("` — no projection. Anthropic publishes")
               .append(" no limit in tokens or dollars: write the `").append(asStr(get(sch, "audit", "budget_plan")))
-              .append("` budget you observed, in USD at `pricing.json` rates, and every plan is projected from it.\n\n")
+              .append("` budget you observed, in billable tokens, and every plan is projected from it.\n\n")
               .toString();
         }
         md.append("Runs like this one that fit each window, as if nothing else ran — ")
-          .append(cost == null ? "no cost" : orDash(money(dir, cost))).append(" per run, ")
+          .append(n(tokens)).append(" billable tokens per run, ")
           .append(hms(durationMs)).append(" active.\n\n| Plan |");
         for (String[] w : windows) md.append(' ').append(w[1]).append(" |");
         md.append("\n|---|").append("---|".repeat(windows.size())).append('\n');
         for (String p : planKeys(sch)) {
             md.append("| ").append(orDash(asStr(get(sch, "audit", "plans", p, "label")))).append(" |");
-            for (String[] w : windows) md.append(' ').append(planCell(sch, budgets, p, w, cost, durationMs)).append(" |");
+            for (String[] w : windows) md.append(' ').append(planCell(sch, budgets, p, w, tokens, durationMs)).append(" |");
             md.append('\n');
         }
         return md.append("\n> budget = the ").append(asStr(get(sch, "audit", "budget_plan")))
           .append(" budget in `").append(file).append("` × the plan's multiplier (")
           .append(asStr(get(sch, "audit", "plans_source"))).append("); time = the window ÷ this run's")
           .append(" active duration, back to back. An estimate: chat and other sessions share the real")
-          .append(" window, and the budget is the project's own reading.\n\n").toString();
+          .append(" window, the budget is the project's own reading, and a token weighs the same on")
+          .append(" every model here, which it does not on the plan.\n\n").toString();
     }
 
     /**
-     * `audit summary`'s plan-window table: per piece, the mean cost and active duration of
-     * its priced runs, projected like {@link #planWindowsSection}. A root run counts its
-     * whole cost — what typing that command costs; a chained piece only its own. Only the
+     * `audit summary`'s plan-window table: per piece, the mean billable tokens and active
+     * duration of its runs, projected like {@link #planWindowsSection}. A root run counts its
+     * whole run — what typing that command spends; a chained piece only its own. Only the
      * plan × window pairs with a published multiplier get a column.
      */
     static String planWindowsSummary(Path dir, List<Map<String, Object>> runs, List<Map<String, Object>> nested) {
@@ -5790,20 +5757,20 @@ public class ArchHook {
         if (budgets == null) {
             return o.append("not configured — no `").append(file).append("` in the trail\n").toString();
         }
-        Map<String, double[]> mean = new LinkedHashMap<>();   // label → cost sum, duration sum, runs
+        Map<String, double[]> mean = new LinkedHashMap<>();   // label → tokens sum, duration sum, runs
         for (Map<String, Object> r : runs) {
-            Double c = runCost(r);
-            if (c == null) continue;
+            long t = lnum(r.get("tokens_billable"));
+            if (t <= 0) continue;
             double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)), k -> new double[3]);
-            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+            a[0] += t; a[1] += lnum(r.get("duration_ms")); a[2]++;
         }
         for (Map<String, Object> r : nested) {
-            Double c = ldbl(r.get("cost_usd"));
-            if (c == null || "preloaded".equals(asStr(r.get("origin")))) continue;
+            long t = lnum(r.get("tokens_self"));
+            if (t <= 0 || "preloaded".equals(asStr(r.get("origin")))) continue;
             double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)) + " (chained, own)", k -> new double[3]);
-            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+            a[0] += t; a[1] += lnum(r.get("duration_ms")); a[2]++;
         }
-        if (mean.isEmpty()) return o.append("no priced run yet\n").toString();
+        if (mean.isEmpty()) return o.append("no run with tokens yet\n").toString();
         List<String[]> cols = new ArrayList<>();                // {plan, window index}
         for (String p : planKeys(sch)) {
             for (int i = 0; i < windows.size(); i++) {
@@ -5812,7 +5779,7 @@ public class ArchHook {
                 }
             }
         }
-        o.append("| Piece | Runs | Mean cost | Mean active |");
+        o.append("| Piece | Runs | Mean billable | Mean active |");
         for (String[] c : cols) {
             o.append(' ').append(orDash(asStr(get(sch, "audit", "plans", c[0], "label")))).append(' ')
              .append(windows.get(Integer.parseInt(c[1]))[1]).append(" |");
@@ -5822,12 +5789,12 @@ public class ArchHook {
         rows.sort((a, b) -> Double.compare(b.getValue()[0] / b.getValue()[2], a.getValue()[0] / a.getValue()[2]));
         for (Map.Entry<String, double[]> e : rows) {
             double[] a = e.getValue();
-            double cost = a[0] / a[2];
+            double tokens = a[0] / a[2];
             long dur = (long) (a[1] / a[2]);
             o.append("| ").append(e.getKey()).append(" | ").append((long) a[2]).append(" | ")
-             .append(money(dir, cost)).append(" | ").append(hms(dur)).append(" |");
+             .append(n(Math.round(tokens))).append(" | ").append(hms(dur)).append(" |");
             for (String[] c : cols) {
-                o.append(' ').append(planCell(sch, budgets, c[0], windows.get(Integer.parseInt(c[1])), cost, dur)).append(" |");
+                o.append(' ').append(planCell(sch, budgets, c[0], windows.get(Integer.parseInt(c[1])), tokens, dur)).append(" |");
             }
             o.append('\n');
         }
@@ -5926,77 +5893,19 @@ public class ArchHook {
     }
 
     /**
-     * Prices are data, never memory — the same discipline invariant 8 imposes on Java
-     * and Spring versions. pricing.json ships pre-filled from the official pricing page
-     * as of the date in its own $comment, but a model added later, or a price that has
-     * since changed, is null until someone re-checks it: an unfilled price prints as
-     * "not configured", never as a confident US$ 0.00. Any model with usage and no
-     * price makes the whole amount unknown, not a partial sum.
-     */
-    static Double auditUsd(Path dir, Usage u) {
-        Map<String, Object> pr = asMap(Json.parse(readOrNull(dir.resolve("pricing.json"))));
-        if (pr == null || u == null || u.byModel.isEmpty()) return null;
-        Double per = dbl(pr.get("per"));
-        double unit = per == null || per == 0 ? 1_000_000d : per;
-        double usd = 0;
-        for (Map.Entry<String, long[]> e : u.byModel.entrySet()) {
-            Map<String, Object> m = asMap(get(pr, "models", e.getKey()));
-            if (m == null) return null;
-            Double in = dbl(m.get("input")), out = dbl(m.get("output")),
-                   cr = dbl(m.get("cache_read")), cw = dbl(m.get("cache_write"));
-            if (in == null || out == null || cr == null || cw == null) return null;
-            long[] a = e.getValue();
-            usd += (a[0] * in + a[1] * out + a[2] * cr + a[3] * cw) / unit;
-        }
-        return usd;
-    }
-
-    static String auditCost(Path dir, Usage u) { return money(dir, auditUsd(dir, u)); }
-
-    /**
-     * The model ids in {@code models} that pricing.json cannot price — absent, or missing
-     * one of the four rates. `auditUsd` stops at the first one; this names them all, so
-     * the report and `doctor` point at the gap instead of at a file that looks complete
-     * (lessons-learned-018). Null when pricing.json itself is missing or unreadable.
-     */
-    static List<String> auditUnpriced(Path dir, Collection<String> models) {
-        Map<String, Object> pr = asMap(Json.parse(readOrNull(dir.resolve("pricing.json"))));
-        if (pr == null) return null;
-        List<String> out = new ArrayList<>();
-        for (String id : models) {
-            Map<String, Object> m = asMap(get(pr, "models", id));
-            if (m == null || dbl(m.get("input")) == null || dbl(m.get("output")) == null
-                    || dbl(m.get("cache_read")) == null || dbl(m.get("cache_write")) == null) {
-                out.add(id);
-            }
-        }
-        return out;
-    }
-
-    /** The cost cell of the report: the amount, or what keeps it unknown, by name. */
-    static String auditCostCell(Path dir, Usage u) {
-        String cost = auditCost(dir, u);
-        if (cost != null) return "**" + cost + "**";
-        if (u == null || u.byModel.isEmpty()) return "—";
-        List<String> missing = auditUnpriced(dir, u.byModel.keySet());
-        if (missing == null) return "— (no `" + AUDIT_DIR + "/pricing.json`)";
-        return "— (no price for `" + String.join("`, `", missing) + "` in `" + AUDIT_DIR + "/pricing.json`)";
-    }
-
-    /**
-     * {@code audit genesis <project> <session-id>} — fills the four figures of a freshly generated
+     * {@code audit genesis <project> <session-id>} — fills the three figures of a freshly generated
      * project's GENESIS record from this session's transcripts: Started (the `/init-project`
-     * message), Finished (now), the tokens and their cost. Form 7c, run by `/init-project` through
-     * Bash after its agent returns and before `git-publish`; no event invokes it, and it writes
-     * nothing in this repository, whose trail stays off. A number the model wrote would be memory
-     * — a start recovered from a directory's birth time once landed after the finish, in local
-     * time with a literal `Z` (lessons-learned-020 § 4) — so the agent leaves the placeholders and
-     * this reads the runtime's own record; the rejected alternative, the agent pricing its own
-     * transcript, sees neither the main session nor its own last turns. Every turn of the main
-     * transcript and of each subagent transcript from Started on is counted, deduplicated by
-     * message id like every audit report, and priced from the project's `pricing.json` — never a
-     * partial sum. Names in `audit.genesis` of extensions.json (invariant 10). Exit 1, saying
-     * why, on anything it cannot fill; it never overwrites a filled record.
+     * message), Finished (now) and the tokens — no cost, the trail prices nothing (0134). Form 7c,
+     * run by `/init-project` through Bash after its agent returns and before `git-publish`; no
+     * event invokes it, and it writes nothing in this repository, whose trail stays off. A number
+     * the model wrote would be memory — a start recovered from a directory's birth time once
+     * landed after the finish, in local time with a literal `Z` (lessons-learned-020 § 4) — so
+     * the agent leaves the placeholders and this reads the runtime's own record; the rejected
+     * alternative, the agent counting its own transcript, sees neither the main session nor its
+     * own last turns. Every turn of the main transcript and of each subagent transcript from
+     * Started on is counted, deduplicated by message id like every audit report. Names in
+     * `audit.genesis` of extensions.json (invariant 10). Exit 1, saying why, on anything it
+     * cannot fill; it never overwrites a filled record.
      */
     static void auditGenesis(String[] args) throws Exception {
         if (args.length < 4) {
@@ -6010,7 +5919,7 @@ public class ArchHook {
         }
         Map<String, Object> ph = asMap(cfg.get("placeholders"));
         String pStart = asStr(get(ph, "started")), pEnd = asStr(get(ph, "finished")),
-               pTokens = asStr(get(ph, "tokens")), pCost = asStr(get(ph, "cost"));
+               pTokens = asStr(get(ph, "tokens"));
         Path project = Paths.get(args[2]).toAbsolutePath().normalize();
         Path genesis = project.resolve(asStr(cfg.get("file")));
         String body = readOrNull(genesis);
@@ -6018,9 +5927,9 @@ public class ArchHook {
             err("❌ audit genesis: " + genesis + " does not exist — step 8.6 of project-bootstrap writes it.");
             System.exit(1);
         }
-        if (!body.contains(pStart) || !body.contains(pEnd) || !body.contains(pTokens) || !body.contains(pCost)) {
-            err("❌ audit genesis: " + genesis + " has no " + pStart + ", " + pEnd + ", " + pTokens + " or "
-                    + pCost + " left — already filled, or written without them. Nothing was changed.");
+        if (!body.contains(pStart) || !body.contains(pEnd) || !body.contains(pTokens)) {
+            err("❌ audit genesis: " + genesis + " has no " + pStart + ", " + pEnd + " or " + pTokens
+                    + " left — already filled, or written without them. Nothing was changed.");
             System.exit(1);
         }
 
@@ -6074,30 +5983,16 @@ public class ArchHook {
                 requests++;
             }
         }
-        Path auditDir = project.resolve(AUDIT_DIR);
-        String cost = auditCostCell(auditDir, u).replace("**", "");
         String tokens = String.format(Locale.ROOT,
                 "%,d input · %,d output · %,d cache read · %,d cache write — %d requests, %s",
                 u.in(), u.out(), u.cacheRead(), u.cacheWrite(), requests, orDash(u.model()));
         String iso0 = Instant.ofEpochMilli(start).truncatedTo(ChronoUnit.SECONDS).toString();
         String iso1 = Instant.ofEpochMilli(end).truncatedTo(ChronoUnit.SECONDS).toString();
         Files.writeString(genesis, body.replace(pStart, iso0).replace(pEnd, iso1)
-                .replace(pTokens, tokens).replace(pCost, cost), StandardCharsets.UTF_8);
+                .replace(pTokens, tokens), StandardCharsets.UTF_8);
         System.out.println("✅ GENESIS filled — " + genesis);
         System.out.println("   Started " + iso0 + " · Finished " + iso1);
         System.out.println("   Tokens  " + tokens);
-        System.out.println("   Cost    " + cost);
-    }
-
-    static String money(Path dir, Double amount) {
-        if (amount == null) return null;
-        String cur = asStr(get(Json.parse(readOrNull(dir.resolve("pricing.json"))), "currency"));
-        return String.format(Locale.ROOT, "%s %.2f", cur == null ? "USD" : cur, amount);
-    }
-
-    /** Machine form for the ledgers: dot decimal, no currency, so a reader can sum it. */
-    static String usd(Double amount) {
-        return amount == null ? null : String.format(Locale.ROOT, "%.6f", amount);
     }
 
     // ── audit summary ────────────────────────────────────────────────────────
@@ -6131,30 +6026,23 @@ public class ArchHook {
 
             // ── spend per piece: root self + nested self, never the run total twice ──
             Map<String, long[]> tok = new LinkedHashMap<>();      // tokens, roots, nested, preloaded
-            Map<String, Double> money = new LinkedHashMap<>();
-            Map<String, Integer> unpriced = new LinkedHashMap<>();
             Map<String, int[]> health = new LinkedHashMap<>();    // failed, runs — roots only
             // Same self-only discipline for tool calls and peak context. Rows written before
             // these fields existed carry none and add nothing — unknown, never zero.
             Map<String, Map<String, Long>> toolsBy = new LinkedHashMap<>();
             Map<String, Long> peakBy = new LinkedHashMap<>();
             long sumTok = 0, sumDur = 0;
-            double sumCost = 0;
-            int priced = 0, failed = 0;
+            int failed = 0;
             for (Map<String, Object> r : runs) {
                 String key = pieceKey(r);
                 boolean hasSelf = r.get("tokens_self") != null;
                 long self = lnum(r.get(hasSelf ? "tokens_self" : "tokens_billable"));
                 long[] t = tok.computeIfAbsent(key, k -> new long[4]);
                 t[0] += self; t[1]++;
-                Double c = hasSelf ? ldbl(r.get("cost_self_usd")) : runCost(r);
-                if (c == null) unpriced.merge(key, 1, Integer::sum); else money.merge(key, c, Double::sum);
                 mergeTools(toolsBy, key, asStr(r.get("tool_calls_self")));
                 mergePeak(peakBy, key, r.get("peak_context_self"));
                 sumTok += lnum(r.get("tokens_billable"));
                 sumDur += lnum(r.get("duration_ms"));
-                Double total = runCost(r);
-                if (total != null) { sumCost += total; priced++; }
                 boolean bad = lnum(r.get("failures")) > 0 || orEmpty(asStr(r.get("status"))).startsWith("❌");
                 if (bad) failed++;
                 int[] h = health.computeIfAbsent(key, k -> new int[2]);
@@ -6170,8 +6058,6 @@ public class ArchHook {
                 mergePeak(peakBy, key, r.get("peak_context"));
                 if (r.get("tokens_self") == null) continue;
                 t[0] += lnum(r.get("tokens_self"));
-                Double c = ldbl(r.get("cost_usd"));
-                if (c == null) unpriced.merge(key, 1, Integer::sum); else money.merge(key, c, Double::sum);
             }
 
             o.append("closed runs: ").append(runs.size())
@@ -6179,8 +6065,8 @@ public class ArchHook {
              .append(" · distinct pieces: ").append(tok.size()).append("\n\n");
 
             o.append("### Latest runs\n\n")
-             .append("| # | 🕐 When | 🎯 Piece | 🙋 Origin | 🤖 Model | Status | ⏱️ Duration | 🧮 Billable | 💰 Cost | 🛠️ Calls | 📏 Peak | 📁 Files | 🔁 Failures |\n")
-             .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+             .append("| # | 🕐 When | 🎯 Piece | 🙋 Origin | 🤖 Model | Status | ⏱️ Duration | 🧮 Billable | 🛠️ Calls | 📏 Peak | 📁 Files | 🔁 Failures |\n")
+             .append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
             int shown = 0;
             for (int i = runs.size() - 1; i >= 0 && shown < AUDIT_RECENT_RUNS; i--, shown++) {
                 Map<String, Object> r = runs.get(i);
@@ -6196,7 +6082,6 @@ public class ArchHook {
                  .append(st.isEmpty() ? "—" : st.substring(0, Math.max(1, st.indexOf(' ')))).append(" | ")
                  .append(hms(lnum(r.get("duration_ms")))).append(" | ")
                  .append(n(lnum(r.get("tokens_billable")))).append(" | ")
-                 .append(orDash(money(dir, runCost(r)))).append(" | ")
                  .append(calls == null ? "—" : String.valueOf(sumCalls(calls))).append(" | ")
                  .append(r.get("peak_context") == null ? "—" : n(lnum(r.get("peak_context")))).append(" | ")
                  .append(lnum(r.get("files"))).append(" | ").append(lnum(r.get("failures"))).append(" |\n");
@@ -6206,11 +6091,8 @@ public class ArchHook {
             }
 
             o.append("\n### Totals\n\n")
-             .append("billable: ").append(n(sumTok)).append(" tok · cost: ")
-             .append(priced == 0 ? "not configured" : money(dir, sumCost))
-             .append(" (").append(priced).append(" of ").append(runs.size()).append(" runs priced")
-             .append(priced < runs.size() ? "; " + (runs.size() - priced) + " left out of the sum, no price" : "")
-             .append(") · active duration: ").append(hms(sumDur))
+             .append("billable: ").append(n(sumTok)).append(" tok")
+             .append(" · active duration: ").append(hms(sumDur))
              .append(" · runs: ").append(runs.size()).append("\n\n");
 
             long pieceSum = Math.max(1, tok.values().stream().mapToLong(a -> a[0]).sum());
@@ -6219,21 +6101,15 @@ public class ArchHook {
             o.append("### Spend per piece (own tokens — root + nested, never counted twice)\n\n```text\n");
             for (Map.Entry<String, long[]> e : ranked) {
                 long[] t = e.getValue();
-                Double c = money.get(e.getKey());
-                int miss = unpriced.getOrDefault(e.getKey(), 0);
                 String calls = t[1] + t[2] == 0 ? t[3] + "× preloaded"
                         : (t[1] + t[2]) + "×"
                           + (t[2] > 0 ? " (" + t[1] + " root · " + t[2] + " nested)" : "")
                           + (t[3] > 0 ? " · " + t[3] + "× preloaded" : "");
                 o.append(pad(keyLabel(e.getKey()), 34)).append(barW((double) t[0] / pieceSum, 25)).append(' ')
                  .append(pad(pct(t[0], pieceSum), 5)).append(pad(n(t[0]) + " tok", 16))
-                 .append(pad(c == null ? (miss > 0 ? "no price" : "—") : money(dir, c) + (miss > 0 ? "*" : ""), 14))
                  .append(calls).append('\n');
             }
             o.append("```\n");
-            if (unpriced.values().stream().anyMatch(v -> v > 0)) {
-                o.append("`*` partial sum: some invocations have no price configured.\n");
-            }
 
             if (!toolsBy.isEmpty() || !peakBy.isEmpty()) {
                 o.append("\n### Where the pieces spent (tool calls, top 5 tools · largest single request)\n\n```text\n");
@@ -6332,21 +6208,6 @@ public class ArchHook {
                 : "model".equals(asStr(row.get("origin"))) ? "Skill(" + name + ")" : "/" + name;
     }
 
-    /**
-     * `cost_usd` when present; older lines only carry the formatted `cost` — pt-BR before
-     * decision 0085 ("USD 1.234,56"), `Locale.ROOT` after it ("USD 1234.56"). A comma means
-     * the old form; without one the dot is the decimal point and must not be deleted.
-     */
-    static Double runCost(Map<String, Object> row) {
-        Double d = ldbl(row.get("cost_usd"));
-        if (d != null) return d;
-        String c = asStr(row.get("cost"));
-        if (c == null) return null;
-        String v = c.substring(c.lastIndexOf(' ') + 1);
-        if (v.contains(",")) v = v.replace(".", "").replace(',', '.');
-        try { return Double.parseDouble(v); } catch (NumberFormatException e) { return null; }
-    }
-
     /** The ledgers write every value as a string. */
     static long lnum(Object o) {
         if (o instanceof Number x) return x.longValue();
@@ -6354,11 +6215,6 @@ public class ArchHook {
         catch (NumberFormatException e) { return 0L; }
     }
 
-    static Double ldbl(Object o) {
-        if (o instanceof Number x) return x.doubleValue();
-        try { return o instanceof String s ? Double.parseDouble(s.strip()) : null; }
-        catch (NumberFormatException e) { return null; }
-    }
 
     static String barW(double fraction, int width) {
         int full = (int) Math.round(Math.max(0, Math.min(1, fraction)) * width);

@@ -131,7 +131,7 @@ model's memory. Concretely:
 - **Context stays cheap.** The root `CLAUDE.md` stays under 200 lines. Norms load through
   `paths` only when a file in their territory is touched.
 - **Every run is measured.** In a generated project, each skill or agent invocation leaves
-  a report with tokens and cost per piece, the call chain, files touched, and failures.
+  a report with tokens and the model per piece, the call chain, files touched, and failures.
 
 ## Getting started
 
@@ -248,7 +248,7 @@ greens, which is why `/arch-doctor` exists. More traps, runtime and repository a
      ├─ 7. INSTALLS hooks (ArchHook.jar + extensions.json + settings.json), opens the audit trail
      ├─ 8. VERIFIES build + smoke + tested boundary block; writes README + GENESIS.md
      ├─ 9. REPORT in the fixed output contract
-     ├─ 10. GENESIS.md figures from the session transcripts — Started, Finished, tokens, cost
+     ├─ 10. GENESIS.md figures from the session transcripts — Started, Finished, tokens
      └─ if the build is green: OFFERS git-publish — two independent confirmations
 ```
 

@@ -134,15 +134,15 @@ every other exemplar here. `{{initCommand}}`, `{{blueprint.id}}`,
 step 8.5 — same values, second destination. `{{buildStatus}}` is step 8's own
 `PASSED`/`FAILED` verdict, restated, never re-derived.
 
-**`{{startIso}}`, `{{endIso}}`, `{{tokens}}` and `{{cost}}` stay in the file, literally.**
+**`{{startIso}}`, `{{endIso}}` and `{{tokens}}` stay in the file, literally.**
 `/init-project` fills them after this agent returns, with `ArchHook.java audit genesis`, from
-this session's transcripts and the project's `pricing.json`. Never a value of your own — not
+this session's transcripts. Never a value of your own — not
 from `date`, not from a directory's birth time, not an estimate: a start recovered that way once
 landed after the finish (`@.claude/lessons-learned/lessons-learned-020.md` § 4).
 
 **Never overclaim fidelity.** This file names itself a reconstruction, not a hook
 report, and stays that way — no invented per-tool-call timeline, no ranked stages, none of
-the per-piece fields `ArchHook.java audit`'s own reports carry. The run's total tokens and cost
+the per-piece fields `ArchHook.java audit`'s own reports carry. The run's total tokens
 are measured, not invented, and come only from `audit genesis`. A later
 `/audit-usage` reader must be able to tell this entry apart from every report that
 follows it in the same directory. Written once; a second `/init-project` run never

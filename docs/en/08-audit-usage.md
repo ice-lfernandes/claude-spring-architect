@@ -12,7 +12,7 @@ Two modes of the same hook, both wired **only in the generated project** (the
 
 | Mode | Question it answers | Blocks? |
 |---|---|---|
-| `audit` | "What did this run cost, what did it chain, what did it touch, what failed?" | Never |
+| `audit` | "How many tokens did this run spend, what did it chain, what did it touch, what failed?" | Never |
 | `guard` | "Did a design skill try to write under `src/`? Did someone try to edit an approved spec?" | Yes (`exit 2`) |
 
 The `/audit-usage` skill is the trail's reader: it consolidates spend per piece across
@@ -110,21 +110,23 @@ that isn't `true`/`false`, a name with no file in the project, or `arch-adopt`. 
 How many runs of a piece fit each plan's 5-hour and weekly windows, as if nothing else ran.
 Anthropic publishes no limit in tokens or dollars — only that Max gives 5x or 20x the usage of
 Pro per 5-hour session, and that paid plans add weekly limits on top, with no multiplier
-published. So the budget is the project's own reading, for Pro only, in USD at `pricing.json`
-rates — for example, the cost the audit summed when `/usage` reached 100%:
+published. So the budget is the project's own reading, for Pro only, in billable tokens —
+for example, the total the audit summed when `/usage` reached 100%:
 
 ```json
-{ "pro": { "five_hour_usd": 10, "weekly_usd": 50 } }
+{ "pro": { "five_hour_tokens": 2000000, "weekly_tokens": 10000000 } }
 ```
 
 Each plan is that budget × its multiplier in `audit.plans` of `extensions.json` (source and
-date in `audit.plans_source`), ÷ the run's cost, also capped by the clock — the window ÷ the
+date in `audit.plans_source`), ÷ the run's billable tokens, also capped by the clock — the window ÷ the
 active duration, back to back. The cell says which limit binds (`budget` or `time`); Max
 weekly is `not published`. It shows in each report's `🪟 Plan windows` section and, per
 piece's mean, in `audit summary`. Absent → the report says there is no projection. Like
 `audited.json`, `export` never names it, and `doctor` validates it on its `Plan limits` line:
-only `pro`, only `five_hour_usd` and `weekly_usd`, a number above 0 or `null`. An estimate:
-chat and other sessions share the real window. Decision 0133.
+only `pro`, only `five_hour_tokens` and `weekly_tokens`, a number above 0 or `null` — a
+`five_hour_usd` written before decision 0134 is refused by name. An estimate: chat and other
+sessions share the real window, and a token weighs the same on every model here, which it
+does not on the plan. Decisions 0133 and 0134.
 
 ## Anatomy of a report
 
@@ -156,15 +158,15 @@ its numbers are unchanged. Reports written before 0085 stay in Portuguese on dis
 
 ## 🧩 Tokens per piece
 
-| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |
-| `📘 test-architect` | nested | 242,813 | … | … | … | 2m25s |
-| `🤖 java-spring-boot-developer (group domain)` | nested | 88,517 | … | … | … | 1m12s |
+| Piece | Origin | 🤖 Model | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | ⏱️ Duration |
+| `📘 test-architect` | nested | … | 242,813 | … | … | 2m25s |
+| `🤖 java-spring-boot-developer (group domain)` | nested | … | 88,517 | … | … | 1m12s |
 …
 ```
 
-Sections, in order: header (with the estimated cost right after the model) · initial command (redacted, with the original's `sha256`)
+Sections, in order: header · initial command (redacted, with the original's `sha256`)
 · longest steps · chain · tokens per piece · aggregate tokens (input, output,
-cache read, cache write, billable, estimated cost, cache hit) · plan windows · where the run spent ·
+cache read, cache write, billable, cache hit) · plan windows · where the run spent ·
 permissions added (a diff of `settings.local.json` between start and end) · rules
 loaded · files touched · rework.
 
@@ -173,8 +175,8 @@ the last piece that started before it, and the runtime emits no event when an in
 ends. So everything the orchestrator does after its last skill, up to the next agent or
 skill, lands on that skill's row. In `/new-feature`'s spec flow, that is consolidation and the
 approval question, counted under `test-architect`. In the example above,
-`test-architect`'s 242,813 tokens include that tail. In a real UC-007 run, about USD 1.47
-of the USD 1.91 attributed to it was consolidation. The report's footnote says the same.
+`test-architect`'s 242,813 tokens include that tail; in a real UC-007 run, most of what was
+attributed to it was consolidation. The report's footnote says the same.
 Design: `.claude/decisions/0118-skill-model-pin-audit-tail-and-bsd-sed.md`.
 
 **Where the run spent** is read from the same transcripts the tokens come from — the
@@ -221,14 +223,14 @@ Four design decisions the report states about itself:
   the whole context, so what a call's result added is paid again by each later request of the
   same transcript, up to a compaction. Added = the next request's context minus this one's and
   its output, split across the request's calls. The section lists the `audit.growth_top` calls
-  that cost most in re-reads (piece, tool, target — the path, or the command's first line,
+  re-read the most (piece, tool, target — the path, or the command's first line,
   redacted —, tokens added, how many requests re-read them, re-read tokens) and, per piece, one
   line by tool. It is what says whether an executor's `tests` group spends on reading earlier
   code, on diagnostic output or on fix cycles — the per-piece totals cannot (issue #111). A
   harness reminder lands on the call before it. Design:
   `.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
 
-## Redaction and pricing
+## Redaction, and why tokens
 
 - **Redaction is mandatory.** The prompt goes into a versioned file; a token pasted
   into it would be irreversible in git history (invariant 11). The patterns live in
@@ -238,27 +240,29 @@ Four design decisions the report states about itself:
   patterns, truncated to 160 characters — an error can echo the command that held the
   token. A failed `Bash` result opens with `Exit code N`; the report joins it with the
   line after it, which is what actually failed.
-- **Prices are data, never memory.** `pricing.json` ships filled with the official
-  page's rates as of the date in its `$comment`, and cost appears per model (a subagent on
-  another model is priced at its own rate). The model id matches exactly —
-  `claude-opus-5-5` does not inherit `claude-opus-5`'s price. A model with no price makes
-  the total unknown, never a partial sum nor a confident `USD 0.00`, and the cell says
-  which one is missing: `— (no price for claude-opus-5-5 in .claude/audit-usage/pricing.json)`.
-  The same reason invariant 8 forbids versions from memory.
+- **Tokens, never money.** Every number is billable tokens (input + output + cache write),
+  with the model named per piece. The trail used to price them from a `pricing.json` filled
+  from the official page; every model Anthropic shipped blanked every total until someone
+  re-read that page — `claude-opus-5-5`, then `claude-sonnet-5-5` a week later — a closed run
+  could not be re-priced, and every cache write was priced at the 5-minute rate. A token
+  weighs more on a larger model, so read the `🤖 Model` column before comparing two runs;
+  the runtime's own `/cost` answers in money for a session. The next `/arch-adopt` deletes a
+  project's `pricing.json`. Decision 0134.
 
 ## The ledgers and `audit summary`
 
 | File | One line per | Versioned? |
 |---|---|---|
-| `history.jsonl` | top-level run (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | yes |
-| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `detail` — the agent call's description, a chained executor's group —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | yes |
+| `history.jsonl` | top-level run (`kind`, `origin`, `model`, `status`, `tokens_billable`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | yes |
+| `nodes.jsonl` | piece chained inside a run (`run`, `parent`, `skill`, `model`, `detail` — the agent call's description, a chained executor's group —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | yes |
 | `.state/*.ndjson`, `.state/*.prompt.json` | raw event of the run in progress | no |
 
 `tool_calls` is a string, `Bash:5,Read:12`, because the ledgers carry strings only. Rows
 written before a field existed simply lack it, and every reader treats absent as
 unknown, never as zero. Rows written before decision 0085 also carry a Portuguese status
-(`✅ sucesso`) and a pt-BR formatted `cost` (`USD 1.234,56`); `audit summary` classifies
-the status by its emoji and parses both cost formats, so the old rows need no migration.
+(`✅ sucesso`), which `audit summary` classifies by its emoji; rows written before decision
+0134 carry `cost`, `cost_usd` and `cost_self_usd`, which nothing reads. Old rows need no
+migration.
 
 `java .claude/hooks/ArchHook.java audit summary` aggregates the two ledgers **in the
 JVM** and prints a compact block. That block is what `/audit-usage` injects into its
@@ -304,7 +308,7 @@ most recent with failures: `.claude/audit-usage/2026-09-17T11-11-27--domain-mode
 | a filename fragment | The single matching report; two or more, list and ask |
 
 What the skill never does: recompute a number the block printed, read `.state/`, edit
-or delete reports, invent a price, quote a redacted value.
+or delete reports, put a price on a token, quote a redacted value.
 
 ## Sequence diagram
 
@@ -381,9 +385,7 @@ order, so no boundary may depend on which of them ran first.
 
 ## What `doctor` shows
 
-`/arch-doctor` carries two lines about the trail: `Audit` (how many runs recorded, and
-whether `pricing.json` exists, and ❌ naming each model of `history.jsonl`'s last 15 runs it
-does not price) and `Audit rule inference` (a synthetic file matching a
+`/arch-doctor` carries two lines about the trail: `Audit` (how many runs recorded) and `Audit rule inference` (a synthetic file matching a
 real norm's `paths` — the exact shape that once threw
 `ArrayIndexOutOfBoundsException` inside the inference and froze every report from that
 point on, silently). Without the directory: `⚪ no .claude/audit-usage/ — execution

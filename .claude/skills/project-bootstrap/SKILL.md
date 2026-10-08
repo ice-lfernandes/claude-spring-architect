@@ -98,8 +98,7 @@ and `features/observability/application-observability.yml.example` and
 `docker-compose.yml.example` (4.10) plus **either** `Dockerfile.example` (`maven`) **or**
 `Dockerfile-gradle.example` (`gradle`) — never both,
 `root.CLAUDE.md.example` and `module.CLAUDE.md.example` (step 6),
-`settings.json.example` and `audit-pricing.json.example` (step 6.6, written by the
-`export` mode, not by hand), **either**
+`settings.json.example` (step 6.6, written by the `export` mode, not by hand), **either**
 `ci.yml.example` (`maven`) **or** `ci-gradle.yml.example` (`gradle`) — never both (step
 6.5), `README.md.example` and `README.pt-br.md.example` (step 8.5), and
 `GENESIS.md.example` (step 8.6) — plus whatever the
@@ -366,7 +365,7 @@ ArchUnit: to be installed — `test-architect` skill (see Next steps)
 Coverage: JaCoCo generates a report; the 80%/70% gate comes in with `test-architect`
 Self-contained: <n> rules + <n> skills + <n> agents + ArchHook.java + extensions.json written by `ArchHook.java export` — no dead paths ✓
 Provenance: .claude/.arch-provenance.json — blueprint <id>, ref <ref>, commit <short sha>. `/arch-doctor` reports anything edited since
-Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself. Fill pricing.json to see cost
+Audit trail: .claude/audit-usage/ active — one report per skill or agent invocation from now on, by `/command` or by the model. GENESIS.md records this run itself, in tokens
 Docker: Dockerfile + docker-compose.yml — <list: app, plus one entry per service `docker-architect` merged in step 4.10 for an active feature, e.g. "postgres (persistence-jpa)", "otel-collector (observability)"> — extend with `docker-architect` for anything a future use case adds
 Local secrets: .env (untracked) holds DB_PASSWORD, read by docker compose and imported by application.yml for the host run; a fresh clone copies .env.example — <only with persistence-jpa; omit the line otherwise>
 Observability UI: <omit this line entirely when `observability` is not active> none — the collector exports to `debug`, which writes spans and metrics to its own stdout and is not a dashboard. Run `/docker-architect` to add one: Jaeger (traces, one container) or Grafana + Tempo + Prometheus (traces and metrics, three)
@@ -478,8 +477,7 @@ born, never this repository) — no other skill touches these files:
 - `.claude/hooks/ArchHook.java` — copy, see step 6.6
 - `.claude/schemas/extensions.json` — copy without its own `export` block, see step 6.6
 - `.claude/settings.json` — written whole, see step 6.6
-- `.claude/audit-usage/pricing.json` and the `.claude/audit-usage/` directory itself —
-  step 6.6. The reports and `history.jsonl` inside it are written afterwards by
+- The `.claude/audit-usage/` directory itself — step 6.6. The reports and `history.jsonl` inside it are written afterwards by
   `ArchHook.java audit`, never by this skill
 - `.claude/audit-usage/GENESIS.md` — step 8.6, once, the only report in that directory
   this skill ever writes itself. Everything else in that directory after it is

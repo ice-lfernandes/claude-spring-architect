@@ -279,8 +279,8 @@ todas as linhas da mesma seção de cada parcial.
 
 ## Disciplina de custo
 
-Uma execução real custou ~USD 15 para um agregado de dois campos, 70% em cache read: a
-alavanca é turnos × tamanho do contexto. Por isso: sem mensagens de progresso entre
+Numa execução real para um agregado de dois campos, o executor levou 203 turnos e releu
+58,8M tokens de cache: a alavanca é turnos × tamanho do contexto. Por isso: sem mensagens de progresso entre
 passos, escritas independentes no mesmo turno, versões lidas do `pom.xml`, um caso de
 uso por execução e `/clear` entre execuções. Uma execução de design termina na aprovação,
 então a de implementação começa em sessão limpa, e o executor roda em três grupos

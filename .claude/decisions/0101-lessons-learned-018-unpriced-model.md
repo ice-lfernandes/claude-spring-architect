@@ -9,6 +9,11 @@
   mode, no new registration.
 - **State:** approved by Lucas Fernandes, on 2026-10-01
 
+> **Superseded by `0134-audit-tokens-only-no-usd-pricing.md`.** The trail no longer prices
+> anything: `pricing.json`, its template and the `doctor` check this record added are gone,
+> because the gap it named recurred one week later with `claude-sonnet-5-5` (issue #111) — a
+> fact this record did not weigh. Kept as history.
+
 ## Reproduced on disk before classifying
 
 Checked against `effd2e3`.

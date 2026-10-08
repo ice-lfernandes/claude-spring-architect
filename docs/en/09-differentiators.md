@@ -162,7 +162,7 @@ an older convention left behind.
 ### 6 · A deterministic, per-run execution trail
 
 In a generated project, the `audit` hook writes one Markdown report per skill or agent
-invocation. It holds tokens and cost per piece (no double counting), a chain tree with
+invocation. It holds billable tokens and the model per piece (no double counting), a chain tree with
 durations, files touched, permissions requested, failed tools, and `HEAD` before and
 after. Prompts are redacted. Two ledgers feed `/audit-usage`. Producing the report costs
 zero tokens, and it survives the session dying.
@@ -226,7 +226,7 @@ Representatives of each family, as found on 2026-10-02. ✅ yes · ◐ partial �
 | Write scope enforced by a hook | ✅ per class, as data | ✅ per task | — | — | — (prompt gates) | ◐ workflow and quality gates |
 | Approved spec frozen by a hook | ✅ | — | — | — | — | ◐ accept gates |
 | Hooks run without a shell, tested on 3 OSes | ✅ Java | — bash + `jq` | — | — | — | — |
-| Per-run cost and chain trail | ✅ | — | — | — | — | — |
+| Per-run token and chain trail | ✅ | — | — | — | — | — |
 | Validates its own instruction files | ✅ | — | — | — | — | — |
 | Update into an existing project | ✅ with provenance + migration notes | ◐ onboarding | — | ◐ plugin reinstall | ✅ upgrade/update | ✅ upgrade |
 | Runs on agents other than Claude Code | — | ✅ | ✅ | ◐ Codex | ✅ | ◐ |
@@ -247,8 +247,8 @@ Representatives of each family, as found on 2026-10-02. ✅ yes · ◐ partial �
 - **Portability.** Hooks, `paths`, `disable-model-invocation`, and `context: fork` belong to
   the Claude Code runtime. Nothing here runs on Codex, Cursor, or Copilot, while most
   neighbors run on several agents.
-- **Cost.** The full pipeline is expensive by design. One real `/new-feature` run cost about
-  USD 15 for a two-field aggregate. The audit trail exists to measure that; see
+- **Cost.** The full pipeline is expensive by design. In one real `/new-feature` run on a
+  two-field aggregate, the executor alone took 203 turns and re-read 58.8M cache tokens. The audit trail exists to measure that; see
   [03-new-feature.md § Cost discipline](03-new-feature.md).
 - **Adoption.** The rigor has a learning curve, and the project is young and small.
   Simpler templates and skill packs are far more popular.

@@ -164,7 +164,7 @@ código que uma convenção antiga deixou para trás.
 ### 6 · Trilha de execução determinística, por execução
 
 Num projeto gerado, o hook `audit` escreve um relatório Markdown por invocação de skill ou
-agent. Ele traz tokens e custo por peça (sem contagem dupla), árvore de encadeamento com
+agent. Ele traz tokens billable e o modelo por peça (sem contagem dupla), árvore de encadeamento com
 durações, arquivos tocados, permissões pedidas, ferramentas que falharam e o `HEAD` antes e
 depois. Os prompts são redigidos. Dois ledgers alimentam o `/audit-usage`. O relatório custa
 zero token para ser produzido e sobrevive à sessão morrer.
@@ -229,7 +229,7 @@ encontrado.
 | Escopo de escrita imposto por hook | ✅ por classe, como dado | ✅ por tarefa | — | — | — (gates de prompt) | ◐ gates de workflow e qualidade |
 | Spec aprovada congelada por hook | ✅ | — | — | — | — | ◐ gates de accept |
 | Hooks sem shell, testados em 3 SOs | ✅ Java | — bash + `jq` | — | — | — | — |
-| Trilha de custo e encadeamento por execução | ✅ | — | — | — | — | — |
+| Trilha de tokens e encadeamento por execução | ✅ | — | — | — | — | — |
 | Valida os próprios arquivos de instrução | ✅ | — | — | — | — | — |
 | Atualização em projeto existente | ✅ com proveniência + notas de migração | ◐ onboarding | — | ◐ reinstalar plugin | ✅ upgrade/update | ✅ upgrade |
 | Roda em agentes além do Claude Code | — | ✅ | ✅ | ◐ Codex | ✅ | ◐ |
@@ -250,8 +250,9 @@ encontrado.
 - **Portabilidade.** Hooks, `paths`, `disable-model-invocation` e `context: fork` são do
   runtime do Claude Code. Nada aqui roda em Codex, Cursor ou Copilot, enquanto a maioria dos
   vizinhos roda em vários agentes.
-- **Custo.** O pipeline completo é caro por desenho. Uma execução real do `/new-feature`
-  custou cerca de USD 15 para um agregado de dois campos. A trilha de auditoria existe para
+- **Custo.** O pipeline completo é caro por desenho. Numa execução real do `/new-feature`
+  para um agregado de dois campos, só o executor levou 203 turnos e releu 58,8M tokens de
+  cache. A trilha de auditoria existe para
   medir isso; ver [03-new-feature.md § Disciplina de custo](03-new-feature.md).
 - **Adoção.** O rigor tem curva de aprendizado, e o projeto é novo e pequeno. Templates e
   pacotes de skills mais simples são muito mais populares.
