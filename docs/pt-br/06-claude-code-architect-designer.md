@@ -77,9 +77,8 @@ pode escutar, chamar e iniciar é o bloco `mods` do `extensions.json`; o mapa é
 `references/mod-events.md`. Também sempre ganha registro em `decisions/`, e fica neste
 repositório — nada em `.claude/mods/` vai pro projeto gerado. O único entregue,
 `nerviz-cockpit`, desenha a fase de skill aberta e o território acima do prompt,
-`/nerviz-doctor` num painel, e segura uma recusa do
-`guard` atrás de dois botões (deixar o Claude se ajustar, ou parar o turno) — a recusa vale
-de qualquer jeito.
+`/nerviz-doctor` num painel, e segura uma recusa do `guard` atrás de dois botões (deixar o
+Claude se ajustar, ou parar o turno) — a recusa vale de qualquer jeito.
 
 ## Fora de escopo
 

@@ -342,7 +342,7 @@ Stop
      └─ tests               tests of the changed modules                      (blocks)
 ```
 
-### Audit trail — what every run cost
+### Audit trail — what every run spent
 
 The report of the bank-app `/new-feature` run above, as it lands in the project:
 [`2026-10-07T08-52-11--new-feature.md`](https://github.com/nerviz-ai/bank-app/blob/main/.claude/audit-usage/2026-10-07T08-52-11--new-feature.md).
