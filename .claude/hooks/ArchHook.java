@@ -401,6 +401,13 @@ public class ArchHook {
                         set.isEmpty() ? "none set — every piece follows its class" : set,
                         String.join("; ", ovr));
             }
+            List<String> lim = auditSch == null ? null : planLimitProblems(auditSch, auditDir);
+            if (lim != null) {
+                String set = lim.remove(lim.size() - 1);
+                report("Plan limits", lim.isEmpty(),
+                        set.isEmpty() ? "no budget set — no plan window projection" : set,
+                        String.join("; ", lim));
+            }
 
             // A synthetic touched file that matches a real rule's `paths` — the exact
             // shape that once threw `ArrayIndexOutOfBoundsException` inside rule
@@ -4722,11 +4729,18 @@ public class ArchHook {
         return out;
     }
 
+    /** `detail`: a skill's args, an agent's model override — the Chain shows it. `description`: an agent call's own label, which names the group of a chained executor (0132). */
     record Node(String kind, String name, String detail, long start, int depth,
-                String toolUseId, String inAgent) {}
+                String toolUseId, String inAgent, String description) {}
 
-    /** One assistant message: usage (input, output, cache read, cache write) and the tools it called. */
-    record Turn(long t, String model, long[] u, List<String> tools) {}
+    /**
+     * One assistant message: usage (input, output, cache read, cache write), the tools it
+     * called and, index for index, what each call aimed at — see {@link #toolTarget}.
+     */
+    record Turn(long t, String model, long[] u, List<String> tools, List<String> targets) {
+        /** What the request carried: input + cache read + cache write. */
+        long context() { return u[0] + u[2] + u[3]; }
+    }
 
     /** Token usage summed per model — a subagent may run on another model, and a price is per model. */
     static final class Usage {
@@ -4812,12 +4826,12 @@ public class ArchHook {
             switch (evKind) {
                 case "skill" -> nodes.add(new Node("skill", orDash(asStr(e.get("name"))),
                         asStr(e.get("args")), t, openAgents.size() + 1,
-                        asStr(e.get("tool_use_id")), asStr(e.get("in_agent"))));
+                        asStr(e.get("tool_use_id")), asStr(e.get("in_agent")), null));
                 case "agent" -> {
                     String toolUseId = asStr(e.get("tool_use_id"));
                     nodes.add(new Node("agent", orDash(asStr(e.get("name"))),
                             asStr(e.get("model")), t, openAgents.size() + 1,
-                            toolUseId, asStr(e.get("in_agent"))));
+                            toolUseId, asStr(e.get("in_agent")), asStr(e.get("detail"))));
                     openAgents.push(toolUseId);
                 }
                 case "agent_end" -> {
@@ -4878,6 +4892,7 @@ public class ArchHook {
         List<Usage> selfOf = new ArrayList<>();
         List<Spend> spendOf = new ArrayList<>();
         List<CostlyTurn> costly = new ArrayList<>();
+        List<Growth> grown = new ArrayList<>();
         for (Node nd : nodes) {
             if ("agent".equals(nd.kind())) {
                 Scan sc = scan(subs.get(nd.toolUseId()));
@@ -4885,8 +4900,10 @@ public class ArchHook {
                 Spend sp = new Spend();
                 for (Turn tr : sc.turns()) {
                     sp.turn(tr);
-                    costly.add(new CostlyTurn(tr.t(), "🤖 " + nd.name(), tr.u()[0] + tr.u()[1] + tr.u()[3], tr.tools()));
+                    costly.add(new CostlyTurn(tr.t(), pieceLabel(nd), tr.u()[0] + tr.u()[1] + tr.u()[3], tr.tools()));
                 }
+                int self = selfOf.size();
+                grown.addAll(growthOf(sc.turns(), tr -> self));
                 sp.errors.addAll(sc.errors());
                 all.addAll(u);
                 allSpend.addAll(sp);
@@ -4908,8 +4925,11 @@ public class ArchHook {
                 costly.add(new CostlyTurn(tr.t(), rootLabel, tr.u()[0] + tr.u()[1] + tr.u()[3], tr.tools()));
             }
             rootSpend.errors.addAll(sc.errors());
+            grown.addAll(growthOf(sc.turns(), tr -> -1));
         }
         Scan mainScan = scan(transcript == null ? null : Paths.get(transcript));
+        grown.addAll(growthOf(mainScan.turns().stream().filter(tr -> tr.t() >= tokensFrom).toList(),
+                tr -> mainOwner(nodes, tr.t())));
         for (Turn tr : mainScan.turns()) {
             if (tr.t() < tokensFrom) continue;
             int owner = mainOwner(nodes, tr.t());
@@ -4918,7 +4938,7 @@ public class ArchHook {
                 (owner < 0 ? rootSelf : selfOf.get(owner)).add(tr.model(), tr.u());
             }
             (owner < 0 ? rootSpend : spendOf.get(owner)).turn(tr);
-            costly.add(new CostlyTurn(tr.t(), owner < 0 ? rootLabel : "📘 " + nodes.get(owner).name(),
+            costly.add(new CostlyTurn(tr.t(), owner < 0 ? rootLabel : pieceLabel(nodes.get(owner)),
                     tr.u()[0] + tr.u()[1] + tr.u()[3], tr.tools()));
         }
         for (ToolErr er : mainScan.errors()) {
@@ -5025,25 +5045,28 @@ public class ArchHook {
           .append(" are subtracted. Percentages are of the active duration.\n\n");
 
         md.append("## 🧩 Tokens per piece\n\n")
-          .append("| Piece | Origin | 🧮 Own billable | 💰 Cost | ⏱️ Duration |\n|---|---|---|---|---|\n")
+          .append("| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |\n|---|---|---|---|---|---|---|\n")
           .append("| `").append(rootLabel).append("` | ")
           .append("model".equals(origin) ? "model" : "user").append(" | ")
           .append(n(rootSelf.billable())).append(" | ")
+          .append(n(rootSelf.cacheRead())).append(" | ").append(n(rootSelf.cacheWrite())).append(" | ")
           .append(orDash(auditCost(dir, rootSelf))).append(" | ").append(hms(total)).append(" |\n");
         for (String p : rootPreloaded) {
-            md.append("| `📎 ").append(p).append("` | preloaded | ↳ in the agent | — | — |\n");
+            md.append("| `📎 ").append(p).append("` | preloaded | ↳ in the agent | — | — | — | — |\n");
         }
         for (int i = 0; i < nodes.size(); i++) {
             Node nd = nodes.get(i);
             Usage u = selfOf.get(i);
-            md.append("| `").append("agent".equals(nd.kind()) ? "🤖 " : "📘 ").append(nd.name())
+            md.append("| `").append(pieceLabel(nd))
               .append("` | nested | ")
               .append(u == null ? "↳ in the agent" : n(u.billable())).append(" | ")
+              .append(u == null ? "—" : n(u.cacheRead())).append(" | ")
+              .append(u == null ? "—" : n(u.cacheWrite())).append(" | ")
               .append(u == null ? "—" : orDash(auditCost(dir, u))).append(" | ")
               .append(hms(dur(nd, nodes, endMs, ticks, waits))).append(" |\n");
             if ("agent".equals(nd.kind())) {
                 for (String p : preloadedSkills(nd.name())) {
-                    md.append("| `📎 ").append(p).append("` | preloaded | ↳ in the agent | — | — |\n");
+                    md.append("| `📎 ").append(p).append("` | preloaded | ↳ in the agent | — | — | — | — |\n");
                 }
             }
         }
@@ -5068,6 +5091,8 @@ public class ArchHook {
         md.append("Cache hit ").append(pct(all.cacheRead(), Math.max(1, ctx))).append(" ")
           .append(bar(hit)).append("\n\n");
 
+        md.append(planWindowsSection(dir, auditUsd(dir, all), total));
+
         md.append("## 🔎 Where the run spent\n\n");
         List<String> pieceLabels = new ArrayList<>();
         List<Spend> pieceSpends = new ArrayList<>();
@@ -5076,7 +5101,7 @@ public class ArchHook {
         for (int i = 0; i < nodes.size(); i++) {
             if (spendOf.get(i) == null) continue;
             Node nd = nodes.get(i);
-            pieceLabels.add(("agent".equals(nd.kind()) ? "🤖 " : "📘 ") + nd.name());
+            pieceLabels.add(pieceLabel(nd));
             pieceSpends.add(spendOf.get(i));
         }
         md.append("### 🛠️ Tool calls per piece\n\n");
@@ -5106,6 +5131,43 @@ public class ArchHook {
                   .append(c.tools().isEmpty() ? "—" : String.join(", ", c.tools())).append(" |\n");
             }
             md.append('\n');
+        }
+        md.append("### 📈 What grew the context\n\n");
+        if (grown.isEmpty()) {
+            md.append("No tool call grew the context between two requests of the same transcript.\n\n");
+        } else {
+            long top = lnum(get(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))), "audit", "growth_top"));
+            List<Growth> byReread = new ArrayList<>(grown);
+            byReread.sort((a, b) -> Long.compare(b.reread(), a.reread()));
+            if (top > 0) {
+                md.append("| # | Piece | Tool | Target | ➕ Added | 🔁 Re-read by | ♻️ Re-read tokens | 💰 Est. |\n")
+                  .append("|---|---|---|---|---|---|---|---|\n");
+                for (int i = 0; i < Math.min(top, byReread.size()); i++) {
+                    Growth g = byReread.get(i);
+                    Usage r = new Usage();
+                    r.add(g.model(), new long[] {0, 0, g.reread(), 0});
+                    md.append("| ").append(i + 1).append(" | `")
+                      .append(g.owner() < 0 ? rootLabel : pieceLabel(nodes.get(g.owner()))).append("` | ")
+                      .append(g.tool()).append(" | `").append(targetCell(g.target())).append("` | ")
+                      .append(n(g.added())).append(" | ").append(g.rereads()).append(" | ")
+                      .append(n(g.reread())).append(" | ").append(orDash(auditCost(dir, r))).append(" |\n");
+                }
+                md.append('\n');
+            }
+            md.append("| Piece | By tool — added → re-read |\n|---|---|\n");
+            for (int o = -1; o < nodes.size(); o++) {
+                List<Map.Entry<String, long[]>> by = growthByTool(grown, o);
+                if (by.isEmpty()) continue;
+                md.append("| `").append(o < 0 ? rootLabel : pieceLabel(nodes.get(o))).append("` | ")
+                  .append(by.stream().map(e -> e.getKey() + " +" + n(e.getValue()[0]) + " → " + n(e.getValue()[1]))
+                          .collect(Collectors.joining(" · ")))
+                  .append(" |\n");
+            }
+            md.append("\n> Every request rereads the whole context, so what a call's result added is paid")
+              .append(" again by each later request of the same transcript, up to a compaction. Added =")
+              .append(" the next request's context minus this one's and its output, split across the")
+              .append(" request's calls — an estimate: a harness reminder lands on the call before it.")
+              .append(" Est. prices the re-read at the piece's cache-read rate.\n\n");
         }
         md.append("### 📏 Peak context\n\n");
         if (allSpend.peak == 0) {
@@ -5250,6 +5312,11 @@ public class ArchHook {
                        "status", status,
                        "tokens_billable", String.valueOf(all.billable()),
                        "tokens_self", String.valueOf(rootSelf.billable()),
+                       // The cache split and what grew the context, per piece: the totals alone could
+                       // not say where a run's re-reads went (issue #111). decisions/0132
+                       "cache_read_self", String.valueOf(rootSelf.cacheRead()),
+                       "cache_write_self", String.valueOf(rootSelf.cacheWrite()),
+                       "reread_self", rereadLedger(grown, -1),
                        "cost", auditCost(dir, all),
                        "cost_usd", usd(auditUsd(dir, all)),
                        "cost_self_usd", usd(auditUsd(dir, rootSelf)),
@@ -5269,7 +5336,7 @@ public class ArchHook {
             // ledger keeps one line per run, so what reads it does not pay for the finer grain.
             StringBuilder rows = new StringBuilder();
             String run = relative(report);
-            for (String p : rootPreloaded) rows.append(nodeRow(run, skill, "skill", p, "preloaded", null, null, dir, 0)).append('\n');
+            for (String p : rootPreloaded) rows.append(nodeRow(run, skill, "skill", p, "preloaded", null, null, null, null, dir, 0)).append('\n');
             for (int i = 0; i < nodes.size(); i++) {
                 Node nd = nodes.get(i);
                 if (!isAudited(nd.kind(), nd.name())) continue;
@@ -5278,11 +5345,12 @@ public class ArchHook {
                     String tu = toolUseIdOfAgentId.get(nd.inAgent());
                     for (Node o : nodes) if (tu != null && tu.equals(o.toolUseId())) parent = o.name();
                 }
-                rows.append(nodeRow(run, parent, nd.kind(), nd.name(), "nested", selfOf.get(i), spendOf.get(i), dir,
+                rows.append(nodeRow(run, parent, nd.kind(), nd.name(), "nested", nd.description(), selfOf.get(i), spendOf.get(i),
+                        rereadLedger(grown, i), dir,
                         dur(nd, nodes, endMs, ticks, waits))).append('\n');
                 if ("agent".equals(nd.kind())) {
                     for (String p : preloadedSkills(nd.name())) {
-                        rows.append(nodeRow(run, nd.name(), "skill", p, "preloaded", null, null, dir, 0)).append('\n');
+                        rows.append(nodeRow(run, nd.name(), "skill", p, "preloaded", null, null, null, null, dir, 0)).append('\n');
                     }
                 }
             }
@@ -5309,11 +5377,15 @@ public class ArchHook {
     }
 
     /** A `nodes.jsonl` line. No usage means "counted in its agent" — the field is left out, never zero. */
-    static String nodeRow(String run, String parent, String kind, String name, String origin,
-                          Usage u, Spend sp, Path dir, long durationMs) {
+    static String nodeRow(String run, String parent, String kind, String name, String origin, String detail,
+                          Usage u, Spend sp, String reread, Path dir, long durationMs) {
         return ev("node", "run", run, "parent", parent, "kind", kind, "skill", name, "origin", origin,
+                "detail", detail == null || detail.isBlank() ? null : redact(detail),
                 "model", u == null ? null : u.model(),
                 "tokens_self", u == null ? null : String.valueOf(u.billable()),
+                "cache_read", u == null ? null : String.valueOf(u.cacheRead()),
+                "cache_write", u == null ? null : String.valueOf(u.cacheWrite()),
+                "reread", reread,
                 "cost_usd", u == null ? null : usd(auditUsd(dir, u)),
                 "tool_calls", sp == null ? null : sp.ledger(),
                 "peak_context", sp == null || sp.peak == 0 ? null : String.valueOf(sp.peak),
@@ -5397,6 +5469,7 @@ public class ArchHook {
         if (p == null || !Files.isRegularFile(p)) return new Scan(List.of(), List.of());
         Map<String, Turn> byId = new LinkedHashMap<>();
         Map<String, List<String>> toolsOf = new HashMap<>();   // message id → tool names
+        Map<String, List<String>> targetsOf = new HashMap<>(); // message id → tool targets, same order
         Map<String, Long> toolMsgT = new LinkedHashMap<>();      // message id → timestamp
         Map<String, String> toolName = new HashMap<>();         // tool_use id → tool name
         List<String[]> rawErrors = new ArrayList<>();          // {t, tool_use id, text}
@@ -5421,6 +5494,7 @@ public class ArchHook {
                             String name = orDash(asStr(get(b, "name")));
                             if (tuid != null && toolName.putIfAbsent(tuid, name) != null) continue;
                             toolsOf.computeIfAbsent(id, k -> new ArrayList<>()).add(name);
+                            targetsOf.computeIfAbsent(id, k -> new ArrayList<>()).add(toolTarget(get(b, "input")));
                             toolMsgT.putIfAbsent(id, t);
                         } else if ("tool_result".equals(type) && Boolean.TRUE.equals(get(b, "is_error"))) {
                             rawErrors.add(new String[] {String.valueOf(t), asStr(get(b, "tool_use_id")),
@@ -5435,12 +5509,14 @@ public class ArchHook {
                 if (v[0] + v[1] + v[2] + v[3] == 0) continue;
                 String key = id != null ? id : "#" + anon++;
                 byId.put(key, new Turn(t, asStr(get(e, "message", "model")), v,
-                        id == null ? new ArrayList<>() : toolsOf.computeIfAbsent(id, k -> new ArrayList<>())));
+                        id == null ? new ArrayList<>() : toolsOf.computeIfAbsent(id, k -> new ArrayList<>()),
+                        id == null ? new ArrayList<>() : targetsOf.computeIfAbsent(id, k -> new ArrayList<>())));
             }
         } catch (IOException ignored) { }
         // A message whose calls were written but whose usage never was still called its tools.
         toolMsgT.forEach((id, t) -> {
-            if (!byId.containsKey(id)) byId.put(id, new Turn(t, null, new long[4], toolsOf.get(id)));
+            if (!byId.containsKey(id)) byId.put(id, new Turn(t, null, new long[4], toolsOf.get(id),
+                    targetsOf.getOrDefault(id, new ArrayList<>())));
         });
         List<ToolErr> errors = new ArrayList<>();
         for (String[] x : rawErrors) {
@@ -5492,7 +5568,7 @@ public class ArchHook {
 
         void turn(Turn tr) {
             for (String tool : tr.tools()) tools.merge(tool, 1, Integer::sum);
-            long ctx = tr.u()[0] + tr.u()[2] + tr.u()[3];
+            long ctx = tr.context();
             if (ctx > peak) { peak = ctx; peakT = tr.t(); }
         }
         void addAll(Spend o) {
@@ -5524,6 +5600,296 @@ public class ArchHook {
 
     /** One model turn, ranked by billable tokens in the report. */
     record CostlyTurn(long t, String owner, long billable, List<String> tools) {}
+
+    /**
+     * What one tool call put into the context, and how many later requests of the same
+     * transcript carried it again. {@code owner} indexes the run's nodes; -1 is the root.
+     */
+    record Growth(int owner, String tool, String target, String model, long added, long rereads) {
+        long reread() { return added * rereads; }
+    }
+
+    /**
+     * Context growth per tool call, in one transcript. Every request rereads the whole
+     * context, so what a call's result adds is paid again by each later request — the cost
+     * the per-piece totals cannot place (issue #111, decision 0132). Growth after request k
+     * = context(k+1) − context(k) − output(k), split evenly across the tool calls of k; a
+     * request with no tool call adds nothing to attribute. It is reread by the requests after
+     * k+1, up to a compaction — a request whose context falls below half of the one before.
+     * An estimate: a harness reminder lands on the call before it.
+     */
+    static List<Growth> growthOf(List<Turn> turns, java.util.function.ToIntFunction<Turn> owner) {
+        List<Turn> s = new ArrayList<>();
+        for (Turn tr : turns) if (tr.context() > 0) s.add(tr);
+        s.sort(Comparator.comparingLong(Turn::t));
+        int n = s.size();
+        int[] stop = new int[n];
+        int next = n;
+        for (int j = n - 1; j >= 0; j--) {
+            stop[j] = next;
+            if (j > 0 && s.get(j).context() * 2 < s.get(j - 1).context()) next = j;
+        }
+        List<Growth> out = new ArrayList<>();
+        for (int k = 0; k + 1 < n; k++) {
+            Turn a = s.get(k);
+            if (a.tools().isEmpty() || stop[k] == k + 1) continue;
+            long grew = s.get(k + 1).context() - a.context() - a.u()[1];
+            if (grew <= 0) continue;
+            long rereads = Math.max(0, stop[k] - k - 2);
+            int calls = a.tools().size();
+            for (int c = 0; c < calls; c++) {
+                String target = c < a.targets().size() ? a.targets().get(c) : "";
+                out.add(new Growth(owner.applyAsInt(a), a.tools().get(c), target, a.model(), grew / calls, rereads));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * What a tool call aimed at: the path for a file tool, relative to the project; a shell
+     * command's first line. Raw — {@link #targetCell} redacts and cuts it, and only for the
+     * calls the report prints: redaction reads the schema, and a transcript holds thousands.
+     */
+    static String toolTarget(Object input) {
+        String fp = asStr(get(input, "file_path"));
+        if (fp == null) fp = asStr(get(input, "notebook_path"));
+        if (fp == null) fp = asStr(get(input, "path"));
+        String t;
+        if (fp != null) {
+            try {
+                Path p = Paths.get(fp);
+                t = p.isAbsolute() && p.startsWith(ROOT) ? ROOT.relativize(p).toString() : fp;
+            } catch (Exception e) { t = fp; }
+            t = t.replace('\\', '/');
+        } else {
+            String cmd = asStr(get(input, "command"));
+            if (cmd == null) cmd = asStr(get(input, "pattern"));
+            if (cmd == null) return "";
+            t = cmd.strip().lines().findFirst().orElse("");
+        }
+        return t;
+    }
+
+    /** A target as a table cell: redacted (invariant 11 — a command line can hold a token), table-safe, at most 80 chars. */
+    static String targetCell(String target) {
+        if (target == null || target.isBlank()) return "—";
+        String t = redact(target).replace('|', '/').replace('`', '\'');
+        return t.length() > 80 ? t.substring(0, 79) + "…" : t;
+    }
+
+    /** Per-tool `added` and `reread` totals of one piece, largest reread first. */
+    static List<Map.Entry<String, long[]>> growthByTool(List<Growth> grown, int owner) {
+        Map<String, long[]> by = new LinkedHashMap<>();
+        for (Growth g : grown) {
+            if (g.owner() != owner) continue;
+            long[] a = by.computeIfAbsent(g.tool(), k -> new long[2]);
+            a[0] += g.added();
+            a[1] += g.reread();
+        }
+        List<Map.Entry<String, long[]>> l = new ArrayList<>(by.entrySet());
+        l.sort((x, y) -> Long.compare(y.getValue()[1], x.getValue()[1]));
+        return l;
+    }
+
+    /** Ledger form of {@link #growthByTool}, `Read:4100000,Bash:900000` — reread tokens per tool. */
+    static String rereadLedger(List<Growth> grown, int owner) {
+        List<Map.Entry<String, long[]>> l = growthByTool(grown, owner);
+        return l.isEmpty() ? null : l.stream().map(e -> e.getKey() + ":" + e.getValue()[1])
+                .collect(Collectors.joining(","));
+    }
+
+    // ── plan windows: how many runs fit a plan's 5-hour and weekly windows ──────────
+    // Anthropic publishes no limit in tokens or dollars, only Max's multipliers over Pro per
+    // 5-hour session. The budget is the project's own reading (`audit.plan_limits`), every
+    // other number is `audit.plans` / `audit.windows` — nothing here is a constant (0133).
+
+    /** `audit.windows` as {key, label, hours, budget field}, in file order. */
+    static List<String[]> planWindows(Map<String, Object> sch) {
+        List<String[]> out = new ArrayList<>();
+        Map<String, Object> w = asMap(get(sch, "audit", "windows"));
+        if (w == null) return out;
+        for (Map.Entry<String, Object> e : w.entrySet()) {
+            Map<String, Object> m = asMap(e.getValue());
+            if (m == null || lnum(m.get("hours")) <= 0) continue;
+            out.add(new String[] {e.getKey(), orDash(asStr(m.get("label"))),
+                    String.valueOf(lnum(m.get("hours"))), asStr(m.get("budget"))});
+        }
+        return out;
+    }
+
+    /** The project's budgets for `audit.budget_plan`, or null when it wrote no plan-limits file. */
+    static Map<String, Object> planBudgets(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        String base = asStr(get(sch, "audit", "budget_plan"));
+        if (file == null || base == null) return null;
+        Object root = Json.parse(readOrNull(dir.resolve(file)));
+        return root == null ? null : Objects.requireNonNullElse(asMap(get(root, base)), Map.of());
+    }
+
+    /**
+     * One cell: runs like this one that fit {@code window} on {@code plan}, as if nothing
+     * else ran — budget × multiplier ÷ cost, capped by the window's hours ÷ active duration
+     * back to back — with the limit that binds; or why there is no number.
+     */
+    static String planCell(Map<String, Object> sch, Map<String, Object> budgets, String plan,
+                           String[] window, Double cost, long durationMs) {
+        Object mult = get(sch, "audit", "plans", plan, "multipliers", window[0]);
+        if (!(mult instanceof Number m)) return "not published";
+        if (cost == null || cost <= 0) return "— no cost";
+        Double budget = window[3] == null ? null : dbl(budgets.get(window[3]));
+        if (budget == null || budget <= 0) return "— set `" + window[3] + "`";
+        long byBudget = (long) Math.floor(budget * m.doubleValue() / cost);
+        long byTime = durationMs <= 0 ? Long.MAX_VALUE : Long.parseLong(window[2]) * 3_600_000L / durationMs;
+        return byTime < byBudget ? n(byTime) + " · time" : n(byBudget) + " · budget";
+    }
+
+    /** The run report's `Plan windows` section: one row per plan, one column per window. */
+    static String planWindowsSection(Path dir, Double cost, long durationMs) {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        List<String[]> windows = sch == null ? List.of() : planWindows(sch);
+        if (windows.isEmpty()) return "";
+        StringBuilder md = new StringBuilder("## 🪟 Plan windows\n\n");
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        Map<String, Object> budgets = planBudgets(sch, dir);
+        if (budgets == null) {
+            return md.append("No `.claude/audit-usage/").append(file).append("` — no projection. Anthropic publishes")
+              .append(" no limit in tokens or dollars: write the `").append(asStr(get(sch, "audit", "budget_plan")))
+              .append("` budget you observed, in USD at `pricing.json` rates, and every plan is projected from it.\n\n")
+              .toString();
+        }
+        md.append("Runs like this one that fit each window, as if nothing else ran — ")
+          .append(cost == null ? "no cost" : orDash(money(dir, cost))).append(" per run, ")
+          .append(hms(durationMs)).append(" active.\n\n| Plan |");
+        for (String[] w : windows) md.append(' ').append(w[1]).append(" |");
+        md.append("\n|---|").append("---|".repeat(windows.size())).append('\n');
+        for (String p : planKeys(sch)) {
+            md.append("| ").append(orDash(asStr(get(sch, "audit", "plans", p, "label")))).append(" |");
+            for (String[] w : windows) md.append(' ').append(planCell(sch, budgets, p, w, cost, durationMs)).append(" |");
+            md.append('\n');
+        }
+        return md.append("\n> budget = the ").append(asStr(get(sch, "audit", "budget_plan")))
+          .append(" budget in `").append(file).append("` × the plan's multiplier (")
+          .append(asStr(get(sch, "audit", "plans_source"))).append("); time = the window ÷ this run's")
+          .append(" active duration, back to back. An estimate: chat and other sessions share the real")
+          .append(" window, and the budget is the project's own reading.\n\n").toString();
+    }
+
+    /**
+     * `audit summary`'s plan-window table: per piece, the mean cost and active duration of
+     * its priced runs, projected like {@link #planWindowsSection}. A root run counts its
+     * whole cost — what typing that command costs; a chained piece only its own. Only the
+     * plan × window pairs with a published multiplier get a column.
+     */
+    static String planWindowsSummary(Path dir, List<Map<String, Object>> runs, List<Map<String, Object>> nested) {
+        Map<String, Object> sch = asMap(Json.parse(readOrNull(ROOT.resolve(SCHEMA_FILE))));
+        List<String[]> windows = sch == null ? List.of() : planWindows(sch);
+        if (windows.isEmpty()) return "";
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        Map<String, Object> budgets = planBudgets(sch, dir);
+        StringBuilder o = new StringBuilder("\n### Plan windows (runs per window, mean per piece, as if nothing else ran)\n\n");
+        if (budgets == null) {
+            return o.append("not configured — no `").append(file).append("` in the trail\n").toString();
+        }
+        Map<String, double[]> mean = new LinkedHashMap<>();   // label → cost sum, duration sum, runs
+        for (Map<String, Object> r : runs) {
+            Double c = runCost(r);
+            if (c == null) continue;
+            double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)), k -> new double[3]);
+            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+        }
+        for (Map<String, Object> r : nested) {
+            Double c = ldbl(r.get("cost_usd"));
+            if (c == null || "preloaded".equals(asStr(r.get("origin")))) continue;
+            double[] a = mean.computeIfAbsent(keyLabel(pieceKey(r)) + " (chained, own)", k -> new double[3]);
+            a[0] += c; a[1] += lnum(r.get("duration_ms")); a[2]++;
+        }
+        if (mean.isEmpty()) return o.append("no priced run yet\n").toString();
+        List<String[]> cols = new ArrayList<>();                // {plan, window index}
+        for (String p : planKeys(sch)) {
+            for (int i = 0; i < windows.size(); i++) {
+                if (get(sch, "audit", "plans", p, "multipliers", windows.get(i)[0]) instanceof Number) {
+                    cols.add(new String[] {p, String.valueOf(i)});
+                }
+            }
+        }
+        o.append("| Piece | Runs | Mean cost | Mean active |");
+        for (String[] c : cols) {
+            o.append(' ').append(orDash(asStr(get(sch, "audit", "plans", c[0], "label")))).append(' ')
+             .append(windows.get(Integer.parseInt(c[1]))[1]).append(" |");
+        }
+        o.append("\n|---|---|---|---|").append("---|".repeat(cols.size())).append('\n');
+        List<Map.Entry<String, double[]>> rows = new ArrayList<>(mean.entrySet());
+        rows.sort((a, b) -> Double.compare(b.getValue()[0] / b.getValue()[2], a.getValue()[0] / a.getValue()[2]));
+        for (Map.Entry<String, double[]> e : rows) {
+            double[] a = e.getValue();
+            double cost = a[0] / a[2];
+            long dur = (long) (a[1] / a[2]);
+            o.append("| ").append(e.getKey()).append(" | ").append((long) a[2]).append(" | ")
+             .append(money(dir, cost)).append(" | ").append(hms(dur)).append(" |");
+            for (String[] c : cols) {
+                o.append(' ').append(planCell(sch, budgets, c[0], windows.get(Integer.parseInt(c[1])), cost, dur)).append(" |");
+            }
+            o.append('\n');
+        }
+        return o.append("\nbudget = `").append(file).append("` × the plan's multiplier (")
+          .append(asStr(get(sch, "audit", "plans_source"))).append("); time = the window ÷ the mean active duration;")
+          .append(" a plan × window with no published multiplier has no column\n").toString();
+    }
+
+    /** `audit.plans` keys, in file order. */
+    static List<String> planKeys(Map<String, Object> sch) {
+        Map<String, Object> p = asMap(get(sch, "audit", "plans"));
+        return p == null ? List.of() : new ArrayList<>(p.keySet());
+    }
+
+    /**
+     * What `doctor` says about the project's plan-limits file: null when there is none, else
+     * the problems (empty when valid) and, last, what it sets. Strict like `audited.json`: a
+     * misspelled field would otherwise project nothing, in silence.
+     */
+    static List<String> planLimitProblems(Map<String, Object> sch, Path dir) {
+        String file = asStr(get(sch, "audit", "plan_limits"));
+        String base = asStr(get(sch, "audit", "budget_plan"));
+        if (file == null || base == null || !Files.isRegularFile(dir.resolve(file))) return null;
+        List<String> out = new ArrayList<>();
+        Map<String, Object> root = asMap(Json.parse(readOrNull(dir.resolve(file))));
+        if (root == null) {
+            out.add(file + " is not a JSON object");
+            out.add("");
+            return out;
+        }
+        Set<String> fields = new LinkedHashSet<>();
+        for (String[] w : planWindows(sch)) if (w[3] != null) fields.add(w[3]);
+        List<String> set = new ArrayList<>();
+        for (Map.Entry<String, Object> e : root.entrySet()) {
+            if (e.getKey().startsWith("$")) continue;
+            if (!base.equals(e.getKey())) {
+                out.add("`" + e.getKey() + "` — only `" + base + "` is read; every other plan is its multiple");
+                continue;
+            }
+            Map<String, Object> b = asMap(e.getValue());
+            if (b == null) { out.add("`" + base + "` must map " + String.join(" and ", fields) + " to a number"); continue; }
+            for (Map.Entry<String, Object> f : b.entrySet()) {
+                if (f.getKey().startsWith("$")) continue;
+                if (!fields.contains(f.getKey())) {
+                    out.add("`" + base + "." + f.getKey() + "` — only " + String.join(", ", fields) + " are read");
+                } else if (f.getValue() != null && !(f.getValue() instanceof Number x && x.doubleValue() > 0)) {
+                    out.add("`" + base + "." + f.getKey() + "` must be a number above 0, or null");
+                } else if (f.getValue() != null) {
+                    double v = ((Number) f.getValue()).doubleValue();
+                    set.add(base + " " + f.getKey() + " " + (v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)));
+                }
+            }
+        }
+        out.add(set.isEmpty() ? "" : String.join(", ", set));
+        return out;
+    }
+
+    /** A node as the report's tables name it: icon, name and, for an agent call, its description. */
+    static String pieceLabel(Node nd) {
+        return ("agent".equals(nd.kind()) ? "🤖 " : "📘 ") + nd.name()
+                + (nd.description() == null || nd.description().isBlank() ? "" : " (" + nd.description().replace('|', '/') + ")");
+    }
 
     /** Parsed, not compared as text: `…12Z` sorts after `…12.5Z` as a string. */
     static long epochMs(String iso) {
@@ -5889,6 +6255,8 @@ public class ArchHook {
                 }
                 o.append("```\n");
             }
+
+            o.append(planWindowsSummary(dir, runs, nested));
 
             o.append("\n### Health\n\n").append("failure rate: ").append(failed).append('/')
              .append(runs.size()).append(" (").append(pct(failed, runs.size())).append(")");

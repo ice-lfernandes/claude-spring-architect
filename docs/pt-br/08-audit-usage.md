@@ -90,7 +90,8 @@ lista: uma classe que declara `audited: false` não abre run próprio para nenhu
 
 ### Por projeto: `.claude/audit-usage/audited.json`
 
-O único arquivo de `.claude/` que um projeto gerado escreve para si. O `export` nunca o nomeia,
+Um dos dois arquivos de `.claude/` que um projeto gerado escreve para si (o outro é o
+`plan-limits.json`, abaixo). O `export` nunca o nomeia,
 então o `/arch-adopt` nunca mexe nele. Ausente → cada peça segue a classe, como acima.
 
 ```json
@@ -103,6 +104,28 @@ acima evitam, e é decisão do projeto. Vence o primeiro boolean: o override da 
 classe (`arch-adopt`), depois este arquivo, depois a classe. O `doctor` valida na linha
 `Audit overrides` e falha pelo nome com qualquer chave além de `skills`/`agents`, valor que não
 seja `true`/`false`, nome sem arquivo no projeto, ou `arch-adopt`. Decisão 0111.
+
+### Por projeto: `.claude/audit-usage/plan-limits.json`
+
+Quantas execuções de uma peça cabem na janela de 5 horas e na semanal de cada plano, como se
+nada mais rodasse. A Anthropic não publica limite em tokens nem em dólares — só que o Max dá 5x
+ou 20x o uso do Pro por sessão de 5 horas, e que os planos pagos têm limite semanal por cima,
+sem multiplicador publicado. Então o orçamento é leitura do próprio projeto, só para o Pro, em
+USD aos preços do `pricing.json` — por exemplo, o custo que o audit somou quando o `/usage`
+chegou a 100%:
+
+```json
+{ "pro": { "five_hour_usd": 10, "weekly_usd": 50 } }
+```
+
+Cada plano é esse orçamento × o multiplicador em `audit.plans` do `extensions.json` (fonte e
+data em `audit.plans_source`), ÷ o custo da execução, limitado também pelo relógio — a janela ÷ a
+duração ativa, uma atrás da outra. A célula diz qual limite manda (`budget` ou `time`); semanal
+de Max é `not published`. Aparece na seção `🪟 Plan windows` de cada relatório e, pela média de
+cada peça, no `audit summary`. Ausente → o relatório diz que não há projeção. Como o
+`audited.json`, o `export` nunca o nomeia, e o `doctor` valida na linha `Plan limits`: só `pro`,
+só `five_hour_usd` e `weekly_usd`, número acima de 0 ou `null`. É uma estimativa: chat e outras
+sessões dividem a janela real. Decisão 0133.
 
 ## Anatomia de um relatório
 
@@ -135,15 +158,15 @@ Relatórios gravados antes da 0085 continuam em português no disco:
 
 ## 🧩 Tokens per piece
 
-| Piece | Origin | 🧮 Own billable | ⏱️ Duration |
-| `📘 test-architect` | nested | 242,813 | 2m25s |
-| `🤖 java-spring-boot-developer` | nested | 88,517 | 1m12s |
+| Piece | Origin | 🧮 Own billable | ♻️ Cache read | 💾 Cache write | 💰 Cost | ⏱️ Duration |
+| `📘 test-architect` | nested | 242,813 | … | … | … | 2m25s |
+| `🤖 java-spring-boot-developer (group domain)` | nested | 88,517 | … | … | … | 1m12s |
 …
 ```
 
 Seções, na ordem: cabeçalho (com o custo estimado logo após o modelo) · comando inicial (redigido, com `sha256` do original) ·
 etapas mais longas · encadeamento · tokens por peça · tokens agregados (input, output,
-cache read, cache write, faturável, custo estimado, cache hit) · onde o run gastou ·
+cache read, cache write, faturável, custo estimado, cache hit) · janelas dos planos · onde o run gastou ·
 permissões adicionadas (diff de `settings.local.json` entre início e fim) · regras
 carregadas · arquivos tocados · retrabalho.
 
@@ -196,6 +219,16 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
   a mesma atribuição.
 - **Pico de contexto é número absoluto.** A janela de contexto do modelo não é escrita de
   memória, então o relatório nunca transforma o pico em percentual.
+- **O que inflou o contexto é estimativa** (`📈 What grew the context`). Cada requisição relê o
+  contexto inteiro, então o que o resultado de uma chamada acrescentou é pago de novo em cada
+  requisição seguinte do mesmo transcript, até uma compactação. Acrescentado = contexto da
+  próxima requisição menos o desta e o output dela, dividido entre as chamadas da requisição.
+  A seção lista as `audit.growth_top` chamadas que mais custaram em releitura (peça, tool,
+  alvo — o path, ou a primeira linha do comando, redigida —, tokens acrescentados, quantas
+  requisições releram, tokens relidos) e, por peça, uma linha por tool. É o que diz se o grupo
+  `tests` de um executor gasta lendo código anterior, saída de diagnóstico ou ciclos de
+  correção — os totais por peça não dizem (issue #111). Um lembrete do harness cai na chamada
+  anterior a ele. Design: `.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
 
 ## Redação e preço
 
@@ -219,8 +252,8 @@ Quatro decisões de desenho que o relatório declara em si mesmo:
 
 | Arquivo | Uma linha por | Versionado? |
 |---|---|---|
-| `history.jsonl` | execução de topo (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, …) | sim |
-| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `tokens_self`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
+| `history.jsonl` | execução de topo (`kind`, `origin`, `status`, `tokens_billable`, `cost_usd`, `tool_calls`, `tool_calls_self`, `peak_context`, `peak_context_self`, `cache_read_self`, `cache_write_self`, `reread_self`, …) | sim |
+| `nodes.jsonl` | peça encadeada dentro de uma execução (`run`, `parent`, `skill`, `detail` — a description da chamada do agent, o grupo de um executor encadeado —, `tokens_self`, `cache_read`, `cache_write`, `reread`, `tool_calls`, `peak_context`, `duration_ms`) | sim |
 | `.state/*.ndjson`, `.state/*.prompt.json` | evento bruto da execução em andamento | não |
 
 `tool_calls` é string, `Bash:5,Read:12`, porque os ledgers só carregam strings. Linha

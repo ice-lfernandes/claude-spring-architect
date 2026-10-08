@@ -414,6 +414,14 @@ abre. Um marcador mais velho que `tests.writer_agent_max_minutes` é apagado e i
 agente morto pelo sono da máquina nunca chega ao `SubagentStop`. Design:
 `.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`.
 
+**Um A/B de custo atravessando o `/arch-adopt` perde as linhas do "antes" se o commit daquele
+run foi recusado.** A trilha `.claude/audit-usage/` é stageada junto com o commit do run pelo
+`git-publish`. Recusado o commit, ela fica como append não commitado, e o `/arch-adopt` recusa
+um worktree sujo sem exceção para essa pasta — limpar o worktree para atualizar apaga o
+`nodes.jsonl` do run de antes. Antes de atualizar, commite a trilha à parte, ou copie o
+relatório e as linhas do run. Visto na issue #111. Design:
+`.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
+
 ### Mods
 
 **Abaixo do Claude Code 2.1.287 nenhum mod carrega, e nada na sessão avisa.** A faixa, o

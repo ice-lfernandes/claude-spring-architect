@@ -403,6 +403,14 @@ marker older than `tests.writer_agent_max_minutes` is deleted and ignored: an ag
 machine sleep never reaches `SubagentStop`. Design:
 `.claude/decisions/0116-tests-defers-while-a-writer-subagent-runs.md`.
 
+**A cost A/B across `/arch-adopt` loses the "before" rows when that run's commit was
+declined.** `git-publish` stages the `.claude/audit-usage/` trail with the run's commit. Declined,
+the trail stays as uncommitted appends, and `/arch-adopt` refuses a dirty worktree with no
+exception for that folder — cleaning the worktree to update deletes the earlier run's
+`nodes.jsonl` rows. Before updating, commit the trail on its own, or copy the run's report and
+rows. Seen in issue #111. Design:
+`.claude/decisions/0132-audit-per-piece-cache-and-context-growth.md`.
+
 ### Mods
 
 **Below Claude Code 2.1.287 no mod loads, and nothing says so in the session.** The band,
