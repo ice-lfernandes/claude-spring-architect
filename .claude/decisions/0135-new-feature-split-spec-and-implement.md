@@ -182,13 +182,15 @@ is not re-proposed without reading why it was taken.
 | `.claude/skills/new-feature/SKILL.md` | 918 → 725 lines. Description and argument hint say design only; row 3 becomes an error that prints `/clear` + `/new-feature-implement`; row 5 prints the command for the case's status; § End of flow ends at § Approval, which prints `/new-feature-implement`; § Implement, § Operational note and the executor step of § Integrates with removed |
 | `.claude/schemas/extensions.json` | `skill_classes.orchestrator`: the skill, `overrides.new-feature-implement.write_allow: []`, the class comment. `export.skills.include`: the skill. `export.retired`: the 16 old `commons/` paths. `migrations`: `new-feature-implement-skill` — note on the command, prompt that carries an `audited.json` opt-out over to the new name |
 | `.claude/skills/project-bootstrap/templates/settings.json.example` | `Skill(new-feature-implement)` in `permissions.allow`, next to `Skill(new-feature)` |
+| `.claude/skills/project-bootstrap/templates/root.CLAUDE.md.example` · `references/scaffold.md` | The generated project's routing gets the implement row and the `/clear` line names both runs; the installer's trigger |
 | `.claude/agents/java-spring-boot-developer.md` | Caller is `/new-feature-implement`: § Integration, § Groups, resume, final summary, failure mode, § Invocation |
 | `.claude/agents/commons-logging-installer.md` | Caller and exemplar path |
 | `.claude/skills/git-publish/SKILL.md` | Three callers; the guardrail's worktree step cited in the reference; commit type per caller |
 | `CLAUDE.md` | Two routing rows: design → `new-feature`, implement → `new-feature-implement` |
 | `.claude/.ci/SkillTerritoryTest.java` | Six cases for the implement phase |
+| `.claude/.ci/TestsDeferTest.java` | Comment names the new caller |
 | `.claude/.ci/JavaTemplatesTest.java` · `.github/workflows/templates.yml` | The moved `commons/` path, in the test and in both trigger lists |
-| `README.md` · `docs/{pt-br,en}/00,01,03,07,08,09` | Flow 2 is `/new-feature-implement`; the commons path; audit names |
+| `README.md` · `docs/{pt-br,en}/00,01,03,07,08,09,README` | Flow 2 is `/new-feature-implement`; the commons path; audit names |
 | `.claude/decisions/0067-implement-entry-row.md` · `0130-…` | Note pointing here |
 
 Goes to the generated project: **yes** — `new-feature-implement` is in `export.skills.include`,
